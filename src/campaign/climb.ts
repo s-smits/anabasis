@@ -20,11 +20,12 @@ import {
   wholePoints,
 } from "../kernel/compare.ts";
 import { OPENING, writersOf } from "../kernel/history.ts";
-import type { LogEvent } from "../kernel/log.ts";
+import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
 import { heldAtGate } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { keysIf } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
 import { short } from "./move.ts";
 import type { Called } from "./names.ts";
@@ -92,10 +93,14 @@ export interface Epoch {
    *  comparison's significance level (`AGENTS.md`, section 1). Null in epoch 1; false until a
    *  starter comparison reports. */
   readonly confirmed: boolean | null;
+  /** Whether that starter comparison had enough untied tasks to clear its significance level if
+   *  every untied task went to the reference; null before any scored starter comparison or in epoch 1. */
+  readonly starter_able: boolean | null;
+  /** True when this epoch was opened by reverting an unconfirmed reference back to a prior harness. */
+  readonly reverted?: boolean;
   readonly falsePromotion: FalsePromotion;
 }
 
-const PROMOTED = "harness.promoted";
 const ATTEMPT = "promotion attempt";
 
 /** Economy reference bar for promotion cost: at most this many promotion attempts in an epoch
@@ -182,12 +187,14 @@ export interface StarterRead {
 const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
 
 function epochSlices(events: readonly LogEvent[]) {
-  const bounds: { index: number; harness: string }[] = [{ index: 0, harness: "starter" }];
+  const bounds: { index: number; harness: string; reverted: boolean }[] = [
+    { index: 0, harness: "starter", reverted: false },
+  ];
   const tasks: string[][] = [[]];
   const sessions: Set<string>[] = [new Set()];
   for (const [at, { kind, data }] of events.entries()) {
-    if (kind === PROMOTED && isString(data.harness)) {
-      bounds.push({ index: at, harness: data.harness });
+    if (isReferenceChange(kind) && isString(data.harness)) {
+      bounds.push({ index: at, harness: data.harness, reverted: kind === "harness.reverted" });
       tasks.push([]);
       sessions.push(new Set());
     } else if (kind === "task.gate" && heldAtGate(data.outcome) && isString(data.version)) {
@@ -221,7 +228,8 @@ function epochsFrom(
 ): Epoch[] {
   const starter = starterIn(events);
   const { bounds, tasks, sessions } = epochSlices(events);
-  return bounds.map(({ index: from, harness: reference }, nth) => {
+  const confirmedDigests = new Set<string>();
+  return bounds.map(({ index: from, harness: reference, reverted }, nth) => {
     const next = bounds[nth + 1];
     const to = next?.index ?? null;
     const own = reports.filter(({ index }) => index >= from && (to === null || index < to));
@@ -229,17 +237,24 @@ function epochsFrom(
       id: session,
       reading: isString(data.reading) ? data.reading : "",
     }));
-    const referenceDigest = reference === "starter" ? starter : reference;
+    const isStarter = reference === "starter" || (starter !== null && reference === starter);
+    const referenceDigest = isStarter ? starter : reference;
+    const starterCheck =
+      reverted && !isStarter && confirmedDigests.has(reference)
+        ? { starter_tally: null, starter_read: null, confirmed: true, starter_able: null }
+        : againstStarter(own, isStarter ? null : referenceDigest, starter);
+    if (starterCheck.confirmed === true && !isStarter) confirmedDigests.add(reference);
     return {
       nth: nth + 1,
-      reference,
+      reference: isStarter ? "starter" : reference,
       from,
       to,
-      promoted: next?.harness ?? null,
+      promoted: next === undefined || next.reverted ? null : next.harness,
       tasks: tasks[nth] ?? [],
       sessions: sessions[nth]?.size ?? 0,
       comparisons,
-      ...againstStarter(own, reference === "starter" ? null : referenceDigest, starter),
+      ...starterCheck,
+      ...keysIf(reverted, () => ({ reverted: true })),
       falsePromotion: falsePromotionOf(own, controls, { reference: referenceDigest, starter }),
     };
   });
@@ -257,8 +272,10 @@ function againstStarter(
   reports: readonly Reported[],
   reference: string | null,
   starter: string | null,
-): Pick<Epoch, "starter_tally" | "starter_read" | "confirmed"> {
-  if (reference === null) return { starter_tally: null, starter_read: null, confirmed: null };
+): Pick<Epoch, "starter_tally" | "starter_read" | "confirmed" | "starter_able"> {
+  if (reference === null) {
+    return { starter_tally: null, starter_read: null, confirmed: null, starter_able: null };
+  }
   const first = reports.find(
     ({ data }) =>
       data.old === reference &&
@@ -266,13 +283,17 @@ function againstStarter(
       data.reading !== "not-scored" &&
       asRecord(data.scored) !== null,
   );
-  if (first === undefined) return { starter_tally: null, starter_read: null, confirmed: false };
+  if (first === undefined) {
+    return { starter_tally: null, starter_read: null, confirmed: false, starter_able: null };
+  }
   const ahead = scoresIn(first.data.scored).map((one) => -one);
   const { wins, losses, ties } = testOf(ahead);
+  const level = levelOf(first);
   return {
     starter_tally: { wins, losses, ties },
     starter_read: first.session,
-    confirmed: readsStep(ahead, levelOf(first)),
+    confirmed: readsStep(ahead, level),
+    starter_able: readsStep(ahead.map(Math.abs), level),
   };
 }
 
@@ -607,7 +628,7 @@ export function barLines(events: readonly LogEvent[]): string[] {
   const controls = controlsIn(reports);
   const epochs = epochsFrom(events, reports, controls);
   const pairsOf = pairLookup(events);
-  const climbed = epochs.filter(({ nth }) => nth > 1);
+  const climbed = epochs.filter(({ nth, reverted }) => nth > 1 && reverted !== true);
   const confirmed = climbed.filter((epoch) => epoch.confirmed === true);
   const unread = climbed.filter(({ starter_tally: tally }) => tally === null).length;
   const confirmedSessions = new Set(confirmed.map((epoch) => epoch.starter_read));

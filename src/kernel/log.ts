@@ -75,6 +75,7 @@ const EVENT_KINDS = [
   "condition.recorded",
   "harness.version",
   "harness.promoted",
+  "harness.reverted",
   "harness.imported",
   "build.started",
   "build.checkpoint",
@@ -138,6 +139,9 @@ type KindFilter = ReadonlySet<EventKind> | ((kind: EventKind) => boolean);
 
 const KINDS: ReadonlySet<string> = new Set(EVENT_KINDS);
 export const isKind = (value: unknown): value is EventKind => isString(value) && KINDS.has(value);
+/** Whether an event installs a new reference harness (either a promotion or an automatic revert). */
+export const isReferenceChange = (kind: EventKind): boolean =>
+  kind === "harness.promoted" || kind === "harness.reverted";
 
 export function append(path: string, kind: EventKind, data: JsonObject): LogEvent {
   const event: LogEvent = { at: new Date().toISOString(), kind, data };

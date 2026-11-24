@@ -6,8 +6,16 @@
  */
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
-import { type Cap, INTERRUPTED, lastReports, patienceOf, poolOf, roomOf } from "../kernel/reports.ts";
+import { append, isReferenceChange, type LogEvent, read } from "../kernel/log.ts";
+import {
+  activePromotionAt,
+  type Cap,
+  INTERRUPTED,
+  lastReports,
+  patienceOf,
+  poolOf,
+  roomOf,
+} from "../kernel/reports.ts";
 import { ended, practiceRan, rejectionAside, solvesIn, standsOf } from "../kernel/solves.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
@@ -105,11 +113,16 @@ export function stopRule(events: readonly LogEvent[]) {
     const from = events.findLastIndex(
       (began, at) => at < index && began.kind === "build.started" && began.data.session === each.data.session,
     );
-    const epoch = events.findLastIndex((one, at) => at < index && one.kind === "harness.promoted");
+    const epoch = events.findLastIndex((one, at) => at < index && isReferenceChange(one.kind));
     return failed.some(({ started }) => started > Math.max(from, epoch) && started < index)
       ? [{ index, step: false }]
       : [];
   });
+  const revertedHarnesses = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === "harness.reverted" && isString(data.from) ? [data.from] : [],
+    ),
+  );
   const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
   for (const { index, data } of lastReports(events)) {
     const { old, fresh, versions } = data;
@@ -117,14 +130,14 @@ export function stopRule(events: readonly LogEvent[]) {
     if (!tallied || !isString(fresh) || !builtHarnesses.has(fresh)) continue;
     const pair = `${fresh} ${isString(old) ? old : ""}`;
     const earlier = pairs.get(pair);
-    const step = earlier?.step === true || data.reading === "step";
-    const counts = earlier?.counts === true || step || roomOf(data) === "room";
+    const step = (earlier?.step === true || data.reading === "step") && !revertedHarnesses.has(fresh);
+    const counts = earlier?.counts === true || data.reading === "step" || roomOf(data) === "room";
     pairs.set(pair, { index: earlier?.index ?? index, step, counts });
   }
   const moves = [...pairs.values().filter(({ counts }) => counts), ...declined].toSorted(
     (one, other) => one.index - other.index,
   );
-  const epochAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const epochAt = activePromotionAt(events);
   const epoch = moves.filter(({ index }) => index > epochAt);
   const sinceStep = epoch.length - 1 - epoch.findLastIndex(({ step }) => step);
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };

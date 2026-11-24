@@ -34,13 +34,14 @@ const MOVE_WORD = {
   build: "Builder session",
   compare: "Comparison",
   promote: "Promotion",
+  revert: "Revert reference",
   end: "End",
 } as const satisfies Record<Decided["move"], string>;
 
 /** The moves the host makes itself whoever leads the campaign: the exam's set-up, and an ending
  *  (`SETUP`, `tools/d2/harness-builder.ts`). Any other the table names is advice to a Builder
  *  that leads. */
-const HOSTS_OWN: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare", "end"]);
+const HOSTS_OWN: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare", "revert", "end"]);
 
 /** What the campaign command does with a move the table names where the opening is attended, which
  *  the table does not read (`tools/d2/harness-builder.ts`). */

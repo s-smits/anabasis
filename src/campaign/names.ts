@@ -21,6 +21,7 @@ const NAMING: Readonly<Partial<Record<EventKind, readonly string[]>>> = {
   "harness.imported": ["harness"],
   "comparison.started": ["starter", "old", "fresh"],
   "harness.promoted": ["harness"],
+  "harness.reverted": ["harness", "from"],
 };
 
 /** A whole digest, as a kept harness is named. */

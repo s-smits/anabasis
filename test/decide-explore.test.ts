@@ -7,12 +7,14 @@
 // draw of one pair, an end within the patience) rather than restating one row.
 import { describe, expect, it } from "bun:test";
 import { stopRule } from "../src/campaign/admission.ts";
+import { epochsOf } from "../src/campaign/climb.ts";
 import { decide, practiceDue } from "../src/campaign/decide.ts";
 import { groundOf, type Plan } from "../src/campaign/ground.ts";
 import type { Decided } from "../src/campaign/move.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
+  activePromotionAt,
   comparedAs,
   endedOf,
   endingOf,
@@ -62,6 +64,13 @@ const READINGS: readonly [Reading, Reading, Reading, Reading, Reading] = [
   { reading: "no-step", tally: [0, 0, 8], old: [8, 0, 0], fresh: [8, 0, 0] },
   { reading: "not-scored", tally: [0, 0, 0], old: [0, 0, 0], fresh: [0, 0, 0] },
 ];
+/** Starter comparison outcome where the promoted reference (`old`) beats the starter (`fresh`) at `PLAN.wanted.level`. */
+const CONFIRMED_STARTER: Reading = {
+  reading: "no-step",
+  tally: [0, 5, 3],
+  old: [0, 2, 6],
+  fresh: [3, 3, 2],
+};
 /** The comparison a led Builder asks for: its latest harness against the reference. */
 const BUILDER_COMPARES = {
   move: "compare",
@@ -93,6 +102,7 @@ function compared(
   events: readonly LogEvent[],
   move: Extract<Decided, { move: "compare" }>,
   readings: readonly Reading[] = READINGS,
+  level = PLAN.wanted.level,
 ) {
   const { old, fresh } = sidesOf(events, move);
   const session = move.id ?? `g${String(events.length)}`;
@@ -105,6 +115,7 @@ function compared(
       old,
       fresh,
       starter: STARTER,
+      level,
       reading,
       ...tallied(...tally),
       versions: heldVersions(events),
@@ -166,10 +177,21 @@ function answers(events: readonly LogEvent[], move: Decided, plan: Plan): LogEve
       ];
     }
     case "compare": {
-      return compared(events, move);
+      const readings = move.fresh === "starter" ? [CONFIRMED_STARTER, ...READINGS] : READINGS;
+      return compared(events, move, readings, plan.wanted.level);
     }
     case "promote": {
       return [[event(PROMOTED_EVENT, { harness: move.harness })]];
+    }
+    case "revert": {
+      return [
+        [
+          event("harness.reverted", {
+            harness: move.harness,
+            from: referenceOf(events) ?? STARTER,
+          }),
+        ],
+      ];
     }
     case "prepare": {
       return [[event("task.state", { version: heldVersions(events)[0] ?? "none", state: "released" })]];
@@ -198,13 +220,15 @@ const roomFor = (data: JsonObject) => {
 function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): string | null {
   const reference = referenceOf(events) ?? STARTER;
   const reports = reportsOf(events);
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
+  const promotedAt = events.findLastIndex(
+    ({ kind }) => kind === PROMOTED_EVENT || kind === "harness.reverted",
+  );
   // Safety: the operator's stop holds over every row, and the budget's reserve over every move that
   // bills; reading the exam and promoting a step already read bill nothing.
   const stopped = events.some(({ kind, data }) => kind === "campaign.word" && data.word === "stop");
   if (stopped && decided.move !== "end") return "a stop the operator left did not end the campaign";
   const spent = plan.left !== null && plan.left.dollars < plan.left.reserve;
-  if (spent && !["end", "promote", "accept"].includes(decided.move)) {
+  if (spent && !["end", "promote", "revert", "accept"].includes(decided.move)) {
     return `a ${decided.move} was chosen with less left than one solve's reserve`;
   }
   const owed = reports.some(
@@ -214,11 +238,37 @@ function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): stri
   if (spent && owed && decided.move === "end" && decided.ending === "budget") {
     return "the budget ended the campaign before a step read was promoted";
   }
-  // Termination: in one epoch, readings of built harnesses that left room and read no step never
-  // outnumber the improvement patience, and readings that left nothing to gain never run past the
-  // supply patience, so every path ends.
-  const epoch = reports.filter(({ at, fresh }) => at > promotedAt && fresh !== STARTER);
-  const fruitless = epoch.filter(({ reading, room }) => reading === "no-step" && room).length;
+  const epochs = epochsOf(events);
+  const currentEpoch = epochs.at(-1);
+  const underpoweredLead =
+    currentEpoch?.starter_able === false &&
+    currentEpoch.starter_tally !== null &&
+    currentEpoch.starter_tally.wins > currentEpoch.starter_tally.losses;
+  const revertOwed =
+    reference !== STARTER &&
+    currentEpoch?.starter_tally !== null &&
+    currentEpoch?.confirmed === false &&
+    !underpoweredLead;
+  if (spent && revertOwed && decided.move === "end" && decided.ending === "budget") {
+    return "the budget ended the campaign before an unconfirmed reference reverted";
+  }
+  if (revertOwed && (decided.move === "build" || (decided.move === "compare" && decided.id === undefined))) {
+    return `chose ${decided.move} on unconfirmed reference ${reference} instead of reverting`;
+  }
+  // Termination: in one active epoch, readings of built harnesses that left room and read no step
+  // (plus promoted steps that later reverted) never outnumber the improvement patience, and
+  // readings that left nothing to gain never run past the supply patience, so every path ends.
+  const epochAt = activePromotionAt(events);
+  const reverted = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === "harness.reverted" && isString(data.from) ? [data.from] : [],
+    ),
+  );
+  const epoch = reports.filter(({ at, fresh }) => at > epochAt && fresh !== STARTER);
+  const fruitless = epoch.filter(
+    ({ fresh, reading, room }) =>
+      (reading === "no-step" && room) || (reading === "step" && reverted.has(fresh)),
+  ).length;
   if (plan.pastStop === null && fruitless > plan.patience) {
     return `${String(fruitless)} no-steps with room in one epoch, past a patience of ${String(plan.patience)}`;
   }
@@ -227,16 +277,29 @@ function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): stri
   if (roomless > plan.patience + 1) {
     return `${String(roomless)} readings in a row left nothing to gain, past a patience of ${String(plan.patience)}`;
   }
-  // Lineage: each reference descends from the last by a step read against it.
+  // Lineage: each reference descends from the last by a step read against it, or reverts to the last confirmed reference.
   if (decided.move === "promote") {
     const { harness } = decided;
     if (harness === reference || harness === STARTER) {
       return `promoted ${harness}, the reference or the starter`;
     }
     if (
-      !reports.some(({ old, fresh, reading }) => fresh === harness && old === reference && reading === "step")
+      !reports.some(
+        ({ at, old, fresh, reading }) =>
+          at > promotedAt && fresh === harness && old === reference && reading === "step",
+      )
     ) {
       return `promoted ${harness} without a step against the reference ${reference}`;
+    }
+  }
+  if (decided.move === "revert") {
+    if (!revertOwed || decided.harness === reference) {
+      return `reverted ${reference} to ${decided.harness} without a failed starter confirmation`;
+    }
+    const expected =
+      epochs.findLast((one) => one.confirmed === true && one.reference !== reference)?.reference ?? STARTER;
+    if (decided.harness !== expected) {
+      return `reverted ${reference} to ${decided.harness} instead of ${expected}`;
     }
   }
   if (decided.move === "compare" && decided.id === undefined) {
@@ -443,7 +506,7 @@ describe("the decision table, searched", () => {
       const pool = poolOf(events);
       seen.retained += Math.sign(pool.retained.length);
       seen.practiceFrontier += Math.sign(pool.practiceFrontier.length);
-      const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
+      const promotedAt = activePromotionAt(events);
       const inherited = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
       const leftOut = new Set([...pool.awaiting, ...pool.doubted]);
       expect([...pool.scorable, ...leftOut].toSorted()).toEqual(held.toSorted());
@@ -468,7 +531,18 @@ describe("the decision table, searched", () => {
   it("reaches every row, every kind of move and every ending the table names", () => {
     const rows = new Set(ALL.map(({ decided }) => decided.code));
     expect([...rows].toSorted()).toEqual(
-      ["bound", "build", "exam", "no-room", "step", "stop", "tasks", "unfinished", "unread"].toSorted(),
+      [
+        "bound",
+        "build",
+        "exam",
+        "no-room",
+        "revert",
+        "step",
+        "stop",
+        "tasks",
+        "unfinished",
+        "unread",
+      ].toSorted(),
     );
     expect([...new Set(ALL.map(({ decided }) => decided.move))].toSorted()).toEqual([
       "accept",
@@ -479,6 +553,7 @@ describe("the decision table, searched", () => {
       "examine",
       "prepare",
       "promote",
+      "revert",
     ]);
     const endings = ALL.flatMap(({ decided }) => (decided.move === "end" ? [decided.ending] : []));
     expect([...new Set(endings)].toSorted()).toEqual([
@@ -501,7 +576,9 @@ describe("the decision table, searched", () => {
       const due = practiceDue(events, 1000, PLAN.wanted.level);
       const { held } = taskSets(events);
       if (due === null) continue;
-      const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
+      const promotedAt = events.findLastIndex(
+        ({ kind }) => kind === PROMOTED_EVENT || kind === "harness.reverted",
+      );
       for (const version of new Set([held[0], held.at(-1)])) {
         if (version === undefined) continue;
         const released = [...events, event("task.state", { version, state: "released" })];
@@ -518,7 +595,9 @@ describe("the decision table, searched", () => {
 
   it("owes a promotion its starter comparison, which the table asks for once tasks are held out for the new reference", () => {
     const confirmed = ALL.some(({ events, decided }) => {
-      const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
+      const promotedAt = events.findLastIndex(
+        ({ kind }) => kind === PROMOTED_EVENT || kind === "harness.reverted",
+      );
       return promotedAt !== -1 && decided.move === "compare" && decided.fresh === "starter";
     });
     expect(confirmed).toBe(true);
@@ -526,7 +605,9 @@ describe("the decision table, searched", () => {
 
   it("lets a Builder's own comparison read first and promote, leaving the last promotion unconfirmed for good", () => {
     const unconfirmed = ALL.some(({ events, decided }) => {
-      const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
+      const promotedAt = events.findLastIndex(
+        ({ kind }) => kind === PROMOTED_EVENT || kind === "harness.reverted",
+      );
       const epoch = reportsOf(events).filter(({ at }) => at > promotedAt);
       return promotedAt !== -1 && decided.move === "promote" && !epoch.some(({ fresh }) => fresh === STARTER);
     });

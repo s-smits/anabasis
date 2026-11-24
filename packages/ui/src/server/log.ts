@@ -137,6 +137,10 @@ const SAID = new Map<string, LineFormatter>(
       group: "harness",
       what: `Promoted ${text(data.harness)?.slice(0, 12) ?? "a harness"} to reference`,
     }),
+    "harness.reverted": (data) => ({
+      group: "harness",
+      what: `Reverted reference to ${text(data.harness)?.slice(0, 12) ?? "a harness"}`,
+    }),
     "harness.imported": (data) => ({
       group: "harness",
       what: `Imported ${text(data.harness)?.slice(0, 12) ?? "a harness"}`,

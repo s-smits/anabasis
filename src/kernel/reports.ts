@@ -17,7 +17,7 @@ import {
   gapAgainst,
 } from "./compare.ts";
 import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
-import type { LogEvent } from "./log.ts";
+import { isReferenceChange, type LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
 import { READINGS_IN_A_ROW, howOftenValid } from "./size.ts";
@@ -126,7 +126,6 @@ export const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-en
  *  the host crashed it, or a stop killed it. */
 export const INTERRUPTED: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
 const REPORTED = "comparison.reported";
-const PROMOTED = "harness.promoted";
 const STARTED = "comparison.started";
 const BUILD_FINISHED = "build.finished";
 /** Whether a cap can hold anything: both its dollars and its reserve are positive numbers. A value
@@ -175,23 +174,23 @@ export function latestBuilt(events: readonly LogEvent[]): string | null {
       kind === BUILD_FINISHED && data.changed === false && !INTERRUPTED.has(data.ended) ? [data.session] : [],
     ),
   );
-  const made = new Set(events.flatMap(({ kind, data }) => (kind === PROMOTED ? [data.harness] : [])));
+  const made = new Set(events.flatMap(({ kind, data }) => (isReferenceChange(kind) ? [data.harness] : [])));
   const left = events.findLast(
     ({ kind, data }) =>
       ((kind === "build.checkpoint" && (!undone.has(data.session) || made.has(data.harness))) ||
-        (kind === BUILD_FINISHED && data.changed === true && !INTERRUPTED.has(data.ended))) &&
+        (kind === BUILD_FINISHED && data.changed === true && !INTERRUPTED.has(data.ended)) ||
+        kind === "harness.reverted") &&
       isString(data.harness),
   )?.data.harness;
   return isString(left) ? left : null;
 }
 
 /**
- * The digest of the harness the operator last promoted, or null while none has been, in which case
- * the reference is the starter. A promotion is an event the operator authorised
- * (`tools/d2/promote.ts`); one that names the starter returns the campaign to it.
+ * The digest of the harness the operator last promoted (or the host reverted to), or null while
+ * none has been installed, in which case the reference is the starter.
  */
 export function promoted(events: readonly LogEvent[]): string | null {
-  const harness = events.findLast(({ kind }) => kind === PROMOTED)?.data.harness;
+  const harness = events.findLast(({ kind }) => isReferenceChange(kind))?.data.harness;
   return isString(harness) ? harness : null;
 }
 
@@ -341,7 +340,7 @@ export function taskRecords(events: readonly LogEvent[]) {
       lastTurn.set(data.solve, data);
       continue;
     }
-    if (kind === PROMOTED) {
+    if (isReferenceChange(kind)) {
       references.add(data.harness);
       references.add(data.from);
       continue;
@@ -537,9 +536,25 @@ function standingOf(record: TaskRecord): [string, Standing][] {
   return [[record.version, { won: won === null ? null : won === reference ? "reference" : "other", by }]];
 }
 
-/** Task sets held and released just before the latest promotion, or empty before any promotion. */
+/** Log index of the non-revert `harness.promoted` that installed the active reference, or -1 if starter. */
+export function activePromotionAt(events: readonly LogEvent[]): number {
+  const installed = new Map<string, number>();
+  let current = -1;
+  for (const [index, { kind, data }] of events.entries()) {
+    if (!isReferenceChange(kind) || !isString(data.harness)) continue;
+    if (kind === "harness.reverted") {
+      current = installed.get(data.harness) ?? -1;
+    } else {
+      installed.set(data.harness, index);
+      current = index;
+    }
+  }
+  return current;
+}
+
+/** Task sets held and released just before the latest active promotion, or empty before any promotion. */
 function beforePromotion(events: readonly LogEvent[]) {
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const promotedAt = activePromotionAt(events);
   return taskSets(events.slice(0, Math.max(0, promotedAt)));
 }
 

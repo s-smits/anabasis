@@ -10,7 +10,7 @@
  */
 import { type Paired, scoresIn } from "../kernel/compare.ts";
 import { familySizes, proposalsOf } from "../kernel/history.ts";
-import type { LogEvent } from "../kernel/log.ts";
+import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import {
   lastReports,
   type Outcome,
@@ -94,7 +94,7 @@ export function heard(
   const faulted = faultedOf(events);
   const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
   const budget = isNumber(setting) ? setting : undefined;
-  const since = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const since = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   const compared = after === undefined ? null : reportedAfter(events, after);
   const lines = new Map<string, string[]>();
   const listed: string[] = [];
@@ -280,6 +280,9 @@ function promotedLine(events: readonly LogEvent[], since: number, listed: readon
   if (promotion === undefined) return null;
   const under = new Set(tasksByEpoch(events.slice(since)).flat());
   const before = listed.filter((version) => !under.has(version)).length;
+  if (promotion.kind === "harness.reverted") {
+    return `The reference harness was reverted to an earlier harness. ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
+  }
   const rests = promotion.data.rests;
   const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
   return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;

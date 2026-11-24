@@ -6,7 +6,7 @@
  */
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
-import type { LogEvent } from "../kernel/log.ts";
+import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import { INTERRUPTED, poolOf, roomOf } from "../kernel/reports.ts";
 import { taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
@@ -44,8 +44,13 @@ const ROWS: readonly {
     code: "bound",
     move: (ground) => {
       const ended = bound(ground);
-      const owed = ended?.move === "end" && ended.ending === "budget" ? owedPromotion(ground) : null;
-      return owed === null ? ended : { ...owed, code: "step" };
+      if (ended?.move === "end" && ended.ending === "budget") {
+        const owed = owedPromotion(ground);
+        if (owed !== null) return { ...owed, code: "step" };
+        const reverted = unconfirmedRevert(ground);
+        if (reverted !== null) return { ...reverted, code: "revert" };
+      }
+      return ended;
     },
   },
   // The tasks are not ready: taken in, released, written on the operator's word, or written up to
@@ -55,6 +60,8 @@ const ROWS: readonly {
   { code: "unfinished", move: unfinished },
   // A step against the reference promotes.
   { code: "step", move: owedPromotion },
+  // A promoted reference that failed its starter confirmation reverts to the last confirmed reference.
+  { code: "revert", move: unconfirmedRevert },
   // The reference's last reading left it nothing to gain: the tasks change.
   { code: "no-room", move: noRoom },
   // Tasks held out since the last reading are compared before a Builder session is paid for, where
@@ -149,7 +156,7 @@ function enoughWrittenSince(ground: Ground, reading: Reading): boolean {
   // Count from when the reading began, since an Examiner session writes beside a comparison and its
   // draw did not take those tasks (`scoredSet`, `round.ts`). A session writing while a step waits
   // for promotion aims at the old reference, so only tasks held after the promotion count.
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   const since = heldOutAfter(events, Math.max(reading.at, promotedAt));
   return since >= sweepOf(plan.wanted.level) && !wantsTasks(ground);
 }
@@ -406,7 +413,7 @@ function shortBy({ plan, supply, all, events }: Ground): number {
   // Each reference is owed practice of its own (`practiceDue`), on top of its frontier, since every
   // task held before its promotion is retained. Counting the whole campaign's releases let a new
   // reference's practice eat its comparison floor.
-  const promoted = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const promoted = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   const released = releasedSince(events, promoted).length;
   const practice = Math.max(0, (plan.practice ?? 0) - (promoted === -1 ? supply.released : released));
   const target = all.length === 0 ? 0 : plan.wanted.target;
@@ -430,14 +437,40 @@ function unfinished({ all }: Ground): Move | null {
 /** Whether `harness` read a step against the reference (`stepOf`, `compare.ts`). A starter
  *  comparison names no candidate: a starter win on new tasks shows room, not something to
  *  promote. */
-function readStep({ reports, reference, starter }: Ground, harness: string): boolean {
+function readStep({ events, reports, reference, starter }: Ground, harness: string): boolean {
+  const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   return (
     harness !== reference &&
     harness !== starter &&
     reports.some(
-      ({ fresh, old, report }) => fresh === harness && old === reference && report.reading === "step",
+      ({ at, fresh, old, report }) =>
+        at > promotedAt && fresh === harness && old === reference && report.reading === "step",
     )
   );
+}
+
+/**
+ * Revert an unconfirmed reference to the last confirmed harness (or starter) once its epoch's first
+ * scored starter comparison fails to confirm, unless the reference led (`wins > losses`) in an
+ * underpowered comparison (`starter_able === false`) that could not clear its level even at 100%
+ * wins. All-tied (`0-0-N`) and losing underpowered reads still revert.
+ */
+function unconfirmedRevert({ events, reference, starter }: Ground): Move | null {
+  if (reference === null || starter === null || reference === starter) return null;
+  const epochs = epochsOf(events);
+  const current = epochs.at(-1);
+  if (current?.starter_tally == null || current.confirmed !== false) return null;
+  if (current.starter_able === false && current.starter_tally.wins > current.starter_tally.losses) {
+    return null;
+  }
+  const target =
+    epochs.findLast((epoch) => epoch.confirmed === true && epoch.reference !== reference)?.reference ??
+    starter;
+  return {
+    move: "revert",
+    harness: target,
+    why: `harness ${short(reference)} did not confirm against the starter in ${current.starter_read ?? "its starter comparison"}: reverting reference to ${target === starter ? "the starter" : short(target)}`,
+  };
 }
 
 /**
@@ -476,8 +509,8 @@ function noRoom(ground: Ground): Move | null {
   const side = last.old === reference ? "old" : "fresh";
   const room = roomOf(last.report, side);
   if (room === "room") {
-    const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
-    if (promotedAt === -1) return null;
+    const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
+    if (promotedAt === -1 || events[promotedAt]?.kind === "harness.reverted") return null;
     // A session the provider crashed or a stop killed did not finish writing for the new
     // reference, whatever it had held out by then, so it is owed again.
     const since = events.slice(promotedAt);
@@ -514,14 +547,15 @@ function heldSince(ground: Ground): Move | null {
   const { events, read, reports, waiting, reference, starter } = ground;
   // Count tasks held after both the promotion and the last starter comparison's start, so the
   // confirmation reads tasks aimed at this reference.
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   // A starter comparison that tallied no task confirmed nothing, so tasks held before it still count.
   const lastStarter = reports.findLast(
     ({ old, fresh, report }) => (old === starter || fresh === starter) && report.reading !== "not-scored",
   );
   const since = heldOutAfter(events, Math.max(lastStarter?.at ?? -1, promotedAt));
   const owed = reference !== null && starter !== null && reference !== starter && since > 0;
-  if (owed && epochsOf(events).at(-1)?.starter_tally === null) {
+  const currentEpoch = epochsOf(events).at(-1);
+  if (owed && currentEpoch?.starter_tally === null && currentEpoch.confirmed !== true) {
     return compare(
       `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out for it: the starter is compared with it, those tasks first, to read whether they leave it room and whether it stands above the starter`,
       "starter",
@@ -595,7 +629,7 @@ export function practiceDue(
   const seen = new Set<unknown>();
   let since = -1;
   for (const [at, { kind, data }] of events.entries()) {
-    if (kind === PROMOTED) since = at;
+    if (isReferenceChange(kind)) since = at;
     else if (kind === "comparison.reported" && !seen.has(data.session)) {
       seen.add(data.session);
       since = at;
@@ -606,7 +640,7 @@ export function practiceDue(
   // A frontier task's release spends the allowance by leaving the frontier; one that was already
   // outside the practice frontier (inherited, exhausted, awaiting or doubted) leaves the frontier
   // as it was, so it is subtracted, or the allowance is granted again at the next release.
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   let nonFrontier = 0;
   if (count > 0 && since !== -1) {
     const beforeSince = events.slice(0, since + 1);
@@ -623,7 +657,7 @@ export function practiceDue(
   // The last release (or promotion) before the reading, so the reading's own releases do not count.
   const last = events.findLastIndex(
     ({ kind, data }, at) =>
-      at <= since && (kind === PROMOTED || (kind === "task.state" && data.state === "released")),
+      at <= since && (isReferenceChange(kind) || (kind === "task.state" && data.state === "released")),
   );
   // Tasks written after `last` that remain held or released cap practice to at most half the new
   // batch, so a small Examiner session does not lose all its frontier tasks on release.
@@ -632,7 +666,8 @@ export function practiceDue(
     .filter(
       (version) => sets.states.get(version) === "held" || sets.states.get(version) === "released",
     ).length;
-  const baseline = events[last]?.kind === PROMOTED ? 0 : 1;
+  const lastEvent = events[last];
+  const baseline = lastEvent !== undefined && isReferenceChange(lastEvent.kind) ? 0 : 1;
   const newTasksLimit = Math.max(0, Math.max(baseline, Math.floor(written / 2)) - count);
   const owed = Math.min(Math.max(0, practice - count), allowance, newTasksLimit);
   if (owed === 0) return null;

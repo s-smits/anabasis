@@ -35,9 +35,19 @@ Because the judge truncates deliverables at 200,000 chars (`CUT <n>` in `score.t
 2. **Execute detached** (`--yes`, 1 rollout/task per arm under standing authorisation; larger sizes or `rejudge` need operator approval). Never run two processes on the same store concurrently.
 3. **Analyse**: run `score.ts table --out <store> --tasks <partition>`, `score.ts spread`, `compare.ts levels` (pass frozen review ledger SHA-256 as `--salt` to seal half the tasks for a formal [comparison-review](../../comparison-review/SKILL.md)), and `promotion-tuner/scripts/trend.ts --bench <store> --bench-tasks <partition>`. Trash `hevo_ws_cc` temp workspaces once `judged/` records are written.
 
-| Placement vs Starter spread | Action |
+| Placement vs baseline spread | Action |
 | --- | --- |
-| Below Starter, beyond spread | Audit conditions and export fidelity (`studies/shared/claude-export.ts`), fix defects and re-roll afresh before blaming the harness |
-| Inside Starter spread | Noise (rule 6); continue to next run's read |
-| Above Starter, beyond spread | Directional signal; continue (unbiased claims require 20-task `compare.ts plan`/`read` with operator approval) |
+| Below baseline, beyond spread | Separate OS port (`studies/shared/foreign-python.ts`, `src/harness/place.ts`), runtime translation (`runs bench --pi` vs `claude-export.ts`), and workspace coupling before attributing the deficit |
+| Inside baseline spread | Noise (rule 6); continue to next run's read |
+| Above baseline, beyond spread | Directional signal; continue (unbiased claims require 20-task `compare.ts plan`/`read` with operator approval) |
 | Above Harness² `heldout`, beyond spread | Request operator approval for 20-task evaluation |
+
+## Cross-OS portability and propagation layers
+
+Built harnesses are intentionally exported across OS and architecture boundaries (e.g. macOS `arm64` → isolated Linux `x86_64`) to test **copyability, self-contained extensibility, and cross-OS performance parity**, not merely local scores. `studies/shared/foreign-python.ts` and `src/harness/place.ts` replace foreign CPython prefixes and compiled wheels with matching target-platform builds via `uv`, and fail closed (`PlatformRefusal`) on unrebuildable native binaries or escaping symlinks rather than silently depressing external scores.
+
+When diagnosing an external benchmark deficit, separate three propagation layers symmetrically across built and baseline trajectories before blaming either the port or the harness:
+
+1. **OS / platform port:** check trajectories for binary-format errors (`Exec format error`, `Mach-O`), hardcoded host shebangs/paths, `command not found`, or permission errors, and compare `ModuleNotFoundError` counts across built and baseline arms (symmetric missing-module rates reflect the benchmark environment rather than harness porting).
+2. **Runtime translation:** prefer native `runs bench --pi` (comparing `builtSolver` against `bareSolver` via `--arm pi:base`) over Claude Code export (`studies/shared/claude-export.ts`) so runtime translation and `PATH` ordering do not confound cross-OS and workspace transfer.
+3. **Workspace coupling:** compare `.toolchain/bin` invocation rates inside campaign solves against external tasks (`bun run wri regressions`), alongside always-on `BUILT_AGENTS.md` size and turn/spend differences. Tools tied to campaign paths (`public/task.json`, `answer.json`) deliver zero external lift while oversized exam-shaped guides still propagate into every external solve.

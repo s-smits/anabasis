@@ -22,9 +22,12 @@ the Builder) illustrates each with a worked example. Executables placed in `.too
 by name from the solver's shell, and a harness whose specification declares a custom tool fails to
 open (`openHarness`). The harness digest excludes `__pycache__` and compiled bytecode
 (`src/meta/bundle-layout.ts`); any other modification produces a distinct harness identity, so
-solves recorded under a previous digest do not carry over. The starter (`src/harness/starter.ts`) is
-pi's coding agent as released, paired with a few revisable guide lines and no domain-specific
-programs.
+solves recorded under a previous digest do not carry over. Three solver tiers exist: `bareSolver` is the raw `pi-durable` agent with its four coding tools and
+no operating guide or programs (the target external benchmark baseline); `baseStarter` (Starter,
+`src/harness/starter.ts`) adds the minimal revisable `BUILT_AGENTS.md` template (and, paired with
+Builder-only `HARNESS.md`, forms the Starter Pack). Internally, campaigns compare against both and
+every promoted `builtSolver` iteration must at least beat `baseStarter`; externally, transfer is
+measured against `bareSolver`.
 
 Increasing the per-solve compute budget narrows the measurable gap between a built harness and the
 starter, because the solver under the starter has more turns to reconstruct domain tooling on its

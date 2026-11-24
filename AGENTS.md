@@ -12,11 +12,11 @@ Repository invariants and map; read the owning skill before editing or answering
 Skill scripts: `bun .claude/skills/<skill>/scripts/<name>.ts`. Metrics: `docs/plan.md`; v1: `docs/v1.md`, `docs/transfer.md`, `studies/`; nudges: `tools/runtime/moments.ts`.
 
 **How to approach a task.** Carry work as far as authority permits, through verification and delivery:
-1. **Fix the owning design upstream, not the symptom.** Refactor the owner at its boundary (fix standalone Anabasis, not export shims); weigh rebase blast radius on deep stacks, patching locally when structural work awaits §3.
-2. **Sweep archives before changing rules or heuristics.** Replay decision-rule edits over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report flipped decisions; sweep archived logs/harnesses before shipping any heuristic, regex or note to prove real triggers (not `0/N`) and near-zero false positives.
-3. **Subtract and reuse before adding.** Exhaust existing seats, tools and owners (rule 12) before adding an agent, tool, flag or guard; rethink edited and adjacent files from scratch to keep net complexity flat or falling (`git complexity`), preferring a far simpler design capturing ~90%+ of the gain.
-4. **Think inline from primary sources first.** Join `.ana/wri/` artifacts with live folds and form your own hypothesis before invoking subagents or raw log scans (§9); assert nothing unverified and correct errors immediately.
-5. **Stress-test your change.** Check the strongest objection, its refutation, and which test, simulation or mutant fails before and passes after.
+1. **Fix the owning design upstream.** Refactor owners at their boundary (standalone Anabasis, not shims); weigh rebase blast radius on deep stacks, patching locally when structural work awaits §3.
+2. **Sweep archives before changing rules or heuristics.** Replay rule edits over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report flipped decisions; sweep logs/harnesses for real triggers (not `0/N`) and near-zero false positives.
+3. **Subtract and reuse before adding.** Exhaust existing owners (rule 12) before adding an agent, tool, flag or guard; keep net complexity flat/falling (`git complexity`), preferring a simpler design capturing ~90%+ of the gain.
+4. **Think inline from primary sources first.** Join `.ana/wri/` artifacts with live folds and form a hypothesis before invoking subagents or raw scans (§9); assert nothing unverified and correct errors immediately.
+5. **Ship separable, ablatable, simulatable slices.** Before live spend, simulate each slice model-free (`system-path-simulation`: archive/counterfactual replay, `runs rehearse`, wall probes) against its strongest objection and a before/after test or mutant.
 
 Finish or checkpoint current work before unrelated tasks, unless redirected or stopped. Resolve routine ambiguity with the strongest option and its falsifier; pause only for missing permissions or a §3 decision, with analysis and recommendation. Audits, reviews, plans stay read-only. Report evidence rung (§9) and open items. Keep operator infra (hosts, logins, accounts, jobs, full run names) out of tracked files, commits and PRs.
 
@@ -40,8 +40,8 @@ Name target factor and empirical count (`docs/plan.md`):
 ### Trade-offs to keep in view
 
 See `design-and-seats` (`question-and-factors.md`, `stance.md`):
-- **Validity across domains & objective variance**: binary `valid` stays across domains: constrained domains (`buffer`, `truss`, `recode`, `esp32`) separate on physical feasibility, while open-ended ones (`jobstat`) need a feasibility floor against objective hacking and saturate `valid` implicitly (multi-criteria `AND` gates hit 0–0 cliffs). Carry open-ended headroom in a non-hedgable objective instead of tuning `valid` down; 100% passes with lagging transfer flag weak grounding. Report carrying measure and A/A floor (`GAP_FLOOR` trades noise vs supply).
-- **Promotion vs confirmation**: owed starter read runs on next `compare` (`heldSince`); reading ahead leaves it unconfirmed (`test/decide-explore.test.ts`).
+- **Validity & objective variance**: binary `valid` separates constrained domains (`buffer`, `truss`, `recode`, `esp32`) and floors open-ended ones (`jobstat`) against objective hacking; carry open-ended headroom in a non-hedgable objective (100% pass with lagging transfer flags weak grounding). Report carrying measure and A/A floor (`GAP_FLOOR` trades noise vs supply).
+- **Promotion vs confirmation**: each promotion should beat its predecessor and `baseStarter` (Starter Pack) internally (even if `bareSolver` differs) and beat `bareSolver` externally; flat climbs flag grounding/measurement defects. Owed starter reads run on next `compare` (`heldSince`); reading ahead stays unconfirmed (`test/decide-explore.test.ts`).
 - **Practice vs held-out supply**: practice takes ≤ half the held-out pool; watch `comparisonFloor` and treat untransferred practice gains as overfitting.
 - **Gate strictness vs capability**: refuse only measurement-breaking or wasted-compute actions; pass others as factual notes; err toward lenient sandboxing and Builder freedom.
 - **External benchmarks**: measure transfer, not promotion; keep queries naturally scoped.
@@ -75,13 +75,13 @@ Close gaming channels in code. Separate practice overfitting from structural rew
 - **Verifier** (code, `src/kernel/verify.ts`): runs every check in a fresh offline sandbox.
 - **Referee** (`src/referee/referee.ts`): rules on reproducible rejections as `earned`, `check-defect` or `unclear` (exam side only).
 
-A **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) is content-addressed. **Starter** (**bareSolver**, `src/harness/starter.ts`, pi's four tools) is baseline; + `HARNESS.md` = **Starter Pack**; Builder harness = **builtSolver**. Every solve runs in a harness—never say "with or without a harness".
+A **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) is content-addressed. Three tiers: **`bareSolver`** (`pi-durable` + 4 tools, no guide/programs; external baseline), **`baseStarter`** (Starter, `src/harness/starter.ts`: + minimal `BUILT_AGENTS.md`; + Builder-only `HARNESS.md` = **Starter Pack**), **`builtSolver`** (Builder harness; internal promotions beat `baseStarter`). Never say "with or without a harness".
 
 ### What waits for the operator
 
-Seven decisions need explicit operator approval (`design-and-seats`, `operator-and-harness.md`): freezing/rejecting the contract or check program or admitting an authored check (`tools/c/accept.ts --freeze`, `--admit`); blind rejection labels; dollar cap and paying account; declaring an unsolved task infeasible; manual promotion (`tools/d2/promote.ts --harness <digest> --yes`, `--despite` to override `decide`); changing solver inputs/limits (starter, shell env, campaign limits); and stopping a live run.
+Seven decisions need explicit operator approval (`design-and-seats`, `operator-and-harness.md`): freezing/rejecting contract/checks or admitting authored checks (`tools/c/accept.ts --freeze`, `--admit`); blind labels; dollar cap/payer; declaring a task infeasible; manual promotion (`tools/d2/promote.ts --harness <digest> --yes`, `--despite`); changing solver inputs/limits (`baseStarter`, env, limits); stopping a live run.
 
-Present evidence and a recommendation while continuing independent work. Approval covers only what it names ("keep going" grants none of the seven; opening a cycle covers its runs, pauses and stack patches). Host messages say "a person" solely for these seven.
+Present evidence and a recommendation while continuing independent work. Approval covers only what it names ("keep going" grants none; opening a cycle covers its runs, pauses, stack patches). Host messages say "a person" solely for these seven.
 
 ## 4. The Harness Builder
 
@@ -146,7 +146,7 @@ Give every rate its denominator and compare runs over matched active hours, not 
 
 Live runs spend budget and need explicit approval per named run; seats run in Seatbelt/Bubblewrap (unavailable wall = typed non-result). See `run-improvement-campaign`, `run-management`, `whole-run-investigation` (`bun run runs`):
 1. **Worktree is the condition**: launch in a clean worktree at a published commit (`runs fresh`), leave `src/` untouched; paid seats refuse main checkout or `ana-followed` (`treeFault`).
-2. **Prove without a model first** (`--dry-run`, `runs replay`, `runs rehearse`, `system-path-simulation` on brittle seat/tool seams); **pre-register count-based predictions** before solve 1 and resolve what held or missed before forking next.
+2. **Simulate before spending** (`system-path-simulation`: `--dry-run`, `runs replay`, counterfactual archive replays, seeded `runs rehearse`, wall probes on every modified seam); **pre-register count-based predictions** before solve 1 and resolve them before forking next.
 3. **At most 1–2 concurrent rounds per host** (`leastOccupied`); **never open, print or copy `--env-file`**.
 4. **Never stop a live run to patch it** (stack fixes for fresh runs); **read logs/reports before prose**; **report every started attempt**; **a measured run opens a fresh project at one commit** (inherited promotions do not count).
 

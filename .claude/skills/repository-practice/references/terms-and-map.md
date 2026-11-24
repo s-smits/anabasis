@@ -15,7 +15,7 @@ Expands `AGENTS.md` §14 (held-out task, practice task, valid answer, reference 
 | Deadline / Patience | Wall-clock limit (`wallSeconds`) / improvement (`stopRule`) & supply (`roomless`) patience |
 | Hand label | Human verdict: rejection (`earned`/`check-defect`/`unclear`) or pass (`sound`/`wrong`/`unclear`) |
 | Built Harness / Snapshot | Builder-edited directory (`harness/`); frozen copy logged as `build.checkpoint` |
-| System | Solver policy + harness: `bareSolver` (Starter) or `builtSolver`; campaigns open from the Starter Pack (§3) |
+| System | Three solver tiers (§3): `bareSolver` (raw `pi-durable` + coding tools, no guide/programs; external benchmark baseline), `baseStarter` (Starter, `src/harness/starter.ts`: + minimal `BUILT_AGENTS.md` template; + Builder-only `HARNESS.md` = Starter Pack), and `builtSolver` (Builder-evolved harness; internal promotions compare against both and must at least beat `baseStarter`) |
 | Comparison / Step | Paired held-out evaluation (standalone = no Builder session) / score vector clearing one-sided sign-flip test |
 | Setting / Condition / Trace | Fixed run parameters (§6) / content-addressed full solve parameters (§5) / logged seat turns & calls |
 

@@ -5,7 +5,7 @@ description: "Use before live runs or landing to exercise an untested execution 
 
 # System path simulation
 
-Exercise an untested path at the cheapest tier that settles the question, then stop:
+Shape behavioural changes into **separable, ablatable, simulatable slices**, and run a pre-run simulation gate at the cheapest tier that settles each slice's question before spending on any live run or external evaluation:
 
 | Tier | Runs | Cost | Proves | Cannot prove | Guide |
 | --- | --- | --- | --- | --- | --- |

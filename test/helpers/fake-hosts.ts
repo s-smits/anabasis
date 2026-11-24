@@ -11,7 +11,7 @@ import {
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join } from "../../src/meta/path.ts";
-import { capturedExecPath } from "../../src/meta/process.ts";
+import { capturedExecPath, capturedSpawn } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 
 const COMMIT = "a".repeat(40);
@@ -133,11 +133,31 @@ export function fakeHosts() {
     // the machine's, and a sweep under test released the real seat roots there.
     ANA_TEST_TMPDIR: root,
   };
+  let nextDriver = 0;
   const run = (code: string, extra: Record<string, string> = {}) => {
-    const driver = join(root, "driver.ts");
+    const driver = join(root, `driver-${String(nextDriver++)}.ts`);
     writeFileSync(driver, code.replaceAll("REPOSITORY/", `${REPO}/`));
     const result = runSync([capturedExecPath, driver], { cwd: main, env: { ...env, ...extra } });
     return { code: result.exitCode, out: decodeOutput(result.stdout), err: decodeOutput(result.stderr) };
+  };
+  const spawnAsync = async (cmd: readonly string[], extra: Record<string, string> = {}) => {
+    const child = capturedSpawn([...cmd], {
+      cwd: main,
+      env: { ...env, ...extra },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [out, err, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    return { code, out, err };
+  };
+  const runAsync = (code: string, extra: Record<string, string> = {}) => {
+    const driver = join(root, `driver-${String(nextDriver++)}.ts`);
+    writeFileSync(driver, code.replaceAll("REPOSITORY/", `${REPO}/`));
+    return spawnAsync([capturedExecPath, driver], extra);
   };
   const runScript = (script: string, args: readonly string[], extra: Record<string, string> = {}) => {
     const result = runSync([capturedExecPath, join(REPO, script), ...args], {
@@ -146,6 +166,8 @@ export function fakeHosts() {
     });
     return { code: result.exitCode, out: decodeOutput(result.stdout), err: decodeOutput(result.stderr) };
   };
+  const runScriptAsync = (script: string, args: readonly string[], extra: Record<string, string> = {}) =>
+    spawnAsync([capturedExecPath, join(REPO, script), ...args], extra);
   const recorded = (): { tool: string; args: string[] }[] => {
     try {
       return readFileSync(calls, "utf8")
@@ -157,5 +179,5 @@ export function fakeHosts() {
       return [];
     }
   };
-  return { root, main, host, env, run, runScript, recorded, commit: COMMIT };
+  return { root, main, host, env, run, runAsync, runScript, runScriptAsync, recorded, commit: COMMIT };
 }

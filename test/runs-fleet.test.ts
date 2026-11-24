@@ -53,10 +53,10 @@ function campaign() {
   return { made, log, env: { FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: log }]) } };
 }
 
-describe("host execution", () => {
-  it("keeps paths and arguments literal and clears the peer list for any repository script", () => {
+describe.concurrent("host execution", () => {
+  it("keeps paths and arguments literal and clears the peer list for any repository script", async () => {
     const made = fixture();
-    const result = made.run(
+    const result = await made.runAsync(
       'import { scriptOn } from "REPOSITORY/tools/runs/hosts.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; process.exit(await scriptOn(hostsOf()[0]!, ".claude/skills/example/scripts/cycle.ts", ["--here", "a; $(touch forbidden)", "quote\u0027s"]));',
       { FAKE_EXECUTE: "1" },
     );
@@ -78,29 +78,33 @@ describe("host execution", () => {
         ?.args.slice(-3),
     ).toEqual(["--here", "a; $(touch forbidden)", "quote's"]);
     expect(
-      made.run(
-        'import { scriptOn } from "REPOSITORY/tools/runs/hosts.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await scriptOn(hostsOf()[0]!, "tools/example.ts", []);',
-        { FAKE_EXECUTE: "1" },
+      (
+        await made.runAsync(
+          'import { scriptOn } from "REPOSITORY/tools/runs/hosts.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await scriptOn(hostsOf()[0]!, "tools/example.ts", []);',
+          { FAKE_EXECUTE: "1" },
+        )
       ).code,
     ).toBe(0);
     expect(made.recorded().filter((call) => call.tool === "git" && call.args.includes("fetch"))).toHaveLength(
       1,
     );
-    const refused = made.run(
-      'import { scriptOn } from "REPOSITORY/tools/runs/hosts.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await scriptOn(hostsOf()[0]!, "tools/../escape.ts", []);',
-    );
-    expect(refused.code).toBe(1);
-    expect(refused.err).toContain("repository-relative");
     const tree = join(made.root, "tree $(touch forbidden) '");
     mkdirSync(tree);
     const envFile = join(tree, "credentials file");
-    const paths = made.run(
-      'import { scriptOn } from "REPOSITORY/tools/runs/hosts.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await scriptOn(hostsOf()[0]!, "tools/example.ts", []);',
-      {
-        FAKE_EXECUTE: "1",
-        ANA_HOSTS: JSON.stringify([{ ...made.host, tree, envFiles: [envFile] }]),
-      },
-    );
+    const [refused, paths] = await Promise.all([
+      made.runAsync(
+        'import { scriptOn } from "REPOSITORY/tools/runs/hosts.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await scriptOn(hostsOf()[0]!, "tools/../escape.ts", []);',
+      ),
+      made.runAsync(
+        'import { scriptOn } from "REPOSITORY/tools/runs/hosts.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await scriptOn(hostsOf()[0]!, "tools/example.ts", []);',
+        {
+          FAKE_EXECUTE: "1",
+          ANA_HOSTS: JSON.stringify([{ ...made.host, tree, envFiles: [envFile] }]),
+        },
+      ),
+    ]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("repository-relative");
     expect(paths.code).toBe(0);
     expect(made.recorded().findLast((call) => call.tool === "host-bun")?.args).toContain(
       `--env-file=${envFile}`,
@@ -108,41 +112,47 @@ describe("host execution", () => {
     expect(existsSync(join(made.main, "forbidden"))).toBe(false);
   });
 
-  it("refuses an unsafe or repeated host identity before invoking ssh", () => {
+  it("refuses an unsafe or repeated host identity before invoking ssh", async () => {
     const made = fixture();
-    for (const entries of [
-      [made.host, made.host],
-      [{ name: "../outside" }],
-      [{ name: "here" }],
-      [{ name: "runner", ssh: "-oProxyCommand=x", tree: "/fake", bun: "bun" }],
-    ]) {
-      expect(
-        made.run('import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; hostsOf();', {
+    const results = await Promise.all(
+      [
+        [made.host, made.host],
+        [{ name: "../outside" }],
+        [{ name: "here" }],
+        [{ name: "runner", ssh: "-oProxyCommand=x", tree: "/fake", bun: "bun" }],
+      ].map((entries) =>
+        made.runAsync('import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; hostsOf();', {
           ANA_HOSTS: JSON.stringify(entries),
-        }).code,
-      ).toBe(1);
-      expect(made.recorded()).toHaveLength(0);
-    }
+        }),
+      ),
+    );
+    for (const result of results) expect(result.code).toBe(1);
+    expect(made.recorded()).toHaveLength(0);
   });
 });
 
-describe("code preparation", () => {
-  it("refuses a failed fetch, an unpublished commit, a dirty controller or failed install", () => {
-    for (const extra of [
-      { FAKE_FETCH_FAIL: "1" },
-      { FAKE_UNPUBLISHED: "1" },
-      { FAKE_DIRTY: " M tracked" },
-      { FAKE_INSTALL_FAIL: "1" },
-    ]) {
-      const made = fixture();
-      expect(made.run(prepare, { FAKE_EXECUTE: "1", ...extra }).code).toBe(1);
+describe.concurrent("code preparation", () => {
+  it("refuses a failed fetch, an unpublished commit, a dirty controller or failed install", async () => {
+    const failures = await Promise.all(
+      [
+        { FAKE_FETCH_FAIL: "1" },
+        { FAKE_UNPUBLISHED: "1" },
+        { FAKE_DIRTY: " M tracked" },
+        { FAKE_INSTALL_FAIL: "1" },
+      ].map(async (extra) => {
+        const made = fixture();
+        return { made, result: await made.runAsync(prepare, { FAKE_EXECUTE: "1", ...extra }) };
+      }),
+    );
+    for (const { made, result } of failures) {
+      expect(result.code).toBe(1);
       expect(made.recorded().some((call) => call.args.includes("tools/runs/cli.ts"))).toBe(false);
     }
     const made = fixture();
     const folder = join(made.main, ".ana", "d2", "distant");
     mkdirSync(folder, { recursive: true });
     append(join(folder, LOG_FILE), "campaign.ended", { ending: "finished" });
-    const result = made.run(
+    const result = await made.runAsync(
       'import { move } from "REPOSITORY/tools/runs/move.ts"; await move(["distant", "--to", "runner", "--yes"]);',
       { FAKE_EXECUTE: "1", FAKE_FETCH_FAIL: "1" },
     );
@@ -157,13 +167,13 @@ describe("code preparation", () => {
   });
 });
 
-describe("campaign snapshots", () => {
-  it("refreshes a remote campaign and publishes whole lines in the existing archive", () => {
+describe.concurrent("campaign snapshots", () => {
+  it("refreshes a remote campaign and publishes whole lines in the existing archive", async () => {
     const remote = campaign();
     const { made } = remote;
     const whole = readFileSync(remote.log, "utf8");
     writeFileSync(remote.log, `${whole}{"inFlight":`);
-    const result = made.run(sync, remote.env);
+    const result = await made.runAsync(sync, remote.env);
     expect(result.code).toBe(0);
     const copied = join(made.main, "data", "runs", "runner", "distant", LOG_FILE);
     expect(readFileSync(copied, "utf8")).toBe(whole);
@@ -171,14 +181,14 @@ describe("campaign snapshots", () => {
     expect(transfer?.args).toContain("--exclude=.env");
     expect(transfer?.args).toContain("--exclude=.env.*");
     expect(existsSync(join(made.main, ".ana", "d2", "distant"))).toBe(false);
-    expect(made.run(sync, { ...remote.env, FAKE_TRANSFER_FAIL: "1" }).code).toBe(1);
+    expect((await made.runAsync(sync, { ...remote.env, FAKE_TRANSFER_FAIL: "1" })).code).toBe(1);
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
-  it("serialises refreshes in one process and releases a failed refresh", () => {
+  it("serialises refreshes in one process and releases a failed refresh", async () => {
     const remote = campaign();
     const { made } = remote;
-    const result = made.run(
+    const result = await made.runAsync(
       'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; process.env.FAKE_TRANSFER_FAIL = "1"; await syncRuns(["distant"]).catch(() => undefined); delete process.env.FAKE_TRANSFER_FAIL; await Promise.all(Array.from({length: 3}, () => syncRuns(["distant"])));',
       remote.env,
     );
@@ -233,7 +243,7 @@ describe("campaign snapshots", () => {
     expect(readdirSync(lock)).toEqual([]);
   });
 
-  it("refuses ambiguity in an exact read, an unavailable catalogue and unsafe paths, and reads one copy in a collection", () => {
+  it("refuses ambiguity in an exact read, an unavailable catalogue and unsafe paths, and reads one copy in a collection", async () => {
     const remote = campaign();
     const { made } = remote;
     const duplicate = {
@@ -242,30 +252,30 @@ describe("campaign snapshots", () => {
         { name: "distant", path: remote.log },
       ]),
     };
-    for (const extra of [
-      duplicate,
-      { FAKE_CATALOGUE: JSON.stringify([{ name: "../escape", path: remote.log }]) },
-    ]) {
-      expect(made.run(sync, extra).code).toBe(1);
-    }
+    const [dupRes, escRes, misshapen, silent] = await Promise.all([
+      made.runAsync(sync, duplicate),
+      made.runAsync(sync, { FAKE_CATALOGUE: JSON.stringify([{ name: "../escape", path: remote.log }]) }),
+      made.runAsync(sync, {
+        FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: remote.log, open: "yes" }]),
+      }),
+      made.runAsync(sync, { FAKE_OFFLINE: "1" }),
+    ]);
+    expect(dupRes.code).toBe(1);
+    expect(escRes.code).toBe(1);
     // A host that answers with an entry this tree cannot read refuses the read, as an unsafe path does.
-    const misshapen = made.run(sync, {
-      FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: remote.log, open: "yes" }]),
-    });
     expect(misshapen.code).toBe(1);
     expect(misshapen.err).toContain("runner: invalid campaign catalogue");
-    const silent = made.run(sync, { FAKE_OFFLINE: "1" });
     expect(silent.code).toBe(0);
     expect(silent.err).toContain("runner: no campaign catalogue");
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(0);
-    const collection = made.run(sync.replace('{match:"exact"}', "{}"), duplicate);
+    const collection = await made.runAsync(sync.replace('{match:"exact"}', "{}"), duplicate);
     expect(collection.code).toBe(0);
     expect(collection.err).toContain("distant");
     expect(collection.err).toContain("runner");
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(1);
   });
 
-  it("skips unchanged archived whole snapshots, never skips open or unarchived ones, and isolates failed delta refreshes", () => {
+  it("skips unchanged archived whole snapshots, never skips open or unarchived ones, and isolates failed delta refreshes", async () => {
     const { made, there, resting, here, listed } = ablation();
     const archived = listed("sealed", there);
     const live = listed("active", resting);
@@ -273,60 +283,55 @@ describe("campaign snapshots", () => {
     writeFileSync(there("sealed", "node_modules/pkg/index.js"), "ignored");
     mkdirSync(there("sealed", "own"), { recursive: true });
     writeFileSync(there("sealed", "own/kept.py"), "kept");
-    const env = {
-      FAKE_CATALOGUE: JSON.stringify([archived, live]),
-      FAKE_LISTED: "1",
-    };
+    const env = { FAKE_CATALOGUE: JSON.stringify([archived, live]), FAKE_LISTED: "1" };
     const count = (tool: string) => made.recorded().filter((call) => call.tool === tool).length;
     const findCalls = () =>
       made.recorded().filter((call) => call.tool === "ssh" && call.args.at(-1)?.includes("find . ") === true)
         .length;
-
-    // A record refresh first must not satisfy a subsequent whole refresh.
+    const sealedKept = here("runner", "sealed", "own/kept.py");
+    const sealedModules = here("runner", "sealed", "node_modules");
+    // Batch the five same-env syncRuns calls in one process to avoid redundant Bun cold starts.
+    const batch = `
+import { existsSync, readFileSync } from "node:fs";
+import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";
+const calls = () => readFileSync(process.env.FAKE_CALLS!, "utf8").trim().split("\\n").filter(Boolean).map((l) => JSON.parse(l));
+const count = (tool: string) => calls().filter((c: { tool: string }) => c.tool === tool).length;
+const finds = () => calls().filter((c: { tool: string; args: string[] }) => c.tool === "ssh" && c.args.at(-1)?.includes("find . ") === true).length;
+await syncRuns(["sealed"], { match: "exact", depth: "record" });
+const afterRecord = existsSync(${JSON.stringify(sealedKept)});
+await syncRuns(["sealed"], { match: "exact", depth: "whole" });
+const keptAfterWhole = readFileSync(${JSON.stringify(sealedKept)}, "utf8");
+const modulesAfterWhole = existsSync(${JSON.stringify(sealedModules)});
+const [r0, f0] = [count("rsync"), finds()];
+await syncRuns(["sealed"], { match: "exact", depth: "whole" });
+const repeatDelta = [count("rsync") - r0, finds() - f0];
+await syncRuns(["active"], { match: "exact", depth: "whole" });
+const rActive = count("rsync");
+await syncRuns(["active"], { match: "exact", depth: "whole" });
+const activeDelta = count("rsync") - rActive;
+console.log(JSON.stringify({ afterRecord, keptAfterWhole, modulesAfterWhole, repeatDelta, activeDelta }));`;
+    const ran = await made.runAsync(batch, env);
+    expect({ code: ran.code, err: ran.err }).toEqual({ code: 0, err: "" });
+    expect(JSON.parse(ran.out)).toEqual({
+      afterRecord: false,
+      keptAfterWhole: "kept",
+      modulesAfterWhole: false,
+      repeatDelta: [0, 0],
+      activeDelta: 1,
+    });
+    const rsyncBeforeOpen = count("rsync");
+    const syncSealed =
+      'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["sealed"], {match:"exact",depth:"whole"});';
     expect(
-      made.run(
-        'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["sealed"], {match:"exact",depth:"record"});',
-        env,
+      (
+        await made.runAsync(syncSealed, {
+          FAKE_CATALOGUE: JSON.stringify([{ ...archived, open: true }, live]),
+          FAKE_LISTED: "1",
+        })
       ).code,
     ).toBe(0);
-    expect(existsSync(here("runner", "sealed", "own/kept.py"))).toBe(false);
-
-    // First whole refresh transfers non-derived files, prunes node_modules, and seals wholeBytes.
-    expect(
-      made.run(
-        'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["sealed"], {match:"exact",depth:"whole"});',
-        env,
-      ).code,
-    ).toBe(0);
-    expect(readFileSync(here("runner", "sealed", "own/kept.py"), "utf8")).toBe("kept");
-    expect(existsSync(here("runner", "sealed", "node_modules"))).toBe(false);
-    const [rsyncAfterWhole, findAfterWhole] = [count("rsync"), findCalls()];
-
-    // Repeat whole refresh on unchanged archived closed run skips both find and rsync.
-    expect(
-      made.run(
-        'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["sealed"], {match:"exact",depth:"whole"});',
-        env,
-      ).code,
-    ).toBe(0);
-    expect([count("rsync"), findCalls()]).toEqual([rsyncAfterWhole, findAfterWhole]);
-
-    // Marking the same archived run open forces a whole refresh rather than reusing wholeBytes.
-    expect(
-      made.run(
-        'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["sealed"], {match:"exact",depth:"whole"});',
-        { FAKE_CATALOGUE: JSON.stringify([{ ...archived, open: true }, live]), FAKE_LISTED: "1" },
-      ).code,
-    ).toBe(0);
-    expect(count("rsync")).toBe(rsyncAfterWhole + 1);
-
-    // An unarchived worktree run is never skipped on whole refresh, and a failed grown-log refresh leaves the prior copy intact.
-    const syncActive =
-      'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["active"], {match:"exact",depth:"whole"});';
-    expect(made.run(syncActive, env).code).toBe(0);
-    const rsyncAfterFirstActive = count("rsync");
-    expect(made.run(syncActive, env).code).toBe(0);
-    expect(count("rsync")).toBe(rsyncAfterFirstActive + 1);
+    expect(count("rsync")).toBe(rsyncBeforeOpen + 1);
+    expect(findCalls()).toBeGreaterThan(0);
 
     const beforeGrow = readFileSync(here("runner", "active", LOG_FILE), "utf8");
     append(resting("active", LOG_FILE), "campaign.ended", { ending: "finished", why: "grown" });
@@ -337,9 +342,11 @@ describe("campaign snapshots", () => {
       ]),
       FAKE_LISTED: "1",
     };
-    expect(made.run(syncActive, { ...grownEnv, FAKE_TRANSFER_FAIL: "1" }).code).toBe(1);
+    const syncActive =
+      'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["active"], {match:"exact",depth:"whole"});';
+    expect((await made.runAsync(syncActive, { ...grownEnv, FAKE_TRANSFER_FAIL: "1" })).code).toBe(1);
     expect(readFileSync(here("runner", "active", LOG_FILE), "utf8")).toBe(beforeGrow);
-    expect(made.run(syncActive, grownEnv).code).toBe(0);
+    expect((await made.runAsync(syncActive, grownEnv)).code).toBe(0);
     expect(readFileSync(here("runner", "active", LOG_FILE), "utf8")).toBe(
       readFileSync(resting("active", LOG_FILE), "utf8"),
     );
@@ -365,8 +372,8 @@ function ablation() {
   return { made, there, resting, here, listed };
 }
 
-describe("the daily retire's host step", () => {
-  it("takes over what the eval runner has archived once the copy here matches it, and leaves every other campaign there", () => {
+describe.concurrent("the daily retire's host step", () => {
+  it("takes over what the eval runner has archived once the copy here matches it, and leaves every other campaign there", async () => {
     const { made, there, resting, here, listed } = ablation();
     const ahead = listed("ahead", there);
     const env = {
@@ -379,28 +386,28 @@ describe("the daily retire's host step", () => {
       ]),
     };
     const sweep = (extra: Record<string, string>) =>
-      made.run('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire(["--yes"]);', {
+      made.runAsync('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire(["--yes"]);', {
         ...env,
         ...extra,
       });
     // A sweep that only describes copies nothing first, so it names no take-over of a campaign it
     // has yet to copy, and says that one with --yes can take more.
-    const dry = made.run('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire([]);', {
-      ...env,
-      EVAL_RUNNER: benchOn("runner"),
-    });
+    const dry = await made.runAsync(
+      'import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire([]);',
+      { ...env, EVAL_RUNNER: benchOn("runner") },
+    );
     expect(dry.code).toBe(0);
     expect(dry.out).not.toContain("over: held in");
     expect(dry.out).toContain("can take more");
     expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([true, false]);
     // With no benchmark rolled on a peer, a sweep copies every campaign and deletes none, and a
     // host the list does not hold is refused.
-    expect(sweep({ EVAL_RUNNER: benchOn(undefined) }).code).toBe(0);
+    expect((await sweep({ EVAL_RUNNER: benchOn(undefined) })).code).toBe(0);
     expect([existsSync(there("over")), existsSync(here("runner", "over", LOG_FILE))]).toEqual([true, true]);
-    const unknown = sweep({ EVAL_RUNNER: benchOn("nowhere") });
+    const unknown = await sweep({ EVAL_RUNNER: benchOn("nowhere") });
     expect([unknown.code, unknown.err.includes("no host nowhere")]).toEqual([1, true]);
 
-    const taken = sweep({ EVAL_RUNNER: benchOn("runner") });
+    const taken = await sweep({ EVAL_RUNNER: benchOn("runner") });
     // The archived campaign is this machine's own now, whole, and gone from the host.
     expect(readFileSync(here("here", "over", "memory/note.txt"), "utf8")).toBe("kept");
     expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([false, false]);
@@ -417,21 +424,23 @@ describe("the daily retire's host step", () => {
     expect(taken.err).toContain("1 campaigns were not taken over: ahead:");
   });
 
-  it("says what it would take without --yes, and keeps on its host a campaign whose copy here lacks a path", () => {
+  it("says what it would take without --yes, and keeps on its host a campaign whose copy here lacks a path", async () => {
     const { made, there, here, listed } = ablation();
     const env = { FAKE_CATALOGUE: JSON.stringify([listed("over", there), listed("apart", there)]) };
     const snapshots = 'import { takeRetired, syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";';
-    expect(made.run(`${snapshots} await syncRuns([]);`, env).code).toBe(0);
+    expect((await made.runAsync(`${snapshots} await syncRuns([]);`, env)).code).toBe(0);
     writeFileSync(there("apart", "late.txt"), "written since the copy");
     const extract = (act: "take" | "describe") =>
-      made.run(
+      made.runAsync(
         `${snapshots} import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await takeRetired(hostsOf()[0]!, "${act}");`,
         env,
       );
-    const dry = extract("describe");
+    const dry = await extract("describe");
     expect(dry.out).toContain(`would: runner over: held in ${here("here", "over")}`);
     expect([existsSync(there("over")), existsSync(here("here", "over"))]).toEqual([true, false]);
-    expect(extract("take").out).toContain("runner apart: stays there, 1 paths differ from the copy here");
+    expect((await extract("take")).out).toContain(
+      "runner apart: stays there, 1 paths differ from the copy here",
+    );
     expect([existsSync(there("apart", LOG_FILE)), existsSync(here("runner", "apart", LOG_FILE))]).toEqual([
       true,
       true,
@@ -440,8 +449,8 @@ describe("the daily retire's host step", () => {
   });
 });
 
-describe("a take-over of a campaign that installed packages", () => {
-  it("takes it once the copy holds all but the packages, and leaves it where the copy lacks a file of its own", () => {
+describe.concurrent("a take-over of a campaign that installed packages", () => {
+  it("takes it once the copy holds all but the packages, and leaves it where the copy lacks a file of its own", async () => {
     const { made, there, here, listed } = ablation();
     const env = {
       FAKE_CATALOGUE: JSON.stringify([listed("over", there), listed("apart", there)]),
@@ -459,11 +468,11 @@ describe("a take-over of a campaign that installed packages", () => {
     }
     writeFileSync(there("apart", "tree/lib/pkg/extra.py"), "the Builder's");
     const snapshots = 'import { takeRetired, syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";';
-    expect(made.run(`${snapshots} await syncRuns([]);`, env).code).toBe(0);
+    expect((await made.runAsync(`${snapshots} await syncRuns([]);`, env)).code).toBe(0);
     expect(existsSync(here("runner", "over", "tree/lib/pkg"))).toBe(false);
     // Removing one unlisted file inside the installed package must keep the original on its host.
     rmSync(here("runner", "apart", "tree/lib/pkg/extra.py"));
-    const taken = made.run(
+    const taken = await made.runAsync(
       `${snapshots} import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await takeRetired(hostsOf()[0]!, "take");`,
       env,
     );

@@ -23,7 +23,7 @@ import { hostFolder, releaseRoot } from "../wall/seat-root.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
 import { closedHome, hostScratch, toolchainPathDirs } from "../wall/policy.ts";
 import type { CellInput, CellResult, CheckInput, CheckResult } from "./check-child.ts";
-import type { Objective } from "./contract.ts";
+import { type Objective, type RubricItem, rubricFaults } from "./contract.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
@@ -336,25 +336,8 @@ export function readBrief(checks: string): Brief {
   if (brief.truthChecks.some((check) => check.id === OBJECTIVE.id)) {
     throw new Error(`a check is named ${OBJECTIVE.id}, which names the objective`);
   }
-  const items = brief.objective?.items;
-  if (items !== undefined) {
-    if (items.length === 0) throw new Error("objective.items must be non-empty when declared");
-    if (brief.objective?.direction !== "higher" || brief.objective.scale !== "unit") {
-      throw new Error('objective.items requires direction "higher" and scale "unit"');
-    }
-    const seen = new Set<string>();
-    for (const item of items) {
-      if (!isString(item.id) || item.id === "" || seen.has(item.id)) {
-        throw new Error(
-          `objective.items names an invalid or duplicate item ${isString(item.id) ? item.id : ""}`,
-        );
-      }
-      if (!isNumber(item.weight) || !Number.isFinite(item.weight) || item.weight <= 0) {
-        throw new Error(`objective.items.${item.id} requires a positive finite weight`);
-      }
-      seen.add(item.id);
-    }
-  }
+  const [fault] = rubricFaults(brief.objective);
+  if (fault !== undefined) throw new Error(fault);
   return brief;
 }
 
@@ -439,6 +422,7 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
     const ran = await runCell(wall, {
       checks,
       objective,
+      ...keyIfDefined("objectiveScale", brief.objective?.scale),
       ...keyIfDefined("rubricItems", brief.objective?.items),
       request,
       signal,
@@ -507,12 +491,13 @@ async function runCell(
   run: {
     readonly checks: readonly BriefTruthCheck[];
     readonly objective: BriefTruthCheck | null;
-    readonly rubricItems?: Objective["items"];
+    readonly objectiveScale?: "unit";
+    readonly rubricItems?: readonly RubricItem[];
     readonly request: EvaluationRequest;
     readonly signal: AbortSignal | undefined;
   },
 ): Promise<CellResult | { readonly nonResult: string } | { readonly held: string; readonly reason: string }> {
-  const { checks, objective, rubricItems, request, signal } = run;
+  const { checks, objective, objectiveScale, rubricItems, request, signal } = run;
   const { base } = wall;
   if (signal?.aborted === true) return { nonResult: "the verifier was cancelled" };
   if ("unsupported" in base) return { nonResult: `this host cannot wall a check: ${base.unsupported}` };
@@ -546,6 +531,7 @@ async function runCell(
       width: CHECKS_AT_ONCE,
       checks: checks.map((check) => inputOf(check, request)),
       objective: objective === null ? null : inputOf(objective, request),
+      ...keyIfDefined("objectiveScale", objectiveScale),
       ...keyIfDefined("rubricItems", rubricItems),
       running: runningDir,
     };
@@ -582,7 +568,7 @@ async function runCell(
     if ("nonResult" in outcome || "held" in outcome) return outcome;
     const { stderr, exitCode } = outcome;
     return (
-      writtenResult(join(root, "result.json"), checks.length) ?? {
+      writtenResult(join(root, "result.json"), checks.length, rubricItems) ?? {
         nonResult: `the cell exited ${String(exitCode)} without a result: ${stderr.slice(-2000).trim()}`,
       }
     );
@@ -603,20 +589,26 @@ const undecided = (value: unknown) => {
   return null;
 };
 
-function parsedScores(raw: unknown): Readonly<Record<string, number>> | null {
+function weightedRubric(
+  raw: unknown,
+  items: readonly RubricItem[],
+): { readonly value: number; readonly scores: Readonly<Record<string, number>> } | null {
   const rec = asRecord(raw);
-  if (rec === null) return null;
-  const entries = Object.entries(rec);
-  if (entries.length === 0) return null;
-  const out: Record<string, number> = {};
-  for (const [id, val] of entries) {
+  if (rec === null || Object.keys(rec).length !== items.length) return null;
+  const scores: Record<string, number> = {};
+  let weighted = 0;
+  let totalWeight = 0;
+  for (const item of items) {
+    const val = Object.hasOwn(rec, item.id) ? rec[item.id] : undefined;
     if (!isNumber(val) || !Number.isFinite(val) || val < 0 || val > 1) return null;
-    out[id] = val;
+    scores[item.id] = val;
+    weighted += item.weight * val;
+    totalWeight += item.weight;
   }
-  return out;
+  return totalWeight > 0 ? { value: weighted / totalWeight, scores } : null;
 }
 
-function writtenResult(path: string, count: number): CellResult | null {
+function writtenResult(path: string, count: number, rubricItems?: readonly RubricItem[]): CellResult | null {
   if (!existsSync(path)) return null;
   let written: ReturnType<typeof asRecord>;
   try {
@@ -632,11 +624,12 @@ function writtenResult(path: string, count: number): CellResult | null {
   });
   const measuredRec = asRecord(written?.measured);
   const value = measuredRec?.value;
-  const scores = measuredRec?.scores === undefined ? undefined : parsedScores(measuredRec.scores);
   const measured =
-    isNumber(value) && Number.isFinite(value) && scores !== null
-      ? { value, ...keyIfDefined("scores", scores) }
-      : undecided(written?.measured);
+    rubricItems !== undefined && rubricItems.length > 0
+      ? (weightedRubric(measuredRec?.scores, rubricItems) ?? undecided(written?.measured))
+      : isNumber(value) && Number.isFinite(value)
+        ? { value }
+        : undecided(written?.measured);
   if (listed.length !== count || results.length !== count) return null;
   return written?.measured !== null && measured === null ? null : { results, measured };
 }

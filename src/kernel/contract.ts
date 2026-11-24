@@ -1,8 +1,10 @@
 import type { TSchema } from "typebox";
 import { Compile } from "typebox/compile";
-import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
+
+const RUBRIC_ITEM_ID = /^[a-z][a-z0-9-]*$/u;
 
 interface Rule {
   readonly id: string;
@@ -28,6 +30,28 @@ export interface Contract {
   readonly conventions: string;
   readonly rules: readonly Rule[];
   readonly scope: string;
+}
+
+export function rubricFaults(objective: Objective | undefined): string[] {
+  const items = objective?.items;
+  if (items === undefined) return [];
+  if (items.length === 0) return ["objective.items must contain at least one item when declared"];
+  const faults: string[] = [];
+  if (objective?.direction !== "higher") faults.push('objective.items requires direction "higher"');
+  if (objective?.scale !== "unit") faults.push('objective.items requires scale "unit"');
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (!isString(item.id) || !RUBRIC_ITEM_ID.test(item.id) || Object.hasOwn(Object.prototype, item.id)) {
+      faults.push(`objective.items names an invalid item ${isString(item.id) ? item.id : ""}`);
+      continue;
+    }
+    if (seen.has(item.id)) faults.push(`objective.items names ${item.id} twice`);
+    seen.add(item.id);
+    if (!isNumber(item.weight) || !Number.isFinite(item.weight) || item.weight <= 0) {
+      faults.push(`objective.items.${item.id} requires a positive finite weight`);
+    }
+  }
+  return faults;
 }
 
 export function objectiveLine({ quantity, direction, items }: Objective): string {

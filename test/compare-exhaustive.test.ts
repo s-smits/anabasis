@@ -662,5 +662,25 @@ describe("the protocol's measured constants", () => {
       scale: "unit",
     });
     expect(objectiveRuleIn({ objective: { direction: "higher" } })).toEqual({ direction: "higher" });
+    const roundTripped = objectiveRuleIn({
+      objective: { direction: "higher", scale: "unit" },
+    });
+    expect(roundTripped).toEqual({ direction: "higher", scale: "unit" });
+    expect(
+      differenceOf({
+        task: "u-zero",
+        old: [true],
+        fresh: [true],
+        objective: { ...(roundTripped ?? { direction: "higher" }), old: [0], fresh: [0.02] },
+      }),
+    ).toBe(6);
+    expect(
+      differenceOf({
+        task: "r-zero",
+        old: [true],
+        fresh: [true],
+        objective: { direction: "higher", old: [0], fresh: [0.02] },
+      }),
+    ).toBe(300);
   });
 });

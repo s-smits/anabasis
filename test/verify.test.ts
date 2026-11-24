@@ -587,5 +587,28 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
         check: "objective",
       });
     }
+
+    const unitDir = join(root, "unit-scalar-checks");
+    mkdirSync(unitDir, { recursive: true });
+    writeFileSync(
+      join(unitDir, "brief.json"),
+      JSON.stringify({
+        correctnessContract: "check-program/v1",
+        truthChecks: [check("valid", "rubric", { artifact: ["$.ok"] })],
+        objective: { quantity: "bounded score", direction: "higher", scale: "unit" },
+      }),
+    );
+    writeFileSync(
+      join(unitDir, "evaluator.ts"),
+      "export const checks = { valid: (req) => req.artifact.ok === true };\nexport const objective = (req) => req.artifact.score;\n",
+    );
+    const verifyUnit = openVerifier({ checks: unitDir, tools });
+    expect(await verifyUnit(rubricTask, { ok: true, score: 0.5 })).toEqual({ kind: "pass", objective: 0.5 });
+    for (const bad of [-0.1, 1.5]) {
+      expect(await verifyUnit(rubricTask, { ok: true, score: bad })).toMatchObject({
+        kind: "faulty",
+        check: "objective",
+      });
+    }
   });
 });

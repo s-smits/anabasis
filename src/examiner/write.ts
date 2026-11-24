@@ -9,7 +9,7 @@ import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "
 import type { Ending } from "../kernel/solve.ts";
 import { solvesIn } from "../kernel/solves.ts";
 import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
-import { objectiveOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
+import { objectiveOf, scoresOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
@@ -123,7 +123,16 @@ function measureOf(contract: Contract, verdict: Verdict): JsonObject {
   const measure = objectiveOf(verdict);
   if (declared === undefined || measure === null) return {};
   const { quantity, direction, scale } = declared;
-  return { objective: { quantity, direction, ...keyIfDefined("scale", scale), measure } };
+  const scores = scoresOf(verdict);
+  return {
+    objective: {
+      quantity,
+      direction,
+      ...keyIfDefined("scale", scale),
+      measure,
+      ...keyIfDefined("scores", scores === null ? undefined : { ...scores }),
+    },
+  };
 }
 
 export const feasibleOf = (

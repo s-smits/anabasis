@@ -23,6 +23,7 @@ interface Answered {
   readonly turns: readonly number[];
   readonly measures: readonly number[];
   readonly itemMeans: Readonly<Record<string, number>>;
+  readonly authorItems?: Readonly<Record<string, number>>;
 }
 
 const BLOCKS = {
@@ -71,6 +72,7 @@ export function heard(
     return computed;
   };
   const answered = referenceAnswers(events, pairsOf);
+  const authorScores = authorScoresOf(events);
   const faulted = faultedOf(events);
   const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
   const budget = isNumber(setting) ? setting : undefined;
@@ -87,7 +89,21 @@ export function heard(
     if (block !== "practice") listed.push(version);
     const named = `${taskId} (${family})`;
     const plain = block === "practice" || block === "earlier-reference" || block === "faulted";
-    const clauses = plain ? [] : clausesOf(block, pool, version, answered.get(version), budget);
+    const taskAnswer = answered.get(version);
+    const authorItems = authorScores.get(version);
+    const clauses = plain
+      ? []
+      : clausesOf(
+          block,
+          pool,
+          version,
+          taskAnswer === undefined
+            ? undefined
+            : authorItems === undefined
+              ? taskAnswer
+              : { ...taskAnswer, authorItems },
+          budget,
+        );
     const checks = faulted.get(taskId);
     const fault =
       checks === undefined ? [] : [`ruled at fault on an answer to it: ${[...checks].join(", ")}`];
@@ -130,11 +146,31 @@ const reportedAfter = (events: readonly LogEvent[], after: number) =>
       .flatMap(({ data }) => (Array.isArray(data.versions) ? data.versions.filter(isString) : [])),
   );
 
+function authorScoresOf(events: readonly LogEvent[]): Map<string, Readonly<Record<string, number>>> {
+  const best = new Map<string, { measure: number; scores: Readonly<Record<string, number>> }>();
+  for (const { kind, data } of events) {
+    if (kind !== "task.feasible" || !isString(data.version)) continue;
+    const obj = asRecord(data.objective);
+    const scoresRec = asRecord(obj?.scores);
+    if (obj === null || !isNumber(obj.measure) || scoresRec === null) continue;
+    const entries = Object.entries(scoresRec).flatMap(([id, val]) =>
+      isNumber(val) && Number.isFinite(val) ? [[id, val] as const] : [],
+    );
+    if (entries.length === 0) continue;
+    const prior = best.get(data.version);
+    const better =
+      prior === undefined ||
+      (obj.direction === "lower" ? obj.measure < prior.measure : obj.measure > prior.measure);
+    if (better) best.set(data.version, { measure: obj.measure, scores: Object.fromEntries(entries) });
+  }
+  return new Map([...best].map(([version, { scores }]) => [version, scores] as const));
+}
+
 function clausesOf(
   block: keyof typeof BLOCKS,
   pool: ReturnType<typeof poolOf>,
   version: string,
-  { turns, measures, itemMeans }: Answered = { turns: [], measures: [], itemMeans: {} },
+  { turns, measures, itemMeans, authorItems }: Answered = { turns: [], measures: [], itemMeans: {} },
   budget?: number,
 ): string[] {
   const answered = block === "reference-every" || block === "reference-some" || block === "closed";
@@ -147,7 +183,16 @@ function clausesOf(
       : []),
     ...(answered && measures.length > 0 ? [`measured ${sorted(measures).map(measured).join(", ")}`] : []),
     ...(answered && rubric.length > 0
-      ? [`rubric ${rubric.map(([id, value]) => `${id}=${measured(value)}`).join(", ")}`]
+      ? [
+          `rubric ${rubric
+            .map(([id, value]) => {
+              const authorVal = authorItems?.[id];
+              return authorVal === undefined
+                ? `${id}=${measured(value)}`
+                : `${id}=${measured(value)} (author ${measured(authorVal)})`;
+            })
+            .join(", ")}`,
+        ]
       : []),
     ...(answered && measures.length > 0 && best !== undefined
       ? [`the author's answer measured ${measured(best)}`]
@@ -167,9 +212,18 @@ function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
   );
   const stands = standsOf(events);
   const faulted = new Map<string, Set<string>>();
+  const record = (task: string, label: string) =>
+    faulted.set(task, new Set([...(faulted.get(task) ?? []), label]));
   for (const [solve, { task, check }] of last) {
     if (stands.get(solve) !== "check-defect" || !isString(task) || !isString(check)) continue;
-    faulted.set(task, new Set([...(faulted.get(task) ?? []), check]));
+    record(task, check);
+  }
+  for (const { kind, data } of events) {
+    if (kind !== "verdict" || data.kind !== "faulty" || !isString(data.task) || !isString(data.check)) {
+      continue;
+    }
+    const scoreHit = isString(data.reason) ? /^score ([a-z][a-z0-9-]*) /u.exec(data.reason)?.[1] : undefined;
+    record(data.task, scoreHit === undefined ? data.check : `${data.check} (${scoreHit})`);
   }
   return faulted;
 }

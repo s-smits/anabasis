@@ -251,8 +251,8 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
 }
 
 /** The objective a comparison pairs two valid answers by, where its check program declares one:
- *  the brief's direction. Undefined otherwise. No margin or floor goes with it; the floor is one
- *  constant (`GAP_FLOOR`, `src/kernel/compare.ts`). */
+ *  the brief's direction and optional scale. Undefined otherwise. No margin or floor goes with it;
+ *  the floor is one constant (`GAP_FLOOR`, `src/kernel/compare.ts`). */
 export function objectiveNamed(campaign: Pick<Campaign, "checks">): ObjectiveRule | undefined {
   return objectiveRuleOf(readBrief(campaign.checks).objective);
 }

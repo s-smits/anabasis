@@ -133,8 +133,9 @@ const linesOf = (path: string) =>
 
 /** One suite over one mutated copy: true where it failed, false where it passed, null where the runner gave no verdict. */
 async function verdict(clone: string, paths: readonly string[], seconds: number): Promise<boolean | null> {
-  const run = Bun.spawn(["bun", "test", "--bail", ...paths], {
+  const run = Bun.spawn(["bun", "test", "--bail", "--max-concurrency=4", ...paths], {
     cwd: clone,
+    env: { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
     stdout: "pipe",
     stderr: "pipe",
     timeout: seconds * 1000,

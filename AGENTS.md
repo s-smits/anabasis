@@ -40,7 +40,7 @@ Name target factor and empirical count (`docs/plan.md`):
 ### Trade-offs to keep in view
 
 See `design-and-seats` (`question-and-factors.md`, `stance.md`):
-- **Validity across domains & objective variance**: binary `valid` stays across domains because constrained ones (`buffer`, `truss`, `recode`, `esp32`) separate on physical feasibility while open-ended ones (`jobstat`) still need a feasibility floor against objective hacking. Open-ended domains saturate `valid` implicitly (multi-criteria `AND` gates hit 0–0 cliffs), so carry their headroom in a non-hedgable objective rather than tuning `valid` down; 100% passes with lagging transfer still flag weak grounding. Report carrying measure and A/A floor (`GAP_FLOOR` trades noise vs supply).
+- **Validity across domains & objective variance**: binary `valid` stays across domains: constrained domains (`buffer`, `truss`, `recode`, `esp32`) separate on physical feasibility, while open-ended ones (`jobstat`) need a feasibility floor against objective hacking and saturate `valid` implicitly (multi-criteria `AND` gates hit 0–0 cliffs). Carry open-ended headroom in a non-hedgable objective instead of tuning `valid` down; 100% passes with lagging transfer flag weak grounding. Report carrying measure and A/A floor (`GAP_FLOOR` trades noise vs supply).
 - **Promotion vs confirmation**: owed starter read runs on next `compare` (`heldSince`); reading ahead leaves it unconfirmed (`test/decide-explore.test.ts`).
 - **Practice vs held-out supply**: practice takes ≤ half the held-out pool; watch `comparisonFloor` and treat untransferred practice gains as overfitting.
 - **Gate strictness vs capability**: refuse only measurement-breaking or wasted-compute actions; pass others as factual notes; err toward lenient sandboxing and Builder freedom.
@@ -166,7 +166,7 @@ Run `stack-pr` (`scripts/stack.ts`) before branching/pushing: extend the owning 
 
 Label PRs by category (`CATEGORIES`, `tools/runtime/land.ts`) and highest importance (`repository-practice`): `I0` invalid/unsafe results (runs pause), `I1` decision/measurement/wall/crash/stall/waste fix or removal, `I2` other prod/prompt/tooling change, `I3` docs/prose/tests alone.
 
-**Shell & reviews** (`repository-practice`): pass command guard, edit via tools, leave profiles/SSH/env untouched; keep architectural reasoning and implementation inline, using read-only subagents only after forming your own plan (continue context-holding ones over cold relaunch) with source, bounded questions and verified counts plus `file:symbol`.
+**Shell & reviews** (`repository-practice`): pass command guard, edit via tools, leave profiles/SSH/env untouched; keep architecture and edits inline, using read-only subagents after forming your own plan (continue warm ones over relaunch) with source, bounded questions and verified counts plus `file:symbol`.
 
 ## 12. Code that passes the first time
 
@@ -193,7 +193,7 @@ Pin constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once. Avoid wording/p
 
 ## 13. Writing
 
-Write plain, logical English without forced ML jargon, robotic phrasing or chronological hints, stating what each mechanism does and why: give exact figures with measured axis (distinguishing tests, observations, estimates), use §14 terms and backticks for identifiers/paths, state each fact once in its owner (link elsewhere; rewrite prompts rather than append), and keep defaults in code.
+Write plain, logical English without forced jargon or robotic phrasing: state general principles, current behaviour and rationale instead of chronological "at X, Y happened so we did Z" narratives (history belongs in commits, PRs or logs). Give exact figures with measured axis (tests, observations, estimates distinct), use §14 terms and backticks for identifiers/paths, state each fact once in its owner (rewrite prompts, never append), and keep defaults in code.
 
 ## 14. Terms and map
 

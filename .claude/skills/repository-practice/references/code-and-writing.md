@@ -37,6 +37,9 @@ policy, and test design; changes that do not touch code may skip it.
 Write clearly and concisely: state the question, the mechanism, and the empirical evidence with its
 limitations (`AGENTS.md`, section 13).
 
+- State general principles, current behaviour, and rationale instead of chronological narratives
+  ("at X moment Y happened, so we did Z"). Keep timeline history in commits, pull requests,
+  backlog notes, or measurement logs.
 - Prefer direct contrasts ("one owner instead of five") over negations; infrastructure changes state
   what they enable without implying an empirical gain.
 - Keep single simulations, live observations, and cost estimates distinct. Preserve counts,

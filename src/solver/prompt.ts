@@ -188,7 +188,7 @@ function taskFiles(publicInput: JsonValue): Map<string, string> {
   return files;
 }
 
-export function homeHolds(
+function homeHolds(
   task: PublicTask,
   resources: readonly PublicResource[],
 ): Pick<Told, "resources" | "files"> {

@@ -184,7 +184,7 @@ export function boundJsonPreview(value: JsonValue, path: string, extra: Map<stri
   return `${boundText(full, JSON_PREVIEW_BYTES).shown} (read full JSON via read_task_file: ${path})`;
 }
 
-function reusedDefectRuling(
+function reusedRuling(
   events: readonly LogEvent[],
   solve: string,
   taskId: string,
@@ -197,6 +197,7 @@ function reusedDefectRuling(
   const version = versionOf.get(solve);
   if (version === undefined) return null;
   const stands = standsOf(events);
+  const verdicts = verdictsOf(events);
   const latestBySolve = new Map<string, (typeof events)[number]["data"]>();
   for (const {
     event: { data },
@@ -208,16 +209,21 @@ function reusedDefectRuling(
     if (solves.get(prior)?.start.comparison !== comp) continue;
     if (versionOf.get(prior) !== version) continue;
     if (isString(data.reusedFrom) || data.walled === true || isString(data.error)) continue;
-    if (stands.get(prior) !== "check-defect") continue;
-    if (!isString(data.check) || !blocking.includes(data.check)) continue;
+    const ruled = stands.get(prior);
+    const check =
+      ruled === "check-defect" && isString(data.check) && blocking.includes(data.check) ? data.check : null;
+    const checker = verdicts.get(prior)?.checker;
+    const same =
+      ruled === "unclear" && checker?.kind === "fail" && checker.blocking.join("\n") === blocking.join("\n");
+    if (check === null && !same) continue;
     return {
       from: prior,
       finding: {
-        ruling: "check-defect",
-        check: data.check,
+        ruling: check === null ? "unclear" : "check-defect",
+        check,
         rule: null,
         field: null,
-        reason: `reused check-defect on ${data.check} from earlier solve ${prior} in comparison ${comp}`,
+        reason: `reused ${check === null ? "unclear ruling" : `check-defect on ${check}`} from earlier solve ${prior} in comparison ${comp}`,
         probes: [],
       },
     };
@@ -461,7 +467,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
     verdict.fault === null ? await fail.verify(fail.task, verdict.answer, reader.kill, verdict.files) : null;
   const directHost = hostRuling(verdict, replay);
   const reused =
-    directHost === null ? reusedDefectRuling(events, fail.solve, fail.task.taskId, verdict.blocking) : null;
+    directHost === null ? reusedRuling(events, fail.solve, fail.task.taskId, verdict.blocking) : null;
   const host = directHost ?? reused?.finding ?? null;
   const rows: ProbeRow[] = [];
   const found: RefereeFinding[] = [];

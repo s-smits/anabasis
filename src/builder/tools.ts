@@ -27,15 +27,14 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
-import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
+import { ending as endSession, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
-import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
+import type { CommandWall, NetworkReach } from "../tools/command.ts";
 import { namedTasks, readHarnessFiles } from "../harness/files.ts";
 import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { HOST_ONLY } from "../harness/starter.ts";
-import { homeHolds, systemPrompt } from "../solver/prompt.ts";
-import { clockText, solverTools } from "../solver/run.ts";
+import { clockText } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } from "./kept.ts";
@@ -75,9 +74,7 @@ interface FoldedPractice {
   readonly verdicts: ReturnType<typeof verdictsOf>;
 }
 
-const SOLVE_HOME = "(the solve's own home directory)";
 const BAND_EDGES = [GAP_FLOOR, 0.1, 0.5, 0.9] as const;
-const PRACTICE_NOTE_AT = 4;
 const EMPTY_RECORD: { readonly solves: readonly string[]; readonly passed: number } = {
   solves: [],
   passed: 0,
@@ -288,40 +285,16 @@ function recordText(
     if (digest !== null) named.set(digest, [...(named.get(digest) ?? []), role]);
   }
   return [...named]
-    .map(([digest, [role, ...also]], index) => {
-      const kept = folded.records.get(version)?.get(digest) ?? EMPTY_RECORD;
+    .map(
+      ([digest, roleNames]) => [roleNames, folded.records.get(version)?.get(digest) ?? EMPTY_RECORD] as const,
+    )
+    .filter(([, kept]) => kept.solves.length > 0)
+    .map(([[role, ...also], kept], index) => {
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
       const measured = measuredClause(name, measuresOf(folded.verdicts, kept.solves, against));
       return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}${measured}.`;
     })
     .join(" ");
-}
-
-function practiceTaskNotes(
-  events: readonly LogEvent[],
-  task: PracticeTask,
-  info: {
-    readonly folded: FoldedPractice;
-    readonly sessionId: string;
-    readonly roles: readonly (readonly [string | null, string])[];
-    readonly against: Against | null;
-    readonly name: () => string;
-  },
-): string[] {
-  const sessionStart = events.findLastIndex(
-    ({ kind, data }) => kind === "build.started" && data.session === info.sessionId,
-  );
-  const count = ended(
-    practiceRan(events).filter(({ started, under }) => started > sessionStart && under.task === task.version),
-  ).filter((solve) => passed(solve) !== null).length;
-  return [
-    recordText(info.folded, task.version, info.roles, info.against, info.name),
-    ...(count >= PRACTICE_NOTE_AT
-      ? [
-          `Note: ${task.task.taskId} has now been practised ${String(count)} times in this session; further single-task tuning risks overfitting.`,
-        ]
-      : []),
-  ];
 }
 
 function choosePracticeTasks(bench: Bench, requested: readonly string[]) {
@@ -422,7 +395,7 @@ export function practiceTool(bench: Bench): SeatTool {
         return [
           `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(solves, solve)}${callsText(events, solve, programs)}${measuredText(scored, solve, against, name)}`,
           ...(last.get(task.version) === at
-            ? practiceTaskNotes(events, task, { folded, sessionId: request.id, roles, against, name })
+            ? [recordText(folded, task.version, roles, against, name)].filter((line) => line !== "")
             : []),
           ...lines,
         ].join("\n");
@@ -629,43 +602,11 @@ function checkTool(bench: Bench): SeatTool {
   });
 }
 
-function previewTool(bench: Bench, wall: CommandWall): SeatTool {
-  const { request } = bench;
-  return tool({
-    name: "preview_harness",
-    description:
-      "Show what a solver would read under harness/ as it stands, for one practice task: its system prompt whole, with your guide where the solver finds it and your programs' names, and each of its tools by name and description. Spends no practice solve.",
-    parameters: Type.Object({}),
-    execute: async () => {
-      const [sample] = bench.tasks;
-      if (sample === undefined) return text("This session has no practice task to preview a solve of.");
-      return await frozen(bench, async ({ harness }) => {
-        const tools = solverTools(request, harness, { ...wall, toolTree: harness.toolTree }, openDesk());
-        const prompt = systemPrompt({
-          tools,
-          home: SOLVE_HOME,
-          guide: harness.guide,
-          wallSeconds: request.solve.wallSeconds,
-          limits: request.solve,
-          ...homeHolds(sample.task, request.resources),
-          programs: installedPrograms(harness.toolTree),
-          network: await networkReach({ ...wall, toolTree: harness.toolTree }),
-        });
-        const declared = tools.map(({ name, description }) => `- ${name}: ${description}`).join("\n");
-        return text(
-          `The system prompt a solver of ${sample.task.taskId} would read:\n\n${prompt}\n\nIts tools, as they are declared to it:\n${declared}`,
-        );
-      });
-    },
-  });
-}
-
 export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): SeatTool[] {
   return [
     ...codingTools(wall, CODING_TOOLS).map((each) =>
       each.name === "bash" ? { ...each, description: `${each.description}${shellWalls(network)}` } : each,
     ),
     checkTool(bench),
-    previewTool(bench, wall),
   ];
 }

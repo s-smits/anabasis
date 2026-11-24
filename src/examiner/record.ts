@@ -251,7 +251,7 @@ export function heard(
     return computed;
   };
   const allReports = lastReports(events, "all");
-  const currentReports = allReports.filter(({ data }) => data.ladder !== true);
+  const currentReports = lastReports(events);
   const answered = referenceAnswers(events, allReports, pairsOf);
   const faulted = faultedOf(events);
   const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;

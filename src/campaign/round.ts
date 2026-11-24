@@ -144,7 +144,7 @@ export function frontierOverlap(
   );
   if (prior?.data.reading !== "no-step") return null;
   const priorStart = events.findLast(
-    ({ kind, data }) => kind === STARTED && data.session === prior.session && data.ladder !== true,
+    ({ kind, data }) => kind === STARTED && data.session === prior.session,
   )?.data;
   const priorTasks = Array.isArray(priorStart?.tasks) ? priorStart.tasks.filter(isString) : [];
   const priorRetained = new Set(

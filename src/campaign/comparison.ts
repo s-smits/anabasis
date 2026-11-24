@@ -37,7 +37,7 @@ import type { Ruling } from "../referee/referee.ts";
 import { type Worth, worthOf } from "./climb.ts";
 
 type Reading = "step" | "no-step" | "not-scored" | "check-defects" | "no-change";
-type Tested = ReturnType<typeof scored> & { readonly unbilled?: readonly number[] };
+type Tested = ReturnType<typeof scored>;
 type Entered = Tested & {
   readonly tasks: readonly string[];
   readonly aside: readonly string[];

@@ -37,7 +37,7 @@ Because the judge truncates deliverables at 200,000 chars (`CUT <n>` in `score.t
 
 | Placement vs baseline spread | Action |
 | --- | --- |
-| Below baseline, beyond spread | Separate OS port (`studies/shared/foreign-python.ts`, `src/harness/place.ts`), runtime translation (`runs bench --pi` vs `claude-export.ts`), and workspace coupling before attributing the deficit |
+| Below baseline, beyond spread | Separate OS port (`studies/shared/foreign-python.ts`, `src/harness/place.ts`), runtime translation (native `runs bench` vs legacy `runs bench --claude` / `claude-export.ts`), and workspace coupling before attributing the deficit |
 | Inside baseline spread | Noise (rule 6); continue to next run's read |
 | Above baseline, beyond spread | Directional signal; continue (unbiased claims require 20-task `compare.ts plan`/`read` with operator approval) |
 | Above Harness² `heldout`, beyond spread | Request operator approval for 20-task evaluation |
@@ -49,5 +49,5 @@ Built harnesses are intentionally exported across OS and architecture boundaries
 When diagnosing an external benchmark deficit, separate three propagation layers symmetrically across built and baseline trajectories before blaming either the port or the harness:
 
 1. **OS / platform port:** check trajectories for binary-format errors (`Exec format error`, `Mach-O`), hardcoded host shebangs/paths, `command not found`, or permission errors, and compare `ModuleNotFoundError` counts across built and baseline arms (symmetric missing-module rates reflect the benchmark environment rather than harness porting).
-2. **Runtime translation:** prefer native `runs bench --pi` (comparing `builtSolver` against `bareSolver` via `--arm pi:base`) over Claude Code export (`studies/shared/claude-export.ts`) so runtime translation and `PATH` ordering do not confound cross-OS and workspace transfer.
+2. **Runtime translation:** `runs bench` runs native `pi-durable` by default (comparing `builtSolver` against `bareSolver` via `--arm pi:base`) rather than Claude Code export (`--claude` / `studies/shared/claude-export.ts`) so runtime translation and `PATH` ordering do not confound cross-OS and workspace transfer.
 3. **Workspace coupling:** compare `.toolchain/bin` invocation rates inside campaign solves against external tasks (`bun run wri regressions`), alongside always-on `BUILT_AGENTS.md` size and turn/spend differences. Tools tied to campaign paths (`public/task.json`, `answer.json`) deliver zero external lift while oversized exam-shaped guides still propagate into every external solve.

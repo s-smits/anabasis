@@ -190,7 +190,7 @@ export function domainReadinessOf(options: ReadinessOptions): DomainReadiness {
     store !== null && existsSync(store) ? findPairedArm(store, promotedDigests, options.armName) : null;
 
   const ablationNeeded = bench !== null && meetsMinPromo && pairedArm === null;
-  const ablationCommand = ablationNeeded ? `bun run runs bench ${campaign} --pi` : null;
+  const ablationCommand = ablationNeeded ? `bun run runs bench ${campaign}` : null;
 
   return {
     campaign,

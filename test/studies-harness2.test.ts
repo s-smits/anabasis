@@ -35,7 +35,7 @@ import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { openHarness, treeContent } from "../src/harness/open.ts";
-import { EXAMPLE, HOST_ONLY, writeStarter } from "../src/harness/starter.ts";
+import { EXAMPLE, HOST_ONLY, writeBare, writeStarter } from "../src/harness/starter.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
 /** A harness of the shell and one program, `mark`. */
@@ -380,13 +380,13 @@ describe("a harness written out for Claude Code", () => {
   });
 
   it("refuses a tree whose own python3 cannot start here, and counts what one that starts imports", async () => {
-    const tree = (name: string, launcher: string) => {
+    const tree = (name: string, launcher: string, toolchain = "scripts/toolchain", fine = "X = 1\n") => {
       const dir = join(root, name);
-      const site = join(dir, "scripts", "toolchain", "lib", "python3.99", "site-packages");
-      mkdirSync(join(dir, "scripts", "toolchain", "bin"), { recursive: true });
+      const site = join(dir, toolchain, "lib", "python3.99", "site-packages");
+      mkdirSync(join(dir, toolchain, "bin"), { recursive: true });
       mkdirSync(join(site, "fine-1.0.dist-info"), { recursive: true });
-      writeFileSync(join(dir, "scripts", "toolchain", "bin", "python3"), launcher, { mode: 0o755 });
-      writeFileSync(join(site, "fine.py"), "X = 1\n");
+      writeFileSync(join(dir, toolchain, "bin", "python3"), launcher, { mode: 0o755 });
+      writeFileSync(join(site, "fine.py"), fine);
       writeFileSync(join(site, "broken.py"), "import a_module_no_machine_has\n");
       writeFileSync(join(site, "fine-1.0.dist-info", "RECORD"), "fine.py,,\nbroken.py,,\n");
       return dir;
@@ -419,6 +419,16 @@ describe("a harness written out for Claude Code", () => {
     rmSync(join(linked, "scripts", "toolchain", "bin", "python3"));
     symlinkSync("/nowhere/bin/python3.14", join(linked, "scripts", "toolchain", "bin", "python3"));
     await expect(ownPython(linked, env)).rejects.toThrow(/bin\/python3 cannot start here/u);
+    const hostPython = Bun.which("python3") ?? "/usr/bin/python3";
+    const piTree = tree(
+      "own-python-pi",
+      `#!/bin/sh\nPYTHONPATH="${site}" exec "${hostPython}" "$@"\n`,
+      "harness/.toolchain",
+      'import os\nassert os.environ["PATH"].split(":")[0].endswith("harness/.toolchain/bin")\n',
+    );
+    expect(
+      await ownPython(piTree, env, { toolchainDir: "harness/.toolchain", pathOrder: "prepend" }),
+    ).toMatch(/^its python3 is 3\.\d+\.\d+ and imports 1 of 2 of its modules, not broken$/u);
   });
 
   it("writes the starter's guide under the note with no tool or program line, and refuses a tree already made", async () => {
@@ -601,14 +611,22 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(score(...elsewhere, "--dry-run").exitCode).not.toBe(0);
     renameSync(`${tree}.build.kept`, `${tree}.build.json`);
     // `pi:starter` has no `.toolchain` and records `toolchain: null`; dry-running it must respect null instead of probing a missing toolchain dir.
+    const readExport = (name: string) =>
+      parseJsonAs<{ mode: string; toolchain: string | null }>(
+        readFileSync(join(out, "trees", name, "export.json"), "utf8"),
+      );
     const piStarter = ["--arm", "pi:starter", "--name", "pi-bare"];
     expect(score(...piStarter, "--dry-run").exitCode).toBe(0);
-    expect(
-      parseJsonAs<{ mode: string; toolchain: string | null }>(
-        readFileSync(join(out, "trees", "pi-bare", "export.json"), "utf8"),
-      ),
-    ).toMatchObject({ mode: "pi", toolchain: null });
+    expect(readExport("pi-bare")).toMatchObject({ mode: "pi", toolchain: null });
     expect(score(...piStarter, "--dry-run").exitCode).toBe(0);
+    expect(score("--arm", "pi:base", "--name", "base-pi-tooled", "--dry-run").exitCode).toBe(0);
+    expect(readExport("base-pi-tooled")).toMatchObject({ mode: "pi", toolchain: null });
+    expect(readFileSync(join(out, "trees", "base-pi-tooled.build.json"), "utf8")).toBe(
+      '{"of":"base","usd":0}\n',
+    );
+    expect(existsSync(join(out, "trees", "base-pi-tooled", "harness", "agent", "BUILT_AGENTS.md"))).toBe(
+      false,
+    );
     const unsaid = score(...arm);
     expect(unsaid.exitCode).not.toBe(0);
     expect(decodeOutput(unsaid.stderr)).toContain("--yes");
@@ -631,32 +649,58 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
   }, 240_000);
 
   it("strips Host-only from pi-solve prompts, stages harness into logs, and honors ANA_SOLVER_WRAP", async () => {
-    const made = await campaign("pi-host-only", () => undefined, {
-      ...MARKED,
-      guide: `# Operating Guide\n\nKeep general method.\n\n${HOST_ONLY}\nExam-only rule never shown outside.\n`,
-    });
-    const tree = join(root, "pi-wrapped-tree");
-    mkdirSync(join(tree, "harness"), { recursive: true });
-    cpSync(join(made.states, made.child), join(tree, "harness"), { recursive: true });
+    const stageCampaign = async (tag: string, guide: string) => {
+      const made = await campaign(tag, () => undefined, { ...MARKED, guide });
+      const dir = join(root, `${tag}-tree`);
+      mkdirSync(join(dir, "harness"), { recursive: true });
+      cpSync(join(made.states, made.child), join(dir, "harness"), { recursive: true });
+      return dir;
+    };
+    const dryRun = (tag: string, treeDir: string) => {
+      const traj = join(root, `pi-${tag}-${String(runtimeProcess.pid)}.jsonl`);
+      const argv = piAgent(pilot).argv({ prompt: "Solve task.", treeDir, workspace: root, traj });
+      expect(runSync([...argv, "--dry-run"], { cwd: root }).exitCode).toBe(0);
+      const logs = argv[argv.indexOf("--logs") + 1] ?? "";
+      return {
+        argv,
+        result: parseJsonAs<{ ending: string; tools: string[]; prompt: string }>(
+          readFileSync(join(logs, RESULT_FILE), "utf8"),
+        ),
+      };
+    };
+    const cleanTree = await stageCampaign(
+      "pi-host-only",
+      `# Operating Guide\n\nKeep general method.\n\n${HOST_ONLY}\nExam-only rule never shown outside.\n`,
+    );
+    const leakyTree = await stageCampaign(
+      "pi-leaky-guide",
+      "# Operating Guide\n\nRead public/task.json and write answer.json.\n",
+    );
+    const bareTree = join(root, "pi-bare-tree");
+    writeBare(join(bareTree, "harness"));
     const prevWrap = runtimeProcess.env.ANA_SOLVER_WRAP;
     runtimeProcess.env.ANA_SOLVER_WRAP = "/usr/bin/env";
     try {
-      const traj = join(root, `pi-wrap-${String(runtimeProcess.pid)}.jsonl`);
-      const argv = piAgent(pilot).argv({ prompt: "Solve task.", treeDir: tree, workspace: root, traj });
+      const { argv, result } = dryRun("wrap", cleanTree);
       expect(argv[0]).toBe("/usr/bin/env");
       const staged = argv[argv.indexOf("--harness") + 1] ?? "";
-      expect(staged).not.toBe(join(tree, "harness"));
+      expect(staged).not.toBe(join(cleanTree, "harness"));
       expect(existsSync(join(staged, "agent", "BUILT_AGENTS.md"))).toBe(true);
-      const logs = argv[argv.indexOf("--logs") + 1] ?? "";
-      const dry = runSync([...argv, "--dry-run"], { cwd: root });
-      expect(dry.exitCode).toBe(0);
-      const result = parseJsonAs<{ ending: string; tools: string[]; prompt: string }>(
-        readFileSync(join(logs, RESULT_FILE), "utf8"),
-      );
       expect(result.ending).toBe("dry-run");
       expect(result.tools).toStrictEqual(["bash", "submit"]);
-      expect(result.prompt).toContain("Keep general method.");
+      for (const piece of ["<tools>", "<rules>", "<project_context>", "Keep general method."]) {
+        expect(result.prompt).toContain(piece);
+      }
       expect(result.prompt).not.toContain("Exam-only rule never shown outside.");
+      expect(result.prompt).not.toContain("This task has no input.json and no answer.json");
+      expect(dryRun("leaky", leakyTree).result.prompt).toContain(
+        "This task has no input.json and no answer.json",
+      );
+      const bare = dryRun("bare", bareTree).result;
+      expect(bare.tools).toStrictEqual(["read", "bash", "edit", "write", "submit"]);
+      expect(bare.prompt).toContain("<tools>");
+      expect(bare.prompt).not.toContain("<project_context>");
+      expect(bare.prompt).not.toContain("This task has no input.json and no answer.json");
     } finally {
       if (prevWrap === undefined) delete runtimeProcess.env.ANA_SOLVER_WRAP;
       else runtimeProcess.env.ANA_SOLVER_WRAP = prevWrap;

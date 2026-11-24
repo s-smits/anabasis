@@ -16,6 +16,11 @@ export interface PublicTask {
   readonly publicInput: JsonValue;
 }
 
+type ExternalTold = Pick<Told, "tools" | "home" | "guide"> & {
+  readonly addendum: string;
+  readonly environment: string;
+};
+
 export interface Told {
   readonly tools: readonly SeatTool[];
   readonly home: string;
@@ -95,7 +100,7 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
     .join("\n");
 }
 
-export function systemPrompt(told: Told): string {
+export function systemPrompt(told: Told | ExternalTold): string {
   const tools = told.tools.map(
     ({ name, description }) => `- ${name}: ${description.replaceAll(/\s+/g, " ").trim()}`,
   );
@@ -105,18 +110,20 @@ export function systemPrompt(told: Told): string {
     "Be concise in your responses",
     "Show file paths clearly when working with files",
   ];
+  const addendum = "addendum" in told ? told.addendum : duty(told);
+  const env = "environment" in told ? told.environment : environment(told);
   return [
     "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
     `<tools>\n${tools.length === 0 ? "(none)" : tools.join("\n")}\n</tools>`,
     `<rules>\n${rules.map((rule) => `- ${rule}`).join("\n")}\n</rules>`,
-    `<addendum>\n${duty(told)}\n</addendum>`,
+    `<addendum>\n${addendum}\n</addendum>`,
     ...(told.guide === null
       ? []
       : [
           `<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path="${GUIDE_FILE}">\n${told.guide}\n</project_instructions>\n</project_context>`,
         ]),
     `<cwd>\n${told.home.replaceAll("\\", "/")}\n</cwd>`,
-    `<environment>\n${environment(told)}\n</environment>`,
+    `<environment>\n${env}\n</environment>`,
   ].join("\n\n");
 }
 

@@ -1,6 +1,6 @@
 ---
 name: regression-evals-analyzer
-description: "Use when diagnosing why a promoted harness regressed or stalled on an external benchmark or domain evaluation (e.g. JobBench, hardware suites, or future evals), or before launching a WRI on a benchmark-backed domain. Checks `minPromo`, gates on paired external ablation (`runs bench --pi`, pairing `builtSolver` against `bareSolver` via `--arm pi:base`), runs `bun run wri regressions`, writes `<out>/regressions.txt` automatically in `wri start`, injects `{evalRegressions}` into `wri synthesis` (`section 0b`), supports gitignored `/.wri/domains/<domain>/lanes.md`, and traces external rubric failures and unused tools back to the campaign's build log."
+description: "Use when diagnosing why a promoted harness regressed or stalled on an external benchmark or domain evaluation (e.g. JobBench, hardware suites, or future evals), or before launching a WRI on a benchmark-backed domain. Checks `minPromo`, gates on paired external ablation (`runs bench`, pairing `builtSolver` against `bareSolver` via `--arm pi:base`), runs `bun run wri regressions`, writes `<out>/regressions.txt` automatically in `wri start`, injects `{evalRegressions}` into `wri synthesis` (`section 0b`), supports gitignored `/.wri/domains/<domain>/lanes.md`, and traces external rubric failures and unused tools back to the campaign's build log."
 ---
 
 # Regression Evals Analyzer
@@ -25,7 +25,7 @@ bun run wri regressions --log <run-or-log> [--min-promo N] [--bench <name>] [--a
 ```
 
 1. **Check domain and `minPromo` readiness:** run `bun run wri check --log <run>`. Confirm domain, promotion count against `minPromo`, matched benchmark store, paired arm (`builtSolver` vs `bareSolver` or legacy `baseStarter`), and any local `/.wri/domains/<domain>/` lanes.
-2. **Gate on paired ablation first:** if `promotions >= minPromo` and `check` / `regressions` reports `ablation-needed` (exit `1`), run the paired external ablation (`bun run runs bench <run> --pi`, respecting operator budget caps and [run-improvement-campaign/references/outside.md](../run-improvement-campaign/references/outside.md)) and sync records (`bun run runs fetch`).
+2. **Gate on paired ablation first:** if `promotions >= minPromo` and `check` / `regressions` reports `ablation-needed` (exit `1`), run the paired external ablation (`bun run runs bench <run>`, respecting operator budget caps and [run-improvement-campaign/references/outside.md](../run-improvement-campaign/references/outside.md)) and sync records (`bun run runs fetch`).
 3. **Run the deterministic join:** execute `bun run wri regressions --log <run>`. Inspect:
    - Internal starter confirmation (`overall` and `written-after`) beside the external paired delta (`built - baseline`, W-L-T, spend, `CUT` counts).
    - **Per-task regressions** sorted worst-first, with exact missed rubric indices, weights, and criteria counts (`R<n>(w<W>,<passed>/<total>)`).

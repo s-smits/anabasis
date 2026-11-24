@@ -48,7 +48,6 @@ import { Type } from "typebox";
 import { openrouter } from "#src/agent/backends/models.ts";
 import { read } from "#src/kernel/log.ts";
 import { unanswered } from "#src/kernel/solve.ts";
-import { GUIDE_FILE } from "#src/meta/bundle-layout.ts";
 import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -56,13 +55,13 @@ import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { selectedCodingTools } from "#src/tools/coding.ts";
+import { CODING_IMAGES, selectedCodingTools } from "#src/tools/coding.ts";
 import { ending, text, tool } from "#src/tools/answer.ts";
 import type { SolveClock } from "#src/tools/command.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
 import { portableGuide } from "#src/harness/starter.ts";
-import { NUDGE } from "#src/solver/prompt.ts";
+import { NUDGE, systemPrompt } from "#src/solver/prompt.ts";
 import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
 import { type Seat, type SeatTool, sit } from "#src/agent/session.ts";
 import { trajectoryOf } from "./atif.ts";
@@ -75,6 +74,7 @@ export const TRACE_FILE = "pi-log.jsonl";
 export const RESULT_FILE = "pi-result.json";
 /** A name of the environment that holds a credential, by the way such names are written. */
 const CREDENTIAL = /TOKEN|API_KEY|SECRET|PASSWORD/u;
+const CAMPAIGN_REF_RE = /\b(?:input|answer)\.json\b|public\/(?:task\.json|files\/|resources\/)/u;
 
 const OPTIONS = {
   harness: { type: "string" },
@@ -153,9 +153,11 @@ function duty(ask: Asked, guide: string | null): string {
     "Complete the task the first message gives with the available tools; the method is yours to choose.",
     "For source code or files, write complete working files, not fragments or descriptions.",
     "Your work is graded as the working directory and the files the task names stand when the task ends, by checks you cannot see; call submit when it is complete.",
-    // A harness built in a campaign learned a contract of `input.json` in and `answer.json` out;
-    // a benchmark has neither, so its guide's word on them is named as not applying here.
-    "This task has no input.json and no answer.json: the first message is the whole task, and the files you leave are the answer, whatever a guide says of those two files.",
+    ...(guide !== null && CAMPAIGN_REF_RE.test(guide)
+      ? [
+          "This task has no input.json and no answer.json: the first message is the whole task, and the files you leave are the answer, whatever a guide says of those two files.",
+        ]
+      : []),
     ask.modelTurns === undefined
       ? `The case has ${String(Math.round(ask.wallSeconds / 60))} minutes of solve time. Every tool result ends with how much of it is used. When it runs out the task ends with the files as they stand.`
       : `The case has ${String(Math.round(ask.wallSeconds / 60))} minutes of solve time and ${String(ask.modelTurns)} turns of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. When either runs out the task ends with the files as they stand.`,
@@ -212,7 +214,7 @@ async function solve(ask: Asked) {
   const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree);
   const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
   const coding = {
-    read: createReadTool(),
+    read: createReadTool({ images: CODING_IMAGES }),
     bash: createBashTool(prefix === undefined ? {} : { commandPrefix: prefix }),
     edit: createEditTool(),
     write: createWriteTool(),
@@ -220,20 +222,23 @@ async function solve(ask: Asked) {
   const said = { submitted: false };
   // In the order a campaign's solver is given them (`solverTools`, `src/solver/run.ts`).
   const defined = [
-    ...selectedCodingTools(harness.presets).flatMap((name) => coding[name] ?? []),
+    ...selectedCodingTools(harness.presets)
+      .flatMap((name) => coding[name] ?? [])
+      .map((each): SeatTool => ({ ...each, executionMode: "sequential" })),
     submitTool(said),
   ];
   const programs = installedPrograms(harness.toolTree);
   const stripped = harness.guide === null ? "" : portableGuide(harness.guide);
   const guide = stripped.trim() === "" ? null : stripped;
-  const prompt = [
-    duty(ask, guide),
-    `Working directory: ${cwd}`,
-    ...(programs.length === 0
-      ? []
-      : [`Programs this harness installed run by name: ${programs.join(", ")}.`]),
-    ...(guide === null ? [] : [`Project-specific instructions and guidelines (${GUIDE_FILE}):\n${guide}`]),
-  ].join("\n\n");
+  const programLine =
+    programs.length === 0 ? "" : `\n- Programs this harness installed run by name: ${programs.join(", ")}.`;
+  const prompt = systemPrompt({
+    tools: defined,
+    home: cwd,
+    guide,
+    addendum: duty(ask, guide),
+    environment: `- Commands run in the task workspace with your working directory as cwd.${programLine}`,
+  });
   const { route } = ask;
   // A model of the campaign's own backends is served as a campaign's solve is (`practised`).
   const served: Served =

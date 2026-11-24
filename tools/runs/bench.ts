@@ -1,5 +1,5 @@
 /**
- * `bun run runs bench <run> [--bench <name>] [--as <label>] [--harness <kept>] [--pi] [--login N] [--wait] [--yes]`
+ * `bun run runs bench <run> [--bench <name>] [--as <label>] [--harness <kept>] [--baseline base|starter] [--claude] [--login N] [--wait] [--yes]`
  * `bun run runs bench [--bench <name>] [--store <dir>] [--host <name>]`
  */
 import { UNAME_PLACES } from "#src/harness/place.ts";
@@ -47,7 +47,7 @@ export interface Plan {
   readonly held: string | null;
   /** Whether to wait for the runner host to become idle rather than failing immediately if busy. */
   readonly wait: boolean;
-  /** Which solver runtime rolls the arm: exported Claude Code (`claude`, default) or native `pi`. */
+  /** Which solver runtime rolls the arm: native `pi` (default) or exported Claude Code (`claude`). */
   readonly runtime?: "claude" | "pi";
   readonly baseline?: "base" | "starter";
 }
@@ -111,12 +111,26 @@ export function opened(trees: string, label: string): string {
   return `test ! -e ${tree} && mkdir -p ${trees} && rm -rf ${part} && mkdir ${part} && tar -xzf - -C ${part} && (cd ${part} && ${SUMS} -c --quiet ${quoted(`${label}.sha256`)}) && links=$(find ${part} -type l -lname '/*') && { test -z "$links" || { echo "links to absolute paths: $links" >&2; false; }; } && rm ${part}/${quoted(`${label}.sha256`)} && mv ${part}/${quoted(label)} ${tree} && mv ${part}/${quoted(`${label}.build.json`)} ${trees}/ && rmdir ${part}`;
 }
 
+function baselineKindOf(plan: Pick<Plan, "runtime" | "baseline">): "base" | "starter" {
+  return plan.baseline ?? ((plan.runtime ?? "pi") === "pi" ? "base" : "starter");
+}
+
+function baselineAsked(runtime: "claude" | "pi", asked: string | undefined): "base" | "starter" {
+  if (asked === undefined) return runtime === "pi" ? "base" : "starter";
+  if (asked !== "base" && asked !== "starter") throw new Misused("--baseline takes base or starter");
+  if (runtime === "claude" && asked === "base") {
+    throw new Misused("--baseline base requires native pi (omit --claude)");
+  }
+  return asked;
+}
+
 /** Builds the ordered shell steps for `plan`. Ensures the runner host is idle before loading it and
  *  completes both dry runs before spending compute on rollouts. */
 export function stepsOf(plan: Plan): Step[] {
   const { run, label, login, holder, runner, sitting } = plan;
-  const prefix = plan.runtime === "pi" ? "pi:" : "";
-  const baselineKind = plan.baseline ?? (plan.runtime === "pi" ? "base" : "starter");
+  const runtime = plan.runtime ?? "pi";
+  const prefix = runtime === "pi" ? "pi:" : "";
+  const baselineKind = baselineKindOf(plan);
   const baselineLabel = `${baselineKind}-${label}`;
   const stage = `"\${TMPDIR:-/tmp}"/${quoted(`ana-outside-read-${label}`)}`;
   const on = (says: string, script: string): Step => ({ says, command: shellOn(runner, script) });
@@ -190,7 +204,7 @@ export function heldAs(
   store: ReadonlyMap<string, string>,
   harness: string,
   label: string,
-  { as, modes, runtime = "claude" }: HeldAsOptions = {},
+  { as, modes, runtime = "pi" }: HeldAsOptions = {},
 ): { again: string[]; held: string | null } {
   const held = store.get(label) ?? null;
   if (held !== null && harness.length === 64 && held !== harness) {
@@ -273,25 +287,20 @@ async function planOf(
     as?: string;
     baseline?: string;
     bench?: string;
+    claude: boolean;
     harness?: string;
     login?: string;
-    pi: boolean;
     wait: boolean;
   },
 ): Promise<Plan | null> {
-  if (values.baseline !== undefined && values.baseline !== "base" && values.baseline !== "starter") {
-    throw new Misused("--baseline takes base or starter");
-  }
-  if (values.baseline === "base" && !values.pi) {
-    throw new Misused("--baseline base requires --pi (Claude Code runs pair against starter)");
-  }
-  const baseline = values.baseline ?? (values.pi ? "base" : "starter");
+  const runtime = values.claude ? "claude" : "pi";
+  const baseline = baselineAsked(runtime, values.baseline);
   const env = runtimeProcess.env;
   const settings = settingsOf(run, env, values.bench);
   const harness = values.harness ?? promoted(logEvents(readNamed(run).path));
   if (harness === null) throw new Error(`${run} has promoted no harness: there is nothing to read outside`);
   // Single-letter harness identifiers are only meaningful alongside `view`, so require an explicit `--as` label.
-  const defaultLabel = harness.length === 64 ? `${values.pi ? "pi-" : ""}${harness.slice(0, 8)}` : "";
+  const defaultLabel = harness.length === 64 ? `${runtime === "pi" ? "pi-" : ""}${harness.slice(0, 8)}` : "";
   const label = values.as ?? defaultLabel;
   if (!isSafePathSegment(label)) throw new Misused();
   const said = await runTextOrThrow(shellOn(settings.runner, probed(settings)));
@@ -305,7 +314,6 @@ async function planOf(
   const modes = new Map(
     [...modeRows].map(([, one = "", mode = "claude"]) => [one, mode === "pi" ? "pi" : "claude"] as const),
   );
-  const runtime = values.pi ? "pi" : "claude";
   const { again, held } = heldAs(
     new Map([...rows].map(([, one = "", of = ""]) => [one, of])),
     harness,
@@ -336,7 +344,7 @@ async function planOf(
     python,
     held,
     wait: values.wait,
-    runtime: values.pi ? "pi" : "claude",
+    runtime,
     baseline,
   };
 }
@@ -349,11 +357,11 @@ export async function bench(args: readonly string[]): Promise<void> {
       as: { type: "string" },
       baseline: { type: "string" },
       bench: { type: "string" },
+      claude: { type: "boolean", default: false },
       host: { type: "string" },
       store: { type: "string" },
       harness: { type: "string" },
       login: { type: "string" },
-      pi: { type: "boolean", default: false },
       wait: { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
     },
@@ -371,7 +379,7 @@ export async function bench(args: readonly string[]): Promise<void> {
   const plan = await planOf(run, values);
   if (plan === null) return;
   const { label, held } = plan;
-  const baselineKind = plan.baseline ?? (plan.runtime === "pi" ? "base" : "starter");
+  const baselineKind = baselineKindOf(plan);
   console.log(
     `${run} read outside on ${plan.bench} as ${label} and ${baselineKind}-${label}, on login ${plan.login}, for ${plan.place} (python3 ${plan.python})${held === null ? "" : `; the store holds ${label} already, rolled as it stands`}`,
   );

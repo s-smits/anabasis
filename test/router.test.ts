@@ -424,39 +424,39 @@ describe("which host runs a task", () => {
     expect(ran("fake-peer")).toBe(true);
   });
 
-  it("leaves a host held by a benchmark's arm out of auto while still running there with a warning when named explicitly", () => {
+  it("leaves benchmark hosts out of auto unconditionally while still guarding explicit naming and landing overrides", () => {
     const EVAL_RUNNER = JSON.stringify([
       { name: "bench", host: "zbook", store: "store", sitting: "sitting.sh", packs: ["pack"] },
     ]);
     const sitting = join(hostHome("fake-linux"), "sitting.sh");
     const says = (first: string) => script(sitting, `#!/bin/sh\necho '${first}'\necho 'the last rows'\n`);
     try {
+      // Even when the benchmark host is idle at 0 load and m1 is heavily loaded, auto never probes or picks it.
       fresh();
-      says("an arm holds the lock: pid 1");
-      // The held host idles and the other is loaded, so loads alone would send the task to it.
+      says("idle");
       loaded("fake-linux", 4, 0);
       loaded("fake-mac", 2, 400);
       const spread = run(["test"], { ANA_CHECK_HOST: "auto", EVAL_RUNNER });
       expect(spread.status, spread.stderr).toBe(0);
-      expect(spread.stderr).toContain("runner: a benchmark's arm holds zbook");
       expect(spread.stderr).not.toMatch(/1m load a core[^\n]*zbook/u);
+      expect(connections().filter((each) => each.host === "fake-linux")).toEqual([]);
       expect(calls(hostHome("fake-linux"))).toEqual([]);
-      // Naming the host explicitly warns and runs there anyway.
+      // Naming the benchmark host explicitly still runs armHolds: warns and runs when held.
+      says("an arm holds the lock: pid 1");
       const named = run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER });
       expect(named.status, named.stderr).toBe(0);
       expect(named.stderr).toContain(
         "runner: a benchmark's arm holds zbook: running there because ANA_CHECK_HOST named it",
       );
       expect(ran("fake-linux")).toBe(true);
-      // A sitting that cannot be asked is no idle one: skipped in auto, warned when named.
+      // A missing sitting script counts as held when named explicitly.
       fresh();
       rmSync(sitting);
-      const silentAuto = run(["test"], { ANA_CHECK_HOST: "auto", EVAL_RUNNER });
-      expect(silentAuto.status, silentAuto.stderr).toBe(0);
-      expect(calls(hostHome("fake-linux"))).toEqual([]);
-      expect(run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER }).status).toBe(0);
+      const missingNamed = run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER });
+      expect(missingNamed.status, missingNamed.stderr).toBe(0);
+      expect(missingNamed.stderr).toContain("runner: a benchmark's arm holds zbook");
       expect(ran("fake-linux")).toBe(true);
-      // An idle sitting takes the task without the arm-holds warning.
+      // An idle sitting takes an explicitly named task without the arm-holds warning.
       says("idle");
       const idle = run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER });
       expect(idle.status, idle.stderr).toBe(0);
@@ -469,13 +469,17 @@ describe("which host runs a task", () => {
       expect(spared.status, spared.stderr).toBe(69);
       expect(spared.stderr).toContain("runner: a benchmark's arm holds zbook: no check goes there now");
       expect(calls(hostHome("fake-linux"))).toEqual([]);
-      // A hung sitting script is bounded by ANA_RUNNER_PICK_WAIT, treated as held, and does not stall auto.
+      // A hung sitting script on a landing-placed check is bounded by ANA_RUNNER_PICK_WAIT and refused with 69.
       script(sitting, "#!/bin/sh\nsleep 30\necho idle\n");
       fresh();
-      loaded("fake-mac", 2, 1);
       const started = performance.now();
-      const hung = run(["test"], { ANA_CHECK_HOST: "auto", ANA_RUNNER_PICK_WAIT: "1", EVAL_RUNNER });
-      expect(hung.status, hung.stderr).toBe(0);
+      const hung = run(["test"], {
+        ANA_CHECK_HOST: "zbook",
+        ANA_RUNNER_SPARE_HELD: "1",
+        ANA_RUNNER_PICK_WAIT: "1",
+        EVAL_RUNNER,
+      });
+      expect(hung.status, hung.stderr).toBe(69);
       expect(performance.now() - started).toBeLessThan(8000);
       expect(hung.stderr).toContain("runner: a benchmark's arm holds zbook");
       expect(calls(hostHome("fake-linux"))).toEqual([]);
@@ -486,7 +490,7 @@ describe("which host runs a task", () => {
     }
   });
 
-  it("fails over under auto when the chosen host fails pre-task setup, releasing its slot, and trims whitespace on ANA_CHECK_HOST", () => {
+  it("fails over under auto on pre-task refusal and mid-task no-verdict drop, releasing the slot, and trims whitespace on ANA_CHECK_HOST", () => {
     fresh();
     spreadLoads();
     // m1 is least loaded (0.0) but fails free-space check (exit 69); auto must release m1's slot and run elsewhere.
@@ -495,6 +499,15 @@ describe("which host runs a task", () => {
     expect(failedOver.status, failedOver.stderr).toBe(0);
     expect(failedOver.stderr).toContain("trying another place");
     expect(calls(hostHome("fake-mac"))).toEqual([]);
+    expect(heldIn(queueOf("fake-mac"))).toEqual([]);
+    expect(ran("fake-linux") || calls(home).length > 0).toBe(true);
+    // Mid-task ssh drop (exit 255 / no verdict) on m1 also fails over cleanly under auto.
+    fresh();
+    spreadLoads();
+    writeFileSync(join(hostHome("fake-mac"), "drops"), "");
+    const midDrop = run(["test"], { ANA_CHECK_HOST: "auto" });
+    expect(midDrop.status, midDrop.stderr).toBe(0);
+    expect(midDrop.stderr).toContain("no verdict from m1; trying another place");
     expect(heldIn(queueOf("fake-mac"))).toEqual([]);
     expect(ran("fake-linux") || calls(home).length > 0).toBe(true);
     // When every remote host fails pre-task under auto, it falls back cleanly to this machine.
@@ -603,6 +616,27 @@ describe("what reaches the host", () => {
     commit(source, "third");
     expect(run(["test"], { ANA_CHECK_HOST: "m1" }).status).toBe(0);
     expect(git(target, "rev-parse", "HEAD")).toBe(git(source, "rev-parse", "HEAD"));
+
+    // Repeating a check on the same snapshot skips git push; mutating a file pushes again; absolute paths
+    // inside the worktree normalize to repo-relative paths on the remote host while outside paths stay verbatim.
+    fresh();
+    const reused = run(["test", join(source, "test/example.test.ts"), `${source}/`, "/tmp/outside.test.ts"], {
+      ANA_CHECK_HOST: "m1",
+    });
+    expect(reused.status, reused.stderr).toBe(0);
+    expect(reused.stderr).toContain("runner: reused ");
+    expect(connections()).toHaveLength(3);
+    expect(lastCall(hostHome("fake-mac"))).toMatchObject({
+      args: "run test test/example.test.ts . /tmp/outside.test.ts",
+    });
+    fresh();
+    writeFileSync(join(source, "edited"), "changed-again");
+    const resent = run(["test"], { ANA_CHECK_HOST: "m1" });
+    expect(resent.status, resent.stderr).toBe(0);
+    expect(resent.stderr).toContain("runner: sent ");
+    expect(connections()).toHaveLength(4);
+    expect(readFileSync(join(target, "edited"), "utf8")).toBe("changed-again");
+    git(source, "checkout", "-q", "--", "edited");
   });
 
   it("returns the task's exit status where the server reports 0 for every session, and no verdict where the session drops", () => {
@@ -697,17 +731,21 @@ describe("the slots", () => {
     }
   }
 
-  it("spreads ANA_CHECK_HOST=auto tasks that read one order over its free slots, least loaded first", async () => {
+  it("spreads ANA_CHECK_HOST=auto bursts across idle hosts via active slot occupancy before filling second slots", async () => {
     fresh();
-    spreadLoads();
+    // m1 (0.00, 2 slots) and zbook (0.00, 1 slot) are both idle; burst tasks must fan to zbook before
+    // doubling up on m1's second slot regardless of this machine's real load, then fill every remaining slot.
+    loaded("fake-mac", 2, 0);
+    loaded("fake-linux", 4, 0);
     try {
-      // m1 is the least loaded and has two slots, this machine one, and zbook, the most loaded, one.
       await started("auto-1", { ANA_CHECK_HOST: "auto" });
       await started("auto-2", { ANA_CHECK_HOST: "auto" });
-      expect(heldIn(queue).length).toBe(2);
+      expect(heldIn(queue).length).toBeLessThanOrEqual(1);
       await started("auto-3", { ANA_CHECK_HOST: "auto" });
-      expect(heldIn(queueOf("local")).length).toBe(1);
+      expect(heldIn(queueOf("fake-linux")).length).toBe(1);
       await started("auto-4", { ANA_CHECK_HOST: "auto" });
+      expect(heldIn(queue).length).toBe(2);
+      expect(heldIn(queueOf("local")).length).toBe(1);
       expect(heldIn(queueOf("fake-linux")).length).toBe(1);
       expect(run(["test"], { ANA_CHECK_HOST: "auto", ANA_RUNNER_QUEUE_WAIT: "0" }).status).toBe(75);
     } finally {

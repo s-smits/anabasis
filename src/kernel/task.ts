@@ -201,8 +201,8 @@ export function foldsEvent(kind: EventKind): boolean {
  * one to its task admission twice, moves one where it cannot go, or releases or disputes one whose package
  * never passed, is refused, as a line that is no event is.
  */
-export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> {
-  return taskSets(events).states;
+export function taskStates(events: readonly LogEvent[], upTo = events.length - 1): Map<string, TaskState> {
+  return taskSets(events, upTo).states;
 }
 
 /** The same fold with the two sets beside the states, so that what is held out and what is

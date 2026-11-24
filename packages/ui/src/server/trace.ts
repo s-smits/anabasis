@@ -9,15 +9,17 @@
  * Turns and calls are the kernel's reading of the trace events (`traceOf`, `src/kernel/trace.ts`),
  * the one the Builder's `read_trace` pages, with a call's result cut for the default tier.
  */
+import { eventsOf } from "../../../../src/kernel/log.ts";
 import type { Ending } from "../../../../src/kernel/solve.ts";
 import type { Solve } from "../../../../src/kernel/solves.ts";
 import { type Seat, traceOf } from "../../../../src/kernel/trace.ts";
 import { isNumber, isString, type JsonObject } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
+import { countBy } from "../../../../src/meta/tally.ts";
 import { settledLabels } from "../../../../src/referee/agreement.ts";
 import type { Ruling } from "../../../../src/referee/referee.ts";
 import type { SolveRow, Tier, ToolCall, Turn } from "../models.ts";
-import { callsIn, conditionsIn, type Log, once, practiceIn } from "./folds.ts";
+import { conditionsIn, type Log, once, practiceIn } from "./folds.ts";
 import { movesIn } from "./moves.ts";
 import { rulingWithheld } from "./withheld.ts";
 
@@ -56,6 +58,17 @@ const sidesIn = once(
 
 /** The labels the settled reports hold, by solve (`settledLabels`): a person's word stands over a ruling. */
 const labelsIn = once(({ events }) => settledLabels(events));
+const callsIn = once(({ events }) =>
+  countBy(eventsOf(events, "solve.call"), ({ event: { data } }) => (isString(data.solve) ? data.solve : "")),
+);
+const findingsIn = once(
+  ({ events }) =>
+    new Map(
+      eventsOf(events, "referee.finding").flatMap(({ event: { data } }) =>
+        isString(data.solve) ? [[data.solve, data] as const] : [],
+      ),
+    ),
+);
 
 /** What stands of a solve's rejection, who said it and why; null where nobody has ruled. */
 export function rulingOf(
@@ -66,9 +79,7 @@ export function rulingOf(
   if (label !== undefined) {
     return { ruling: label, by: "label", reason: "a person's label, which stands over the ruling" };
   }
-  const finding = log.events.findLast(
-    ({ kind, data }) => kind === "referee.finding" && data.solve === solve,
-  )?.data;
+  const finding = findingsIn(log).get(solve);
   const ruling = RULINGS.find((each) => each === finding?.ruling);
   if (finding === undefined || ruling === undefined) return null;
   // The host rules what needs no reading and meters nothing; a reader's finding carries its probes'

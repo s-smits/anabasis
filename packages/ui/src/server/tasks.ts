@@ -11,7 +11,6 @@ import { passed } from "../../../../src/kernel/solves.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import type {
-  ComparisonBar,
   Issue,
   LeftOut,
   Query,
@@ -22,10 +21,9 @@ import type {
   TaskRow,
 } from "../models.ts";
 import { type Reading, Unanswerable } from "./context.ts";
-import { drawsIn, type Log, once, proposalsIn, ranIn, setsIn } from "./folds.ts";
+import { drawsIn, once, proposalsIn, ranIn, setsIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
-import { ownSolves } from "./move.ts";
-import { barsIn, outcomeOf, pairsIn, shareOf } from "./moves.ts";
+import { barsIn, outcomeOf, ownSolves, pairsIn, shareOf } from "./moves.ts";
 import { examTier, solveRow } from "./trace.ts";
 
 /** When each task version was proposed. Derived: the place of its `task.proposed`, by version. */
@@ -42,57 +40,57 @@ const proposedIn = once(
 const rowsIn = once((log): TaskRow[] => {
   const { states } = setsIn(log);
   const proposed = proposedIn(log);
+  const draws = drawsIn(log);
   return proposalsIn(log).map(({ version, taskId }) => ({
     version,
     id: taskId,
     state: states.get(version) ?? "held",
-    draw: drawsIn(log).get(version) ?? null,
+    draw: draws.get(version) ?? null,
     proposedAt: proposed.get(version) ?? null,
   }));
 });
+
+const rowByVersionIn = once((log) => new Map(rowsIn(log).map((row) => [row.version, row])));
+const taskByVersionIn = once((log) => new Map(proposalsIn(log).map(({ version, task }) => [version, task])));
+const ranByTaskIn = once((log) => Map.groupBy(ranIn(log), ({ under }) => under.task));
 
 /** The lists of a report that name a task it fixed and left out, in the order the chart takes them
  *  (`splitOf`, `moves.ts`), so that a task named in two counts where the chart counts it. */
 const LEFT_OUT = ["disputed", "short", "withdrawn"] as const satisfies readonly (keyof LeftOut)[];
 
-/** What comparison `bar` came to on task `version`: its pair's outcome, or set aside, with each
- *  side's valid answers over its solves; why its report left the task out, where it fixed the task
- *  and tallied it nowhere; null where it did not fix the task. A set-aside task's sides are cut to
- *  the comparison's solves a side, as a pair's are (`pairsOf`, `src/kernel/compare.ts`): under an
- *  A/A reading the reference solved it twice as often, and the further arm is no part of its side.
- *  A task left out says why, rather than "not scored" beside its own solves in that comparison, as
- *  the fixture's word-05, which a person's label disputed in b-2, shows. */
-function cellOf(
-  log: Log,
-  bar: Pick<ComparisonBar, "id" | "old" | "fresh">,
-  version: string,
-): TaskCell | TaskLeftOut | null {
-  const { id } = bar;
-  const pair = pairsIn(log)
-    .get(id)
-    ?.find(({ task }) => task === version);
-  const report = reported(log.events, id);
-  if (pair !== undefined) {
-    return { outcome: outcomeOf(pair), old: shareOf(pair.old), fresh: shareOf(pair.fresh) };
-  }
-  if (!(report?.aside ?? []).includes(version)) {
-    const leftOut = LEFT_OUT.find((list) => (report?.[list] ?? []).includes(version));
-    return leftOut === undefined ? null : { leftOut };
-  }
-  // A task set aside is in no pair: each side's share is of the comparison's own counted solves of
-  // it, in the order they started, as many as a side has (`ownSolves`).
-  const solves = fixedIn(log.events, id)?.solves ?? 0;
-  const under = (harness: string) =>
-    shareOf(ownSolves(log, id, version, harness, solves).map((solve) => passed(solve) === true));
-  return { outcome: "aside", old: under(bar.old), fresh: under(bar.fresh) };
-}
-
-export function tasksAnswer(reading: Reading, query: Query<"tasks">): TaskGrid {
-  const { log, issues } = campaignAt(reading, query.key);
-  const bars = barsIn(log);
+/** Every task version against every comparison, pre-indexed once per log: each comparison's pairs,
+ *  set-aside tasks, left-out reasons and solve count are indexed once rather than re-scanned per cell. */
+const gridIn = once((log) => {
+  const [bars, pairs] = [barsIn(log), pairsIn(log)];
+  const indexed = bars.map((bar) => {
+    const report = reported(log.events, bar.id);
+    const leftOut = new Map(
+      LEFT_OUT.toReversed().flatMap((list) => (report?.[list] ?? []).map((task) => [task, list] as const)),
+    );
+    return {
+      bar,
+      pairByTask: new Map((pairs.get(bar.id) ?? []).map((pair) => [pair.task, pair])),
+      aside: new Set(report?.aside),
+      leftOut,
+      solves: fixedIn(log.events, bar.id)?.solves ?? 0,
+    };
+  });
+  const cell = (column: (typeof indexed)[number], version: string): TaskCell | TaskLeftOut | null => {
+    const pair = column.pairByTask.get(version);
+    if (pair !== undefined) {
+      return { outcome: outcomeOf(pair), old: shareOf(pair.old), fresh: shareOf(pair.fresh) };
+    }
+    if (!column.aside.has(version)) {
+      const left = column.leftOut.get(version);
+      return left === undefined ? null : { leftOut: left };
+    }
+    const under = (harness: string) =>
+      shareOf(
+        ownSolves(log, column.bar.id, version, harness, column.solves).map((solve) => passed(solve) === true),
+      );
+    return { outcome: "aside", old: under(column.bar.old), fresh: under(column.bar.fresh) };
+  };
   return {
-    tier: reading.tier,
-    issues,
     columns: bars.map(({ id, move, kind, reading: read, cut, old, fresh }) => ({
       id,
       move,
@@ -102,20 +100,22 @@ export function tasksAnswer(reading: Reading, query: Query<"tasks">): TaskGrid {
       old,
       fresh,
     })),
-    rows: rowsIn(log).map((row) => ({
-      ...row,
-      cells: bars.map((bar) => cellOf(log, bar, row.version)),
-    })),
+    rows: rowsIn(log).map((row) => ({ ...row, cells: indexed.map((col) => cell(col, row.version)) })),
   };
+});
+
+export function tasksAnswer(reading: Reading, query: Query<"tasks">): TaskGrid {
+  const { log, issues } = campaignAt(reading, query.key);
+  return { tier: reading.tier, issues, ...gridIn(log) };
 }
 
 export function taskAnswer(reading: Reading, query: Query<"task">): TaskDetail {
   const { found, log, issues: read } = campaignAt(reading, query.key);
-  const row = rowsIn(log).find(({ version }) => version === query.id);
+  const row = rowByVersionIn(log).get(query.id);
   if (row === undefined) throw new Unanswerable(404, `no task version ${query.id} in this campaign`);
   const { tier } = reading;
   const exam = examTier(tier);
-  const task = proposalsIn(log).find(({ version }) => version === query.id)?.task ?? null;
+  const task = taskByVersionIn(log).get(query.id) ?? null;
   const shown = exam || row.state === "released";
   const issues: Issue[] = [...read];
   if (shown && task === null) {
@@ -126,9 +126,7 @@ export function taskAnswer(reading: Reading, query: Query<"task">): TaskDetail {
         "the log names this task by its id alone: its text is in the stored pack, which this server does not read",
     });
   }
-  const solves = ranIn(log)
-    .filter((solve) => solve.under.task === query.id)
-    .map((solve) => solveRow(log, solve, tier));
+  const solves = (ranByTaskIn(log).get(query.id) ?? []).map((solve) => solveRow(log, solve, tier));
   return {
     tier,
     issues,

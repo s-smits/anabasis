@@ -25,7 +25,15 @@ import { settingId } from "../kernel/condition.ts";
 import { failWrongPasses, familiesOf, wrongPasses } from "../kernel/history.ts";
 import { eventsOf, type LogEvent } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
-import { passed, ranUnder, rejected, rulingsOf, type Solve, solvesIn } from "../kernel/solves.ts";
+import {
+  countedSolves,
+  passed,
+  ranUnder,
+  rejected,
+  rulingsOf,
+  type Solve,
+  solvesIn,
+} from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -192,7 +200,8 @@ export const UNSETTLED = "unsettled";
 const NOTHING_TO_LABEL: ToLabel = { aside: [], others: [] };
 export const DEFECT = "check-defect";
 export const EARNED = "earned";
-export const NO_LABELS: ReadonlyMap<string, Ruling> = new Map();
+type Labels = ReadonlyMap<string, Ruling>;
+export const NO_LABELS: Labels = new Map();
 export const NOTHING = {
   scored: null,
   frontier: null,
@@ -227,10 +236,13 @@ const REPORT_KEYS = [
   ...(Object.keys(NOTHING) as (keyof typeof NOTHING)[]),
 ] satisfies readonly (keyof Report)[];
 
+const reportedIndex = (events: readonly LogEvent[], id: string): number =>
+  eventsOf(events, REPORTED).find(({ event }) => event.data.session === id)?.index ?? -1;
+
 /** Slice `events` up to and including the first report for comparison `id` so later comparisons or
  *  task-state changes do not alter its reading; returns `events` unchanged if unreported or at end. */
 function asReported(events: readonly LogEvent[], id: string): readonly LogEvent[] {
-  const own = eventsOf(events, REPORTED).find(({ event }) => event.data.session === id)?.index ?? -1;
+  const own = reportedIndex(events, id);
   return own === -1 || own === events.length - 1 ? events : events.slice(0, own + 1);
 }
 
@@ -286,12 +298,12 @@ export function reported(events: readonly LogEvent[], id: string): Report | null
 
 /** Return test-side solves eligible for comparison `fixed` (matching comparison id, harness, and
  *  setting), annotated with whether each solve yielded a countable pass or fail (`passed`). */
-export function solvesUnder(events: readonly LogEvent[], fixed: Fixed) {
+export function solvesUnder(events: readonly LogEvent[], fixed: Fixed, upTo = events.length - 1) {
   const harnesses = new Set([fixed.old, fixed.fresh, fixed.starter]);
-  return ranUnder(events).flatMap((solve) =>
+  const own = countedSolves(events, upTo).filter(({ start }) => start.comparison === fixed.id);
+  return ranUnder(events, own, upTo).flatMap((solve) =>
     solve.under.side === "test" &&
     harnesses.has(solve.under.harness) &&
-    solve.start.comparison === fixed.id &&
     settingId(solve.under) === fixed.setting
       ? [{ ...solve, counts: passed(solve) !== null }]
       : [],
@@ -302,9 +314,10 @@ export function solvesUnder(events: readonly LogEvent[], fixed: Fixed) {
  * Return all rejected answers in comparison `fixed`, paired with their task version and standing
  * verdict: human label from `labels` if present, otherwise the latest Referee ruling, or null.
  */
-export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
-  const ruled = rulingsOf(events);
-  return solvesUnder(events, fixed).flatMap(({ id, ending, under }) =>
+export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: Labels, upTo?: number) {
+  const end = upTo ?? events.length - 1;
+  const ruled = rulingsOf(events, end);
+  return solvesUnder(events, fixed, end).flatMap(({ id, ending, under }) =>
     rejected(ending)
       ? [{ solve: id, task: under.task, ruling: labels.get(id) ?? ruled.get(id) ?? null }]
       : [],
@@ -349,11 +362,7 @@ function setsOf(
  * Compute completion and review coverage for `fixed` at its first report without scoring. Later
  * solves and task-state transitions cannot retroactively alter this snapshot.
  */
-export function coverageOf(
-  all: readonly LogEvent[],
-  fixed: Fixed,
-  labels: ReadonlyMap<string, Ruling> = NO_LABELS,
-) {
+export function coverageOf(all: readonly LogEvent[], fixed: Fixed, labels: Labels = NO_LABELS) {
   const events = asReported(all, fixed.id);
   // Exclude tasks released or refused while the comparison was running so they are reported as
   // withdrawn instead of blocking the comparison report.
@@ -382,7 +391,7 @@ export function coverageOf(
 }
 
 /** Score complete pairs for `fixed`, excluding set-aside rejections and any disputed tasks. */
-export function compared(all: readonly LogEvent[], fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
+export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Labels) {
   const events = asReported(all, fixed.id);
   const coverage = coverageOf(events, fixed, labels);
   // Disputes apply regardless of when they were recorded (including during post-report settlement).
@@ -505,7 +514,7 @@ export function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
  */
 export function wrongAsFailed(
   events: readonly LogEvent[],
-  labels: ReadonlyMap<string, Ruling>,
+  labels: Labels,
   passes: Readonly<Record<string, JsonValue>>,
 ): { events: readonly LogEvent[]; labels: Map<string, Ruling> } {
   const wrong = wrongPasses(passes);
@@ -598,9 +607,10 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
   const report = reported(events, id);
   const fixed = fixedIn(events, id);
   if (report === null || fixed === null) return NOTHING_TO_LABEL;
-  const found = asReported(events, id);
-  const states = taskStates(found);
-  const undisputed = rejections(found, fixed, NO_LABELS).filter(
+  const own = reportedIndex(events, id);
+  const upTo = own === -1 ? events.length - 1 : own;
+  const states = taskStates(events, upTo);
+  const undisputed = rejections(events, fixed, NO_LABELS, upTo).filter(
     ({ task }) => states.get(task) !== "disputed",
   );
   const pick = (set: "aside" | "others") =>

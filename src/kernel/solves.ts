@@ -155,9 +155,9 @@ export function rejected(ending: JsonObject | null | undefined): boolean {
 }
 
 /** Last Referee ruling per solve (null when the Referee session ended without ruling). */
-export function rulingsOf(events: readonly LogEvent[]): Map<string, string | null> {
+export function rulingsOf(events: readonly LogEvent[], upTo = events.length - 1): Map<string, string | null> {
   return new Map(
-    eventsOf(events, "referee.finding").flatMap(({ event: { data } }) =>
+    eventsOf(events, "referee.finding", upTo).flatMap(({ event: { data } }) =>
       isString(data.solve) ? [[data.solve, isString(data.ruling) ? data.ruling : null] as const] : [],
     ),
   );

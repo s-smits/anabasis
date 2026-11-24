@@ -22,7 +22,7 @@ export function solveAnswer(reading: Reading, query: Query<"solve">): SolveDetai
   const { tier } = reading;
   const row = solveRow(log, solve, tier);
   // The task sets as they stood when the solve started: the fold over the log up to its start.
-  const then = taskSets(log.events.slice(0, solve.started));
+  const then = taskSets(log.events, solve.started - 1);
   const practised = then.released.includes(row.task) && practiceIn(log).has(solve.id);
   const exam = examTier(tier);
   const judged = verdictsIn(log).get(solve.id);

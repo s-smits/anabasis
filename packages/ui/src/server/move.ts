@@ -13,14 +13,14 @@
  */
 import { fixedIn, predicted, type Report, reported } from "../../../../src/campaign/comparison.ts";
 import { carriedBy, type Measures, pointsOf, testedSet } from "../../../../src/kernel/compare.ts";
-import { passed, type Ran } from "../../../../src/kernel/solves.ts";
+import type { Ran } from "../../../../src/kernel/solves.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRow, Tier } from "../models.ts";
 import { isRejection } from "../models.ts";
 import { Unanswerable, type Reading } from "./context.ts";
-import { type Log, practiceIn, proposalsIn, ranIn } from "./folds.ts";
+import { type Log, once, practiceIn, proposalsIn, ranIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
-import { barsIn, movesIn, outcomeOf, pairsIn, steppedOf } from "./moves.ts";
+import { barsIn, movesIn, outcomeOf, ownSolves, pairsIn, steppedOf } from "./moves.ts";
 import { examTier, sessionTrace, solveRow } from "./trace.ts";
 import { rulingWithheld } from "./withheld.ts";
 
@@ -49,25 +49,14 @@ function moveNamed(log: Log, named: string): Move {
   );
 }
 
-/** The comparison's own solves of `task` under `harness`, in the order they started: where `solves`
- *  is a number, its first that many that ended in a pass or a fail, as a pair counts them (`pairsOf`,
- *  `src/kernel/compare.ts`), so that a control's further arm stays out of the reference's side. */
-export function ownSolves(log: Log, id: string, task: string, harness: string, solves?: number): Ran[] {
-  const own = ranIn(log)
-    .filter(
-      (solve) =>
-        solve.start.comparison === id && solve.under.task === task && solve.under.harness === harness,
-    )
-    .toSorted((one, other) => one.started - other.started);
-  if (solves === undefined) return own;
-  return own.filter((solve) => passed(solve) !== null).slice(0, solves);
-}
+const ranByIdIn = once((log) => new Map(ranIn(log).map((solve) => [solve.id, solve])));
+const taskIdsIn = once((log) => new Map(proposalsIn(log).map(({ version, taskId }) => [version, taskId])));
 
 /** A comparison's tasks with each side's solves: the scored ones and the ones it set aside, or,
  *  before it reports, every task its start fixed. */
 function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
-  const solves = new Map(ranIn(log).map((solve) => [solve.id, solve]));
-  const ids = new Map(proposalsIn(log).map(({ version, taskId }) => [version, taskId]));
+  const solves = ranByIdIn(log);
+  const ids = taskIdsIn(log);
   const rows = (named: readonly Ran[]) => named.map((solve) => solveRow(log, solve, tier));
   const byId = (named: readonly string[]) => rows(named.flatMap((id) => solves.get(id) ?? []));
   // A task's rulings are withheld where the ruling of any of its rejections is.

@@ -239,13 +239,7 @@ function packOpened(dir: string, log: string, args: CampaignArgs) {
   };
 }
 
-/**
- * The code a solve runs, as its condition records it (`src/kernel/condition.ts`): the agent
- * runtime's pins by name with the Bun that runs this command, and the host's `CODE_TREES` as they
- * stand with every production package its lockfile resolves, since a package such as `typebox`,
- * which builds the solver's bash schema, could otherwise change under one setting id, and so could
- * the Bun the verifier runs every check under.
- */
+/** Compute the solve condition's runtime pin versions and host code/lockfile digest (`CODE_TREES`). */
 export function codeOf(tree: string) {
   const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
     readFileSync(join(tree, "package.json"), "utf8"),
@@ -290,12 +284,7 @@ export function codeOf(tree: string) {
 let here: ReturnType<typeof codeOf> | undefined;
 
 /**
- * What a campaign's solves are recorded under (`src/kernel/condition.ts`): the condition of one
- * solve of a task under a harness by a solver, and the setting of every solve by that solver,
- * whatever its task and harness, as the id a comparison counts solves under. The code it runs
- * (`codeOf`) is read once per process: a command opens its campaign again for each release and each
- * Builder conversation, each tree is a walk of thousands of files, and a tree that moved between
- * two openings would name code the process never ran.
+ * Build solve condition and setting-id constructors for a campaign, caching `codeOf(REPO)` per process.
  */
 function recordedUnder({ contract, checks, tools, limits }: Standing) {
   const hostManifest = join(tools, HOST_TOOLS_FILE);
@@ -375,10 +364,10 @@ export async function openCampaign(args: CampaignArgs) {
   /** Every task the pack holds or a session wrote into the log, by version. */
   const packages = (): Map<string, TaskPackage> =>
     new Map(
-      [...tasks, ...writtenTasks(read(log, TRACE_KINDS))].map((task) => [
-        taskVersion(pack(task)),
-        pack(task),
-      ]),
+      [...tasks, ...writtenTasks(read(log, TRACE_KINDS))].map((task) => {
+        const packaged = pack(task);
+        return [taskVersion(packaged), packaged];
+      }),
     );
   let solves = 0;
   /** One live solve of a task under a harness, by a solver, its condition recorded first. A solve
@@ -482,17 +471,8 @@ export async function starter(campaign: { readonly states: string }): Promise<Ke
 }
 
 /**
- * A harness the campaign keeps, by the name a flag gives it: `starter` for the Starter Built
- * Harness, which the first Builder session forks and which is the reference harness until the
- * operator promotes another; `promoted` for the reference harness itself, the one last promoted
- * and the starter while none has been; `latest` for the one the last whole Builder session left,
- * which is the starter while none has; or the whole digest of one a session froze, which is the
- * name of its folder under the campaign's `states/`. `programs-of:` before any of those names its
- * programs ablation, the starter with that harness's installed programs alone (`programsAblation`).
- * Any other name is answered with the ones there are, since a digest cut to its first eight
- * characters, as every reader prints one, would otherwise end in a bare `ENOENT`. A state that
- * opens as another harness is refused here: one
- * that lost its tool tree when its campaign was moved had two solves paid for under its name.
+ * Resolve a named harness (`starter`, `promoted`, `latest`, a kept digest, a single-match display
+ * letter, or `programs-of:<name>`) and verify its kept directory opens under the same digest.
  */
 export async function keptAs(campaign: Keeping, flag: string, asked: string): Promise<Kept> {
   if (asked.startsWith(PROGRAMS_OF)) {
@@ -601,13 +581,8 @@ export function stayAwake(): void {
 }
 
 /**
- * The project a campaign's opening names (the operator's choice): `named`, the campaign
- * command's `--project`, or the one its opening holds where the flag names none. Every campaign
- * belongs to one, as every v1 run joined one, and is named as v1's were. The opening is not written
- * without one, so a campaign opened, or continued from an opening that names none, takes the flag
- * once; one that names another than its record is refused, since a campaign moved between projects
- * would leave both projects' records wrong. The project groups campaigns for the operator
- * (`packages/ui`) and enters no move and no seat.
+ * Resolve and validate the campaign's project identifier (`--project` or recorded opening);
+ * refuses missing, unsafe, or mismatched project names.
  */
 export function projectOf(log: string, named: string | undefined, was: Opening | null): string {
   const recorded = was?.project ?? null;

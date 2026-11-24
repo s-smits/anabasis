@@ -1,17 +1,6 @@
 /**
- * The campaign's moves and its comparisons as the page draws them: each step of `campaignOf` with
- * where it stands in the log, and each comparison as one bar of the main chart.
- *
- * A move is a step's handover passed through whole, with three fields the handover does not hold:
- * the place of its start in the log, which names it (a round runs a Builder session and the
- * comparison after it under one id), and the times of its start and its end; a comparison's rulings
- * by kind go only where none of them is withheld (`rulingsOf`, `withheld.ts`). A comparison's bar
- * takes its tally, its reading, its valid counts, its rulings and its cost from the same handover,
- * its terms from its start (`fixedIn`), its test and its A/A reading from its last report
- * (`reported`), its tasks by outcome from the pairs that report tallied (`pairsReported`,
- * `pairings`), so that a bar's counts sum to the handover's tally by construction, and the rest of
- * the tasks it fixed from the lists the report names them in (`aside`, `disputed`, `short`,
- * `withdrawn`), so that the parts sum to the tasks it fixed.
+ * Campaign moves (`campaignOf` steps with log indices, timestamps, and withheld-aware rulings)
+ * and comparison chart bars (`ComparisonBar`, ordered by first report or start).
  */
 import { nextBound } from "../../../../src/campaign/handover.ts";
 import { fixedIn, type Report, reported } from "../../../../src/campaign/comparison.ts";
@@ -25,9 +14,10 @@ import {
   testOf,
 } from "../../../../src/kernel/compare.ts";
 import { pairsReported } from "../../../../src/kernel/reports.ts";
+import { passed, type Ran } from "../../../../src/kernel/solves.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";
 import type { ComparisonBar, LeftOut, Move, Outcome, Share } from "../models.ts";
-import { campaignIn, type Log, once, reportsIn } from "./folds.ts";
+import { campaignIn, type Log, once, ranIn, reportsIn } from "./folds.ts";
 import { rulingsOf } from "./withheld.ts";
 
 type Step = Move["step"];
@@ -55,11 +45,15 @@ const placesIn = once(({ events }) => {
   for (const [index, { kind, data }] of events.entries()) {
     if (!isString(data.session)) continue;
     const started = STARTS.get(kind);
+    if (started !== undefined) {
+      const key = `${started} ${data.session}`;
+      if (!starts.has(key)) starts.set(key, index);
+    }
     const ended = ENDS.get(kind);
-    const startKey = `${started ?? ""} ${data.session}`;
-    if (started !== undefined && !starts.has(startKey)) starts.set(startKey, index);
-    const endKey = `${ended ?? ""} ${data.session}`;
-    if (ended !== undefined && !ends.has(endKey)) ends.set(endKey, index);
+    if (ended !== undefined) {
+      const key = `${ended} ${data.session}`;
+      if (!ends.has(key)) ends.set(key, index);
+    }
   }
   return { starts, ends };
 });
@@ -191,16 +185,53 @@ function kindOf(
   return { kind: repeats === null ? "candidate" : "repeat", repeats };
 }
 
-/** Every comparison as one bar, in the order they first reported; one with no report stands where
- *  it began, so that a comparison cut before its report keeps its place among the others and one
- *  still open is the last. */
+const ownSolvesByKey = once((log) => {
+  const grouped = Map.groupBy(
+    ranIn(log).filter(({ start }) => isString(start.comparison)),
+    ({ start, under }) =>
+      `${isString(start.comparison) ? start.comparison : ""}\0${under.task}\0${under.harness}`,
+  );
+  for (const list of grouped.values()) {
+    list.sort((one, other) => one.started - other.started);
+  }
+  return grouped;
+});
+
+/** The comparison's own solves of `task` under `harness`, in start order (`solves` caps counted ones). */
+export function ownSolves(log: Log, id: string, task: string, harness: string, solves?: number): Ran[] {
+  const own = ownSolvesByKey(log).get(`${id}\0${task}\0${harness}`) ?? [];
+  return solves === undefined ? own : own.filter((solve) => passed(solve) !== null).slice(0, solves);
+}
+
+function reportFieldsOf(move: ComparisonMove, report: Report | null, movePairs: readonly Paired[]) {
+  const split = report === null ? null : splitOf(movePairs, report);
+  return {
+    p: report?.scored == null ? null : steppedOf(report.scored).p,
+    outcomes: split?.outcomes ?? null,
+    leftOut: split?.leftOut ?? null,
+    valid:
+      move.valid === null ? null : { old: validShare(move.valid.old), fresh: validShare(move.valid.fresh) },
+    noise: report?.noise == null ? null : { ...steppedOf(report.noise), scores: scoresIn(report.noise) },
+    carried: report === null ? null : carriedIn(movePairs),
+    rulings: move.rulings,
+    sets:
+      report?.frontier == null || report.retained === null
+        ? null
+        : {
+            frontier: steppedOf(report.frontier),
+            retained: report.retained === "unmeasured" ? report.retained : steppedOf(report.retained).tally,
+          },
+  };
+}
+
+/** Every comparison as one bar, ordered by first report (or start when unreported). */
 export const barsIn = once((log): ComparisonBar[] => {
   const { events } = log;
   const moves = movesIn(log);
   const reports = new Map(reportsIn(log).map((report) => [report.session, report]));
-  const pairs = pairsIn(log);
-  const records = recordsIn(log);
-  const starter = starterIn(log);
+  const [pairs, records, starter] = [pairsIn(log), recordsIn(log), starterIn(log)];
+  const examiners = moves.filter((move) => move.step === "examiner");
+  const builders = moves.filter((move) => move.step === "builder");
   const comparisons = moves
     .flatMap((move) => (move.step === "comparison" ? [move] : []))
     .toSorted(
@@ -210,15 +241,11 @@ export const barsIn = once((log): ComparisonBar[] => {
     );
   const earlier = new Map<string, string>();
   return comparisons.map((move, at) => {
-    const report = reported(events, move.id);
-    const split = report === null ? null : splitOf(pairs.get(move.id) ?? [], report);
     const kind = kindOf(move, starter, earlier);
     earlier.set(`${move.old} ${move.fresh}`, move.id);
     const before = comparisons[at - 1]?.index ?? -1;
-    const between = (step: "examiner" | "builder") =>
-      moves.flatMap((each) =>
-        each.step === step && each.index > before && each.index < move.index ? [each.id] : [],
-      );
+    const between = (list: readonly Move[]) =>
+      list.flatMap((each) => (each.index > before && each.index < move.index ? [each.id] : []));
     const setting = fixedIn(events, move.id)?.setting ?? reports.get(move.id)?.data.setting;
     return {
       id: move.id,
@@ -231,27 +258,13 @@ export const barsIn = once((log): ComparisonBar[] => {
       tasks: move.tasks,
       tally: move.tally,
       reading: move.reading,
-      p: report?.scored == null ? null : steppedOf(report.scored).p,
-      outcomes: split?.outcomes ?? null,
-      leftOut: split?.leftOut ?? null,
-      valid:
-        move.valid === null ? null : { old: validShare(move.valid.old), fresh: validShare(move.valid.fresh) },
-      noise: report?.noise == null ? null : { ...steppedOf(report.noise), scores: scoresIn(report.noise) },
-      carried: report === null ? null : carriedIn(pairs.get(move.id) ?? []),
-      rulings: move.rulings,
-      sets:
-        report?.frontier == null || report.retained === null
-          ? null
-          : {
-              frontier: steppedOf(report.frontier),
-              retained: report.retained === "unmeasured" ? report.retained : steppedOf(report.retained).tally,
-            },
+      ...reportFieldsOf(move, reported(events, move.id), pairs.get(move.id) ?? []),
       load: records.get(`comparison ${move.id}`)?.load ?? null,
       named: move.named,
       cut: move.cut,
       begun: move.begun,
       solved: move.solved,
-      between: { examiner: between("examiner"), builder: between("builder") },
+      between: { examiner: between(examiners), builder: between(builders) },
     };
   });
 });

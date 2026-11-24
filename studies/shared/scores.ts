@@ -1,34 +1,11 @@
 /**
- * A benchmark's scores as a study reads them: each trial of a Harbor job with the score the
- * benchmark's own reader gave it, and two arms set beside each other over the tasks both scored.
- *
- * The scores are not read here. Harness² reads its own rollouts with `score_from_payload`
- * (`harness2/benchmarks/workbuddy.py`), and a port of that precedence would be a second reader of
- * one file, so the study runs it in Harness²'s venv (`studies/harness2/trials.py`) and parses its
- * JSON lines (`trialsOf`). Both arms are therefore scored by one function. A null score is a
- * non-result and is counted apart, never as a zero; Harbor's own mean counts it as zero, which is
- * a different statistic. Where the container solver ran, its result sits beside the score: the
- * ending, the billed dollars `spentBy` summed, and the calls, read from its trace by the kernel's
- * one reader of model traces (`tracesIn`, `src/kernel/trace.ts`). A trial whose solver ended on its
- * provider or crashed is a non-result too, whatever the verifier then found in the container.
- *
- * Two arms are read as a campaign reads a comparison (`pairsOf`, `src/kernel/compare.ts`): a task
- * counts only where each side has the streams the terms fixed, each cut to its first in the order
- * the trials started, and a task short on either side is named and left out, as a non-result is
- * solved again rather than counted (rule 7). `shortfall` says how many more trials each task needs,
- * which `run.ts score` asks for again. The reading is the mean difference in percentage points
- * with a seeded bootstrap interval over tasks, and the one-sided paired sign-flip test a campaign
- * uses (`flipP`) on each task's summed difference in whole hundredths of a score, read at the
- * campaign's level (0.02, `tools/d2/round.ts`). The A/A splits one arm's trials by the campaign's
- * mirrored halves, the first and last of each four against the two between, so a drift over the
- * job's hours falls on both halves (`halves`). A task short on a side is not paired on what it
- * has, a non-result takes no place in the halves or the streams, since a retry would shift every
- * later one, and a Harbor exception in an agent other than the study's solver is not counted as
- * whatever its verifier found.
+ * Harbor trial score reader and paired arm comparison (`trials.py`, `flipP`, `readsStep`).
+ * Non-results (`null` scores, provider/crash endings, non-timeout Harbor exceptions) are excluded
+ * from denominators; paired comparisons require complete `streams` on both sides and report mean
+ * percentage-point gaps, 95% seeded bootstrap intervals, and exact paired sign-flip p-values.
  */
 import { flipP, readsStep, readsStepEitherWay } from "#src/kernel/compare.ts";
-import { read } from "#src/kernel/log.ts";
-import { tracesIn } from "#src/kernel/trace.ts";
+import { CALL_KINDS, read } from "#src/kernel/log.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -107,7 +84,13 @@ function trialOf(line: JsonObject): Trial {
   const ending = isString(result?.ending) ? result.ending : null;
   const harbor = jsonAt(join(path, "result.json"));
   const trace = join(path, "agent", TRACE_FILE);
-  const traced = existsSync(trace) ? tracesIn(read(trace)) : null;
+  let calls: number | null = null;
+  if (existsSync(trace)) {
+    calls = 0;
+    for (const { kind } of read(trace)) {
+      if (CALL_KINDS.has(kind)) calls += 1;
+    }
+  }
   // Harbor records an agent or a verifier that threw; only the agent's own timeout is the side's
   // fail, as `wall-ended` is in a campaign. This holds for an agent that writes no result of ours.
   const thrown = asRecord(harbor?.exception_info)?.exception_type;
@@ -119,7 +102,7 @@ function trialOf(line: JsonObject): Trial {
     ending,
     billed: counted(result?.billed),
     turns: counted(result?.turns),
-    calls: traced === null ? null : traced.filter((each) => each.part === "call").length,
+    calls,
     seconds: counted(result?.seconds),
     started: isString(harbor?.started_at) ? harbor.started_at : null,
   };
@@ -143,7 +126,11 @@ export function trialsOf(printed: string): Trial[] {
 /** Each task's scores, in the order its trials started, of the trials the reader scored. */
 function scoresByTask(trials: readonly Trial[]): Map<string, number[]> {
   const by = new Map<string, number[]>();
-  for (const { task, score } of scored(trials)) by.set(task, [...(by.get(task) ?? []), score]);
+  for (const { task, score } of scored(trials)) {
+    const list = by.get(task);
+    if (list === undefined) by.set(task, [score]);
+    else list.push(score);
+  }
   return by;
 }
 
@@ -199,10 +186,16 @@ export function readArms(
   const gaps = tasks.map((_, at) => (meansB[at] ?? 0) - (meansA[at] ?? 0));
   const units = gaps.map((gap) => Math.round(gap * 100 * streams));
   const draw = seeded(seed);
-  const resampled = Array.from(
-    { length: 10_000 },
-    () => mean(tasks.map(() => gaps[Math.floor(draw() * gaps.length)] ?? 0)) ?? 0,
-  ).toSorted((one, other) => one - other);
+  const count = gaps.length;
+  const resampled = new Float64Array(10_000);
+  if (count > 0) {
+    for (let sample = 0; sample < 10_000; sample += 1) {
+      let sum = 0;
+      for (let i = 0; i < count; i += 1) sum += gaps[Math.floor(draw() * count)] ?? 0;
+      resampled[sample] = sum / count;
+    }
+    resampled.sort();
+  }
   const at = (share: number) => (resampled[Math.floor(share * (resampled.length - 1))] ?? 0) * 100;
   const none = tasks.length === 0;
   return {

@@ -56,7 +56,7 @@ const BRIEF_SYSTEM = [
   "You prepare the grading brief for one task of an exam, before any answer to it exists.",
   "From the task's public input, its hidden values and the criteria it is judged on, write what a strong answer to this task shows: concrete expectations a grader can look for in an answer, each grounded in the input or the hidden values.",
   "Write expectations, never a single model answer: a task can have more than one strong answer, and each expectation should hold for any of them.",
-  "Where a criterion cannot be judged from an answer at all, or code could decide it exactly, say so in a flag. Flags are advisory and change no score.",
+  "Where a criterion is ill-posed for this task, flag it with the reason that fits. Flags are advisory and change no score.",
 ].join("\n");
 
 const PAIR_SYSTEM = [
@@ -68,12 +68,32 @@ const PAIR_SYSTEM = [
 const HOLISTIC_LINE =
   "Overall, which answer would serve the person who set this task better, judged on substance? Count padding, repetition, hedging and decoration against an answer; polish alone counts for nothing.";
 
+export const FLAGS = {
+  "contradicts-spec": "contradicts the task's own specification",
+  "unheld-duty": "asks for what the task gives the solver no means to do",
+  unverifiable: "cannot be judged from an answer",
+  "compound-item": "bundles several demands into one",
+  "negative-ban": "is phrased as a ban rather than a quality",
+  "duplicates-code": "is a fact code could decide exactly",
+  "duplicates-holistic": "restates the overall judgment",
+} as const;
+
 const BRIEF_PARAMETERS = Type.Object({
   expectations: Type.Array(Type.String({ minLength: 1, maxLength: LINE_BYTES }), {
     minItems: 2,
     maxItems: 8,
   }),
-  flags: Type.Array(Type.String({ minLength: 1, maxLength: LINE_BYTES }), { maxItems: 4 }),
+  flags: Type.Array(
+    Type.Object({
+      criterion: Type.String({ minLength: 1, maxLength: 64 }),
+      reason: Type.Enum(Object.keys(FLAGS), {
+        description: Object.entries(FLAGS)
+          .map(([code, line]) => `${code}: the criterion ${line}`)
+          .join("; "),
+      }),
+    }),
+    { maxItems: 4 },
+  ),
 });
 
 const VOTE_PARAMETERS = Type.Object({

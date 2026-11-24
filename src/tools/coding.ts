@@ -20,7 +20,7 @@ export type WallExec = (
 ) => Promise<{ exitCode: number | null; output: Buffer }>;
 
 let photon: Promise<ImageProcessor> | undefined;
-const images: ImageProcessor = {
+export const CODING_IMAGES: ImageProcessor = {
   prepare: async (bytes, mimeType, limits) =>
     (await (photon ??= createNodePhotonImages())).prepare(bytes, mimeType, limits),
 };
@@ -49,7 +49,12 @@ export function wallExec(wall: CommandWall): WallExec {
 
 export function codingTools(wall: CommandWall, selected: readonly CodingTool[]): SeatTool[] {
   const wanted = new Set<string>(selected);
-  const tools: SeatTool[] = [createReadTool({ images }), bashTool(wall), createEditTool(), createWriteTool()];
+  const tools: SeatTool[] = [
+    createReadTool({ images: CODING_IMAGES }),
+    bashTool(wall),
+    createEditTool(),
+    createWriteTool(),
+  ];
   return tools
     .filter((each) => wanted.has(each.name))
     .map((each) => ({ ...each, executionMode: "sequential" }));

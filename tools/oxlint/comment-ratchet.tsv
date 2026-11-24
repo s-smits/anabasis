@@ -134,7 +134,7 @@ studies/shared/atif.ts	6
 studies/shared/bundle.ts	17
 studies/shared/claude-export.ts	17
 studies/shared/foreign-python.ts	36
-studies/shared/pi-solve.ts	20
+studies/shared/pi-solve.ts	18
 studies/shared/scores.ts	25
 studies/transitivity/read.ts	8
 test/acceptance.test.ts	29

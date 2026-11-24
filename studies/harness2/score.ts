@@ -309,7 +309,7 @@ export function piAgent(claude: Claude): Agent {
 function piDry(claude: Claude, tree: string): string {
   const traj = join(tmpdir(), `pi-dry-${String(runtimeProcess.pid)}.jsonl`);
   const argv = piAgent(claude).argv({ prompt: "A dry run.", treeDir: tree, workspace: tmpdir(), traj });
-  runSync([...argv, "--dry-run"], { cwd: tmpdir() });
+  runSync([...argv, "--dry-run"], { cwd: tmpdir(), env: claude.env });
   const result = readJson(join(piLogs(traj), RESULT_FILE));
   rmSync(piLogs(traj), { recursive: true, force: true });
   if (field(result, "ending") !== "dry-run") throw new Error(`pi-solve cannot open ${tree}: ${text(result)}`);
@@ -599,8 +599,11 @@ async function checkScoreInputs(
     const missing = needs.find((need) => !existsSync(need));
     if (missing !== undefined) throw new Error(`${task}: ${missing} is missing`);
   }
-  for (const tree of pi ? [] : new Set(tasks.flatMap((task) => arm.tree(task) ?? []))) {
-    const own = await ownPython(tree, claude.env);
+  const ownOptions = pi
+    ? { toolchainDir: join(HARNESS_DIR, TOOL_TREE_DIR), pathOrder: "prepend" as const }
+    : {};
+  for (const tree of new Set(tasks.flatMap((task) => arm.tree(task) ?? []))) {
+    const own = await ownPython(tree, claude.env, ownOptions);
     if (own !== null) console.log(`  tree ${basename(tree)}: ${own}`);
   }
   return python;

@@ -298,7 +298,7 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
     });
     expect(one.meetsMinPromo).toBe(true);
     expect(one.ablationNeeded).toBe(true);
-    expect(one.ablationCommand).toBe("bun run runs bench jobstat-anabasis-v9-fresh-opus --pi");
+    expect(one.ablationCommand).toBe("bun run runs bench jobstat-anabasis-v9-fresh-opus");
 
     writeBenchArm({
       store,

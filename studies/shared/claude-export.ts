@@ -176,16 +176,22 @@ export async function exportForClaudeCode(
  * as the link it is, since one that leads nowhere here is the same defect and no file to
  * `existsSync`. A module that does not import is a condition of the read, said and refused nothing.
  */
-export async function ownPython(tree: string, env: Readonly<Record<string, string>>): Promise<string | null> {
-  const dirs = toolTreeSearchDirs(join(tree, TOOLCHAIN));
+export async function ownPython(
+  tree: string,
+  env: Readonly<Record<string, string>>,
+  options: { readonly toolchainDir?: string; readonly pathOrder?: "prepend" | "append" } = {},
+): Promise<string | null> {
+  const toolchain = options.toolchainDir ?? TOOLCHAIN;
+  const dirs = toolTreeSearchDirs(join(tree, toolchain));
   const python = dirs
     .map((dir) => join(dir, "python3"))
     .find((path) => lstatSync(path, { throwIfNoEntry: false }) !== undefined);
   if (python === undefined) return null;
+  const orderedPath = options.pathOrder === "prepend" ? [...dirs, env.PATH ?? ""] : [env.PATH ?? "", ...dirs];
   const run = (words: readonly string[]) => {
     const ran = runSync([python, "-c", ...words], {
       cwd: tmpdir(),
-      env: { ...env, PATH: [env.PATH ?? "", ...dirs].join(":") },
+      env: { ...env, PATH: orderedPath.join(":") },
       timeout: 300_000,
     });
     const last = decodeOutput(ran.stderr).trim().split("\n").at(-1) ?? "";
@@ -197,7 +203,7 @@ export async function ownPython(tree: string, env: Readonly<Record<string, strin
   };
   const started = run(["pass"]);
   if (!started.ok) throw new Error(`${relative(tree, python)} cannot start here (${started.why})`);
-  const sites = (await packageFolders(join(tree, TOOLCHAIN))).map(({ site }) => join(tree, TOOLCHAIN, site));
+  const sites = (await packageFolders(join(tree, toolchain))).map(({ site }) => join(tree, toolchain, site));
   const counted = run([IMPORTS, ...sites]);
   const [, version, ok, of, ...bad] = /^IMPORTS .*$/mu.exec(counted.out)?.[0].split(" ") ?? [];
   if (of === undefined) return `its python3 starts, and the count of its modules ended (${counted.why})`;

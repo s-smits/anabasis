@@ -588,6 +588,56 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
       "removing deliverable files caused check ok to fault on ex-002: TypeError: missing file",
       "removing deliverable files caused check ok to fault on ex-003: TypeError: missing file",
     ]);
+
+    const rubricObjective = {
+      quantity: "weighted score",
+      direction: "higher" as const,
+      scale: "unit" as const,
+      items: [
+        { id: "accuracy", weight: 3 },
+        { id: "flat-item", weight: 1 },
+      ],
+    };
+    const rubricBrief: Brief = { ...probeBrief, objective: rubricObjective };
+    const flatRubric = await readChecker({
+      brief: rubricBrief,
+      contract: { ...contract, objective: rubricObjective },
+      verify: async (t, a) => {
+        const match = asRecord(a)?.v === asRecord(t.publicInput)?.id;
+        if (!match) return { kind: "fail", blocking: ["ok"] };
+        const hidMatch = asRecord(t.hidden)?.h === asRecord(t.publicInput)?.id;
+        const acc = hidMatch ? 0.9 : 0.2;
+        const flat = hidMatch ? 1 : 0.995;
+        return {
+          kind: "pass",
+          objective: (3 * acc + flat) / 4,
+          scores: { accuracy: acc, "flat-item": flat },
+        };
+      },
+      tasks: tasksOf([{ h: 1 }, { h: 2 }, { h: 3 }]),
+      controls: [
+        { taskId: "ex-001", answer: { v: 1 }, refusedBy: null },
+        { taskId: "ex-002", answer: { v: 2 }, refusedBy: null },
+        { taskId: "ex-003", answer: { v: 3 }, refusedBy: null },
+        { taskId: "ex-001", answer: { v: 0 }, refusedBy: "ok" },
+      ],
+      found: () => true,
+      width: 2,
+    });
+    expect(flatRubric.faults).toEqual([]);
+    expect(flatRubric.notes).toContainEqual(matching(/rubric item flat-item stayed within 1%/u));
+    expect(flatRubric.notes).not.toContainEqual(matching(/rubric item accuracy/u));
+
+    const objStripFault = await runWith(async (t, a, _s, files) => {
+      if (asRecord(a)?.v !== asRecord(t.publicInput)?.id) return { kind: "fail", blocking: ["ok"] };
+      return (files?.length ?? 0) > 0
+        ? { kind: "pass", objective: 10 }
+        : { kind: "faulty", check: "objective", reason: "score deliverables threw: missing file" };
+    });
+    expect(objStripFault.faults).toEqual([]);
+    expect(objStripFault.notes).toContainEqual(
+      matching(/removing deliverable files caused objective to fault on ex-001/u),
+    );
   });
 });
 

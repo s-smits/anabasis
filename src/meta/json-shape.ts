@@ -19,12 +19,21 @@ export type OpenRecord = Record<string, unknown>;
 
 type Callable = (...args: never[]) => void;
 
+const UNIT_SCORE_EPS = 1e-9;
+
 export function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
 export function isNumber(value: unknown): value is number {
   return typeof value === "number";
+}
+
+export function unitScore(value: number): number | null {
+  if (!Number.isFinite(value) || value < -UNIT_SCORE_EPS || value > 1 + UNIT_SCORE_EPS) return null;
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
 }
 
 export function isBoolean(value: unknown): value is boolean {

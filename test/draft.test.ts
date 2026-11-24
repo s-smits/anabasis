@@ -957,5 +957,8 @@ describe.concurrent("campaign draft lifecycle", () => {
     expect(brief.objective).toEqual(rubricObjective);
     const readRes = await draftReading(join(root, "rubric-read"), rubricDraft, 2);
     expect(readRes.faults).toEqual([]);
+    expect(
+      readRes.read?.reading.notes.some((n) => n.includes("rubric item constant-item stayed within 1%")),
+    ).toBe(true);
   });
 });

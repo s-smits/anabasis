@@ -26,7 +26,7 @@
  * not write reads `not recorded`.
  */
 import { epochsOf, tasksByEpoch } from "#src/campaign/climb.ts";
-import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
+import { gainOver, gapAgainst, type Paired } from "#src/kernel/compare.ts";
 import { OPENING, proposalsOf, writersOf } from "#src/kernel/history.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { poolOf } from "#src/kernel/reports.ts";
@@ -290,7 +290,8 @@ function tick(row: Measured, pair: Paired, side: "old" | "fresh", best: number |
     // One solve's measure alone against the author's, so the floor is read by its owner.
     const alone: Paired = { ...pair, objective: { ...rule, [side]: [measure] } };
     if (!gapAgainst(alone, side, [best])) row.atBest += 1;
-    if (best > 0 && measure >= 0) row.ratios.push(measure / best);
+    if (rule.scale === "unit") row.ratios.push(1 - gainOver(rule, best, measure));
+    else if (best > 0 && measure >= 0) row.ratios.push(measure / best);
   }
 }
 

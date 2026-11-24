@@ -35,6 +35,7 @@ import { rankCatalogue } from "../tools/wri/rank-lanes.ts";
 import { gamingRows } from "../tools/wri/gaming.ts";
 import { reportIndex, reportOf, ROWS, sessionsOf } from "../tools/wri/investigation.ts";
 import { buildPackets } from "../tools/wri/packets.ts";
+import { sideGap } from "../tools/wri/pairs.ts";
 import { portabilityRows } from "../tools/wri/portability.ts";
 import { overview } from "../tools/wri/read.ts";
 import { scoreRows } from "../tools/wri/scores.ts";
@@ -1299,5 +1300,37 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       },
     ];
     expect(seatSummaryRows(padded)[0]).toContain("pause overshoots: g-2 after pause(reported)");
+  });
+
+  it("reads unit-scale sideGap near zero without dividing by zero or misclassifying atBest", () => {
+    const unitPairs = [
+      {
+        task: "u-zero",
+        old: [true, true],
+        fresh: [true, true],
+        objective: {
+          direction: "higher" as const,
+          scale: "unit" as const,
+          old: [0, 0],
+          fresh: [0.895, 0.905],
+        },
+      },
+      {
+        task: "u-low",
+        old: [true],
+        fresh: [true],
+        objective: { direction: "lower" as const, scale: "unit" as const, old: [0.05], fresh: [0] },
+      },
+    ];
+    const bests = new Map([
+      ["u-zero", 0.9],
+      ["u-low", 0],
+    ]);
+    const oldGap = sideGap(unitPairs, "old", bests);
+    const freshGap = sideGap(unitPairs, "fresh", bests);
+    expect(oldGap).toMatchObject({ read: 2, unread: 0, atBest: 0 });
+    expect(oldGap.ratio).toBeCloseTo((1.9 + 1.05) / 2, 12);
+    expect(freshGap).toMatchObject({ read: 2, unread: 0, atBest: 2 });
+    expect(freshGap.ratio).toBeCloseTo(1, 12);
   });
 });

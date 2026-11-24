@@ -16,6 +16,7 @@ import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
 import { READINGS_IN_A_ROW, howOftenValid } from "./size.ts";
 import { taskSets } from "./task.ts";
+import { validScores } from "./verify.ts";
 
 export interface Reported {
   readonly session: string;
@@ -51,6 +52,7 @@ interface TaskRecord {
   heldAt: number;
   validAnswer: "independent" | "known" | "none";
   best: number | null;
+  bestScores: Readonly<Record<string, number>> | null;
   readonly tallied: TaskReading[];
   excludedAt: number;
   excludedOrder: number;
@@ -223,6 +225,7 @@ function taskRecords(events: readonly LogEvent[]) {
       heldAt: -1,
       validAnswer: "none",
       best: null,
+      bestScores: null,
       tallied: [],
       excludedAt: -1,
       excludedOrder: Number.POSITIVE_INFINITY,
@@ -251,10 +254,18 @@ function taskRecords(events: readonly LogEvent[]) {
       recordOf(data.version).validAnswer = "independent";
     }
     if (kind !== "task.feasible") continue;
-    const { measure, direction } = asRecord(data.objective) ?? {};
+    const obj = asRecord(data.objective);
+    const { measure, direction } = obj ?? {};
     if (!isNumber(measure)) continue;
     const record = recordOf(data.version);
-    record.best = (direction === "lower" ? Math.min : Math.max)(measure, record.best ?? measure);
+    const better =
+      record.best === null || (direction === "lower" ? measure < record.best : measure > record.best);
+    if (better) {
+      record.best = measure;
+      record.bestScores = validScores(obj?.scores);
+    } else if (record.best === measure && record.bestScores === null) {
+      record.bestScores = validScores(obj?.scores);
+    }
   }
   const cut = new Set<string>();
   const wrong = wrongPassesIn(events);
@@ -364,6 +375,11 @@ export function poolOf(events: readonly LogEvent[]) {
       records.flatMap(({ version, validAnswer }) => (validAnswer === "none" ? [] : [version])),
     ),
     bests: new Map(records.flatMap(({ version, best }) => (best === null ? [] : [[version, best] as const]))),
+    bestScores: new Map(
+      records.flatMap(({ version, bestScores }) =>
+        bestScores === null ? [] : [[version, bestScores] as const],
+      ),
+    ),
     outcomes: new Map(records.toSorted((one, other) => firstSeen(one) - firstSeen(other)).flatMap(outcomeOf)),
     standings: new Map(records.flatMap(standingOf)),
   };

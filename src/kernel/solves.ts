@@ -3,7 +3,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { type FileManifest, manifestOf } from "./answer-files.ts";
 import { type Condition, conditionsOf, type Limits, limitsIn } from "./condition.ts";
 import { eventsOf, type LogEvent } from "./log.ts";
-import type { Verdict } from "./verify.ts";
+import { type Verdict, validScores } from "./verify.ts";
 
 export interface Solve {
   readonly id: string;
@@ -204,18 +204,10 @@ export function verdictsOf(events: readonly LogEvent[]): Map<string, Judged> {
 
 export function checkerVerdict(data: JsonObject): Verdict | null {
   if (data.kind === "pass") {
-    const rawScores = asRecord(data.scores);
-    const scoreEntries =
-      rawScores === null
-        ? []
-        : Object.entries(rawScores).flatMap(([key, val]) =>
-            isNumber(val) && Number.isFinite(val) && val >= 0 && val <= 1 ? [[key, val] as const] : [],
-          );
-    const scores = scoreEntries.length > 0 ? Object.fromEntries(scoreEntries) : undefined;
     return {
       kind: "pass",
       ...keyIfDefined("objective", isNumber(data.objective) ? data.objective : undefined),
-      ...keyIfDefined("scores", scores),
+      ...keyIfDefined("scores", validScores(data.scores) ?? undefined),
     };
   }
   if (data.kind === "fail" && Array.isArray(data.blocking) && data.blocking.length > 0) {

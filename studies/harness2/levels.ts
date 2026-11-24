@@ -209,13 +209,14 @@ function foldersIn(folder: string): string[] {
 export function armOf(dataset: string, arm: string): Map<string, Graded> {
   const graded = new Map<string, Graded>();
   const tree = join(dirname(dataset), "trees", arm);
-  const programs = existsSync(tree)
-    ? new Set(
-        TOOLCHAIN_PATHS.flatMap((rel) => programsOf(join(tree, rel)))
-          .filter(({ name }) => !/^(?:python|pip)[\d.]*$/u.test(name))
-          .map(({ name }) => name),
-      )
-    : null;
+  const programs =
+    existsSync(tree) && readdirSync(tree).length > 0
+      ? new Set(
+          TOOLCHAIN_PATHS.flatMap((rel) => programsOf(join(tree, rel)))
+            .filter(({ name }) => !/^(?:python|pip)[\d.]*$/u.test(name))
+            .map(({ name }) => name),
+        )
+      : null;
   for (const group of foldersIn(dataset)) {
     for (const task of foldersIn(join(dataset, group))) {
       const folder = join(dataset, group, task, "eval_result", `eval_${arm}__${group}__${task}`);

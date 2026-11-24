@@ -224,7 +224,7 @@ function scripted(calls: readonly (readonly [string, JsonObject] | FauxResponseF
 /** One scripted Builder edits, compares what it edited and finishes: no count of sessions has the
  *  host compare a harness for it, and no result tells it the table's move. */
 function scriptedBuilder() {
-  let [changed, compared] = [false, false];
+  let [changed, compared, examined] = [false, false, false];
   const choose: FauxResponseFactory = (context) => {
     const last = JSON.stringify(context.messages.at(-1));
     // An isolated session holds no `compare`, and finishes after its edit.
@@ -233,10 +233,19 @@ function scriptedBuilder() {
         message.role === "system" &&
         message.toolsAdded?.some(({ name: tool }) => tool === "compare") === true,
     );
-    const finish = compared || (changed && !comparing) || last.includes("no Examiner");
+    if (compared && last.includes("Call examine") && !examined) {
+      [changed, compared, examined] = [true, false, true];
+      return fauxAssistantMessage(fauxToolCall("examine", {}), TOOL_USE);
+    }
+    const finish =
+      compared ||
+      (changed && !comparing) ||
+      last.includes("no Examiner") ||
+      last.includes("call finish again");
     const name = finish ? "finish" : changed ? "compare" : "bash";
     // An edit is compared next; the next conversation edits again.
     [changed, compared] = name === "bash" ? [true, false] : [false, name === "compare"];
+    if (name === "finish") examined = false;
     const args =
       name === "bash"
         ? { command: `printf '\\nA rehearsal added this line.\\n' >> "$HOME/${GUIDE}"` }

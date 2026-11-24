@@ -5,17 +5,19 @@
 import { Type } from "typebox";
 import { type SeatTool, textsOf } from "#src/agent/session.ts";
 import { comparisonFloor, Refused, stopRule } from "#src/campaign/admission.ts";
-import { CRASHES_IN_A_ROW, decide, practiceDue } from "#src/campaign/decide.ts";
+import { CRASHES_IN_A_ROW, decide, practiceDue, supplyRun } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
 import type { Opening } from "#src/campaign/opening.ts";
+import { frontierOverlap, OVERLAP_LIMIT } from "#src/campaign/round.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
 import { seedKept, snapshot } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/campaign/word.ts";
 import { conversing, type Examined, examine } from "#src/examiner/session.ts";
+import { contractHash } from "#src/kernel/contract.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
 import { billedParts } from "#src/kernel/meter.ts";
@@ -417,7 +419,7 @@ async function releaseOnce(context: CampaignContext, cause: string, bench?: Benc
 async function comparedOf(
   context: CampaignContext,
   bench: Bench,
-  { events }: Turn,
+  { events, plan }: Turn,
   decided: Decided,
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
   const latest = latestBuilt(events);
@@ -456,6 +458,28 @@ async function comparedOf(
     return {
       refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare. Between equal harnesses one comparison reads a step as often as its level, and a harness changed in little draws that chance again.`,
     };
+  }
+  // Refuse repeated candidate draws that reuse >=80% of the prior no-step frontier while the
+  // Examiner can still supply fresh tasks, preventing comparison fishing on an unchanged pool.
+  const canExamine =
+    (context.seats.seated === solved || context.seats.examine !== undefined) &&
+    supplyRun(events, plan) < plan.patience;
+  if (canExamine) {
+    const repeat = frontierOverlap(
+      events,
+      plan.wanted.target,
+      contractHash(context.campaign.contract),
+      reference,
+    );
+    if (repeat !== null && repeat.ratio >= OVERLAP_LIMIT) {
+      const nextStep =
+        context.examining == null
+          ? "Call examine to hold out fresh tasks before comparing another candidate."
+          : `Examiner session ${context.examining.session} is already writing tasks; call wait before comparing another candidate.`;
+      return {
+        refused: `This comparison would draw ${String(repeat.overlap)} of ${String(repeat.total)} frontier tasks (${String(Math.round(repeat.ratio * 100))}%) already scored in comparison ${repeat.priorSession}. ${nextStep}`,
+      };
+    }
   }
   // Another comparison than the table's is the Builder's own, on record as `led`, so that one which
   // measures a changed harness snapshot never reads as a starter comparison.

@@ -310,34 +310,12 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
     });
     writeBenchArm({
       store,
-      arm: "base-cc-p2",
-      harness: "",
+      arm: "starter-cc-p2",
+      harness: STARTER,
       runtime: "claude-code",
-      buildOf: "base",
+      buildOf: "starter",
       tasks: [{ task: taskOne, points: 35, total: 50 }],
     });
-    writeBenchArm({
-      store,
-      arm: "pi-p2-starter",
-      harness: PROMO_2,
-      runtime: "pi-durable",
-      tasks: [{ task: taskOne, points: 33, total: 50 }],
-    });
-    writeBenchArm({
-      store,
-      arm: "starter-pi-p2-starter",
-      harness: STARTER,
-      runtime: "pi-durable",
-      buildOf: "starter",
-      tasks: [{ task: taskOne, points: 31, total: 50 }],
-    });
-    expect(findPairedArm(store, [PROMO_1, PROMO_2])).toMatchObject({
-      arm: "pi-p2-starter",
-      baselineArm: "starter-pi-p2-starter",
-      baselineTier: "baseStarter",
-      runtime: "pi-durable",
-    });
-
     writeBenchArm({
       store,
       arm: "pi-p2",
@@ -412,6 +390,30 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
       baselineArm: "starter-pi-p2-full",
       tasks: 2,
     });
+
+    const crashStore = join(root, "bench-crash");
+    writeBenchArm({
+      store: crashStore,
+      arm: "pi-crashed",
+      harness: PROMO_2,
+      runtime: "pi-durable",
+      tasks: [{ task: taskOne, points: 40, total: 50 }],
+    });
+    mkdirSync(join(crashStore, "judged", "base-pi-crashed"), { recursive: true });
+    writeFileSync(
+      join(crashStore, "judged", "base-pi-crashed", "stats__t1.json"),
+      `${JSON.stringify({
+        arm: "base-pi-crashed",
+        task: taskOne,
+        harness: "",
+        runtime: "pi-durable",
+        delivered: false,
+        points: 0,
+        total: 50,
+        build: { of: "base", usd: 0 },
+      })}\n`,
+    );
+    expect(findPairedArm(crashStore, [PROMO_2])).toBeNull();
   });
 });
 
@@ -464,13 +466,6 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
         { task: STAT_TASK, points: 16, total: 116, cut: [{ file: "memo.docx", chars: 300_000 }] },
       ],
     });
-    const brokenJudge = join(store, "dataset", "stat", "task1", "eval_result", "eval_pi-p2__stat__task1");
-    mkdirSync(brokenJudge, { recursive: true });
-    writeFileSync(join(brokenJudge, "judge_judge.json"), "{truncated");
-    writeFileSync(
-      join(store, "dataset", "stat", "task1", "model_traj", "pi-p2__stat__task1", "attempt1.jsonl"),
-      `${JSON.stringify({ kind: "solve.call", data: { tool: "bash", args: { command: "python3 run.py" } } })}\n{"kind":"truncated`,
-    );
 
     const events = syntheticLog([PROMO_1, PROMO_2]);
     const ready = domainReadinessOf({

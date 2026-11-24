@@ -8,7 +8,13 @@ import { MISSING, printed } from "#skills/main/print.ts";
 import type { Promotion, Run } from "#skills/main/runs.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
-import { formatCriteria, isCut, readJudgedStore, type SolverTier } from "#tools/runs/bench-store.ts";
+import {
+  formatCriteria,
+  isCut,
+  readJudgedStore,
+  type SolverTier,
+  uniformRuntime,
+} from "#tools/runs/bench-store.ts";
 
 /** One judged rollout: an arm's points, criteria, spend, runtime and tier on a task. */
 export interface Score {
@@ -86,18 +92,20 @@ const summed = (scores: readonly Score[]) => scores.reduce((sum, { points }) => 
 
 /** An arm's sum against same-runtime delivered baseline rollouts of one solver tier on the same tasks. */
 function againstBaseline(arm: string, own: readonly Score[], baselines: readonly Score[]) {
-  const runtime = own[0]?.runtime ?? "claude-code";
-  const sameRuntime = baselines.filter((score) => score.delivered && score.runtime === runtime);
-  const byArm = Map.groupBy(sameRuntime, ({ arm: name }) => name);
-  const tierOrder: readonly SolverTier[] = byArm.has(`base-${arm}`)
-    ? [BARE, STARTER_TIER]
-    : byArm.has(`starter-${arm}`)
-      ? [STARTER_TIER, BARE]
-      : [BARE, STARTER_TIER];
+  const runtime = uniformRuntime(own);
   const tasks = new Set(own.map(({ task }) => task));
   const points = summed(own);
   const total = own.reduce((sum, score) => sum + score.total, 0);
   const cut = own.filter((score) => score.cut).length;
+  if (runtime === null) {
+    return { tier: null, tasks: own.length, points, total, low: 0, high: 0, rollouts: 0, verdict: null, cut };
+  }
+  const sameRuntime = [...Map.groupBy(baselines, ({ arm: name }) => name).values()].flatMap((rollout) =>
+    uniformRuntime(rollout) === runtime && rollout.every((score) => score.delivered) ? rollout : [],
+  );
+  const byArm = Map.groupBy(sameRuntime, ({ arm: name }) => name);
+  const tierOrder: readonly SolverTier[] =
+    !byArm.has(`base-${arm}`) && byArm.has(`starter-${arm}`) ? [STARTER_TIER, BARE] : [BARE, STARTER_TIER];
   for (const tier of tierOrder) {
     const sums = [
       ...Map.groupBy(

@@ -164,6 +164,8 @@ describe("runs bench", () => {
     expect(completedBenchPairs(store)).toEqual([{ label: "ref-a1", baseline: "starter-ref-a1" }]);
     put("pi-a2", "t2", "pi-durable");
     put("base-pi-a2", "t2", "pi-durable");
+    mkdirSync(join(store, "judged", "corrupt-arm"), { recursive: true });
+    writeFileSync(join(store, "judged", "corrupt-arm", "t1.json"), "{not-json");
     expect(completedBenchPairs(store)).toEqual([
       { label: "pi-a2", baseline: "base-pi-a2" },
       { label: "ref-a1", baseline: "starter-ref-a1" },

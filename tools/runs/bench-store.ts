@@ -1,12 +1,12 @@
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { basename, join } from "#src/meta/path.ts";
 
 const BASE_PREFIX = "base-";
 const STARTER_PREFIX = "starter-";
 const BASELINE_PREFIXES = [BASE_PREFIX, STARTER_PREFIX] as const;
-const DETAILS_FILE = "claude-opus-5-5_judge.json";
+export const JUDGE_DETAILS_FILE = "claude-opus-5-5_judge.json";
 
 export type SolverTier = "bareSolver" | "baseStarter" | "builtSolver";
 
@@ -43,6 +43,7 @@ export interface PairedBenchArm {
   readonly runtime: string;
   readonly baselineRuntime: string;
   readonly sharedTasks: readonly string[];
+  readonly droppedBaselineTasks: readonly string[];
   readonly built: readonly BenchRecord[];
   readonly baseline: readonly BenchRecord[];
 }
@@ -82,10 +83,16 @@ export function criteriaOfDetails(
   label: string,
 ): readonly [number | null, number | null] {
   if (label === "") return [null, null];
-  const file = join(datasetDir, task, "eval_result", `eval_${label}`, DETAILS_FILE);
+  const file = join(datasetDir, task, "eval_result", `eval_${label}`, JUDGE_DETAILS_FILE);
   if (!existsSync(file)) return [null, null];
-  const raw = asRecord(capturedJsonParse(readFileSync(file, "utf8")));
-  return criteriaFromRubrics(raw?.rubrics);
+  try {
+    const content = readFileSync(file, "utf8");
+    if (content.trim() === "") return [null, null];
+    const raw = asRecord(capturedJsonParse(content));
+    return criteriaFromRubrics(raw?.rubrics);
+  } catch {
+    return [null, null];
+  }
 }
 
 function sumCriteria(
@@ -116,9 +123,20 @@ export function baselineCandidates(byArm: ReadonlyMap<string, readonly unknown[]
   return BASELINE_PREFIXES.map((prefix) => `${prefix}${label}`).filter((candidate) => byArm.has(candidate));
 }
 
-export function runtimeOfFile(file: string): string {
-  const raw = asRecord(capturedJsonParse(readFileSync(file, "utf8")));
-  return isString(raw?.runtime) ? raw.runtime : "claude-code";
+export function runtimeOfFile(file: string): string | null {
+  try {
+    const raw = asRecord(capturedJsonParse(readFileSync(file, "utf8")));
+    if (raw === null) return null;
+    return isString(raw.runtime) ? raw.runtime : "claude-code";
+  } catch {
+    return null;
+  }
+}
+
+export function uniformRuntime(records: readonly Pick<BenchRecord, "runtime">[]): string | null {
+  if (records.length === 0) return null;
+  const runtimes = new Set(records.map(({ runtime }) => runtime));
+  return runtimes.size === 1 ? (records[0]?.runtime ?? null) : null;
 }
 
 function campaignNameOf(rawOf: string | null): string | null {
@@ -137,7 +155,12 @@ export const isCut = (record: Pick<BenchRecord, "cutCount" | "cutUnknown">): boo
   record.cutUnknown || record.cutCount > 0;
 
 function parseBenchRecord(store: string, armDir: string, file: string): BenchRecord | null {
-  const raw = asRecord(capturedJsonParse(readFileSync(file, "utf8")));
+  let raw: JsonObject | null;
+  try {
+    raw = asRecord(capturedJsonParse(readFileSync(file, "utf8")));
+  } catch {
+    return null;
+  }
   if (raw === null || !isString(raw.task) || !isNumber(raw.points) || !isNumber(raw.total)) return null;
   const arm = isString(raw.arm) ? raw.arm : armDir;
   const label = isString(raw.label) ? raw.label : "";
@@ -203,15 +226,26 @@ export function pairedArmsOf(records: readonly BenchRecord[]): PairedBenchArm[] 
   const byArm = Map.groupBy(records, ({ arm }) => arm);
   const pairs: PairedBenchArm[] = [];
   for (const [arm, own] of [...byArm.entries()].toSorted(([one], [other]) => one.localeCompare(other))) {
-    if (isBaselineArmName(arm)) continue;
+    if (isBaselineArmName(arm) || own.some((rec) => rec.tier !== "builtSolver")) continue;
+    const ownRuntime = uniformRuntime(own);
+    if (ownRuntime === null) continue;
     const ownByTask = new Map(own.map((rec) => [rec.task, rec]));
     const candidates: PairedBenchArm[] = [];
     for (const baselineArm of baselineCandidates(byArm, arm)) {
       const baselineAll = byArm.get(baselineArm);
       if (baselineAll === undefined) continue;
+      const baseRuntime = uniformRuntime(baselineAll);
+      if (baseRuntime === null) continue;
       const baselineByTask = new Map(baselineAll.map((rec) => [rec.task, rec]));
+      const droppedBaselineTasks = own
+        .filter((rec) => {
+          const base = baselineByTask.get(rec.task);
+          return base !== undefined && !base.delivered;
+        })
+        .map((rec) => rec.task)
+        .toSorted();
       const sharedTasks = own
-        .filter((rec) => baselineByTask.has(rec.task))
+        .filter((rec) => baselineByTask.get(rec.task)?.delivered === true)
         .map((rec) => rec.task)
         .toSorted();
       if (sharedTasks.length === 0) continue;
@@ -229,12 +263,13 @@ export function pairedArmsOf(records: readonly BenchRecord[]): PairedBenchArm[] 
       candidates.push({
         arm,
         baselineArm,
-        builtTier: solverTierOf(lead),
-        baselineTier: solverTierOf(baselineLead),
+        builtTier: lead.tier,
+        baselineTier: baselineLead.tier,
         harness: lead.harness,
-        runtime: lead.runtime,
-        baselineRuntime: baselineLead.runtime,
+        runtime: ownRuntime,
+        baselineRuntime: baseRuntime,
         sharedTasks,
+        droppedBaselineTasks,
         built,
         baseline,
       });

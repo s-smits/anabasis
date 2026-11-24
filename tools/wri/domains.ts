@@ -136,10 +136,10 @@ export function findPairedArm(
   });
   matches.sort((one, other) => {
     if (other.rank !== one.rank) return other.rank - one.rank;
-    if (other.tasks !== one.tasks) return other.tasks - one.tasks;
     const onePi = one.runtime === "pi-durable" ? 1 : 0;
     const otherPi = other.runtime === "pi-durable" ? 1 : 0;
     if (otherPi !== onePi) return otherPi - onePi;
+    if (other.tasks !== one.tasks) return other.tasks - one.tasks;
     const oneBare = one.baselineTier === "bareSolver" ? 1 : 0;
     const otherBare = other.baselineTier === "bareSolver" ? 1 : 0;
     if (otherBare !== oneBare) return otherBare - oneBare;

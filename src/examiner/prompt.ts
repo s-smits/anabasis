@@ -58,7 +58,7 @@ export function systemPrompt(tries: "given" | "none"): string {
     ...(tries === "none"
       ? []
       : [
-          "## Trying the reference\n\ntry_reference runs fresh solves of an instance under the reference harness within the budget. For each solve it reports validity, turns and objective measure, or what ended it (check refusal, limit, no answer or malformed flag), never its answer, trace or refusing check. Solves bill the campaign while your session clock pauses. Comparisons solve every task afresh and ignore your tries, and the gate ignores them too. One solve is weak evidence: a solve that failed may pass next time.",
+          "## Trying the reference\n\ntry_reference runs fresh solves of an instance under the reference harness within the budget. For each solve it reports validity and turns, or what ended it (check refusal, limit, no answer or malformed flag), never its objective value, answer, trace or refusing check. Solves bill the campaign while your session clock pauses. Comparisons solve every task afresh and ignore your tries, and the gate ignores them too. One solve is weak evidence: a solve that failed may pass next time.",
         ]),
     "## The session\n\nPropose in rounds: put drafts to the gate, read its response, and propose more. Call finish when you have no more tasks worth proposing; the session also ends at its limits. After a finish or once the host has what it needs, the host may wake this conversation for more tasks and report what comparisons read since.",
   ].join("\n\n");

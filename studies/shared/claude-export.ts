@@ -82,7 +82,7 @@ export const exportedPrograms = (tree: string): Program[] =>
  *  roll it: this one unless `--for` names another. Returns what `export.json` records. */
 export async function exportForClaudeCode(
   into: string,
-  source: "starter" | { readonly campaign: string; readonly harness?: string },
+  source: "base" | "starter" | { readonly campaign: string; readonly harness?: string },
   place: Place = HERE,
   python: PythonFor = uvPython(place),
 ) {

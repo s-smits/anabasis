@@ -9,7 +9,7 @@
  *   bun studies/harness2/score.ts tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]
  *     [--harness <kept>]
  *
- * Arms may be `base`, `starter`, `<campaign>`, `pi:starter`, `pi:<campaign>`, `tree:<dir>`,
+ * Arms may be `base`, `starter`, `<campaign>`, `pi:base`, `pi:starter`, `pi:<campaign>`, `tree:<dir>`,
  * `heldout`, `again:<side>`, `sweep:base1`, or `sweep:agg1`. Rollouts run sequentially under the
  * benchmark's PATH and judge (`eval/judge.py`); records land in `<out>/judged/<name>/` and track
  * file-length cuts (`cut`) and workspace escape needles (`peeked`).
@@ -382,10 +382,11 @@ async function exportedArm(
 ): Promise<Arm> {
   const { harness, out, place, pi } = context;
   const source = sourceNamed(from, harness);
-  // An arm's name binds its tree, written once: another harness takes another name.
   const into = join(out, "trees", name);
   if (!existsSync(into)) {
-    await (pi ? exportPiTree(into, source, place) : exportForClaudeCode(into, source, place));
+    if (pi) await exportPiTree(into, source, place);
+    else if (source === "base") throw new Error("base runs directly under --arm base without export");
+    else await exportForClaudeCode(into, source, place);
   }
   const record = readJson(join(into, "export.json"));
   const digest =
@@ -396,7 +397,7 @@ async function exportedArm(
   if (isString(toolchain)) await foreignPrograms(join(into, toolchain), place);
   const priced = `${into}.build.json`;
   if (!existsSync(priced)) {
-    const usd = from === "starter" ? 0 : billedAll(read(await logAcross(from)));
+    const usd = from === "starter" || from === "base" ? 0 : billedAll(read(await logAcross(from)));
     writeFileSync(priced, `${capturedJsonStringify({ of: from, usd })}\n`);
   }
   const [of, usd] = [field(readJson(priced), "of"), field(readJson(priced), "usd")];

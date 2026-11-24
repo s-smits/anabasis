@@ -1,13 +1,15 @@
-// Domain protocol, gitignored `.wri/domains/<domain>/` extensions, `minPromo` gating,
-// deterministic external-benchmark regression joins, and `bun run wri` lane-guard boundaries.
 import { afterAll, describe, expect, it } from "bun:test";
+import { openHarness } from "../src/harness/open.ts";
+import { writeBare } from "../src/harness/starter.ts";
 import { conditionId } from "../src/kernel/condition.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { placeHarness, sourceNamed } from "../studies/shared/bundle.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import {
   DEFAULT_MIN_PROMO,
@@ -15,7 +17,6 @@ import {
   findPairedArm,
   formatDomainCheck,
   packMatches,
-  REGRESSION_LANE,
 } from "../tools/wri/domains.ts";
 import { refusalOf } from "../tools/wri/lane-guard.ts";
 import { analyzeRegressions, formatRegressionReport } from "../tools/wri/regressions.ts";
@@ -26,6 +27,7 @@ const STARTER = "a".repeat(64);
 const PROMO_1 = "b".repeat(64);
 const PROMO_2 = "c".repeat(64);
 const SOC_TASK = "soc/task2";
+const STAT_TASK = "stat/task1";
 const scratch: string[] = [];
 
 function tempDir(prefix: string): string {
@@ -80,12 +82,13 @@ function syntheticLog(promotions: readonly string[]): LogEvent[] {
   return events;
 }
 
-function writeBenchArm(
-  store: string,
-  arm: string,
-  harness: string,
-  runtime: string,
-  tasks: readonly {
+function writeBenchArm(spec: {
+  readonly store: string;
+  readonly arm: string;
+  readonly harness: string;
+  readonly runtime: string;
+  readonly buildOf?: string;
+  readonly tasks: readonly {
     readonly task: string;
     readonly points: number;
     readonly total: number;
@@ -98,8 +101,9 @@ function writeBenchArm(
       readonly cTotal: number;
     }[];
     readonly commands?: readonly string[];
-  }[],
-): void {
+  }[];
+}): void {
+  const { store, arm, harness, runtime, tasks, buildOf } = spec;
   for (const item of tasks) {
     const slug = item.task.replace("/", "__");
     writeJson(join(store, "judged", arm, `${slug}.json`), {
@@ -114,6 +118,7 @@ function writeBenchArm(
       seconds: 120,
       delivered: true,
       cut: item.cut ?? [],
+      ...keyIfDefined("build", buildOf === undefined ? undefined : { of: buildOf, usd: 0 }),
     });
     const [group = "", name = ""] = item.task.split("/");
     if (item.rubrics !== undefined) {
@@ -153,6 +158,24 @@ function writeBenchArm(
 
 afterAll(() => {
   for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("bareSolver (--arm pi:base) harness placement", () => {
+  it("writes a guide-free, toolchain-free bareSolver harness that opens cleanly", async () => {
+    const dir = tempDir("bare-harness-");
+    writeBare(dir);
+    const opened = await openHarness(dir);
+    expect(opened.guide).toBeNull();
+    expect(opened.toolTree).toBeNull();
+    expect(opened.presets).toEqual(["read", "bash", "edit", "write"]);
+
+    const bundled = tempDir("bare-bundle-");
+    expect(sourceNamed("base", undefined)).toBe("base");
+    expect(() => sourceNamed("base", PROMO_1)).toThrow(/base is one harness/u);
+    const origin = await placeHarness(bundled, "base");
+    expect(origin).toEqual({ campaign: null, ending: null, confirmed: null });
+    expect((await openHarness(bundled)).guide).toBeNull();
+  });
 });
 
 describe("EVAL_RUNNER minPromo and domain matching", () => {
@@ -217,16 +240,15 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
     expect(ready.customLanes.map((lane) => lane.number)).toEqual([31]);
     expect(formatDomainCheck(ready)).toContain("31 (ESP32 firmware timing)");
 
-    // Invalid custom lane numbers (core 1..20 or reserved 90) are rejected cleanly.
     writeFileSync(
       join(espDir, "lanes.md"),
       [
-        "**90. Reserved collision.**",
+        "**12. Core collision.**",
         "Label: `exam`.",
         "Importance: 0.5.",
         "Marks: none.",
         "",
-        "Starts from reserved number.",
+        "Starts from core number.",
       ].join("\n"),
     );
     expect(() =>
@@ -241,7 +263,7 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
     ).toThrow(/2-digit number in 21–99/u);
   });
 
-  it("gates ablation and regression lane on minPromo and prefers newest pi-durable arm", () => {
+  it("gates ablation on minPromo and prefers bareSolver then pi-durable newest promotion", () => {
     const root = tempDir("wri-gate-");
     const store = join(root, "bench");
     const bench = {
@@ -254,7 +276,6 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
     };
     const log = join(root, "jobstat-anabasis-v9-fresh-opus", "log.jsonl");
 
-    // 0 promotions -> below minPromo, no ablation required.
     const zero = domainReadinessOf({
       campaign: "jobstat-anabasis-v9-fresh-opus",
       log,
@@ -264,10 +285,9 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
       extensionsRoot: join(root, ".wri", "domains"),
     });
     expect(zero.meetsMinPromo).toBe(false);
+    expect(zero.evalsActive).toBe(false);
     expect(zero.ablationNeeded).toBe(false);
-    expect(zero.regressionLane).toBeNull();
 
-    // 1 promotion with empty store -> ablationNeeded = true with exact `runs bench --pi` command.
     const one = domainReadinessOf({
       campaign: "jobstat-anabasis-v9-fresh-opus",
       log,
@@ -280,37 +300,45 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
     expect(one.ablationNeeded).toBe(true);
     expect(one.ablationCommand).toBe("bun run runs bench jobstat-anabasis-v9-fresh-opus --pi");
 
-    // Multiple paired arms: prefers newest promotion (PROMO_2) and pi-durable over claude-code.
-    writeBenchArm(store, "cc-p1", PROMO_1, "claude-code", [{ task: "stats/t1", points: 30, total: 50 }]);
-    writeBenchArm(store, "starter-cc-p1", STARTER, "claude-code", [
-      { task: "stats/t1", points: 35, total: 50 },
-    ]);
-    writeBenchArm(store, "cc-p2", PROMO_2, "claude-code", [{ task: "stats/t1", points: 32, total: 50 }]);
-    writeBenchArm(store, "starter-cc-p2", STARTER, "claude-code", [
-      { task: "stats/t1", points: 35, total: 50 },
-    ]);
-    writeBenchArm(store, "pi-p2", PROMO_2, "pi-durable", [{ task: "stats/t1", points: 34, total: 50 }]);
-    writeBenchArm(store, "starter-pi-p2", STARTER, "pi-durable", [
-      { task: "stats/t1", points: 35, total: 50 },
-    ]);
+    writeBenchArm({
+      store,
+      arm: "cc-p2",
+      harness: PROMO_2,
+      runtime: "claude-code",
+      tasks: [{ task: "stats/t1", points: 32, total: 50 }],
+    });
+    writeBenchArm({
+      store,
+      arm: "starter-cc-p2",
+      harness: STARTER,
+      runtime: "claude-code",
+      buildOf: "starter",
+      tasks: [{ task: "stats/t1", points: 35, total: 50 }],
+    });
+    writeBenchArm({
+      store,
+      arm: "pi-p2",
+      harness: PROMO_2,
+      runtime: "pi-durable",
+      tasks: [{ task: "stats/t1", points: 34, total: 50 }],
+    });
+    writeBenchArm({
+      store,
+      arm: "base-pi-p2",
+      harness: "",
+      runtime: "pi-durable",
+      buildOf: "base",
+      tasks: [{ task: "stats/t1", points: 31, total: 50 }],
+    });
 
     expect(findPairedArm(store, [PROMO_1, PROMO_2])).toMatchObject({
       arm: "pi-p2",
-      starterArm: "starter-pi-p2",
+      baselineArm: "base-pi-p2",
+      builtTier: "builtSolver",
+      baselineTier: "bareSolver",
       harness: PROMO_2,
       runtime: "pi-durable",
     });
-
-    const two = domainReadinessOf({
-      campaign: "jobstat-anabasis-v9-fresh-opus",
-      log,
-      events: syntheticLog([PROMO_1, PROMO_2]),
-      repo: root,
-      benches: [bench],
-      extensionsRoot: join(root, ".wri", "domains"),
-    });
-    expect(two.ablationNeeded).toBe(false);
-    expect(two.regressionLane?.number).toBe(REGRESSION_LANE);
   });
 });
 
@@ -327,29 +355,42 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
     writeFileSync(join(agentDir, "BUILT_AGENTS.md"), "# Guide\n");
 
     const store = join(root, "bench");
-    writeBenchArm(store, "pi-p2", PROMO_2, "pi-durable", [
-      {
-        task: SOC_TASK,
-        points: 38,
-        total: 66,
-        rubrics: [
-          { index: 0, weight: 8, passed: false, cPassed: 2, cTotal: 3 },
-          { index: 1, weight: 10, passed: true, cPassed: 4, cTotal: 4 },
-        ],
-        commands: ["inspect-workspace"],
-      },
-      {
-        task: "stat/task1",
-        points: 36,
-        total: 116,
-        cut: [{ file: "memo.docx", chars: 205_000 }],
-        commands: ["python3 run.py"],
-      },
-    ]);
-    writeBenchArm(store, "starter-pi-p2", STARTER, "pi-durable", [
-      { task: SOC_TASK, points: 66, total: 66 },
-      { task: "stat/task1", points: 16, total: 116, cut: [{ file: "memo.docx", chars: 300_000 }] },
-    ]);
+    writeBenchArm({
+      store,
+      arm: "pi-p2",
+      harness: PROMO_2,
+      runtime: "pi-durable",
+      tasks: [
+        {
+          task: SOC_TASK,
+          points: 38,
+          total: 66,
+          rubrics: [
+            { index: 0, weight: 8, passed: false, cPassed: 2, cTotal: 3 },
+            { index: 1, weight: 10, passed: true, cPassed: 4, cTotal: 4 },
+          ],
+          commands: ["inspect-workspace"],
+        },
+        {
+          task: STAT_TASK,
+          points: 36,
+          total: 116,
+          cut: [{ file: "memo.docx", chars: 205_000 }],
+          commands: ["python3 run.py"],
+        },
+      ],
+    });
+    writeBenchArm({
+      store,
+      arm: "base-pi-p2",
+      harness: "",
+      runtime: "pi-durable",
+      buildOf: "base",
+      tasks: [
+        { task: SOC_TASK, points: 66, total: 66 },
+        { task: STAT_TASK, points: 16, total: 116, cut: [{ file: "memo.docx", chars: 300_000 }] },
+      ],
+    });
 
     const events = syntheticLog([PROMO_1, PROMO_2]);
     const ready = domainReadinessOf({
@@ -372,43 +413,82 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
     ]);
 
     const text = formatRegressionReport(report);
+    expect(text).toContain("base-pi-p2 (bareSolver");
     expect(text).toContain("R1(w8,2/3)");
     expect(text).toContain("inspect-workspace: campaign 1/1 solves | external 1/2 tasks");
     expect(text).toContain("pystat: campaign 1/1 solves | external 0/2 tasks");
     expect(text).toContain("Cross-version cohort backtrack");
-    expect(text).toContain("insufficient-baseline");
+    expect(text).toContain("insufficient-baseline (k=1 same-runtime bareSolver");
   });
 
-  it("stratifies cross-version cohort stats by runtime and computes fair-uncut spread and verdict", () => {
+  it("stratifies cross-version cohort stats by runtime and baseline tier", () => {
     const root = tempDir("wri-cohort-");
     const store = join(root, "bench");
     const campaignDir = join(root, "jobstat-anabasis-v9-fresh-opus");
     mkdirSync(campaignDir, { recursive: true });
-    // Two claude-code paired arms + one pi-durable paired arm
-    writeBenchArm(store, "cc-old", PROMO_1, "claude-code", [
-      { task: SOC_TASK, points: 60, total: 66 },
-      { task: "stat/task1", points: 30, total: 116, cut: [{ file: "m.docx", chars: 210_000 }] },
-    ]);
-    writeBenchArm(store, "starter-cc-old", STARTER, "claude-code", [
-      { task: SOC_TASK, points: 50, total: 66 },
-      { task: "stat/task1", points: 20, total: 116, cut: [{ file: "m.docx", chars: 210_000 }] },
-    ]);
-    writeBenchArm(store, "cc-new", PROMO_2, "claude-code", [
-      { task: SOC_TASK, points: 30, total: 66 },
-      { task: "stat/task1", points: 36, total: 116, cut: [{ file: "m.docx", chars: 210_000 }] },
-    ]);
-    writeBenchArm(store, "starter-cc-new", STARTER, "claude-code", [
-      { task: SOC_TASK, points: 60, total: 66 },
-      { task: "stat/task1", points: 20, total: 116, cut: [{ file: "m.docx", chars: 210_000 }] },
-    ]);
-    writeBenchArm(store, "pi-new", PROMO_2, "pi-durable", [
-      { task: SOC_TASK, points: 55, total: 66 },
-      { task: "stat/task1", points: 36, total: 116 },
-    ]);
-    writeBenchArm(store, "starter-pi-new", STARTER, "pi-durable", [
-      { task: SOC_TASK, points: 55, total: 66 },
-      { task: "stat/task1", points: 20, total: 116 },
-    ]);
+    writeBenchArm({
+      store,
+      arm: "cc-old",
+      harness: PROMO_1,
+      runtime: "claude-code",
+      tasks: [
+        { task: SOC_TASK, points: 60, total: 66 },
+        { task: STAT_TASK, points: 30, total: 116, cut: [{ file: "m.docx", chars: 210_000 }] },
+      ],
+    });
+    writeBenchArm({
+      store,
+      arm: "starter-cc-old",
+      harness: STARTER,
+      runtime: "claude-code",
+      buildOf: "starter",
+      tasks: [
+        { task: SOC_TASK, points: 50, total: 66 },
+        { task: STAT_TASK, points: 20, total: 116, cut: [{ file: "m.docx", chars: 210_000 }] },
+      ],
+    });
+    writeBenchArm({
+      store,
+      arm: "cc-new",
+      harness: PROMO_2,
+      runtime: "claude-code",
+      tasks: [
+        { task: SOC_TASK, points: 30, total: 66 },
+        { task: STAT_TASK, points: 36, total: 116, cut: [{ file: "m.docx", chars: 210_000 }] },
+      ],
+    });
+    writeBenchArm({
+      store,
+      arm: "starter-cc-new",
+      harness: STARTER,
+      runtime: "claude-code",
+      buildOf: "starter",
+      tasks: [
+        { task: SOC_TASK, points: 60, total: 66 },
+        { task: STAT_TASK, points: 20, total: 116, cut: [{ file: "m.docx", chars: 210_000 }] },
+      ],
+    });
+    writeBenchArm({
+      store,
+      arm: "pi-new",
+      harness: PROMO_2,
+      runtime: "pi-durable",
+      tasks: [
+        { task: SOC_TASK, points: 55, total: 66 },
+        { task: STAT_TASK, points: 36, total: 116 },
+      ],
+    });
+    writeBenchArm({
+      store,
+      arm: "base-pi-new",
+      harness: "",
+      runtime: "pi-durable",
+      buildOf: "base",
+      tasks: [
+        { task: SOC_TASK, points: 52, total: 66 },
+        { task: STAT_TASK, points: 20, total: 116 },
+      ],
+    });
 
     const events = syntheticLog([PROMO_1, PROMO_2]);
     const ready = domainReadinessOf({
@@ -421,33 +501,15 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
       extensionsRoot: join(root, ".wri", "domains"),
     });
     const report = analyzeRegressions(ready, events, campaignDir);
-    expect(report.cohorts.map((cohort) => cohort.runtime)).toEqual(["claude-code", "pi-durable"]);
+    expect(report.cohorts.map((cohort) => `${cohort.runtime}:${cohort.baselineTier}`)).toEqual([
+      "claude-code:baseStarter",
+      "pi-durable:bareSolver",
+    ]);
     const cc = report.cohorts[0];
     expect(cc?.uncutTaskCount).toBe(1);
-    expect(cc?.starterUncutRange).toEqual([50, 60]);
+    expect(cc?.baselineUncutRange).toEqual([50, 60]);
     expect(cc?.bestByDelta?.arm).toBe("cc-old");
-    expect(cc?.baselineLabel).toBe("baseStarter");
     expect(cc?.targetVerdict).toContain("below baseStarter band");
-    expect(formatRegressionReport(report)).toContain(
-      "pair: builtSolver cc-new vs baseStarter starter-cc-new",
-    );
-
-    // Verify bareSolver baseline classification when build.of === "base".
-    const bareFile = join(store, "judged", "starter-pi-new", "soc__task2.json");
-    writeFileSync(
-      bareFile,
-      `${JSON.stringify({
-        arm: "starter-pi-new",
-        task: SOC_TASK,
-        harness: STARTER,
-        runtime: "pi-durable",
-        points: 55,
-        total: 66,
-        build: { of: "base", usd: 0 },
-      })}\n`,
-    );
-    const bareReport = analyzeRegressions(ready, events, campaignDir);
-    expect(bareReport.cohorts[1]?.baselineLabel).toBe("bareSolver");
   });
 
   it("blocks primary bun run wri steps in lane-guard while permitting check, regressions, and 2-digit custom reports", () => {
@@ -455,9 +517,6 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
     expect(refusalOf("Bash", { command: "bun run wri lanes --out y" })).toBe("the primary's step");
     expect(refusalOf("Bash", { command: "bun run wri check --log x" })).toBeNull();
     expect(refusalOf("Bash", { command: "bun run wri regressions --log x" })).toBeNull();
-    expect(
-      refusalOf("Write", { file_path: "/Users/x/anabasis/.ana/wri/2026-11-24-run/lanes/90-report.md" }),
-    ).toBeNull();
     expect(
       refusalOf("Write", { file_path: "/Users/x/anabasis/.ana/wri/2026-11-24-run/lanes/31-report.md" }),
     ).toBeNull();

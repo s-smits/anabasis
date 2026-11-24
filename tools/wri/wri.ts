@@ -146,6 +146,7 @@ interface Investigation {
 }
 
 const REPO = resolve(import.meta.dir, "..", "..");
+const REGRESSIONS = "regressions.txt";
 const USAGE =
   "usage: bun run wri check | regressions | read | climb | trajectory | backtrack | start | lanes | collect | record | synthesis | findings | grade | derive | reader | index | packets";
 
@@ -312,6 +313,12 @@ async function start(): Promise<number> {
         ];
   });
   const texts = logs.map((log) => overviewText(log, read(log), REPO));
+  const readinessList = logs.map((log) => ({
+    log,
+    readiness: readinessOf(nameOf(log, logs), log),
+  }));
+  const evalReport = formatRegressionsFor(readinessList);
+  const regressionsFile = join(out, REGRESSIONS);
   const campaigns = [
     "| campaign | log | events | checkout |",
     "| --- | --- | --- | --- |",
@@ -324,6 +331,11 @@ async function start(): Promise<number> {
     "",
     ...(trees.length > 0 ? [...trees, ""] : []),
     `Every deterministic reader's output for each campaign, as the log stood at this start, is in its folder: ${done.map(({ dir }) => `\`${dir}/\``).join(", ")}, one \`<reader>.txt\` a reader (\`wri.ts derive\`). Read those files before running a reader yourself.`,
+    ...(evalReport === null
+      ? []
+      : [
+          `External benchmark regression join (\`bun run wri regressions\`): \`${regressionsFile}\` (also injected into \`synthesis-prompt.md\`).`,
+        ]),
   ].join("\n");
   const template = readFileSync(join(REFERENCES, "shared-instructions.template.md"), "utf8");
   const text =
@@ -332,23 +344,20 @@ async function start(): Promise<number> {
       : texts.map((each, index) => `## ${nameOf(logs[index] ?? "")}\n\n${each}`).join("\n");
   writeFileSync(join(out, OVERVIEW), text);
   writeFileSync(join(out, INVESTIGATION), `${JSON.stringify({ logs }, null, 2)}\n`);
-  // The shared instructions last, since a start refuses a folder that holds them, and a start that
-  // failed after writing them would leave a folder no start or later verb could read. The author's
-  // comments stay in the copy: they say what each blank section is for.
+  if (evalReport !== null) writeFileSync(regressionsFile, `${evalReport}\n`);
   writeFileSync(
     join(out, SHARED),
     template.replace("{campaigns}", () => campaigns),
   );
   console.log(text);
   console.log(line);
-  for (const log of logs) {
-    console.log(formatDomainCheck(readinessOf(nameOf(log, logs), log)));
+  for (const { readiness } of readinessList) {
+    console.log(formatDomainCheck(readiness));
   }
   console.log(`wrote ${join(out, SHARED)}: write its three blank sections, then run lanes`);
   return 0;
 }
 
-/** Parses optional `--min-promo <N>` as a non-negative integer. */
 function parseMinPromo(): number | undefined {
   const raw = values["min-promo"];
   if (raw === undefined) return undefined;
@@ -359,7 +368,6 @@ function parseMinPromo(): number | undefined {
   return parsed;
 }
 
-/** Computes domain, `minPromo`, external benchmark, and custom-lane readiness for one campaign log. */
 function readinessOf(campaign: string, log: string) {
   return domainReadinessOf({
     campaign,
@@ -373,14 +381,21 @@ function readinessOf(campaign: string, log: string) {
   });
 }
 
-/** Merges core catalogue lanes with any applicable optional regression-eval and domain-extension lanes. */
+function formatRegressionsFor(
+  entries: readonly { readonly log: string; readonly readiness: ReturnType<typeof readinessOf> }[],
+): string | null {
+  const withStore = entries.filter(({ readiness }) => readiness.store !== null);
+  if (withStore.length === 0) return null;
+  return withStore
+    .map(({ log, readiness }) => formatRegressionReport(analyzeRegressions(readiness, read(log))))
+    .join("\n\n");
+}
+
 function allLanesFor(catalogue: string, campaigns: readonly Campaign[]): Lane[] {
   const merged = [...lanesOf(catalogue)];
   const seen = new Set(merged.map((lane) => lane.number));
   for (const { name, log } of campaigns) {
-    const { regressionLane, customLanes } = readinessOf(name, log);
-    const extras = [...(regressionLane === null ? [] : [regressionLane]), ...customLanes];
-    for (const lane of extras) {
+    for (const lane of readinessOf(name, log).customLanes) {
       if (seen.has(lane.number)) continue;
       seen.add(lane.number);
       merged.push(lane);
@@ -591,6 +606,12 @@ async function synthesis(): Promise<number> {
       REPO,
     )
   ).join("\n");
+  const regressionsFile = join(out, REGRESSIONS);
+  const evalRegressions = existsSync(regressionsFile)
+    ? readFileSync(regressionsFile, "utf8").trim()
+    : (formatRegressionsFor(
+        investigation.campaigns.map(({ name, log }) => ({ log, readiness: readinessOf(name, log) })),
+      ) ?? "No external benchmark store configured for these campaigns.");
   writeFileSync(
     path,
     filled(template, {
@@ -598,6 +619,7 @@ async function synthesis(): Promise<number> {
       synthesis: join(out, "synthesis.md"),
       overview: readFileSync(join(out, OVERVIEW), "utf8").trim(),
       history,
+      evalRegressions,
       reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns, shared),
       sharedInstructions: shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim(),
       register: standingLines(),

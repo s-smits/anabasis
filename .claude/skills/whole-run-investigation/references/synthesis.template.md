@@ -1,6 +1,6 @@
 <!--
 The synthesis session's prompt template. `wri.ts synthesis --out <dir>` renders this file into
-<dir>/synthesis-prompt.md, substituting the seven brace-delimited slots and stripping comments. This
+<dir>/synthesis-prompt.md, substituting the eight brace-delimited slots and stripping comments. This
 template defines the required contents of the synthesis note; the skill's "Vetting" section links
 here.
 -->
@@ -30,6 +30,14 @@ Deterministic backtracking of older runs from the same domain (`wri.ts backtrack
 
 {history}
 
+## External benchmark regression analysis (deterministic join)
+
+Deterministic output of `bun run wri regressions` (`<out>/regressions.txt`): paired external benchmark deltas, missed rubric indices/weights, cut flags, inside-vs-outside `.toolchain/bin` invocation counts, and cross-version cohort backtrack stratified by runtime and baseline tier (`bareSolver` vs `baseStarter`).
+
+```
+{evalRegressions}
+```
+
 ## The register of standing findings
 
 Recurring issues observed across repeated investigations and left unresolved, indexed by key. No individual lane was shown this register.
@@ -39,6 +47,7 @@ Recurring issues observed across repeated investigations and left unresolved, in
 ## What the note requires, in order
 
 0. **Version-over-version progress (same domain).** From the version history above and Lane 2, state explicitly whether the investigated run(s) improved, stayed flat, regressed, or remain unproven against the nearest prior release (`direct` / `near` cohorts, `gap < 2`, high attention), citing matched active hours, `written-after` confirmation, validity room, A/A honesty, repriced `$/promo`, and external `outside-reads.md` scores. State whether the nearest prior release's stored binding constraint moved, and identify any change since that release that regressed or missed its bar. Give `mid` (`2 <= gap < 3`) one trend sentence at most and leave `distant` (`gap >= 3`) collapsed.
+0b. **WRI + Eval full triage.** Where external benchmark records exist above, join the external rubric misses, cut flags, unused `.toolchain/bin` tools, and baseline-stratified cohort delta (`builtSolver` vs `bareSolver` or legacy `baseStarter`) directly to the internal WRI lanes (`d-N` exam checks/objective saturation, `x-N` task families, `b-N` Builder guide/tool edits, and `g-N` `written-after` confirmation splits). State in one plain paragraph what failed externally and which internal campaign mechanism caused it; if no external store or paired arm exists (or promotions are below `minPromo`), state the exact readiness status in one sentence.
 1. **Whether the reading can be believed.** Provide one row per `comparison.reported` across every campaign, evaluating four links as `holds`, `does not hold`, or `undeterminable` with its event kind and count: (a) the exam measured what was intended (the checker was frozen and read, passes, deliverables and verifier grounding are sound, and rejections in the tally are sound; lanes 4, 11, 16, 17, and 20); (b) the tasks were properly bracketed (the scored set was held out and fixed before the first solve, uninfluenced by comparison outcomes; lanes 5, 7, 9, and 17); (c) the paired arms differed solely in the harness, with no evaluation leakage or sandbox breach (lanes 8, 9, 12, 15, and 19); (d) the statistical reading follows from the pairs at the observed sample size and transfers beyond selecting tasks (lanes 5 and 6). Follow each row with one sentence classifying the reading as believed as written, believed with a named limit, or not believed.
 2. **The binding constraint.** Identify the single mechanism that most limits the next round, and explain why it outranks the alternatives.
 3. **One merged findings table:** `finding | lanes | standing | campaigns | owner | evidence | outcome`. Merge duplicate findings under the earliest owner so that every finding from every `ok` report appears in exactly one row. `lanes` lists every supporting lane finding by its id from the index above (`12.2, 17.1`), because independent convergence carries weight and vetting accounts for each entry. `standing` is the matching key from the register above, or `new`; a keyed row cites this investigation's count as its evidence without re-arguing the mechanism. `campaigns` lists every campaign exhibiting the finding, drawn from `Seen in:` lines verified against the logs; when a finding appears in only one campaign, state what distinguishes that campaign from the others. `owner` is exactly one owner from the catalogue's owner table, naming the file for `host` and prompt owners. `evidence` cites an event kind and count, and notes when the cause remains plausible. `outcome` is exactly one of `patch`, `decision`, `prediction`, or `drop`. Rank rows by their impact on the four validity links above, placing `new` rows ahead of keyed rows of equal impact.

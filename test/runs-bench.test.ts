@@ -4,7 +4,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import { heldAs, type Plan, probed, settingsOf, stepsOf, walk } from "../tools/runs/bench.ts";
-import { completedBenchLabels } from "../tools/runs/bench-scores.ts";
+import { completedBenchPairs } from "../tools/runs/bench-scores.ts";
 
 const scratch: string[] = [];
 const HOSTS = JSON.stringify([
@@ -87,8 +87,8 @@ describe("runs bench", () => {
       "carry ref-a1 into the store on bench",
       "clear the export's stage",
       "dry run of ref-a1",
-      "dry run of starter-ref-a1",
-      "roll ref-a1, then starter-ref-a1, on login 2",
+      "dry run of base-ref-a1",
+      "roll ref-a1, then base-ref-a1, on login 2",
     ]);
     expect(steps.map((step) => step.includes("--yes"))).toEqual([
       ...Array.from({ length: 6 }, () => false),
@@ -97,19 +97,24 @@ describe("runs bench", () => {
     // The export runs where the campaign is, and the sitting where the store is.
     expect(steps[1]).toContain("you@builder");
     expect(steps[1]).toContain(String.raw`--for '\''linux-x64'\'' --python '\''3.12'\''`);
+    expect(steps[5]).toContain(String.raw`--arm '\''base'\''`);
     expect(steps[6]).toContain("you@bench");
-    // Reference must succeed before the paired Starter rolls.
+    // Reference must succeed before the paired baseline rolls.
     expect(steps[6]).toContain("--yes && ");
     expect(steps[6]).not.toContain("--yes; ");
   });
 
-  test("a pi runtime plan exports and rolls pi: arms without Claude Code translation", () => {
+  test("a pi runtime plan exports and rolls pi: arms against bareSolver by default and supports starter fallback", () => {
     const steps = text(planOf({ runtime: "pi", label: "pi-ref-a1" }));
     expect(steps[1]).toContain(String.raw`--arm '\''pi:stats-fresh-opus-builder'\''`);
     expect(steps[4]).toContain(String.raw`--arm '\''pi:stats-fresh-opus-builder'\''`);
-    expect(steps[5]).toContain(String.raw`--arm '\''pi:starter'\''`);
+    expect(steps[5]).toContain(String.raw`--arm '\''pi:base'\''`);
     expect(steps[6]).toContain(`pi:${RUN}`);
-    expect(steps[6]).toContain("pi:starter");
+    expect(steps[6]).toContain("pi:base");
+
+    const starterSteps = text(planOf({ runtime: "pi", label: "pi-ref-a1", baseline: "starter" }));
+    expect(starterSteps[5]).toContain(String.raw`--arm '\''pi:starter'\''`);
+    expect(starterSteps[6]).toContain("starter-pi-ref-a1");
   });
 
   test("a read that waits looks again while an arm holds the machine, and one that does not refuses", () => {
@@ -133,7 +138,7 @@ describe("runs bench", () => {
     expect(ran.some((words) => words.includes("--yes"))).toBe(false);
   });
 
-  test("completedBenchLabels skips a label whose arms hold mismatched task counts and marks matching arms ready", () => {
+  test("completedBenchPairs handles both base- and starter- baselines with exact task matching", () => {
     const store = mkdtempSync(join(tmpdir(), "ana-bench-scores-"));
     scratch.push(store);
     const put = (arm: string, task: string) => {
@@ -143,9 +148,14 @@ describe("runs bench", () => {
     put("ref-a1", "t1");
     put("starter-ref-a1", "t1");
     put("starter-ref-a1", "t2");
-    expect(completedBenchLabels(store)).toEqual([]);
+    put("pi-a2", "t1");
+    put("base-pi-a2", "t1");
+    expect(completedBenchPairs(store)).toEqual([{ label: "pi-a2", baseline: "base-pi-a2" }]);
     put("ref-a1", "t2");
-    expect(completedBenchLabels(store)).toEqual(["ref-a1"]);
+    expect(completedBenchPairs(store)).toEqual([
+      { label: "pi-a2", baseline: "base-pi-a2" },
+      { label: "ref-a1", baseline: "starter-ref-a1" },
+    ]);
   });
 
   test("heldAs deduplicates per runtime mode and probed reads both harness and mode", () => {

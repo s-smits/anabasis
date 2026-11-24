@@ -1,40 +1,29 @@
-/**
- * Scoring sub-mode for `bun run runs bench` when invoked without a campaign name: scores every
- * external benchmark evaluation once both of its arms have been judged (`run-improvement-campaign`,
- * "The outside aim"). `runs bench <run>` evaluates a reference harness as `<label>` and a fresh
- * Starter baseline as `starter-<label>`, and the judge writes one JSON record per task under
- * `judged/<arm>/`. An evaluation is complete once the Starter arm holds a record for every task in
- * the reference arm, because the sitting runs the Starter last over the reference arm's task set.
- * Its `score.ts table` output is then written once to `scored/<label>.txt` alongside the records,
- * and one summary line is printed so the alerts job reports each completed evaluation once.
- */
 import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath } from "#src/meta/process.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
-import { judgedFilesByArm, STARTER_PREFIX } from "./bench-store.ts";
+import { baselineArmFor, isBaselineArmName, judgedFilesByArm } from "./bench-store.ts";
 import { benchesOf } from "./host-config.ts";
 import { Misused } from "./registry.ts";
 import { recordsHere } from "./snapshots.ts";
 
 const SCORE = join(import.meta.dir, "..", "..", "studies", "harness2", "score.ts");
 
-/** Returns labels in `store` whose reference and Starter arms are both fully judged and not yet scored. */
-export function completedBenchLabels(store: string): string[] {
+export function completedBenchPairs(store: string): { readonly label: string; readonly baseline: string }[] {
   const byArm = judgedFilesByArm(store);
   return [...byArm.keys()]
-    .filter((arm) => arm.startsWith(STARTER_PREFIX))
-    .map((arm) => arm.slice(STARTER_PREFIX.length))
-    .filter((label) => {
+    .filter((arm) => !isBaselineArmName(arm))
+    .flatMap((label) => {
+      const baseline = baselineArmFor(byArm, label);
+      if (baseline === null || existsSync(join(store, "scored", `${label}.txt`))) return [];
       const own = new Set(byArm.get(label));
-      const starter = new Set(byArm.get(`${STARTER_PREFIX}${label}`));
-      const done = own.size > 0 && own.size === starter.size && [...own].every((task) => starter.has(task));
-      return done && !existsSync(join(store, "scored", `${label}.txt`));
+      const base = new Set(byArm.get(baseline));
+      const done = own.size > 0 && own.size === base.size && [...own].every((task) => base.has(task));
+      return done ? [{ label, baseline }] : [];
     })
-    .toSorted();
+    .toSorted((one, other) => one.label.localeCompare(other.label));
 }
 
-/** Scores every completed benchmark evaluation in the selected stores, or across all local benchmark records. */
 export async function scoreDone(values: {
   readonly bench?: string | undefined;
   readonly store?: string | undefined;
@@ -43,7 +32,7 @@ export async function scoreDone(values: {
   if (values.bench !== undefined && named.length === 0) throw new Misused(`no benchmark ${values.bench}`);
   const stores = values.store === undefined ? named.map(recordsHere) : [values.store];
   for (const store of stores) {
-    for (const label of completedBenchLabels(store)) {
+    for (const { label, baseline } of completedBenchPairs(store)) {
       const table = await runTextOrThrow([
         capturedExecPath,
         SCORE,
@@ -51,7 +40,7 @@ export async function scoreDone(values: {
         "--out",
         store,
         "--name",
-        `${label},starter-${label}`,
+        `${label},${baseline}`,
       ]);
       mkdirSync(join(store, "scored"), { recursive: true });
       const file = join(store, "scored", `${label}.txt`);

@@ -13,7 +13,7 @@ import {
 import { howOftenValid } from "../kernel/size.ts";
 import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
-import { formatScores, objectiveOf, scoresOf, type Task } from "../kernel/verify.ts";
+import { formatScores, OBJECTIVE, objectiveOf, scoresOf, type Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { tasksByEpoch } from "../campaign/climb.ts";
@@ -98,7 +98,8 @@ function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
     if (kind === "referee.finding" && isString(data.solve) && isString(data.task) && isString(data.check)) {
       last.set(data.solve, { task: data.task, check: data.check });
     } else if (kind === "verdict" && data.kind === "faulty" && isString(data.task) && isString(data.check)) {
-      const hit = isString(data.reason) ? SCORE_FAULT.exec(data.reason)?.[1] : undefined;
+      const hit =
+        data.check === OBJECTIVE.id && isString(data.reason) ? SCORE_FAULT.exec(data.reason)?.[1] : undefined;
       add(data.task, hit === undefined ? data.check : `${data.check} (${hit})`);
     }
   }

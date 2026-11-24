@@ -81,16 +81,15 @@ let slots = 0;
 const markRunning = (port: Port): void =>
   writeFileSync(port.marker, `${String(++seq)}\n${port.check.checkId}`);
 
-function deepFreeze(value: unknown): void {
-  if (Array.isArray(value)) {
-    Object.freeze(value);
-    for (const item of value) deepFreeze(item);
-    return;
+function deepFreeze(root: unknown): void {
+  const pending: unknown[] = [root];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    const node = Array.isArray(value) ? value : asRecord(value);
+    if (node === null || Object.isFrozen(node)) continue;
+    Object.freeze(node);
+    for (const child of Object.values(node)) pending.push(child);
   }
-  const rec = asRecord(value);
-  if (rec === null) return;
-  Object.freeze(rec);
-  for (const child of Object.values(rec)) deepFreeze(child);
 }
 
 function programNeverRan(exitCode: number, stdout: string, stderr: string): boolean {

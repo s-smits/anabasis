@@ -156,11 +156,13 @@ export function scoresOf(verdict: Verdict | null | undefined): Readonly<Record<s
 export function validScores(raw: JsonValue | undefined): Readonly<Record<string, number>> | null {
   const rec = asRecord(raw);
   if (rec === null) return null;
-  const entries = Object.entries(rec).flatMap(([id, val]) => {
+  const scores: Record<string, number> = {};
+  for (const [id, val] of Object.entries(rec)) {
     const score = isNumber(val) ? unitScore(val) : null;
-    return score === null ? [] : [[id, score] as const];
-  });
-  return entries.length > 0 ? Object.fromEntries(entries) : null;
+    if (score === null) return null;
+    scores[id] = score;
+  }
+  return Object.keys(scores).length > 0 ? scores : null;
 }
 
 export function formatScores(
@@ -361,7 +363,10 @@ export function readBrief(checks: string): Brief {
   if (brief.truthChecks.some((check) => check.id === OBJECTIVE.id)) {
     throw new Error(`a check is named ${OBJECTIVE.id}, which names the objective`);
   }
-  const [fault] = rubricFaults(brief.objective);
+  const [fault] = rubricFaults(
+    brief.objective,
+    brief.truthChecks.map(({ id }) => id),
+  );
   if (fault !== undefined) throw new Error(fault);
   return brief;
 }

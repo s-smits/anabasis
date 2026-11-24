@@ -32,7 +32,9 @@ export interface Contract {
   readonly scope: string;
 }
 
-export function rubricFaults(objective: Objective | undefined): string[] {
+const WEIGHT_RATIO = 1e12;
+
+export function rubricFaults(objective: Objective | undefined, checkIds: readonly string[] = []): string[] {
   const items = objective?.items;
   if (items === undefined) return [];
   if (items.length === 0) return ["objective.items must contain at least one item when declared"];
@@ -46,10 +48,15 @@ export function rubricFaults(objective: Objective | undefined): string[] {
       continue;
     }
     if (seen.has(item.id)) faults.push(`objective.items names ${item.id} twice`);
+    if (checkIds.includes(item.id)) faults.push(`objective.items.${item.id} shares its id with a check`);
     seen.add(item.id);
     if (!isNumber(item.weight) || !Number.isFinite(item.weight) || item.weight <= 0) {
       faults.push(`objective.items.${item.id} requires a positive finite weight`);
     }
+  }
+  const weights = items.map(({ weight }) => weight).filter((weight) => isNumber(weight) && weight > 0);
+  if (weights.length > 1 && Math.max(...weights) / Math.min(...weights) > WEIGHT_RATIO) {
+    faults.push(`objective.items weights span more than ${String(WEIGHT_RATIO)} to 1`);
   }
   return faults;
 }

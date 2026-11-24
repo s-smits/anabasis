@@ -230,11 +230,9 @@ async function runAction(
   // new reference, so the starter comparison it owes reads every task written for it (`heldSince`):
   // a compare before that would read a second harness on the old reference's tasks, and a step
   // there would promote twice on one epoch's tasks. The
-  // session's end can release practice, a move of its own, so the limit is read again after the
-  // wait, as `promoteOwed` reads it after its own.
+  // session's end can release practice, a move of its own, which the limit read below sees.
   if (move === "compare" && writing != null && promotedSince(read(context.log, TRACE_KINDS))) {
     await bench.within(() => writing.done);
-    if (context.used >= context.maxMoves) return halt(spent);
   }
   // Serialize a comparison's read, freeze and run behind any in-flight practice release, and hold
   // later releases until the comparison ends, so `actionTurn`, `begin` and `comparedOf` all read

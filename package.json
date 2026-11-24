@@ -21,6 +21,7 @@
     "fmt": "bun node_modules/@biomejs/biome/bin/biome format --write",
     "format:check": "bun node_modules/@biomejs/biome/bin/biome format .",
     "secrets": "bun tools/secrets/scan.ts",
+    "setup": "bun --env-file=.env --env-file=.env.runs tools/runtime/setup.ts",
     "runs": "bun --env-file=.env --env-file=.env.runs tools/runs/cli.ts",
     "wri": "bun tools/wri/wri.ts",
     "commit:check": "sh tools/runtime/commit-check.sh",

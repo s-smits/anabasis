@@ -644,7 +644,7 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
   const held = numbered.length === 0 && plainOnly(runtimeProcess.env) ? [PLAIN] : numbered;
   if (held.length === 0) {
     throw new Error(
-      `neither ${TOKEN} nor ${TOKEN}<N> is set: run the verb under bun --env-file=<the file that holds them>`,
+      `neither ${TOKEN} nor ${TOKEN}<N> is set: add ${TOKEN} to .env (\`bun run setup --token\`) or pass bun --env-file=<file>`,
     );
   }
   // A forwarded report refreshes the peer's local history without asking other hosts again.

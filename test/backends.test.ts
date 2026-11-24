@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { claudeExecutable } from "../src/agent/backends/claude.ts";
+import { codexAuthStatus } from "../src/agent/backends/codex-auth.ts";
 import { type BackendOptions, backends, compactionMode, retryPolicy } from "../src/agent/backends/models.ts";
 import { sit } from "../src/agent/session.ts";
 import { read } from "../src/kernel/log.ts";
@@ -208,4 +209,33 @@ it("lets durable retry Codex, OpenRouter and the endpoints at the previous attem
     expect(retryPolicy(provider)).toEqual({ enabled: true, maxRetries: 3, baseDelayMs: 2000 });
   }
   for (const provider of ["claude", "claude-api", "faux"]) expect(retryPolicy(provider).enabled).toBe(false);
+});
+
+it("classifies Codex auth state without exposing tokens", () => {
+  const fresh = join(tmpdir(), `ana-codex-status-${String(Date.now())}`);
+  const prev = Bun.env.CODEX_HOME;
+  try {
+    Bun.env.CODEX_HOME = fresh;
+    expect(codexAuthStatus(1000)).toBe("missing");
+    const secret = "fake-refresh-secret-value";
+    const jwt = (exp: number) => `h.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.s`;
+    writeFileSync(
+      join(home, "auth.json"),
+      JSON.stringify({ tokens: { access_token: jwt(200), refresh_token: secret } }),
+    );
+    Bun.env.CODEX_HOME = home;
+    for (const [now, expected] of [
+      [100_000, "ready"],
+      [250_000, "expired"],
+    ] as const) {
+      const state = codexAuthStatus(now);
+      expect(state).toBe(expected);
+      expect(state).not.toContain(secret);
+    }
+    writeFileSync(join(home, "auth.json"), "{not-json");
+    expect(codexAuthStatus(100_000)).toBe("invalid");
+  } finally {
+    if (prev === undefined) delete Bun.env.CODEX_HOME;
+    else Bun.env.CODEX_HOME = prev;
+  }
 });

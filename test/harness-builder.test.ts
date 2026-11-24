@@ -600,6 +600,106 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
   });
 });
 
+describe.concurrent("a campaign's recovery from throws and pauses", () => {
+  const LIMIT = "You've hit your limit · resets 11pm (UTC)";
+  const stoppingHost = (name: string, nth: number) => {
+    const sleeps: number[] = [];
+    let now = Date.now();
+    const host = {
+      load: () => 0,
+      cores: 1,
+      waitMs: 1,
+      now: () => now,
+      sleep: async (ms: number) => {
+        if (sleeps.push(ms) !== nth) return;
+        wordCommand(["--name", name, "--stop", "done"]);
+        now += 10_000_000;
+      },
+    };
+    return { host, sleeps };
+  };
+
+  it("waits out a provider limit and a network crash, then holds a pause before the next move", async () => {
+    const name = `${STEM}-recover`;
+    const flags = [...seeded(name, SMALL), "--practice", "2", "--target", "5", "--level", "0.125"];
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const { host, sleeps } = stoppingHost(name, 3);
+    let tries = 0;
+    const handover = join(root, "handover-on-end");
+    const paused = await harnessBuilder([...flags, "--handover", handover, "--moves", "5"], {
+      seated: answering([], GRADED_SMALL),
+      host,
+      prepare: async () => {
+        tries += 1;
+        if (tries === 1) throw new Error(LIMIT);
+        if (tries === 2) {
+          append(log, "build.started", { session: "b-crash" });
+          append(log, "build.finished", {
+            session: "b-crash",
+            ended: "crashed",
+            crash: "ECONNRESET",
+            turns: 0,
+            billed: 0,
+          });
+          throw new Error("crashed");
+        }
+        append(log, "campaign.word", { word: "pause" });
+        return 1;
+      },
+    });
+    expect(paused).toMatchObject({ move: "end", ending: "operator" });
+    expect(tries).toBe(3);
+    expect(of(name, "campaign.waited").map(({ for: why }) => why)).toEqual(["provider", "network"]);
+    expect(sleeps).toHaveLength(3);
+    expect(existsSync(join(handover, "REPORT.md"))).toBe(true);
+    const events = read(log);
+    const at = (kind: string, key: string, value: string) =>
+      events.findIndex((event) => event.kind === kind && event.data[key] === value);
+    expect(at("campaign.waited", "for", "network")).toBeLessThan(at("campaign.word", "word", "pause"));
+  });
+
+  it("ends on the environment where a move throws after a session that finished whole", async () => {
+    const name = `${STEM}-noncrash`;
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    await expect(
+      harnessBuilder([...seeded(name, SMALL), "--moves", "2"], {
+        seated: answering([], GRADED_SMALL),
+        host: stoppingHost(name, 0).host,
+        prepare: async () => {
+          append(log, "build.finished", { session: "b-ok", ended: "finished", turns: 1, billed: 0 });
+          throw new Error("plain failure");
+        },
+      }),
+    ).rejects.toThrow("plain failure");
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment" }]);
+  });
+
+  it("holds a pause before an exam is drafted, on the host's default wall", async () => {
+    const name = `${STEM}-undrafted`;
+    names.push(name);
+    const { host, sleeps } = stoppingHost(name, 2);
+    let drafts = 0;
+    const prompt = [
+      "--prompt",
+      "Multiplying a base by six, as a fixture.",
+      "--solver",
+      "claude/claude-opus-5-5",
+    ];
+    const ended = await harnessBuilder(["--name", name, "--project", PROJECT, ...prompt, "--moves", "2"], {
+      seated: answering([], GRADED_SMALL),
+      host,
+      draft: async () => {
+        drafts += 1;
+        append(join(REPO, ".ana", "d2", name, LOG_FILE), "campaign.word", { word: "pause" });
+        throw new Error(LIMIT);
+      },
+    });
+    expect(ended).toMatchObject({ move: "end", ending: "operator" });
+    expect(drafts).toBe(1);
+    expect(sleeps).toHaveLength(2);
+  });
+});
+
 describe("a comparison's packet for a person", () => {
   it("holds every rejection that set a task aside, and three earned rejections and three passes drawn by the comparison's id", () => {
     const named = (prefix: string, count: number) =>

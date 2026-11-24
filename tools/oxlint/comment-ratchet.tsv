@@ -294,7 +294,7 @@ test/wri2p2-script.test.ts	11
 tools/c/accept.ts	9
 tools/d1b/draft.ts	12
 tools/d1b/examine.ts	15
-tools/d2/campaign-actions.ts	128
+tools/d2/campaign-actions.ts	127
 tools/d2/campaign-terms.ts	41
 tools/d2/campaign.ts	58
 tools/d2/checkpoint.ts	6

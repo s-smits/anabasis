@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath } from "#src/meta/process.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
-import { baselineArmFor, isBaselineArmName, judgedFilesByArm } from "./bench-store.ts";
+import { baselineArmsFor, isBaselineArmName, judgedFilesByArm } from "./bench-store.ts";
 import { benchesOf } from "./host-config.ts";
 import { Misused } from "./registry.ts";
 import { recordsHere } from "./snapshots.ts";
@@ -14,12 +14,14 @@ export function completedBenchPairs(store: string): { readonly label: string; re
   return [...byArm.keys()]
     .filter((arm) => !isBaselineArmName(arm))
     .flatMap((label) => {
-      const baseline = baselineArmFor(byArm, label);
-      if (baseline === null || existsSync(join(store, "scored", `${label}.txt`))) return [];
+      if (existsSync(join(store, "scored", `${label}.txt`))) return [];
       const own = new Set(byArm.get(label));
-      const base = new Set(byArm.get(baseline));
-      const done = own.size > 0 && own.size === base.size && [...own].every((task) => base.has(task));
-      return done ? [{ label, baseline }] : [];
+      if (own.size === 0) return [];
+      const baseline = baselineArmsFor(byArm, label).find((candidate) => {
+        const base = new Set(byArm.get(candidate));
+        return own.size === base.size && [...own].every((task) => base.has(task));
+      });
+      return baseline === undefined ? [] : [{ label, baseline }];
     })
     .toSorted((one, other) => one.label.localeCompare(other.label));
 }

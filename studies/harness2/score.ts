@@ -384,9 +384,7 @@ async function exportedArm(
   const source = sourceNamed(from, harness);
   const into = join(out, "trees", name);
   if (!existsSync(into)) {
-    if (pi) await exportPiTree(into, source, place);
-    else if (source === "base") throw new Error("base runs directly under --arm base without export");
-    else await exportForClaudeCode(into, source, place);
+    await (pi ? exportPiTree(into, source, place) : exportForClaudeCode(into, source, place));
   }
   const record = readJson(join(into, "export.json"));
   const digest =

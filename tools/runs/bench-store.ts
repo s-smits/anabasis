@@ -41,16 +41,8 @@ export interface PairedBenchArm {
 }
 
 function solverTierOf(record: Pick<BenchRecord, "arm" | "buildOf">): SolverTier {
-  const origin = record.buildOf?.trim() ?? "";
-  if (
-    origin === "base" ||
-    record.arm === "base" ||
-    record.arm.startsWith(BASE_PREFIX) ||
-    record.arm.startsWith("bare-")
-  ) {
-    return "bareSolver";
-  }
-  if (origin === "starter" || record.arm.startsWith(STARTER_PREFIX)) return "baseStarter";
+  if (record.arm.startsWith(BASE_PREFIX)) return "bareSolver";
+  if (record.arm.startsWith(STARTER_PREFIX) || record.buildOf?.trim() === "starter") return "baseStarter";
   return "builtSolver";
 }
 
@@ -58,12 +50,8 @@ export function isBaselineArmName(arm: string): boolean {
   return BASELINE_PREFIXES.some((prefix) => arm.startsWith(prefix));
 }
 
-export function baselineArmFor(byArm: ReadonlyMap<string, readonly unknown[]>, label: string): string | null {
-  for (const prefix of BASELINE_PREFIXES) {
-    const candidate = `${prefix}${label}`;
-    if (byArm.has(candidate)) return candidate;
-  }
-  return null;
+export function baselineArmsFor(byArm: ReadonlyMap<string, readonly unknown[]>, label: string): string[] {
+  return BASELINE_PREFIXES.map((prefix) => `${prefix}${label}`).filter((candidate) => byArm.has(candidate));
 }
 
 function campaignNameOf(rawOf: string | null): string | null {
@@ -137,8 +125,8 @@ export function pairedArmsOf(records: readonly BenchRecord[]): PairedBenchArm[] 
   const pairs: PairedBenchArm[] = [];
   for (const [arm, own] of [...byArm.entries()].toSorted(([one], [other]) => one.localeCompare(other))) {
     if (isBaselineArmName(arm)) continue;
-    const baselineArm = baselineArmFor(byArm, arm);
-    if (baselineArm === null) continue;
+    const [baselineArm] = baselineArmsFor(byArm, arm);
+    if (baselineArm === undefined) continue;
     const baselineAll = byArm.get(baselineArm);
     if (baselineAll === undefined) continue;
     const baselineByTask = new Map(baselineAll.map((rec) => [rec.task, rec]));

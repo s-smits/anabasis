@@ -87,8 +87,8 @@ describe("runs bench", () => {
       "carry ref-a1 into the store on bench",
       "clear the export's stage",
       "dry run of ref-a1",
-      "dry run of base-ref-a1",
-      "roll ref-a1, then base-ref-a1, on login 2",
+      "dry run of starter-ref-a1",
+      "roll ref-a1, then starter-ref-a1, on login 2",
     ]);
     expect(steps.map((step) => step.includes("--yes"))).toEqual([
       ...Array.from({ length: 6 }, () => false),
@@ -97,7 +97,7 @@ describe("runs bench", () => {
     // The export runs where the campaign is, and the sitting where the store is.
     expect(steps[1]).toContain("you@builder");
     expect(steps[1]).toContain(String.raw`--for '\''linux-x64'\'' --python '\''3.12'\''`);
-    expect(steps[5]).toContain(String.raw`--arm '\''base'\''`);
+    expect(steps[5]).toContain(String.raw`--arm '\''starter'\''`);
     expect(steps[6]).toContain("you@bench");
     // Reference must succeed before the paired baseline rolls.
     expect(steps[6]).toContain("--yes && ");
@@ -150,10 +150,19 @@ describe("runs bench", () => {
     put("starter-ref-a1", "t2");
     put("pi-a2", "t1");
     put("base-pi-a2", "t1");
-    expect(completedBenchPairs(store)).toEqual([{ label: "pi-a2", baseline: "base-pi-a2" }]);
+    put("pi-a3", "t1");
+    put("pi-a3", "t2");
+    put("base-pi-a3", "t1");
+    put("starter-pi-a3", "t1");
+    put("starter-pi-a3", "t2");
+    expect(completedBenchPairs(store)).toEqual([
+      { label: "pi-a2", baseline: "base-pi-a2" },
+      { label: "pi-a3", baseline: "starter-pi-a3" },
+    ]);
     put("ref-a1", "t2");
     expect(completedBenchPairs(store)).toEqual([
       { label: "pi-a2", baseline: "base-pi-a2" },
+      { label: "pi-a3", baseline: "starter-pi-a3" },
       { label: "ref-a1", baseline: "starter-ref-a1" },
     ]);
   });

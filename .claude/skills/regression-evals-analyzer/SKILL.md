@@ -11,7 +11,7 @@ Connects external benchmark outcomes and rubric-level failures directly back to 
 
 `bun run wri` is standalone (requires no `.env` credentials) and connects every campaign to its domain via `packOf` and `domainOf` (`tools/runs/registry.ts`) plus `EVAL_RUNNER` in `.env.runs` (`tools/runs/host-config.ts`):
 
-- **External benchmarks (`EVAL_RUNNER`):** matches any entry whose `packs` match the campaign's pack (`pack === p || pack.startsWith("${p}-")`), reading its local synced store (`data/bench/<bench>/`). External reads compare `builtSolver` against `bareSolver` (`--arm pi:base` / `--arm base`, labelled `base-<label>`), while keeping legacy `starter-<label>` (`baseStarter`) pairs stratified separately.
+- **External benchmarks (`EVAL_RUNNER`):** matches any entry whose `packs` match the campaign's pack (`pack === p || pack.startsWith("${p}-")`), reading its local synced store (`data/bench/<bench>/`). Native `pi` external reads (`runs bench --pi`) compare `builtSolver` against `bareSolver` (`--arm pi:base`, labelled `base-<label>`), while Claude Code runs and legacy `starter-<label>` (`baseStarter`) pairs stay stratified in separate cohorts.
 - **Minimum promotions (`minPromo`):** resolved in priority order `--min-promo <N>` > `.wri/domains/<domain>/config.json` > `EVAL_RUNNER.minPromo` > `1`. Runs below `minPromo` skip external ablation and regression scoring by default (pass `--min-promo 0` or `--with-evals` to inspect an unpromoted candidate).
 - **Gitignored per-domain extensions (`/.wri/domains/<domain>/`):** ignored by git so private benchmarks, hardware suites, and hidden evaluation rubrics stay local. Each domain directory may hold:
   - `config.json`: optional `{"minPromo": 1, "bench": "<name>", "store": "<path>"}`.

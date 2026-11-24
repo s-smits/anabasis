@@ -116,7 +116,7 @@ export function opened(trees: string, label: string): string {
 export function stepsOf(plan: Plan): Step[] {
   const { run, label, login, holder, runner, sitting } = plan;
   const prefix = plan.runtime === "pi" ? "pi:" : "";
-  const baselineKind = plan.baseline ?? "base";
+  const baselineKind = plan.baseline ?? (plan.runtime === "pi" ? "base" : "starter");
   const baselineLabel = `${baselineKind}-${label}`;
   const stage = `"\${TMPDIR:-/tmp}"/${quoted(`ana-outside-read-${label}`)}`;
   const on = (says: string, script: string): Step => ({ says, command: shellOn(runner, script) });
@@ -282,7 +282,10 @@ async function planOf(
   if (values.baseline !== undefined && values.baseline !== "base" && values.baseline !== "starter") {
     throw new Misused("--baseline takes base or starter");
   }
-  const baseline = values.baseline ?? "base";
+  if (values.baseline === "base" && !values.pi) {
+    throw new Misused("--baseline base requires --pi (Claude Code runs pair against starter)");
+  }
+  const baseline = values.baseline ?? (values.pi ? "base" : "starter");
   const env = runtimeProcess.env;
   const settings = settingsOf(run, env, values.bench);
   const harness = values.harness ?? promoted(logEvents(readNamed(run).path));
@@ -368,7 +371,7 @@ export async function bench(args: readonly string[]): Promise<void> {
   const plan = await planOf(run, values);
   if (plan === null) return;
   const { label, held } = plan;
-  const baselineKind = plan.baseline ?? "base";
+  const baselineKind = plan.baseline ?? (plan.runtime === "pi" ? "base" : "starter");
   console.log(
     `${run} read outside on ${plan.bench} as ${label} and ${baselineKind}-${label}, on login ${plan.login}, for ${plan.place} (python3 ${plan.python})${held === null ? "" : `; the store holds ${label} already, rolled as it stands`}`,
   );

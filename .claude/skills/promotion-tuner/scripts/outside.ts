@@ -17,7 +17,7 @@ export interface Score {
   readonly task: string;
   readonly points: number;
   readonly total: number;
-  /** The campaign the arm's harness was built by, `starter`, or null for an arm built elsewhere. */
+  /** The campaign the arm's harness was built by, `starter`, `base`, or null for an arm built elsewhere. */
   readonly of: string | null;
   /** Whether the judge's reader cut a file of the deliverable before the judge read it. */
   readonly cut: boolean;
@@ -25,6 +25,7 @@ export interface Score {
 
 const STARTER = "starter";
 const BASE = "base";
+const BASELINES = new Set([STARTER, BASE]);
 const HEAD = [
   "arm",
   "pack",
@@ -52,9 +53,11 @@ export function scoresOf(store: string, only: readonly string[] | null = null): 
     points: record.points,
     total: record.total,
     of:
-      record.buildOf === STARTER || record.buildOf === BASE || isBaselineArmName(record.arm)
-        ? STARTER
-        : record.campaign,
+      isBaselineArmName(record.arm) && record.arm.startsWith("base-")
+        ? BASE
+        : record.buildOf === STARTER || isBaselineArmName(record.arm)
+          ? STARTER
+          : record.campaign,
     cut: isCut(record),
   }));
   if (only === null) return all;
@@ -65,7 +68,7 @@ export function scoresOf(store: string, only: readonly string[] | null = null): 
 
 /** The campaigns the arms of a store were built by, which a caller folds before `outsideLines`. */
 export const campaignsOf = (scores: readonly Score[]): string[] => [
-  ...new Set(scores.flatMap(({ of }) => (of === null || of === STARTER ? [] : [of]))),
+  ...new Set(scores.flatMap(({ of }) => (of === null || BASELINES.has(of) ? [] : [of]))),
 ];
 
 const summed = (scores: readonly Score[]) => scores.reduce((sum, { points }) => sum + points, 0);
@@ -96,8 +99,10 @@ function againstStarter(own: readonly Score[], starter: readonly Score[]) {
 /** The outside block: one row an arm that is no Starter, then what the join reads. */
 export function outsideLines(scores: readonly Score[], runs: readonly Run[], format: "md" | "tsv"): string[] {
   const starter = scores.filter(({ of }) => of === STARTER);
+  const bare = scores.filter(({ of }) => of === BASE);
+  const bareNames = new Set(bare.map(({ arm }) => arm));
   const arms = Map.groupBy(
-    scores.filter(({ of }) => of !== STARTER),
+    scores.filter(({ of }) => of === null || !BASELINES.has(of)),
     ({ arm }) => arm,
   );
   const joined: { confirmed: boolean | null; verdict: Verdict }[] = [];
@@ -108,11 +113,13 @@ export function outsideLines(scores: readonly Score[], runs: readonly Run[], for
     const run =
       runs.find(({ promotions }) => promotions.some(promotes)) ?? runs.find(({ name }) => name === first?.of);
     const promotion = run?.promotions.find(promotes);
-    const read = againstStarter(own, starter);
+    const usesBare = bareNames.has(`base-${arm}`);
+    const read = againstStarter(own, usesBare ? bare : starter);
     if (promotion !== undefined && read.verdict !== null) {
       joined.push({ confirmed: promotion.confirmed, verdict: read.verdict });
     }
-    const spread = read.rollouts === 1 ? ", one Starter rollout" : "";
+    const label = usesBare ? "bareSolver" : "Starter";
+    const spread = read.rollouts === 1 ? `, one ${label} rollout` : "";
     return [
       arm,
       run?.pack ?? MISSING,

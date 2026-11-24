@@ -70,6 +70,32 @@ function paint(lines: readonly string[], before: readonly string[]): void {
   if (out.length > 0) runtimeProcess.stdout.write(`${ESC}[?2026h${out.join("")}${ESC}[?2026l`);
 }
 
+/** The interval the first positional names in seconds, `fallback` without one; misuse past it. */
+export function secondsOf(positionals: readonly string[], fallback: string, name: string): number {
+  const [given = fallback, extra] = positionals;
+  const seconds = Number(given);
+  if (extra !== undefined) {
+    throw new Misused(`${name}watch takes one number of seconds, not \`${extra}\``);
+  }
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Misused(`\`${given}\` is not a positive number of seconds`);
+  }
+  return seconds;
+}
+
+/** On ctrl-c or a kill, end every watched connection, run `last`, then exit; the same for a caller
+ *  that calls the returned function. */
+export function endingOn(watched: readonly { child: Bun.Subprocess | null }[], last = () => {}): () => never {
+  const quit = (): never => {
+    for (const { child } of watched) if (child !== null) killProcessGroup(child, "SIGKILL");
+    last();
+    return runtimeProcess.exit(0);
+  };
+  runtimeProcess.on("SIGINT", quit);
+  runtimeProcess.on("SIGTERM", quit);
+  return quit;
+}
+
 /** Draw `draw()` on the alternate screen with a hidden cursor until ctrl-c, which ends every watched
  *  connection and gives the shell's screen back untouched. */
 async function liveScreen(
@@ -77,13 +103,7 @@ async function liveScreen(
   draw: () => string[],
 ): Promise<never> {
   let before: string[] = [];
-  const quit = () => {
-    for (const { child } of watched) if (child !== null) killProcessGroup(child, "SIGKILL");
-    runtimeProcess.stdout.write(`${ESC}[?25h${ESC}[?1049l`);
-    runtimeProcess.exit(0);
-  };
-  runtimeProcess.on("SIGINT", quit);
-  runtimeProcess.on("SIGTERM", quit);
+  endingOn(watched, () => runtimeProcess.stdout.write(`${ESC}[?25h${ESC}[?1049l`));
   runtimeProcess.on("SIGWINCH", () => {
     before = [];
   });
@@ -106,15 +126,8 @@ export async function watch<S>(args: readonly string[], spec: Watch<S>): Promise
       window: { type: "string", short: "w" },
     },
   });
-  const [given = spec.seconds, extra] = positionals;
-  const seconds = Number(given);
+  const seconds = secondsOf(positionals, spec.seconds, spec.name);
   const window = values.window;
-  if (extra !== undefined) {
-    throw new Misused(`${spec.name}watch takes one number of seconds, not \`${extra}\``);
-  }
-  if (!Number.isFinite(seconds) || seconds <= 0) {
-    throw new Misused(`\`${given}\` is not a positive number of seconds`);
-  }
   if (window !== undefined && !spec.windows.includes(window)) {
     throw new Misused(
       spec.windows.length === 0
@@ -124,7 +137,7 @@ export async function watch<S>(args: readonly string[], spec: Watch<S>): Promise
   }
   const watched = watchersOf([undefined, ...hostsOf()], spec.script(seconds), spec.parse);
   const title = () =>
-    `${BOLD}ana ${spec.name} watch${RESET}  ${DIM}${new Date().toTimeString().slice(0, 8)}  (refresh ${given}s, ctrl-c quits)${RESET}`;
+    `${BOLD}ana ${spec.name} watch${RESET}  ${DIM}${new Date().toTimeString().slice(0, 8)}  (refresh ${String(seconds)}s, ctrl-c quits)${RESET}`;
   if (values.once || values.short) {
     await firstReadings(watched, seconds * 1000, spec.ready);
     console.log(

@@ -1,12 +1,13 @@
 /**
- * `bun run runs loadwatch [<seconds>] [--once | -s|--short [-w|--window 1m|5m|15m]]`: the CPU and
+ * `bun run runs loadwatch [<seconds>] [--once | -s|--short [-w|--window 1m|5m|15m] | --json]`: the CPU and
  * the load of this machine and of every host `ANA_HOSTS` lists, live in the terminal, refreshed
  * every `<seconds>` (5 by default); `--once` prints one frame and ends it with the machines in
  * order of load, the least loaded first, which is the line a session reads before it places a run;
  * `-s` (`--short`) prints only one line, `last 5m:` and then each machine's load a core over that
  * window out of 100, least loaded first, and `-w` (`--window`) names the one- or fifteen-minute
- * window instead.
+ * window instead. `--json` streams each machine's CPU in detail instead, a line a reading (`loadstream.ts`).
  */
+import { stream } from "./loadstream.ts";
 import { byLoad, sampleOf, watchedScript, WINDOWS, type Watched } from "./load.ts";
 import { BAR, bar, DIM, headOf, RED, RESET, waitingOf, watch } from "./watch.ts";
 
@@ -58,19 +59,21 @@ function short(watched: readonly Watched[], window = "5m"): string {
 }
 
 export const loadwatch = (args: readonly string[]): Promise<void> =>
-  watch(args, {
-    name: "load",
-    seconds: "5",
-    script: watchedScript,
-    parse: sampleOf,
-    ready: () => true,
-    frame,
-    // The one-minute ranking: the queue a solve started now would join.
-    once: (watched) => [
-      `least loaded first, 1m load a core: ${byLoad(watched, WINDOWS["1m"])
-        .map(({ label, load, cores }) => `${label} ${(load / cores).toFixed(2)}`)
-        .join(", ")}`,
-    ],
-    short,
-    windows: Object.keys(WINDOWS),
-  });
+  args.includes("--json")
+    ? stream(args)
+    : watch(args, {
+        name: "load",
+        seconds: "5",
+        script: watchedScript,
+        parse: sampleOf,
+        ready: () => true,
+        frame,
+        // The one-minute ranking: the queue a solve started now would join.
+        once: (watched) => [
+          `least loaded first, 1m load a core: ${byLoad(watched, WINDOWS["1m"])
+            .map(({ label, load, cores }) => `${label} ${(load / cores).toFixed(2)}`)
+            .join(", ")}`,
+        ],
+        short,
+        windows: Object.keys(WINDOWS),
+      });

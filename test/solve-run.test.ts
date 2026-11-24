@@ -236,7 +236,7 @@ async function atWall(responses: FauxResponseStep[], tools: SeatTool[] = []) {
   }
 }
 
-describe("a solve's wall activity", () => {
+describe.concurrent("a solve's wall activity", () => {
   it("keeps a tool running through the whole silence threshold as the solver's wall-ended fail", async () => {
     const working = seatTool({
       name: "working",
@@ -337,7 +337,7 @@ describe("a solve's deadline across a host's sleep", () => {
   });
 });
 
-describe("a solve's ending precedence", () => {
+describe.concurrent("a solve's ending precedence", () => {
   it("is a kill, then moved files, then a held answer, before the sandbox's crash", async () => {
     const kill = AbortSignal.abort();
     const all = { crash: "the model process died", moved: true, submitted: { answer: "42" } };
@@ -425,7 +425,7 @@ describe("a solve's ending precedence", () => {
 });
 
 // Independent solves run side by side under the real wall, Seatbelt or Bubblewrap.
-describe.skipIf(!walled)("a solve under the real wall", () => {
+describe.concurrent.skipIf(!walled)("a solve under the real wall", () => {
   it("rejects a captured file's broken rule even when its JSON answer alone passes", async () => {
     const s = setup([
       written,

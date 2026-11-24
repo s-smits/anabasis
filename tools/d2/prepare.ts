@@ -19,6 +19,7 @@ import { append, type EventKind, type LogEvent, read, TRACE_KINDS } from "#src/k
 import { poolOf, releaseOrder } from "#src/kernel/reports.ts";
 import { SIZE, sizeLines } from "#src/kernel/size.ts";
 import { admissionsOf, packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
+import { pooled } from "#src/meta/pool.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { awaitingLines, openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
 import { exampleId } from "./exam.ts";
@@ -84,25 +85,34 @@ async function verifyAccepted(
     ({ taskId }) => taskId,
   );
   const [before, currentPool] = [taskSets(events), poolOf(events)];
-  let awaited = false;
-  for (const version of before.held) {
+  const pending = before.held.flatMap((version) => {
     const task = packages.get(version);
-    if (task === undefined || currentPool.feasible.has(version) || !accepted.has(task.taskId)) continue;
-    for (const { answer, files } of accepted.get(task.taskId) ?? []) {
-      awaited = true;
+    const answers =
+      task === undefined || currentPool.feasible.has(version) ? undefined : accepted.get(task.taskId);
+    return task !== undefined && answers !== undefined && answers.length > 0
+      ? [{ version, task, answers }]
+      : [];
+  });
+  if (pending.length === 0) return false;
+  const verified = await pooled(pending, 4, async ({ version, task, answers }) => {
+    for (const { answer, files } of answers) {
       const verdict = await campaign.verify(task, answer, undefined, files);
-      if (verdict.kind !== "pass") continue;
-      record("task.feasible", {
-        version,
-        ...feasibleOf(campaign.log, campaign.contract, verdict, answer, files),
-      });
-      console.log(
-        `${task.taskId}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
-      );
-      break;
+      if (verdict.kind === "pass") return { version, task, verdict, answer, files };
     }
+    return null;
+  });
+  for (const passed of verified) {
+    if (passed === null) continue;
+    const { version, task, verdict, answer, files } = passed;
+    record("task.feasible", {
+      version,
+      ...feasibleOf(campaign.log, campaign.contract, verdict, answer, files),
+    });
+    console.log(
+      `${task.taskId}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
+    );
   }
-  return awaited;
+  return true;
 }
 
 function applyLabels(

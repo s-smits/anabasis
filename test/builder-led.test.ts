@@ -13,6 +13,7 @@ import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import {
+  cpSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -91,6 +92,7 @@ const LEVEL = ["--level", "0.125", "--patience", "3"];
 const FLAGS = ["--practice", "2", "--target", "5", ...LEVEL];
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
 const names: string[] = [];
+const preparedTemplates = new Map<readonly FixtureTask[], Promise<string>>();
 
 setDefaultTimeout(600_000);
 
@@ -107,6 +109,20 @@ function seeded(name: string, tasks: readonly FixtureTask[] = TASKS, answered?: 
   const folder = join(REPO, ".ana", "d2", name);
   if (!existsSync(join(folder, LOG_FILE))) layOutPack(folder, tasks, answered);
   writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
+  return ["--name", name, "--project", PROJECT, ...OPENED_FROM, "--admit", "check-product"];
+}
+
+async function prepared(name: string, tasks: readonly FixtureTask[] = TASKS): Promise<string[]> {
+  let ready = preparedTemplates.get(tasks);
+  if (ready === undefined) {
+    const template = `${STEM}-tpl-${String(tasks.length)}`;
+    ready = harnessBuilder([...seeded(template, tasks), ...FLAGS, "--moves", "2"], {
+      seated: winning(tasks === MANY ? GRADED_MANY : GRADED),
+    }).then(() => join(REPO, ".ana", "d2", template));
+    preparedTemplates.set(tasks, ready);
+  }
+  names.push(name);
+  cpSync(await ready, join(REPO, ".ana", "d2", name), { recursive: true });
   return ["--name", name, "--project", PROJECT, ...OPENED_FROM, "--admit", "check-product"];
 }
 
@@ -216,9 +232,8 @@ const unwritten: NonNullable<Seats["examine"]> = (request) =>
 describe("the host's practice release", () => {
   /** A campaign set up by its first two moves, with two tasks more of practice owed. */
   const owing = async (name: string): Promise<CampaignContext> => {
-    const flags = [...seeded(name, MANY), ...FLAGS];
+    const flags = [...(await prepared(name, MANY)), ...FLAGS];
     const seats: Seats = { seated: winning(GRADED_MANY) };
-    await harnessBuilder([...flags, "--moves", "2"], seats);
     const log = join(REPO, ".ana", "d2", name, LOG_FILE);
     const values = flagsOf([...flags, "--practice", "4"]);
     return {
@@ -351,7 +366,7 @@ describe("a campaign run by its live Builder", () => {
         return examine({ ...request, ...scripted(calls), rest: request.rest }, wall);
       },
     };
-    await harnessBuilder([...seeded(name), ...FLAGS], seats);
+    await harnessBuilder([...(await prepared(name)), ...FLAGS], seats);
     expect(sessions.map(({ id }) => id)).toEqual(["x-1", "x-4"]);
     expect(
       of(name, EXAM_STARTED).map(({ session, conversation }) => [session, conversation ?? null]),
@@ -407,8 +422,8 @@ describe("a campaign run by its live Builder", () => {
     };
     // Eight moves reach the session the host starts on the promotion: accept, prepare, the Builder's
     // session, two asks, the comparison, the promotion and that session.
-    const terms = ["--practice", "2", "--target", "5", "--level", "0.125", "--moves", "8"];
-    await harnessBuilder([...seeded(name, MANY), ...terms], seats);
+    const terms = ["--practice", "2", "--target", "5", "--level", "0.125", "--moves", "6"];
+    await harnessBuilder([...(await prepared(name, MANY)), ...terms], seats);
     expect(of(name, "harness.promoted")).toHaveLength(1);
     // x-3 continues x-1's conversation rather than opening one of its own.
     expect(
@@ -435,7 +450,7 @@ describe("a campaign run by its live Builder", () => {
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "10"], seats);
+    await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS, "--moves", "8"], seats);
     // The first comparison read the changed harness with room and no step. The table does not draw
     // the same harness again on the tasks written since; the Builder changes it.
     expect(of(name, COMPARED)).toHaveLength(1);
@@ -454,7 +469,7 @@ describe("a campaign run by its live Builder", () => {
         ["finish", { note: "Nothing new to compare." }],
       ]),
     };
-    expect(await harnessBuilder([...seeded(name, MANY), ...FLAGS], seats)).toMatchObject({
+    expect(await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS], seats)).toMatchObject({
       ending: "finished",
     });
     const [untouched, , again] = said(name, "compare");
@@ -494,7 +509,7 @@ describe("a campaign run by its live Builder", () => {
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "10"], seats);
+    await harnessBuilder([...(await prepared(name)), ...FLAGS, "--moves", "8"], seats);
     const [, refused, fresh] = said(name, "compare");
     expect(refused).toContain("frontier tasks (100%) already scored in comparison g-1");
     expect(refused).toContain("Call examine to hold out fresh tasks");
@@ -590,7 +605,7 @@ describe("a campaign run by its live Builder", () => {
         }),
     };
     // The later conversations make no move, so idle conversations end the campaign.
-    const ending = await harnessBuilder([...seeded(name), ...FLAGS], seats);
+    const ending = await harnessBuilder([...(await prepared(name)), ...FLAGS], seats);
     expect(ending).toMatchObject({ move: "end", ending: "finished" });
     const at = positions(name);
     // Practice goes on beside the session, since a release that waited for it would leave the
@@ -797,7 +812,7 @@ describe("a campaign run by its live Builder", () => {
           ]),
         }),
     };
-    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ move: "end" });
+    expect(await harnessBuilder([...(await prepared(name)), ...FLAGS], seats)).toMatchObject({ move: "end" });
     // The first finish is declined once, saying the harness is unmeasured and naming the Examiner
     // session still writing; the second is taken.
     const finishes = of(name, CALLED).filter(({ tool }) => tool === "finish");
@@ -842,7 +857,9 @@ describe("a campaign run by its live Builder", () => {
           ]),
         }),
     };
-    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "operator" });
+    expect(await harnessBuilder([...(await prepared(name)), ...FLAGS], seats)).toMatchObject({
+      ending: "operator",
+    });
     expect(of(name, EXAMINED)).toMatchObject([{ session: "x-1", ended: "killed" }]);
     const kinds = logOf(name).map(({ kind }) => kind);
     expect(kinds.indexOf(EXAMINED)).toBeLessThan(kinds.indexOf(FINISHED));
@@ -867,7 +884,7 @@ describe("a campaign run by its live Builder", () => {
         return result;
       },
     };
-    const args = [...seeded(name), "--target", "5", "--practice", "2", ...LEVEL];
+    const args = [...(await prepared(name)), "--target", "5", "--practice", "2", ...LEVEL];
     expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "finished" });
     expect(of(name, EXAM_STARTED, true)).toHaveLength(2);
     expect(of(name, MOVED, true).filter(({ move }) => move === "examine")).toHaveLength(2);
@@ -901,7 +918,7 @@ describe("a campaign run by its live Builder", () => {
       examine: unwritten,
     };
     await harnessBuilder(
-      [...seeded(name), "--target", "5", "--practice", "2", ...LEVEL, "--moves", "4"],
+      [...(await prepared(name)), "--target", "5", "--practice", "2", ...LEVEL, "--moves", "2"],
       seats,
     );
     const shells = of(name, CALLED).filter(({ tool }) => tool === "bash");
@@ -1172,7 +1189,7 @@ describe("a campaign tool where the table names more than the action", () => {
     };
     // The starter comparison reads the tasks x-1 wrote beside retained ones; the promoted harness answers
     // none of them while a valid answer to each is on record, which is room, so the table builds.
-    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "9"], seats);
+    await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS, "--moves", "7"], seats);
     const [first, starterComparison] = of(name, REPORTED);
     // The table's starter comparison, as it names it, not a freeze of harness/, which is the
     // reference, so that the comparison is not refused with the advice left the same.
@@ -1217,7 +1234,7 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "14"], seats);
+    await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS, "--moves", "12"], seats);
     const [first, starterComparison, second] = of(name, REPORTED);
     expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh, reading: "no-step" });
     expect(of(name, "harness.promoted")).toMatchObject([
@@ -1236,7 +1253,10 @@ describe("a campaign tool where the table names more than the action", () => {
       seated: builderScript(passing(), [CHANGE_GUIDE, ["compare", {}], ["examine", {}], FINISH_IDLE]),
       examine: writer,
     };
-    const ending = await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--promotions", "1"], seats);
+    const ending = await harnessBuilder(
+      [...(await prepared(name, MANY)), ...FLAGS, "--promotions", "1"],
+      seats,
+    );
     expect(ending).toMatchObject({ move: "end", ending: "operator", code: "stop" });
     expect(of(name, "harness.promoted")).toHaveLength(1);
     expect(of(name, COMPARED)).toHaveLength(1);
@@ -1279,7 +1299,7 @@ describe("a campaign tool where the table names more than the action", () => {
           ]),
         }),
     };
-    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS, "--moves", "10"], seats);
     expect(of(name, REPORTED)).toMatchObject([{ reading: "step" }]);
     expect(of(name, "harness.promoted")).toEqual([]);
     // Practice owed after the reading is the old reference's, and the stop leaves none to release.
@@ -1320,7 +1340,7 @@ describe("a campaign tool where the table names more than the action", () => {
           ]),
         }),
     };
-    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS, "--moves", "10"], seats);
     const events = logOf(name);
     const word = events.findIndex(({ kind }) => kind === "campaign.word");
     const promoted = events.findIndex(({ kind }) => kind === "harness.promoted");
@@ -1353,7 +1373,7 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS, "--moves", "10"], seats);
     const [first, starterComparison, second] = of(name, REPORTED);
     expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh });
     expect(said(name, "compare")[1]).toContain("The table's comparison of the starter ran first");
@@ -1428,7 +1448,7 @@ describe("a campaign tool where the table names more than the action", () => {
           ]),
         }),
     };
-    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS, "--moves", "10"], seats);
     const [first, second] = of(name, REPORTED);
     expect(first).toMatchObject({ reading: "step" });
     // Without the wait the changed harness/ was read against the new reference on the old one's
@@ -1481,7 +1501,7 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: slow,
     };
-    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS, "--moves", "10"], seats);
     const events = logOf(name);
     const index = (kind: string, session: string) =>
       events.findIndex((event) => event.kind === kind && event.data.session === session);
@@ -1525,7 +1545,7 @@ describe("a campaign tool where the table names more than the action", () => {
       // Each session holds six instances the last did not.
       examine: (request) => examine({ ...request, ...scripted([proposing(6, 6 * sessions++)]) }),
     };
-    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...(await prepared(name, MANY)), ...FLAGS, "--moves", "10"], seats);
     const [first, starterComparison, second] = of(name, REPORTED);
     expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh });
     const snapshots = of(name, "build.checkpoint");
@@ -1718,7 +1738,9 @@ describe("a campaign's endings", () => {
     // g-1 closes every task it reads, and two Examiner sessions that hold out none spend a supply patience
     // of two: the conversation that asked for them is halted there, since an ending that was only
     // advice while a conversation lived would let the conversation buy a third session.
-    expect(await harnessBuilder([...seeded(name), ...FLAGS, "--patience", "2"], seats)).toMatchObject({
+    expect(
+      await harnessBuilder([...(await prepared(name)), ...FLAGS, "--patience", "2"], seats),
+    ).toMatchObject({
       move: "end",
       ending: "no-room",
     });
@@ -1747,7 +1769,7 @@ describe("a campaign's endings", () => {
     // and b-4 on the next: two sessions that hold out none spend a supply patience of two. The host
     // does not make g-1 itself once b-1 ends.
     expect(
-      await harnessBuilder([...seeded(name), ...FLAGS, "--turns", "3", "--patience", "2"], seats),
+      await harnessBuilder([...(await prepared(name)), ...FLAGS, "--turns", "3", "--patience", "2"], seats),
     ).toMatchObject({ move: "end", ending: "no-room" });
     expect(of(name, FINISHED).map(({ session, ended }) => [session, ended])).toEqual([
       ["b-1", "turns"],
@@ -1800,7 +1822,9 @@ describe("a campaign's endings", () => {
     // The refusal is not the environment's ending, and the command does not throw. A crashed
     // conversation left no harness, so b-2's compare has nothing to read, and the three after b-1
     // make no campaign move: the provider's failure is no conversation idle.
-    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
+    expect(await harnessBuilder([...(await prepared(name)), ...FLAGS], seats)).toMatchObject({
+      ending: "finished",
+    });
     expect(of(name, FINISHED).map(({ session, ended }) => [session, ended])).toEqual([
       ["b-1", "crashed"],
       ["b-2", "finished"],
@@ -1811,7 +1835,7 @@ describe("a campaign's endings", () => {
     // None of three conversations changed a harness: the table's crash rule ends the campaign.
     const crashing = `${STEM}-crashes`;
     const none: Seats = { seated: builderScripts(passing(), []) };
-    expect(await harnessBuilder([...seeded(crashing), ...FLAGS], none)).toMatchObject({
+    expect(await harnessBuilder([...(await prepared(crashing)), ...FLAGS], none)).toMatchObject({
       move: "end",
       ending: "environment",
     });
@@ -1821,7 +1845,7 @@ describe("a campaign's endings", () => {
     const edits: Seats = {
       seated: builderScripts(passing(), [[CHANGE_GUIDE], [CHANGE_GUIDE], [CHANGE_GUIDE]]),
     };
-    expect(await harnessBuilder([...seeded(editing), ...FLAGS], edits)).toMatchObject({
+    expect(await harnessBuilder([...(await prepared(editing)), ...FLAGS], edits)).toMatchObject({
       move: "end",
       ending: "environment",
     });

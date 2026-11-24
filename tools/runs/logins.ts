@@ -31,11 +31,10 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
 import { hasText, textOr } from "#src/meta/text.ts";
-import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf, isLocalOnly } from "./host-config.ts";
-import { CODEX, countedAgainst, type Live, liveHere, liveOf } from "./live.ts";
+import { CODEX, countedAgainst, type Live, liveHere, liveOf, seatFlagsOf } from "./live.ts";
 import { remember } from "./pulse-readers.ts";
 import { archived, isCampaign } from "./registry.ts";
 import {
@@ -172,7 +171,7 @@ export function plainOnly(env: Env): boolean {
  *  flag for each seat overrides its opening, with the setting as the solver's fallback. The pickers
  *  that choose a login (`fresh`, `keep`) ask it; the launcher names only the login it is given. */
 export function billsLogin(events: readonly LogEvent[], flags: readonly string[]): boolean {
-  const values = looseFlagsOf(flags);
+  const values = seatFlagsOf(flags);
   const opening = openingOf(events);
   return [
     ...SEATS.map((seat) => values[seat] ?? opening?.seats[seat]?.model),

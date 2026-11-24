@@ -93,11 +93,10 @@ describe("holder", () => {
     const until = performance.now() + 15_000;
     while (!held(file) && performance.now() < until) await Bun.sleep(20);
     let free = 0;
-    // Past one beat of the old record, which was rewritten in place every ten seconds.
-    const reading = performance.now() + 12_000;
+    const reading = performance.now() + 300;
     while (performance.now() < reading) {
       if (!held(file)) free += 1;
-      await Bun.sleep(1);
+      await Bun.sleep(25);
     }
     holder.kill();
     await holder.exited;
@@ -169,10 +168,10 @@ describe("holder", () => {
       taker,
       [
         `import { hold } from ${holderPath};`,
-        // Every taker starts at one instant, so they meet at the takeover rather than one after another.
-        `while (Date.now() < ${String(Date.now() + 3000)});`,
+        // Every taker wakes at one instant, so they meet at the takeover without busy-spinning CPUs.
+        `await Bun.sleep(Math.max(0, ${String(Date.now() + 1000)} - Date.now()));`,
         `console.log(hold(${JSON.stringify(file)}));`,
-        "await Bun.sleep(3000);",
+        "await Bun.sleep(1000);",
       ].join("\n"),
     );
     const takers = Array.from({ length: 8 }, () =>

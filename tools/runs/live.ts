@@ -1,8 +1,9 @@
 /** Live campaigns and simulation seats on one machine, shared by usage and placement. */
 import { Type } from "typebox";
+import { SEATS } from "#src/campaign/opening.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
+import { parseArgs } from "#src/meta/process.ts";
 import { lastLaunch } from "./receipt.ts";
 import { lifeOf } from "./diagnosis.ts";
 import { flagOf, ownArgs, processes, runs, SEAT } from "./registry.ts";
@@ -15,6 +16,10 @@ export interface Live {
   /** Set on a kept run between two starts: its keeper lives and no process writes its log. */
   readonly unwritten?: true;
 }
+
+const SEAT_OPTIONS = Object.fromEntries(
+  [...SEATS, "solver"].map((name) => [name, { type: "string" as const }]),
+);
 
 /** A peer's answer to `active --here`. */
 const LIVE = Type.Array(
@@ -31,11 +36,23 @@ const LIVE = Type.Array(
  *  rather than by hand. */
 export const CODEX = "codex";
 
+export function seatFlagsOf(flags: readonly string[]): Record<string, string | undefined> {
+  const { values } = parseArgs({
+    args: [...flags],
+    options: SEAT_OPTIONS,
+    allowNegative: true,
+    strict: false,
+  });
+  return Object.fromEntries(
+    Object.entries(values).flatMap(([key, value]) => (isString(value) ? [[key, value]] : [])),
+  );
+}
+
 /** Who pays a run on `login` with the launch flags `flags`: the login, or the Codex CLI's where it
  *  names none and a seat goes through it. */
 export const payerOf = (login: string | undefined, flags: readonly string[]): string | undefined =>
   login ??
-  (Object.values(looseFlagsOf(flags)).some((value) => isString(value) && value.startsWith("openai-codex/"))
+  (Object.values(seatFlagsOf(flags)).some((value) => isString(value) && value.startsWith("openai-codex/"))
     ? CODEX
     : undefined);
 

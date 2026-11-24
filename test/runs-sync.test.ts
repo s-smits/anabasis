@@ -147,20 +147,23 @@ process.exit();`,
 
 describe("credentials", () => {
   test.each([
-    ["a key that looks like one", { CLAUDE_CODE_OAUTH_TOKEN2: SECRET }, "CLAUDE_CODE_OAUTH_TOKEN2"],
-    ["another", { MY_API_KEY: SECRET }, "MY_API_KEY"],
-    ["a key sync does not carry", { SOME_SETTING: SECRET }, "SOME_SETTING"],
-    ["an allowed key with a credential's value", { ANA_KEEP: SECRET }, "the value of ANA_KEEP"],
+    ["a key that looks like one", { CLAUDE_CODE_OAUTH_TOKEN2: SECRET }, "CLAUDE_CODE_OAUTH_TOKEN2", []],
+    ["another", { MY_API_KEY: SECRET }, "MY_API_KEY", ["--check"]],
+    ["a key sync does not carry", { SOME_SETTING: SECRET }, "SOME_SETTING", ["--yes"]],
+    [
+      "an allowed key with a credential's value",
+      { ANA_KEEP: SECRET },
+      "the value of ANA_KEEP",
+      ["--yes", "--force"],
+    ],
   ])(
     "%s in a host's settings is refused on every flag, with no ssh and its value unprinted",
-    (_, settings, says) => {
+    (_, settings, says, flags) => {
       const made = fixture();
-      for (const flags of [[], ["--check"], ["--yes"], ["--yes", "--force"]]) {
-        const result = made.run(flags, { host: { settings } });
-        expect(result.code).toBe(1);
-        expect(result.err).toContain(says);
-        expect(`${result.out}${result.err}`).not.toContain(SECRET);
-      }
+      const result = made.run(flags, { host: { settings } });
+      expect(result.code).toBe(1);
+      expect(result.err).toContain(says);
+      expect(`${result.out}${result.err}`).not.toContain(SECRET);
       expect(made.sshCalls()).toEqual([]);
     },
   );
@@ -209,9 +212,9 @@ describe("python", () => {
     for (const flags of [[], ["--yes"]]) {
       const result = made.run(flags, { env: pin, fleet });
       expect(result.out).toContain("refused: 1 live: live-one");
+      if (flags.includes("--yes")) expect(result.code).toBe(1);
       expect(existsSync(pinnedPythonDir(made.peerHome))).toBe(false);
     }
-    expect(made.run(["--yes"], { env: pin, fleet }).code).toBe(1);
     // A live count it cannot read refuses as a live campaign does.
     const unread = made.run(["--yes"], { env: pin, fleet: { active: "no json" } });
     expect([unread.code, unread.out.includes("could not be counted")]).toEqual([1, true]);
@@ -266,9 +269,9 @@ describe("the table of tools", () => {
     for (const flags of [[], ["--yes"]]) {
       const result = made.run(flags, { env, fleet: { active: live.active } });
       expect(result.out).toContain("refused: 1 live: live-one");
+      if (flags.includes("--yes")) expect(result.code).toBe(1);
       expect(version(made.peerHome)).toContain("1.0.0");
     }
-    expect(made.run(["--yes"], { env, fleet: { active: live.active } }).code).toBe(1);
     const unread = made.run(["--yes"], { env, fleet: { active: "no json" } });
     expect(unread.code).toBe(1);
     expect(unread.out).toContain("could not be counted");

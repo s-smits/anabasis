@@ -41,8 +41,7 @@ async function reclaimDead(at: string): Promise<void> {
   };
   const movedOwner = move(owner, `${tomb}.owner`);
   if (movedOwner === null) return;
-  endHolders(at);
-  endHolders(hostFolder(at));
+  endHolders([at, hostFolder(at)]);
   const movedRoot = move(at, tomb);
   const movedHost = move(hostFolder(at), `${tomb}.host`);
   try {
@@ -63,11 +62,12 @@ export async function claimRoot(root: string): Promise<ReleaseRoot> {
 }
 
 export async function releaseRoot(root: string): Promise<void> {
-  endHolders(root);
-  endHolders(hostFolder(root));
-  await removeWhole(root);
-  await rm(hostFolder(root), { recursive: true, force: true });
-  await rm(claimOf(root), { force: true });
+  endHolders([root, hostFolder(root)]);
+  await Promise.all([
+    removeWhole(root),
+    rm(hostFolder(root), { recursive: true, force: true }),
+    rm(claimOf(root), { force: true }),
+  ]);
 }
 
 function latestWrite(root: string): number {
@@ -123,9 +123,15 @@ async function removeWhole(root: string): Promise<void> {
   await rm(root, { recursive: true, force: true });
 }
 
-export function endHolders(root: string, group?: number, table: typeof processTable = processTable): void {
-  if (runtimeProcess.platform !== "darwin" || !existsSync(root)) return;
-  const real = realpathSync.native(root);
+export function endHolders(
+  roots: string | readonly string[],
+  group?: number,
+  table: typeof processTable = processTable,
+): void {
+  if (runtimeProcess.platform !== "darwin") return;
+  const list = Array.isArray(roots) ? roots : [roots];
+  const real = list.filter(existsSync).map((root) => realpathSync.native(root));
+  if (real.length === 0) return;
   const until = performance.now() + 1000;
   for (let settled = true; performance.now() < until; ) {
     const holders = holdersOf(real, group, table());
@@ -141,8 +147,13 @@ export function endHolders(root: string, group?: number, table: typeof processTa
   }
 }
 
-function holdersOf(root: string, group: number | undefined, rows: ReturnType<typeof processTable>): number[] {
-  const inRoot = (path: string | null) => path !== null && (path === root || path.startsWith(`${root}/`));
+function holdersOf(
+  roots: readonly string[],
+  group: number | undefined,
+  rows: ReturnType<typeof processTable>,
+): number[] {
+  const inRoot = (path: string | null) =>
+    path !== null && roots.some((root) => path === root || path.startsWith(`${root}/`));
   const table = rows.filter(({ pid }) => pid > 1 && pid !== runtimeProcess.pid);
   const found = new Set(
     table.filter((row) => row.pgid === group || inRoot(row.cwd) || inRoot(row.program)).map(({ pid }) => pid),

@@ -17,6 +17,8 @@
  */
 import {
   chmodSync,
+  copyFileSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -26,8 +28,9 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
+import { runCaptured } from "../src/meta/subprocess.ts";
 
-import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 
 import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 import { fakeBun, gatesRun, logLines, wherePassesRan } from "./helpers/fake-bun.ts";
@@ -35,12 +38,10 @@ import { STACK_MEMBERS } from "../tools/runtime/pulls.ts";
 
 const land = join(import.meta.dir, "..", "tools", "runtime", "land.ts");
 const fixture = mkdtempSync(join(tmpdir(), "ana-land-"));
-const work = join(fixture, "work");
-const origin = join(fixture, "origin.git");
+const templateWork = join(fixture, "template-work");
+const templateOrigin = join(fixture, "template-origin.git");
 const bin = join(fixture, "bin");
-const ghLog = join(fixture, "gh.log");
-const gateLog = join(fixture, "gates.log");
-const fake = (mkdirSync(bin), fakeBun(bin, gateLog));
+const fake = (mkdirSync(bin), fakeBun(bin, ""));
 /** The status `land` posts on each commit it proves (`COMMIT_CONTEXT`, `tools/runtime/land.ts`). */
 const COMMIT = "ana/commit";
 
@@ -96,74 +97,75 @@ fi ;;
 esac
 `;
 
-const git = (...args: string[]): string => execTextSync("git", args, { cwd: work }).trim();
-function commit(file: string, text: string, message: string): string {
-  writeFileSync(join(work, file), text);
-  git("add", "-A");
-  git("commit", "-qm", message);
-  return git("rev-parse", "HEAD");
+const initGit = (...args: string[]): string => execTextSync("git", args, { cwd: templateWork }).trim();
+function initCommit(file: string, text: string, message: string): string {
+  writeFileSync(join(templateWork, file), text);
+  initGit("add", "-A");
+  initGit("commit", "-qm", message);
+  return initGit("rev-parse", "HEAD");
 }
-const publish = (): string =>
-  execTextSync("git", ["-C", origin, "fetch", "-q", work, "+refs/heads/*:refs/heads/*"]);
 const short = (sha: string): string => sha.slice(0, 9);
 
 writeFileSync(join(bin, "gh"), GH);
 chmodSync(join(bin, "gh"), 0o755);
-mkdirSync(join(work, ".github", "workflows"), { recursive: true });
-mkdirSync(join(work, "src"));
-mkdirSync(join(work, "test"));
-git("init", "-q", "-b", "main");
-git("config", "user.email", "fixture@localhost");
-git("config", "user.name", "fixture");
+mkdirSync(join(templateWork, ".github", "workflows"), { recursive: true });
+mkdirSync(join(templateWork, "src"));
+mkdirSync(join(templateWork, "test"));
+initGit("init", "-q", "-b", "main");
+initGit("config", "user.email", "fixture@localhost");
+initGit("config", "user.name", "fixture");
 const workflow = (dispatch: string): string => `name: ci\non:\n  pull_request:\n${dispatch}jobs: {}\n`;
-writeFileSync(join(work, ".github", "workflows", "ci.yml"), workflow("  workflow_dispatch:\n"));
-writeFileSync(join(work, "README.md"), "one\n");
+writeFileSync(join(templateWork, ".github", "workflows", "ci.yml"), workflow("  workflow_dispatch:\n"));
+writeFileSync(join(templateWork, "README.md"), "one\n");
 writeFileSync(
-  join(work, "test", "owner.test.ts"),
+  join(templateWork, "test", "owner.test.ts"),
   'import { owner } from "../src/owner.ts";\nexport { owner };\n',
 );
-const trunk = commit("src/owner.ts", "export const owner = 1;\n", "base");
-git("checkout", "-q", "-b", "a");
-const lower = commit("src/a.ts", "export const a = 1;\n", "a");
-const lowerMore = commit("src/owner.ts", "export const owner = 2;\n", "a more");
-const lowerDocs = commit("README.md", "two\n", "a docs");
-git("checkout", "-q", "-b", "b");
-const upper = commit("src/b.ts", "export const b = 1;\n", "b");
-git("checkout", "-q", "-b", "beside", "main");
-const beside = commit("src/c.ts", "export const c = 1;\n", "beside");
-git("checkout", "-q", "-b", "merged");
-git("merge", "-qm", "merge a through the second parent", "a");
-const merged = git("rev-parse", "HEAD");
-git("checkout", "-q", "-b", "tests", "main");
-commit("test/c.test.ts", "export {};\n", "a test");
-const testsTop = commit("src/d.ts", "export const d = 1;\n", "d");
-git("checkout", "-q", "-b", "nodispatch", "main");
-const noDispatch = commit(".github/workflows/ci.yml", workflow(""), "no dispatch");
-git("checkout", "-q", "-b", "c", "b");
-const stacked = commit("src/e.ts", "export const e = 1;\n", "c");
+initCommit("src/owner.ts", "export const owner = 1;\n", "base");
+initGit("checkout", "-q", "-b", "a");
+const lower = initCommit("src/a.ts", "export const a = 1;\n", "a");
+const lowerMore = initCommit("src/owner.ts", "export const owner = 2;\n", "a more");
+const lowerDocs = initCommit("README.md", "two\n", "a docs");
+initGit("checkout", "-q", "-b", "b");
+const upper = initCommit("src/b.ts", "export const b = 1;\n", "b");
+initGit("checkout", "-q", "-b", "beside", "main");
+const beside = initCommit("src/c.ts", "export const c = 1;\n", "beside");
+initGit("checkout", "-q", "-b", "merged");
+initGit("merge", "-qm", "merge a through the second parent", "a");
+const merged = initGit("rev-parse", "HEAD");
+initGit("checkout", "-q", "-b", "tests", "main");
+initCommit("test/c.test.ts", "export {};\n", "a test");
+const testsTop = initCommit("src/d.ts", "export const d = 1;\n", "d");
+initGit("checkout", "-q", "-b", "nodispatch", "main");
+const noDispatch = initCommit(".github/workflows/ci.yml", workflow(""), "no dispatch");
+initGit("checkout", "-q", "-b", "c", "b");
+const stacked = initCommit("src/e.ts", "export const e = 1;\n", "c");
 // A head where ci.yml failed, and its fix: the only test near the fix is test/a.test.ts.
-git("checkout", "-q", "-b", "fix", "b");
-writeFileSync(join(work, "test", "a.test.ts"), 'import { a } from "../src/a.ts";\nexport { a };\n');
-writeFileSync(join(work, "test", "far.test.ts"), "export {};\n");
+initGit("checkout", "-q", "-b", "fix", "b");
+writeFileSync(join(templateWork, "test", "a.test.ts"), 'import { a } from "../src/a.ts";\nexport { a };\n');
+writeFileSync(join(templateWork, "test", "far.test.ts"), "export {};\n");
 const fixesWorkflow = workflow("  workflow_dispatch:\n    inputs:\n      tests:\n      ui_tests:\n");
-const broken = commit(".github/workflows/ci.yml", fixesWorkflow, "a head ci.yml failed on");
-const fixed = commit("src/a.ts", "export const a = 2;\n", "the fix");
+const broken = initCommit(".github/workflows/ci.yml", fixesWorkflow, "a head ci.yml failed on");
+const fixed = initCommit("src/a.ts", "export const a = 2;\n", "the fix");
 // The same fix where the wall imports the file it changes, two imports from its own folder.
-git("checkout", "-q", "-b", "wallfix", "b");
-mkdirSync(join(work, "src", "wall"), { recursive: true });
-writeFileSync(join(work, "test", "a.test.ts"), 'import { a } from "../src/a.ts";\nexport { a };\n');
-writeFileSync(join(work, "src", "wall", "policy.ts"), 'import { a } from "../a.ts";\nexport { a };\n');
-const wallBroken = commit(
+initGit("checkout", "-q", "-b", "wallfix", "b");
+mkdirSync(join(templateWork, "src", "wall"), { recursive: true });
+writeFileSync(join(templateWork, "test", "a.test.ts"), 'import { a } from "../src/a.ts";\nexport { a };\n');
+writeFileSync(
+  join(templateWork, "src", "wall", "policy.ts"),
+  'import { a } from "../a.ts";\nexport { a };\n',
+);
+const wallBroken = initCommit(
   ".github/workflows/ci.yml",
   fixesWorkflow,
   "a head ci.yml failed on, beside the wall",
 );
-const wallFixed = commit("src/a.ts", "export const a = 2;\n", "the fix the wall reads");
-git("checkout", "-q", "b");
-execTextSync("git", ["init", "-q", "--bare", origin]);
-execTextSync("git", ["-C", origin, "config", "uploadpack.allowAnySHA1InWant", "true"]);
-publish();
-git("remote", "add", "origin", origin);
+const wallFixed = initCommit("src/a.ts", "export const a = 2;\n", "the fix the wall reads");
+initGit("checkout", "-q", "b");
+execTextSync("git", ["init", "-q", "--bare", templateOrigin]);
+execTextSync("git", ["-C", templateOrigin, "config", "uploadpack.allowAnySHA1InWant", "true"]);
+execTextSync("git", ["-C", templateOrigin, "fetch", "-q", templateWork, "+refs/heads/*:refs/heads/*"]);
+initGit("remote", "add", "origin", templateOrigin);
 
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
 
@@ -188,32 +190,12 @@ const stack = (top = upper, ...more: ReturnType<typeof pull>[]): string =>
     ...more,
   ]);
 
-const landEnv = (env: Record<string, string | undefined> = {}): Record<string, string | undefined> => ({
-  ...Bun.env,
-  ...fake,
-  // No host list, and the fixture's main worktree holds no `.env.runs`, so every proof stays here.
-  ANA_HOSTS: "",
-  ANA_GH_LOG: ghLog,
-  ANA_FAKE_PULLS: stack(),
-  ANA_FAKE_STACK: "7 11,12",
-  ANA_FAKE_STACK_END: "merged",
-  ANA_FAKE_STACK_UUID: "u1",
-  ANA_FAKE_STACK_SHA: upper,
-  ...env,
-});
-
-/** One landing, with the top's whole gate as at a merge (`--whole`); the top's one-import pass by
- *  default, and following the stack (`--watch`), are each proved on their own. */
-function runLand(args: readonly string[], env: Record<string, string | undefined> = {}) {
-  return spawnTextSync(capturedExecPath, [land, ...args, "--whole"], { cwd: work, env: landEnv(env) });
-}
-
-const statuses = (context: string): string[] =>
+const statusesOf = (ghLog: string, context: string): string[] =>
   logLines(ghLog).flatMap((line) => {
     const match = /\/statuses\/(\w+) -f state=(\w+) -f context=(\S+)/u.exec(line);
     return match?.[3] === context ? [`${match[2]} ${match[1]}`] : [];
   });
-const described = (context: string): string[] =>
+const describedOf = (ghLog: string, context: string): string[] =>
   logLines(ghLog).flatMap((line) => {
     const match =
       /\/statuses\/(\w+) -f state=\w+ -f context=(\S+) -f description=(.+) --silent( -f target_url=\S+)?$/u.exec(
@@ -221,30 +203,144 @@ const described = (context: string): string[] =>
       );
     return match?.[2] === context ? [`${match[1]} ${match[3]}`] : [];
   });
-/** The commits whose last `context` status this landing posted is still pending. */
-const leftPending = (context: string): string[] => {
-  const last = new Map(statuses(context).map((row) => [row.split(" ")[1], row.split(" ")[0]]));
+const leftPendingOf = (ghLog: string, context: string): string[] => {
+  const last = new Map(statusesOf(ghLog, context).map((row) => [row.split(" ")[1], row.split(" ")[0]]));
   return [...last].flatMap(([sha, state]) => (state === "pending" ? [String(sha)] : []));
 };
-const writes = (): string[] =>
+const writesOf = (ghLog: string): string[] =>
   logLines(ghLog).filter((line) => line.includes("-X") || line.startsWith("workflow"));
-const forgetPasses = (): void => rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
+const linkCallsOf = (ghLog: string): string[] =>
+  logLines(ghLog).filter((line) => line.startsWith("stack link"));
 
-const ciStates = (...rows: string[]): string => {
-  const file = join(fixture, "ci-states");
-  writeFileSync(file, `${rows.join("\n")}\n`);
-  return file;
-};
+/** An isolated copy of the template repository and origin, with its own logs and async `runLand`,
+ *  so tests in this file run concurrently without contending on `.git/ana-land.lock` or logs.
+ *  Tests of post-gating behaviour (merges, links, tags, `ci.yml` dispatch) pass `"proved"` to start
+ *  with the `.git/ana-gate-passed` cache a prior `land` wrote, avoiding redundant fake-gate passes. */
+let provedPasses: Promise<string> | null = null;
+function rememberedPasses(): Promise<string> {
+  if (provedPasses !== null) return provedPasses;
+  provedPasses = (async () => {
+    const seed = sandbox();
+    const calls: [readonly string[], Record<string, string>][] = [
+      [["12"], {}],
+      [["13"], { ANA_FAKE_STACK: "", ANA_FAKE_STACK_SHA: beside }],
+      [["15"], { ANA_FAKE_PULLS: stack(upper, pull(15, "c", "b", stacked)), ANA_FAKE_STACK_SHA: stacked }],
+      [
+        ["12"],
+        {
+          ANA_FAKE_PULLS: JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "fix", "a", fixed)]),
+          ANA_FAKE_STACK_SHA: fixed,
+        },
+      ],
+      [
+        ["12"],
+        {
+          ANA_FAKE_PULLS: JSON.stringify([
+            pull(11, "a", "main", lowerDocs),
+            pull(12, "wallfix", "a", wallFixed),
+          ]),
+          ANA_FAKE_STACK_SHA: wallFixed,
+        },
+      ],
+    ];
+    for (const [args, env] of calls) {
+      const done = await seed.runLand(args, env);
+      if (done.status !== 0) throw new Error(`seed land failed: ${done.stderr}`);
+    }
+    const cache = join(fixture, "ana-gate-passed");
+    copyFileSync(join(seed.work, ".git", "ana-gate-passed"), cache);
+    return cache;
+  })();
+  return provedPasses;
+}
 
-beforeEach(() => {
-  rmSync(ghLog, { force: true });
-  rmSync(gateLog, { force: true });
-  forgetPasses();
-});
+function sandbox() {
+  const dir = mkdtempSync(join(fixture, "case-"));
+  const work = join(dir, "work");
+  const origin = join(dir, "origin.git");
+  const ghLog = join(dir, "gh.log");
+  const gateLog = join(dir, "gates.log");
+  cpSync(templateWork, work, { recursive: true });
+  cpSync(templateOrigin, origin, { recursive: true });
+  const git = (...args: string[]): string => execTextSync("git", args, { cwd: work }).trim();
+  git("remote", "set-url", "origin", origin);
+  const commit = (file: string, text: string, message: string): string => {
+    writeFileSync(join(work, file), text);
+    git("add", "-A");
+    git("commit", "-qm", message);
+    return git("rev-parse", "HEAD");
+  };
+  const publish = (): string =>
+    execTextSync("git", ["-C", origin, "fetch", "-q", work, "+refs/heads/*:refs/heads/*"]);
+  const landEnv = (env: Record<string, string | undefined> = {}): Record<string, string | undefined> => ({
+    ...Bun.env,
+    ANA_GATE_FRESH: "",
+    ANA_CI_POLL_MS: "10",
+    ...fake,
+    ANA_FAKE_LOG: gateLog,
+    // No host list, and the fixture's main worktree holds no `.env.runs`, so every proof stays here.
+    ANA_HOSTS: "",
+    ANA_GH_LOG: ghLog,
+    ANA_FAKE_PULLS: stack(),
+    ANA_FAKE_STACK: "7 11,12",
+    ANA_FAKE_STACK_END: "merged",
+    ANA_FAKE_STACK_UUID: "u1",
+    ANA_FAKE_STACK_SHA: upper,
+    ...env,
+  });
+  const runLandRaw = async (args: readonly string[], env: Record<string, string | undefined> = {}) => {
+    const result = await runCaptured([capturedExecPath, land, ...args], { cwd: work, env: landEnv(env) });
+    return { status: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+  };
+  /** One landing, with the top's whole gate as at a merge (`--whole`); the top's one-import pass by
+   *  default, and following the stack (`--watch`), are each proved on their own. */
+  const runLand = (args: readonly string[], env: Record<string, string | undefined> = {}) =>
+    runLandRaw([...args, "--whole"], env);
+  const stackMerge = (end: string, more: Record<string, string> = {}) =>
+    runLand(["12", "--merge"], {
+      ANA_FAKE_STACK: "7 11,12,14",
+      ANA_FAKE_STACK_END: end,
+      ANA_FAKE_STACK_UUID: "u1",
+      ...more,
+    });
+  const ciStates = (...rows: string[]): string => {
+    const file = join(dir, "ci-states");
+    writeFileSync(file, `${rows.join("\n")}\n`);
+    return file;
+  };
+  return {
+    dir,
+    work,
+    origin,
+    ghLog,
+    gateLog,
+    git,
+    commit,
+    publish,
+    landEnv,
+    runLand,
+    runLandRaw,
+    stackMerge,
+    ciStates,
+    statuses: (context: string) => statusesOf(ghLog, context),
+    described: (context: string) => describedOf(ghLog, context),
+    leftPending: (context: string) => leftPendingOf(ghLog, context),
+    writes: () => writesOf(ghLog),
+    linkCalls: () => linkCallsOf(ghLog),
+    forgetPasses: () => rmSync(join(work, ".git", "ana-gate-passed"), { force: true }),
+  };
+}
 
-describe("bun run land", () => {
-  it("proves each commit once, then sanitizes cached verdicts only when asked", () => {
-    const result = runLand(["12"]);
+async function provedSandbox() {
+  const box = sandbox();
+  copyFileSync(await rememberedPasses(), join(box.work, ".git", "ana-gate-passed"));
+  return box;
+}
+
+describe.concurrent("bun run land", () => {
+  it("proves each commit once, then sanitizes cached verdicts only when asked", async () => {
+    const { runLand, gateLog, ghLog, writes, described, statuses } = sandbox();
+    const result = await runLand(["12"]);
     expect(result.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([`${lower} -`, `${lowerMore} test/owner.test.ts`, `${upper} suite`]);
     // Each line names the pull request that holds its commit, so a long landing shows where it is.
@@ -253,7 +349,7 @@ describe("bun run land", () => {
     expect(result.stdout).toContain("--sanitize shows it on GitHub");
     expect(writes()).toEqual([]);
     rmSync(gateLog, { force: true });
-    const sanitized = runLand(["12", "--sanitize"]);
+    const sanitized = await runLand(["12", "--sanitize"]);
     expect(sanitized.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([]);
     expect(sanitized.stdout).toContain("passed earlier on these exact bytes");
@@ -269,8 +365,9 @@ describe("bun run land", () => {
     expect(logLines(ghLog).some((line) => line.startsWith("run list"))).toBe(false);
   });
 
-  it("proves the top as every other commit, by its nearby tests, unless it merges or --whole is named", () => {
-    const result = spawnTextSync(capturedExecPath, [land, "12", "--sanitize"], { cwd: work, env: landEnv() });
+  it("proves the top as every other commit, by its nearby tests, unless it merges or --whole is named", async () => {
+    const { runLand, runLandRaw, gateLog, described } = sandbox();
+    const result = await runLandRaw(["12", "--sanitize"]);
     expect(result.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([`${lower} -`, `${lowerMore} test/owner.test.ts`, `${upper} -`]);
     expect(described(COMMIT)).toContain(
@@ -278,21 +375,23 @@ describe("bun run land", () => {
     );
     // A merge gives the top the whole gate, which the sanitize's nearby tests do not stand in for.
     rmSync(gateLog, { force: true });
-    expect(runLand(["12", "--merge"]).status).toBe(0);
+    expect((await runLand(["12", "--merge"])).status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([`${upper} suite`]);
   });
 
-  it("merges over the passes a sanitize left, running no gate again", () => {
-    expect(runLand(["12", "--sanitize"]).status).toBe(0);
+  it("merges over the passes a sanitize left, running no gate again", async () => {
+    const { runLand, gateLog } = sandbox();
+    expect((await runLand(["12", "--sanitize"])).status).toBe(0);
     rmSync(gateLog, { force: true });
-    const landed = runLand(["12", "--merge"]);
+    const landed = await runLand(["12", "--merge"]);
     expect(landed.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([]);
     expect(landed.stdout).toContain("passed earlier on these exact bytes");
   });
 
-  it("posts only the statuses GitHub does not show already, and reads the chain once over remembered passes", () => {
-    expect(runLand(["12", "--sanitize"]).status).toBe(0);
+  it("posts only the statuses GitHub does not show already, and reads the chain once over remembered passes", async () => {
+    const { dir, runLand, ghLog, described, statuses } = sandbox();
+    expect((await runLand(["12", "--sanitize"])).status).toBe(0);
     const posted = logLines(ghLog).flatMap((line) => {
       const match = /\/statuses\/(\w+) -f state=(\w+) -f context=(\S+) -f description=(.+) --silent$/u.exec(
         line,
@@ -305,10 +404,10 @@ describe("bun run land", () => {
     );
     const stale = latest.get(`${upper} ana/commit`) ?? [];
     latest.set(`${upper} ana/commit`, [upper, COMMIT, "pending", "an earlier landing"]);
-    const shown = join(fixture, "shown");
+    const shown = join(dir, "shown");
     writeFileSync(shown, `${[...latest.values()].map((row) => row.join("\t")).join("\n")}\n`);
     rmSync(ghLog, { force: true });
-    const again = runLand(["12", "--sanitize"], { ANA_FAKE_SHOWN: shown });
+    const again = await runLand(["12", "--sanitize"], { ANA_FAKE_SHOWN: shown });
     expect(again.status).toBe(0);
     expect(described(COMMIT)).toEqual([`${upper} ${String(stale[3])}`]);
     expect(statuses("mergeable")).toEqual([]);
@@ -316,9 +415,10 @@ describe("bun run land", () => {
     expect(logLines(ghLog).filter((line) => line.startsWith("pr list"))).toHaveLength(1);
   });
 
-  it("posts a verdict again over the same one GitHub showed before the landing turned it pending", () => {
-    expect(runLand(["12", "--sanitize"]).status).toBe(0);
-    const shown = join(fixture, "shown-green");
+  it("posts a verdict again over the same one GitHub showed before the landing turned it pending", async () => {
+    const { dir, runLand, ghLog, statuses, forgetPasses } = sandbox();
+    expect((await runLand(["12", "--sanitize"])).status).toBe(0);
+    const shown = join(dir, "shown-green");
     const rows = logLines(ghLog).flatMap((line) => {
       const match = /\/statuses\/(\w+) -f state=(\w+) -f context=(\S+) -f description=(.+) --silent$/u.exec(
         line,
@@ -328,7 +428,7 @@ describe("bun run land", () => {
     writeFileSync(shown, `${rows.join("\n")}\n`);
     rmSync(ghLog, { force: true });
     forgetPasses();
-    const again = runLand(["12", "--sanitize"], { ANA_FAKE_SHOWN: shown });
+    const again = await runLand(["12", "--sanitize"], { ANA_FAKE_SHOWN: shown });
     expect(again.status).toBe(0);
     // Proved afresh, each commit reads pending and then its verdict, the one GitHub showed before.
     expect(statuses(COMMIT).filter((row) => row.endsWith(upper))).toEqual([
@@ -341,11 +441,12 @@ describe("bun run land", () => {
     ]);
   });
 
-  it("with --auto lands a pull request stacked on the top during its proof, and merges the new top", () => {
-    const next = join(fixture, "stacked-pulls");
+  it("with --auto lands a pull request stacked on the top during its proof, and merges the new top", async () => {
+    const { dir, runLand, gateLog, ghLog } = sandbox();
+    const next = join(dir, "stacked-pulls");
     rmSync(`${next}.read`, { force: true });
     writeFileSync(next, stack(upper, pull(15, "c", "b", stacked)));
-    const result = runLand(["12", "--auto", "--merge"], {
+    const result = await runLand(["12", "--auto", "--merge"], {
       ANA_FAKE_PULLS_NEXT: next,
       ANA_FAKE_STACK: "7 11,12,15",
       ANA_FAKE_STACK_SHA: stacked,
@@ -359,8 +460,9 @@ describe("bun run land", () => {
     expect(merges.map((line) => /pulls\/(\d+)\//u.exec(line)?.[1])).toEqual(["15"]);
   });
 
-  it("with no pull request named lands the stack that holds the oldest stacked pull request, up to its top", () => {
-    const result = runLand(["--sanitize"], {
+  it("with no pull request named lands the stack that holds the oldest stacked pull request, up to its top", async () => {
+    const { runLand } = sandbox();
+    const result = await runLand(["--sanitize"], {
       ANA_FAKE_PULLS: JSON.stringify([
         pull(9, "beside", "main", beside),
         pull(11, "a", "main", lowerDocs),
@@ -372,8 +474,9 @@ describe("bun run land", () => {
     expect(result.stdout).toContain("#11, #12 onto main");
   });
 
-  it("with latest named lands the open stack whose top has the highest number, up to its top", () => {
-    const result = runLand(["latest", "--sanitize"], {
+  it("with latest named lands the open stack whose top has the highest number, up to its top", async () => {
+    const { runLand } = sandbox();
+    const result = await runLand(["latest", "--sanitize"], {
       ANA_FAKE_PULLS: JSON.stringify([
         pull(9, "beside", "main", beside),
         pull(11, "a", "main", lowerDocs),
@@ -386,8 +489,9 @@ describe("bun run land", () => {
     expect(result.stdout).toContain("#16 onto main");
   });
 
-  it("proves every landing head and turns the stack green when a lower head is a merge's second parent", () => {
-    const result = runLand(["12", "--sanitize"], {
+  it("proves every landing head and turns the stack green when a lower head is a merge's second parent", async () => {
+    const { runLand, gateLog, statuses } = sandbox();
+    const result = await runLand(["12", "--sanitize"], {
       ANA_FAKE_PULLS: JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "merged", "a", merged)]),
     });
     expect(result.status).toBe(0);
@@ -403,20 +507,22 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog).at(-1)).toBe(`${merged} suite`);
   });
 
-  it("proves only the commits from the pull request --from names, and turns no head green", () => {
+  it("proves only the commits from the pull request --from names, and turns no head green", async () => {
+    const { runLand, gateLog, statuses } = sandbox();
     // The commits beneath #12 would fail, so a partial proof that reached them would fail too.
-    const result = runLand(["12", "--sanitize", "--from", "12"], { ANA_FAKE_FAIL: `${lower} lint` });
+    const result = await runLand(["12", "--sanitize", "--from", "12"], { ANA_FAKE_FAIL: `${lower} lint` });
     expect(result.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([`${upper} suite`]);
     expect(statuses(COMMIT)).toEqual([`pending ${upper}`, `success ${upper}`]);
     expect(result.stdout).toContain(`1 of 1, pr12 ${short(upper)}: passed.`);
     expect(statuses("mergeable")).toEqual([]);
-    expect(runLand(["12", "--sanitize", "--from", "13"]).stderr).toContain("#13 is not in #11, #12.");
-    expect(runLand(["12", "--merge", "--from", "12"]).status).toBe(2);
+    expect((await runLand(["12", "--sanitize", "--from", "13"])).stderr).toContain("#13 is not in #11, #12.");
+    expect((await runLand(["12", "--merge", "--from", "12"])).status).toBe(2);
   });
 
-  it("stops at the first commit that fails and names its pull request and where the fix goes", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_FAKE_FAIL: `${lower} lint` });
+  it("stops at the first commit that fails and names its pull request and where the fix goes", async () => {
+    const { runLand, gateLog, statuses } = sandbox();
+    const result = await runLand(["12", "--sanitize"], { ANA_FAKE_FAIL: `${lower} lint` });
     expect(result.status).toBe(1);
     expect(gatesRun(gateLog)).toEqual([`${lower} -`]);
     expect(result.stderr).toContain(
@@ -439,8 +545,9 @@ describe("bun run land", () => {
   // The runner's exits that say nothing of the commit: a dropped connection, no slot in time, and a
   // host that does not answer or lacks the disk (`tools/runtime/router/run.ts`).
   for (const code of ["255", "75", "69"]) {
-    it(`runs a step again where its runner exited ${code}, and passes on the second run`, () => {
-      const result = runLand(["12", "--sanitize"], {
+    it(`runs a step again where its runner exited ${code}, and passes on the second run`, async () => {
+      const { runLand, gateLog, statuses } = sandbox();
+      const result = await runLand(["12", "--sanitize"], {
         ANA_FAKE_DROP: `${upper} test`,
         ANA_FAKE_DROP_CODE: code,
       });
@@ -449,8 +556,9 @@ describe("bun run land", () => {
       expect(statuses(COMMIT)).toContain(`success ${upper}`);
     });
 
-    it(`reads two exits of ${code} as no verdict: an error status, no fix recipe, and land again`, () => {
-      const result = runLand(["12", "--sanitize"], {
+    it(`reads two exits of ${code} as no verdict: an error status, no fix recipe, and land again`, async () => {
+      const { runLand, statuses } = sandbox();
+      const result = await runLand(["12", "--sanitize"], {
         ANA_FAKE_DROP: `${upper} test`,
         ANA_FAKE_DROPS: "2",
         ANA_FAKE_DROP_CODE: code,
@@ -481,9 +589,10 @@ describe("bun run land", () => {
   });
   const hosts = JSON.stringify([host("alpha", 1), host("unset"), host("beta", 3)]);
 
-  it("spreads its proofs over every listed host where ANA_CHECK_HOST is unset or empty, sparing held benchmark hosts, two on one that sets no checks, the whole gate on the first", () => {
+  it("spreads its proofs over every listed host where ANA_CHECK_HOST is unset or empty, sparing held benchmark hosts, two on one that sets no checks, the whole gate on the first", async () => {
     for (const checkHost of [undefined, "   "]) {
-      const result = runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: checkHost });
+      const { runLand, gateLog, statuses } = sandbox();
+      const result = await runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: checkHost });
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("proving on alpha (1), unset (2), beta (3) at once");
       expect(wherePassesRan(gateLog)).toContain(`${upper} alpha`);
@@ -492,8 +601,9 @@ describe("bun run land", () => {
     }
   });
 
-  it("proves at the one place an explicit ANA_CHECK_HOST names, without ANA_RUNNER_SPARE_HELD, whatever the host list holds", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: "here" });
+  it("proves at the one place an explicit ANA_CHECK_HOST names, without ANA_RUNNER_SPARE_HELD, whatever the host list holds", async () => {
+    const { runLand, gateLog } = sandbox();
+    const result = await runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: "here" });
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain("proving on");
     // Every pass inherits the caller's ANA_CHECK_HOST, which the runner reads as this machine.
@@ -503,7 +613,8 @@ describe("bun run land", () => {
     expect(logLines(gateLog).filter((line) => line.startsWith("spare\t"))).toEqual([]);
   });
 
-  it("replays a pull request whose parent was rewritten onto it with --sanitize, pushes it and proves it", () => {
+  it("replays a pull request whose parent was rewritten onto it with --sanitize, pushes it and proves it", async () => {
+    const { origin, git, commit, publish, runLand, gateLog } = sandbox();
     git("checkout", "-q", "-b", "ra", lowerMore);
     const rewritten = commit("README.md", "two, fixed\n", "a docs");
     git("branch", "rb", upper);
@@ -516,12 +627,12 @@ describe("bun run land", () => {
       ANA_FAKE_TIMELINE: `${rewritten}\n${lowerDocs}`,
       ANA_FAKE_STACK: "8 21,22",
     };
-    const proving = runLand(["22"], env);
+    const proving = await runLand(["22"], env);
     expect(proving.status).toBe(1);
     expect(proving.stderr).toContain("#22 (rb) does not contain #21's head");
     expect(proving.stderr).toContain("--sanitize or --merge replays it.");
     expect(gatesRun(gateLog)).toEqual([]);
-    const result = runLand(["22", "--sanitize"], env);
+    const result = await runLand(["22", "--sanitize"], env);
     expect(result.status).toBe(0);
     const moved = execTextSync("git", ["-C", origin, "rev-parse", "rb"]).trim();
     expect(result.stdout).toContain(`replaying what moved beneath: #22 ${short(upper)} -> ${short(moved)}`);
@@ -532,13 +643,14 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog).at(-1)).toBe(`${moved} suite`);
   });
 
-  it("refuses an unlabelled landing that --sanitize would replay before force-pushing anything", () => {
+  it("refuses an unlabelled landing that --sanitize would replay before force-pushing anything", async () => {
+    const { origin, git, commit, publish, runLand } = sandbox();
     git("checkout", "-q", "-b", "ua", lowerMore);
     const rewritten = commit("README.md", "two, mended\n", "a docs");
     git("branch", "ub", upper);
     git("checkout", "-q", "b");
     publish();
-    const result = runLand(["32", "--sanitize"], {
+    const result = await runLand(["32", "--sanitize"], {
       ANA_FAKE_PULLS: JSON.stringify([pull(31, "ua", "main", "@ua"), labelled(pull(32, "ub", "ua", "@ub"))]),
       ANA_FAKE_PULLS_ORIGIN: origin,
       ANA_FAKE_TIMELINE: `${rewritten}\n${lowerDocs}`,
@@ -551,24 +663,20 @@ describe("bun run land", () => {
   });
 
   // The last merge leaves main at the top's tree only while the bottom contains main's head.
-  it("refuses a stack whose bottom does not contain main's head", () => {
+  it("refuses a stack whose bottom does not contain main's head", async () => {
+    const { git, commit, publish, runLand, gateLog } = sandbox();
     git("checkout", "-q", "main");
     const moved = commit("src/owner.ts", "export const owner = 3;\n", "hotfix");
     publish();
-    try {
-      const result = runLand(["12", "--sanitize"]);
-      expect(result.status).toBe(1);
-      // Its replay onto main's head conflicts with the hotfix, so nothing is pushed.
-      expect(result.stderr).toContain(`#11 does not replay cleanly onto ${short(moved)}`);
-      expect(gatesRun(gateLog)).toEqual([]);
-    } finally {
-      git("reset", "-q", "--hard", trunk);
-      git("checkout", "-q", "b");
-      publish();
-    }
+    const result = await runLand(["12", "--sanitize"]);
+    expect(result.status).toBe(1);
+    // Its replay onto main's head conflicts with the hotfix, so nothing is pushed.
+    expect(result.stderr).toContain(`#11 does not replay cleanly onto ${short(moved)}`);
+    expect(gatesRun(gateLog)).toEqual([]);
   });
 
-  it("refuses a landing in which a pull request carries no importance label or two, or no category label, naming each, before gating anything", () => {
+  it("refuses a landing in which a pull request carries no importance label or two, or no category label, naming each, before gating anything", async () => {
+    const { runLand, gateLog, ghLog } = sandbox();
     const unranked = JSON.stringify([
       labelled(pull(11, "a", "main", lowerDocs)),
       labelled(pull(12, "b", "a", upper), "importance:I1", "importance:I3", "runs"),
@@ -576,7 +684,7 @@ describe("bun run land", () => {
     ]);
     for (const flags of [[], ["--sanitize"], ["--merge"]]) {
       rmSync(ghLog, { force: true });
-      const result = runLand(["12", ...flags], { ANA_FAKE_PULLS: unranked });
+      const result = await runLand(["12", ...flags], { ANA_FAKE_PULLS: unranked });
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(
         "#11 carries no importance label, and no category label; #12 carries importance:I1 and importance:I3. Give each pull request exactly one",
@@ -590,7 +698,7 @@ describe("bun run land", () => {
       labelled(pull(11, "a", "main", lowerDocs), "importance:I0", "bug"),
       pull(12, "b", "a", upper),
     ]);
-    const refused = runLand(["12"], { ANA_FAKE_PULLS: uncategorised });
+    const refused = await runLand(["12"], { ANA_FAKE_PULLS: uncategorised });
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain("#11 carries no category label. Give each pull request");
     expect(refused.stderr).not.toContain("#12");
@@ -598,32 +706,38 @@ describe("bun run land", () => {
       labelled(pull(11, "a", "main", lowerDocs), "importance:I0", "docs"),
       pull(12, "b", "a", upper),
     ]);
-    expect(runLand(["12"], { ANA_FAKE_PULLS: ranked }).status).toBe(0);
+    expect((await runLand(["12"], { ANA_FAKE_PULLS: ranked })).status).toBe(0);
   });
 
-  it("refuses to merge a landing that holds a draft, and proves one without marking it ready", () => {
+  it("refuses to merge a landing that holds a draft, and proves one without marking it ready", async () => {
+    const { runLand, gateLog, ghLog, writes, statuses } = sandbox();
     const held = JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "b", "a", upper, true)]);
-    const result = runLand(["12", "--merge"], { ANA_FAKE_PULLS: held });
+    const result = await runLand(["12", "--merge"], { ANA_FAKE_PULLS: held });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("land: #12: no merge takes a draft");
     expect(gatesRun(gateLog)).toEqual([]);
     expect(writes()).toEqual([]);
     rmSync(ghLog, { force: true });
-    expect(runLand(["12", "--sanitize"], { ANA_FAKE_PULLS: held }).status).toBe(0);
+    expect((await runLand(["12", "--sanitize"], { ANA_FAKE_PULLS: held })).status).toBe(0);
     expect(statuses("mergeable")).toContain(`success ${upper}`);
     expect(logLines(ghLog).filter((call) => call.startsWith("pr ready"))).toEqual([]);
   });
 
-  it("merges a pull request beside another open chain on main when --alone names it", () => {
-    const result = runLand(["13", "--merge", "--alone"], { ANA_FAKE_STACK: "", ANA_FAKE_STACK_SHA: beside });
+  it("merges a pull request beside another open chain on main when --alone names it", async () => {
+    const { runLand } = await provedSandbox();
+    const result = await runLand(["13", "--merge", "--alone"], {
+      ANA_FAKE_STACK: "",
+      ANA_FAKE_STACK_SHA: beside,
+    });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
       `land: #13 merged into main as #13, at ${short(beside)}: ${short(beside)}.`,
     );
   });
 
-  it("merges a lone pull request in no stack through its own merge, pinned to its gated head", () => {
-    const result = runLand(["13", "--merge"], {
+  it("merges a lone pull request in no stack through its own merge, pinned to its gated head", async () => {
+    const { runLand, ghLog } = await provedSandbox();
+    const result = await runLand(["13", "--merge"], {
       ANA_FAKE_PULLS: JSON.stringify([pull(11, "a", "main", lowerDocs), pull(13, "beside", "main", beside)]),
       ANA_FAKE_STACK: "",
       ANA_FAKE_STACK_SHA: beside,
@@ -639,10 +753,10 @@ describe("bun run land", () => {
 
   /** #15 opened on #12, above GitHub's top of stack 7. */
   const opened = { ANA_FAKE_PULLS: stack(upper, pull(15, "c", "b", stacked)), ANA_FAKE_STACK_SHA: stacked };
-  const linkCalls = (): string[] => logLines(ghLog).filter((line) => line.startsWith("stack link"));
 
-  it("links a pull request opened above GitHub's top into the stack, naming the whole chain, before gating", () => {
-    const result = runLand(["15", "--sanitize"], { ...opened, ANA_FAKE_LINKED: "7 11,12,15" });
+  it("links a pull request opened above GitHub's top into the stack, naming the whole chain, before gating", async () => {
+    const { runLand, gateLog, ghLog, linkCalls } = sandbox();
+    const result = await runLand(["15", "--sanitize"], { ...opened, ANA_FAKE_LINKED: "7 11,12,15" });
     expect(result.status).toBe(0);
     expect(linkCalls()).toEqual(["stack link 11 12 15"]);
     expect(result.stdout).toContain(
@@ -655,8 +769,9 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog)).toContain(`${stacked} suite`);
   });
 
-  it("names the members a partial merge left closed below the chain, since a link that drops them is refused", () => {
-    const result = runLand(["15", "--sanitize"], {
+  it("names the members a partial merge left closed below the chain, since a link that drops them is refused", async () => {
+    const { runLand, linkCalls } = await provedSandbox();
+    const result = await runLand(["15", "--sanitize"], {
       ...opened,
       ANA_FAKE_STACK: "7 11,12 9,10",
       ANA_FAKE_LINKED: "7 11,12,15 9,10",
@@ -665,15 +780,20 @@ describe("bun run land", () => {
     expect(linkCalls()).toEqual(["stack link 9 10 11 12 15"]);
   });
 
-  it("links a landing of several pull requests in no stack, and merges it as one", () => {
-    const result = runLand(["12", "--merge"], { ANA_FAKE_STACK: "", ANA_FAKE_LINKED: "7 11,12" });
+  it("links a landing of several pull requests in no stack, and merges it as one", async () => {
+    const { runLand, linkCalls } = await provedSandbox();
+    const result = await runLand(["12", "--merge"], { ANA_FAKE_STACK: "", ANA_FAKE_LINKED: "7 11,12" });
     expect(result.status).toBe(0);
     expect(linkCalls()).toEqual(["stack link 11 12"]);
     expect(result.stdout).toContain("land: #11, #12 merged into main as stack 7");
   });
 
-  it("refuses a stack that holds the chain in another order, naming unstack then link, and links nothing", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_FAKE_STACK: "7 12,11", ANA_FAKE_LINKED: "7 11,12" });
+  it("refuses a stack that holds the chain in another order, naming unstack then link, and links nothing", async () => {
+    const { runLand, gateLog, linkCalls, writes } = sandbox();
+    const result = await runLand(["12", "--sanitize"], {
+      ANA_FAKE_STACK: "7 12,11",
+      ANA_FAKE_LINKED: "7 11,12",
+    });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       "land: GitHub's stack 7 holds #12, #11, and the chain of bases up to #12 holds #11, #12. A link never " +
@@ -687,8 +807,9 @@ describe("bun run land", () => {
   /** `bun run split` left #15 in a native stack of its own, above stack 7 of #11 and #12. */
   const divided = { ...opened, ANA_FAKE_TOP_STACK: "15 8 15" };
 
-  it("proves only the native stack that holds the top where the chain is divided, and links nothing", () => {
-    const result = runLand(["15", "--sanitize"], divided);
+  it("proves only the native stack that holds the top where the chain is divided, and links nothing", async () => {
+    const { runLand, gateLog, linkCalls } = sandbox();
+    const result = await runLand(["15", "--sanitize"], divided);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("land: GitHub's stack holding #15 starts at #15; proving from it.");
     expect(linkCalls()).toEqual([]);
@@ -698,8 +819,9 @@ describe("bun run land", () => {
   /** `bun run split` left #11 and #12 in native stacks of their own, and #15 was opened on #12 since. */
   const openedAbove = { ...opened, ANA_FAKE_STACK: "7 11", ANA_FAKE_TOP_STACK: "12 8 12" };
 
-  it("refuses to merge the upper of divided stacks before the lower, gating nothing", () => {
-    const result = runLand(["15", "--merge"], divided);
+  it("refuses to merge the upper of divided stacks before the lower, gating nothing", async () => {
+    const { runLand, gateLog, writes } = sandbox();
+    const result = await runLand(["15", "--merge"], divided);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       "GitHub's stack holding #15 starts at #15: land the stacks beneath first.",
@@ -708,8 +830,9 @@ describe("bun run land", () => {
     expect(writes()).toEqual([]);
   });
 
-  it("proves and links from the stack beneath a top opened in no stack above a divided chain", () => {
-    const result = runLand(["15", "--sanitize"], {
+  it("proves and links from the stack beneath a top opened in no stack above a divided chain", async () => {
+    const { runLand, linkCalls } = await provedSandbox();
+    const result = await runLand(["15", "--sanitize"], {
       ...opened,
       ANA_FAKE_STACK: "7 11",
       ANA_FAKE_TOP_STACK: "12 8 12",
@@ -720,28 +843,32 @@ describe("bun run land", () => {
     expect(linkCalls()).toEqual(["stack link 12 15"]);
   });
 
-  it("ends a held landing only where this one proves its pull request, from the stack or --from", () => {
+  it("ends a held landing only where this one proves its pull request, from the stack or --from", async () => {
+    const { work, landEnv } = sandbox();
     const landing = JSON.stringify(join(import.meta.dir, "../tools/runtime/landing.ts"));
-    const ends = (env: Record<string, string>, from: number | null): string =>
-      spawnTextSync(
-        capturedExecPath,
-        [
-          "-e",
-          `import { claimOf } from ${landing};
+    const ends = async (env: Record<string, string>, from: number | null): Promise<string> =>
+      (
+        await runCaptured(
+          [
+            capturedExecPath,
+            "-e",
+            `import { claimOf } from ${landing};
            const claim = claimOf(".", 15, { auto: false, kind: "sanitizing", from: ${String(from)} });
            console.log(["#11", "#12", "#15"].map((pull) => claim.over(pull + " sanitizing")).join(" "));`,
-        ],
-        { cwd: work, env: landEnv(env) },
+          ],
+          { cwd: work, env: landEnv(env) },
+        )
       ).stdout.trim();
-    expect(ends(opened, null)).toBe("true true true");
-    expect(ends(divided, null)).toBe("false false true");
-    expect(ends(openedAbove, null)).toBe("false true true");
-    expect(ends(opened, 15)).toBe("false false true");
-    expect(ends(opened, 12)).toBe("false true true");
+    expect(await ends(opened, null)).toBe("true true true");
+    expect(await ends(divided, null)).toBe("false false true");
+    expect(await ends(openedAbove, null)).toBe("false true true");
+    expect(await ends(opened, 15)).toBe("false false true");
+    expect(await ends(opened, 12)).toBe("false true true");
   });
 
-  it("without a flag says the link it would run, and links nothing", () => {
-    const result = runLand(["15"], opened);
+  it("without a flag says the link it would run, and links nothing", async () => {
+    const { runLand, linkCalls, writes } = await provedSandbox();
+    const result = await runLand(["15"], opened);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
       "land: #11, #12, #15 are not one stack on GitHub; --sanitize or --merge runs gh stack link 11 12 15.",
@@ -750,17 +877,11 @@ describe("bun run land", () => {
     expect(writes()).toEqual([]);
   });
 
-  const stackMerge = (end: string, more: Record<string, string> = {}) =>
-    runLand(["12", "--merge"], {
-      ANA_FAKE_STACK: "7 11,12,14",
-      ANA_FAKE_STACK_END: end,
-      ANA_FAKE_STACK_UUID: "u1",
-      ...more,
-    });
   const askedStack = `api -X PUT repos/{owner}/{repo}/pulls/12/merge-async -f merge_method=merge -f merge_action=direct_merge -f sha=${upper}`;
 
-  it("merges a landing GitHub holds as a stack whole, through the stack's merge, after the statuses", () => {
-    const result = stackMerge("merged", { ANA_FAKE_STACK_SHA: upper });
+  it("merges a landing GitHub holds as a stack whole, through the stack's merge, after the statuses", async () => {
+    const { stackMerge, ghLog, statuses } = await provedSandbox();
+    const result = await stackMerge("merged", { ANA_FAKE_STACK_SHA: upper });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
       `land: #11, #12 merged into main as stack 7, at ${short(upper)}: ${short(upper)}.`,
@@ -778,18 +899,19 @@ describe("bun run land", () => {
     expect(calls.some((line) => line.startsWith("pr edit"))).toBe(false);
   });
 
-  it("says a failed read of the open pull requests after a merge and still ends as merged", () => {
-    writeFileSync(ghLog, "");
-    const result = stackMerge("merged", { ANA_FAKE_STACK_SHA: upper, ANA_FAKE_PULLS_DOWN_MERGED: "1" });
+  it("says a failed read of the open pull requests after a merge and still ends as merged", async () => {
+    const { stackMerge, ghLog } = await provedSandbox();
+    const result = await stackMerge("merged", { ANA_FAKE_STACK_SHA: upper, ANA_FAKE_PULLS_DOWN_MERGED: "1" });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("merged into main as stack 7");
     expect(result.stdout).toContain("land: could not list the open pull requests");
     expect(logLines(ghLog).some((line) => line.startsWith("pr edit"))).toBe(false);
   });
 
-  it("moves a pull request left on the merged top's branch onto main, and none based elsewhere", () => {
+  it("moves a pull request left on the merged top's branch onto main, and none based elsewhere", async () => {
+    const { stackMerge, ghLog } = await provedSandbox();
     // #15 is stacked on #12 and in no stack of GitHub's.
-    const result = stackMerge("merged", {
+    const result = await stackMerge("merged", {
       ANA_FAKE_PULLS: stack(upper, pull(15, "c", "b", stacked)),
       ANA_FAKE_STACK: "7 11,12",
       ANA_FAKE_STACK_SHA: upper,
@@ -799,8 +921,9 @@ describe("bun run land", () => {
     expect(logLines(ghLog).filter((line) => line.startsWith("pr edit"))).toEqual(["pr edit 15 --base main"]);
   });
 
-  it("cuts the release at the merge it made with --tag, with notes GitHub writes, and refuses a tag origin holds before gating", () => {
-    const result = runLand(["12", "--merge", "--tag", "v9.9.9"], {
+  it("cuts the release at the merge it made with --tag, with notes GitHub writes, and refuses a tag origin holds before gating", async () => {
+    const { dir, origin, git, runLand, ghLog, writes } = await provedSandbox();
+    const result = await runLand(["12", "--merge", "--tag", "v9.9.9"], {
       ANA_FAKE_STACK: "7 11,12,14",
       ANA_FAKE_STACK_END: "merged",
       ANA_FAKE_STACK_UUID: "u1",
@@ -814,30 +937,26 @@ describe("bun run land", () => {
 
     execTextSync("git", ["-C", origin, "tag", "v9.9.8", upper]);
     writeFileSync(ghLog, "");
-    const taken = runLand(["12", "--merge", "--tag", "v9.9.8"]);
+    const taken = await runLand(["12", "--merge", "--tag", "v9.9.8"]);
     expect(taken.status).toBe(1);
     expect(taken.stderr).toContain("v9.9.8 is already a tag on origin.");
     expect(writes()).toEqual([]);
 
     // An origin that cannot be asked is no proof that the tag is free.
-    git("remote", "set-url", "origin", join(fixture, "nowhere.git"));
-    try {
-      const unasked = runLand(["12", "--merge", "--tag", "v9.9.7"]);
-      expect(unasked.status).toBe(1);
-      expect(unasked.stderr).toContain("origin could not be asked whether it holds v9.9.7.");
-      expect(writes()).toEqual([]);
-    } finally {
-      git("remote", "set-url", "origin", origin);
-    }
+    git("remote", "set-url", "origin", join(dir, "nowhere.git"));
+    const unasked = await runLand(["12", "--merge", "--tag", "v9.9.7"]);
+    expect(unasked.status).toBe(1);
+    expect(unasked.stderr).toContain("origin could not be asked whether it holds v9.9.7.");
+    expect(writes()).toEqual([]);
   });
 
-  it("takes the status back from every head when GitHub refuses or fails a stack's merge, and says nothing merged", () => {
+  it("takes the status back from every head when GitHub refuses or fails a stack's merge, and says nothing merged", async () => {
     for (const [end, why] of [
       ["failed", "its merge ended failed: failed"],
       ["refused", "gh: Stack is not mergeable (HTTP 422)"],
     ] as const) {
-      writeFileSync(ghLog, "");
-      const result = stackMerge(end);
+      const { stackMerge, statuses } = await provedSandbox();
+      const result = await stackMerge(end);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(`land: GitHub did not merge stack 7: ${why}`);
       expect(result.stderr).toContain("land: nothing merged; #11, #12 are open.");
@@ -850,8 +969,9 @@ describe("bun run land", () => {
     }
   });
 
-  it("takes the status back from every head when GitHub's merge cannot be read as landed", () => {
-    const result = stackMerge("enqueued");
+  it("takes the status back from every head when GitHub's merge cannot be read as landed", async () => {
+    const { stackMerge, statuses } = await provedSandbox();
+    const result = await stackMerge("enqueued");
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("land: GitHub's merge of stack 7 went into the merge queue");
     expect(statuses("ana/stack-gate")).toEqual([
@@ -862,10 +982,11 @@ describe("bun run land", () => {
     ]);
   });
 
-  it("dispatches ci.yml on the top's head before gating when it has no run, and waits for it", () => {
-    const dispatched = join(fixture, "ci-dispatched");
+  it("dispatches ci.yml on the top's head before gating when it has no run, and waits for it", async () => {
+    const { dir, runLand, ghLog, statuses } = await provedSandbox();
+    const dispatched = join(dir, "ci-dispatched");
     rmSync(dispatched, { force: true });
-    const result = runLand(["12", "--merge"], { ANA_FAKE_CI_AFTER: dispatched });
+    const result = await runLand(["12", "--merge"], { ANA_FAKE_CI_AFTER: dispatched });
     expect(result.status).toBe(0);
     const calls = logLines(ghLog);
     const dispatch = calls.indexOf("workflow run ci.yml --ref b");
@@ -878,8 +999,9 @@ describe("bun run land", () => {
     expect(statuses("ci.yml")).toEqual([`success ${upper}`]);
   });
 
-  it("shows on the top's head that it waits for the ci.yml run it reuses, linked, until that run passes", () => {
-    const result = runLand(["12", "--merge"], {
+  it("shows on the top's head that it waits for the ci.yml run it reuses, linked, until that run passes", async () => {
+    const { runLand, ghLog, statuses, ciStates } = await provedSandbox();
+    const result = await runLand(["12", "--merge"], {
       ANA_CI_POLL_MS: "10",
       ANA_FAKE_CI_STATES: ciStates(
         "in_progress\t\t5\thttps://ci/5\t2026-10-28T19:49:13Z",
@@ -903,8 +1025,9 @@ describe("bun run land", () => {
     );
   });
 
-  it("refuses to merge when ci.yml failed on the top's head, brings its failed log home, and does not dispatch it again", () => {
-    const result = runLand(["12", "--merge"], { ANA_FAKE_CI: "completed\tfailure\t9\thttps://ci/9" });
+  it("refuses to merge when ci.yml failed on the top's head, brings its failed log home, and does not dispatch it again", async () => {
+    const { git, runLand, ghLog, statuses } = await provedSandbox();
+    const result = await runLand(["12", "--merge"], { ANA_FAKE_CI: "completed\tfailure\t9\thttps://ci/9" });
     expect(result.status).toBe(1);
     const log = join(
       git("rev-parse", "--path-format=absolute", "--git-path", "ana-gate"),
@@ -925,20 +1048,23 @@ describe("bun run land", () => {
 
     // A log GitHub refuses to give is said to be missing, never saved as an empty log.
     expect(
-      runLand(["12", "--merge"], {
-        ANA_FAKE_CI: "completed\tfailure\t9\thttps://ci/9",
-        ANA_FAKE_LOG_DOWN: "1",
-      }).status,
+      (
+        await runLand(["12", "--merge"], {
+          ANA_FAKE_CI: "completed\tfailure\t9\thttps://ci/9",
+          ANA_FAKE_LOG_DOWN: "1",
+        })
+      ).status,
     ).toBe(1);
     expect(readFileSync(log, "utf8")).toContain(
       "gh could not fetch the failed jobs' log: gh: Bad Gateway (HTTP 502)",
     );
   });
-  it("refuses to restore green when a parent moves off its child while the child is being proved, and leaves nothing pending", () => {
-    const next = join(fixture, "moved-pulls");
+  it("refuses to restore green when a parent moves off its child while the child is being proved, and leaves nothing pending", async () => {
+    const { dir, runLand, statuses, leftPending } = sandbox();
+    const next = join(dir, "moved-pulls");
     rmSync(`${next}.read`, { force: true });
     writeFileSync(next, JSON.stringify([pull(11, "a", "main", beside), pull(12, "b", "a", upper)]));
-    const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
+    const result = await runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
     expect(statuses("mergeable")).toEqual([
       `pending ${lowerDocs}`,
       `pending ${upper}`,
@@ -953,11 +1079,12 @@ describe("bun run land", () => {
     );
   });
 
-  it("lands again on the heads as they stand when a head moves while it is proved", () => {
-    const next = join(fixture, "moved-pulls");
+  it("lands again on the heads as they stand when a head moves while it is proved", async () => {
+    const { dir, runLand, gateLog, statuses } = sandbox();
+    const next = join(dir, "moved-pulls");
     rmSync(`${next}.read`, { force: true });
     writeFileSync(next, JSON.stringify([pull(11, "a", "main", lowerMore), pull(12, "b", "a", upper)]));
-    const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
+    const result = await runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
       "a pull request's head or the trunk moved while its commits were gated. Landing again on the heads as they stand.",
@@ -972,11 +1099,12 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog).filter((gate) => gate.startsWith(upper))).toEqual([`${upper} suite`]);
   });
 
-  it("stops the whole gate under way once its head moves, and lands the moved heads", () => {
-    const later = join(fixture, "later-pulls");
+  it("stops the whole gate under way once its head moves, and lands the moved heads", async () => {
+    const { dir, runLand, gateLog, leftPending } = sandbox();
+    const later = join(dir, "later-pulls");
     rmSync(`${later}.read`, { force: true });
     writeFileSync(later, JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "b", "a", stacked)]));
-    const result = runLand(["12", "--sanitize"], {
+    const result = await runLand(["12", "--sanitize"], {
       ANA_FAKE_PULLS_LATER: later,
       ANA_FAKE_SUITE: "(pass) one",
       ANA_FAKE_SUITE_TOUCH: `${later}.read`,
@@ -993,7 +1121,7 @@ describe("bun run land", () => {
     expect(leftPending(COMMIT)).toEqual([]);
   });
 
-  describe("after a full run failed in its tests on an earlier head of the top's branch", () => {
+  describe.concurrent("after a full run failed in its tests on an earlier head of the top's branch", () => {
     const fixPulls = JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "fix", "a", fixed)]);
     const failedLog = join(fixture, "failed.log");
     const step = "Run bun run test -- $TESTS";
@@ -1012,10 +1140,11 @@ describe("bun run land", () => {
         `linux\t${step}\t2026-11-07T10:00:00.7Z (fail) the owner > holds one [1.00ms]`,
       ].join("\n"),
     );
-    const fixesLand = (env: Record<string, string>) =>
-      runLand(["12", "--merge"], {
+    const fixesLand = async (env: Record<string, string>) => {
+      const box = await provedSandbox();
+      const result = await box.runLand(["12", "--merge"], {
         ANA_FAKE_PULLS: fixPulls,
-        ANA_FAKE_CI_STATES: ciStates(
+        ANA_FAKE_CI_STATES: box.ciStates(
           "none",
           "completed\tsuccess\t3\thttps://ci/3\t2026-11-07T11:00:00Z\tci-fixes",
         ),
@@ -1024,10 +1153,15 @@ describe("bun run land", () => {
         ANA_FAKE_STACK_SHA: fixed,
         ...env,
       });
-    const dispatches = (): string[] => logLines(ghLog).filter((line) => line.startsWith("workflow run"));
+      return {
+        result,
+        described: box.described,
+        dispatches: () => logLines(box.ghLog).filter((line) => line.startsWith("workflow run")),
+      };
+    };
 
-    it("dispatches ci-fixes with the files that failed and the tests one import from the fix, and merges once it passes", () => {
-      const result = fixesLand({});
+    it("dispatches ci-fixes with the files that failed and the tests one import from the fix, and merges once it passes", async () => {
+      const { result, dispatches, described } = await fixesLand({});
       expect(result.status).toBe(0);
       expect(dispatches()).toEqual([
         "workflow run ci.yml --ref fix -f tests=test/a.test.ts test/far.test.ts test/owner.test.ts -f ui_tests=",
@@ -1036,16 +1170,16 @@ describe("bun run land", () => {
       expect(described("ci.yml").at(-1)).toBe(`${fixed} ci.yml's ci-fixes run 3 passed on this head`);
     });
 
-    it("dispatches the full run where the failed run failed beyond its tests", () => {
-      const result = fixesLand({ ANA_FAKE_CI_STEPS: `${step}, The climb simulation` });
+    it("dispatches the full run where the failed run failed beyond its tests", async () => {
+      const { result, dispatches } = await fixesLand({ ANA_FAKE_CI_STEPS: `${step}, The climb simulation` });
       expect(dispatches()).toEqual(["workflow run ci.yml --ref fix"]);
       expect(result.stdout).toContain(
         `ci.yml runs in full: run 9 on ${short(broken)} failed beyond its tests (The climb simulation).`,
       );
     });
 
-    it("dispatches the full run where the wall imports what the fix changed, since only both platforms' suites prove it", () => {
-      const result = fixesLand({
+    it("dispatches the full run where the wall imports what the fix changed, since only both platforms' suites prove it", async () => {
+      const { result, dispatches } = await fixesLand({
         ANA_FAKE_PULLS: JSON.stringify([
           pull(11, "a", "main", lowerDocs),
           pull(12, "wallfix", "a", wallFixed),
@@ -1059,15 +1193,15 @@ describe("bun run land", () => {
       );
     });
 
-    it("dispatches the full run where the failed run's test step was cut short", () => {
-      const result = fixesLand({ ANA_FAKE_CI_STEPS: `${step} cancelled` });
+    it("dispatches the full run where the failed run's test step was cut short", async () => {
+      const { result, dispatches } = await fixesLand({ ANA_FAKE_CI_STEPS: `${step} cancelled` });
       expect(dispatches()).toEqual(["workflow run ci.yml --ref fix"]);
       expect(result.stdout).toContain(`failed beyond its tests (${step} cancelled)`);
     });
 
     for (const conclusion of ["timed_out", "action_required", "stale", ""]) {
-      it(`dispatches the full run when the prior run ended ${conclusion || "without a conclusion"}`, () => {
-        const result = fixesLand({ ANA_FAKE_CI_BRANCH: `${broken}\t${conclusion}\t9` });
+      it(`dispatches the full run when the prior run ended ${conclusion || "without a conclusion"}`, async () => {
+        const { result, dispatches } = await fixesLand({ ANA_FAKE_CI_BRANCH: `${broken}\t${conclusion}\t9` });
         expect(dispatches()).toEqual(["workflow run ci.yml --ref fix"]);
         expect(result.stdout).toContain(
           `ci.yml runs in full: run 9 ended ${conclusion || "without a conclusion"}.`,
@@ -1075,8 +1209,8 @@ describe("bun run land", () => {
       });
     }
 
-    it("dispatches the full run where what runs the suite changed since", () => {
-      const result = fixesLand({ ANA_FAKE_CI_BRANCH: `${upper}\tfailure\t9` });
+    it("dispatches the full run where what runs the suite changed since", async () => {
+      const { result, dispatches } = await fixesLand({ ANA_FAKE_CI_BRANCH: `${upper}\tfailure\t9` });
       expect(dispatches()).toEqual(["workflow run ci.yml --ref fix"]);
       expect(result.stdout).toContain("ci.yml runs in full: .github/workflows/ci.yml changed since run 9.");
     });
@@ -1087,7 +1221,7 @@ describe("bun run land", () => {
 const REFUSED: readonly (readonly [
   string,
   readonly string[],
-  () => Record<string, string | undefined>,
+  (ciStates: (...rows: string[]) => string) => Record<string, string | undefined>,
   number,
   string,
 ])[] = [
@@ -1151,7 +1285,7 @@ const REFUSED: readonly (readonly [
   [
     "no ci.yml run and no dispatch to start one",
     ["15", "--merge"],
-    () => ({
+    (ciStates) => ({
       ANA_FAKE_PULLS: JSON.stringify([pull(15, "nodispatch", "main", noDispatch)]),
       ANA_FAKE_STACK: "",
       ANA_FAKE_CI_STATES: ciStates("none"),
@@ -1163,15 +1297,16 @@ const REFUSED: readonly (readonly [
     // A run follows, so code that read the failed list as "none" dispatches and passes.
     "a ci.yml run list GitHub failed to give",
     ["12", "--merge"],
-    () => ({ ANA_FAKE_CI_STATES: ciStates("down", "completed\tsuccess\t19\thttps://ci/19") }),
+    (ciStates) => ({ ANA_FAKE_CI_STATES: ciStates("down", "completed\tsuccess\t19\thttps://ci/19") }),
     1,
     `GitHub did not list ci.yml's runs on #12's head ${short(upper)}. Land again.`,
   ],
 ];
 
-describe("a landing refused before anything is proved or written", () => {
-  it.each(REFUSED)("%s", (_, args, env, status, says) => {
-    const result = runLand(args, env());
+describe.concurrent("a landing refused before anything is proved or written", () => {
+  it.each(REFUSED)("%s", async (_, args, env, status, says) => {
+    const { runLand, gateLog, writes, ciStates } = sandbox();
+    const result = await runLand(args, env(ciStates));
     expect([result.status, result.stderr.includes(says)]).toEqual([status, true]);
     expect(result.stderr).not.toContain("land.ts:");
     expect(gatesRun(gateLog)).toEqual([]);
@@ -1179,11 +1314,12 @@ describe("a landing refused before anything is proved or written", () => {
   });
 });
 
-it("reads the chain again before each proof starts, so a head moved on proves its new commits and not the old head", () => {
-  const next = join(fixture, "moved-pulls");
+it("reads the chain again before each proof starts, so a head moved on proves its new commits and not the old head", async () => {
+  const { dir, runLand, gateLog, statuses, leftPending } = sandbox();
+  const next = join(dir, "moved-pulls");
   rmSync(`${next}.read`, { force: true });
   writeFileSync(next, JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "b", "a", stacked)]));
-  const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
+  const result = await runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
   expect(result.status).toBe(0);
   const gates = gatesRun(gateLog);
   expect(gates).not.toContain(`${upper} suite`);

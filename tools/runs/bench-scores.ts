@@ -1,25 +1,45 @@
-import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath } from "#src/meta/process.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
-import { baselineArmsFor, isBaselineArmName, judgedFilesByArm } from "./bench-store.ts";
+import { baselineCandidates, isBaselineArmName, judgedFilesByArm, runtimeOfFile } from "./bench-store.ts";
 import { benchesOf } from "./host-config.ts";
 import { Misused } from "./registry.ts";
 import { recordsHere } from "./snapshots.ts";
 
 const SCORE = join(import.meta.dir, "..", "..", "studies", "harness2", "score.ts");
 
+function scoredCovers(file: string, tasks: number): boolean {
+  if (!existsSync(file)) return false;
+  const head = /^all (\d+)\b/u.exec(readFileSync(file, "utf8"));
+  return head === null || Number(head[1]) >= tasks;
+}
+
+function sameRuntime(root: string, arm: string, files: readonly string[], expected: string): boolean {
+  return files.every((file) => runtimeOfFile(join(root, arm, file)) === expected);
+}
+
 export function completedBenchPairs(store: string): { readonly label: string; readonly baseline: string }[] {
   const byArm = judgedFilesByArm(store);
+  const root = join(store, "judged");
   return [...byArm.keys()]
     .filter((arm) => !isBaselineArmName(arm))
     .flatMap((label) => {
-      if (existsSync(join(store, "scored", `${label}.txt`))) return [];
-      const own = new Set(byArm.get(label));
-      if (own.size === 0) return [];
-      const baseline = baselineArmsFor(byArm, label).find((candidate) => {
-        const base = new Set(byArm.get(candidate));
-        return own.size === base.size && [...own].every((task) => base.has(task));
+      const ownFiles = byArm.get(label) ?? [];
+      if (ownFiles.length === 0 || scoredCovers(join(store, "scored", `${label}.txt`), ownFiles.length)) {
+        return [];
+      }
+      const own = new Set(ownFiles);
+      const runtime = runtimeOfFile(join(root, label, ownFiles[0] ?? ""));
+      if (!sameRuntime(root, label, ownFiles, runtime)) return [];
+      const baseline = baselineCandidates(byArm, label).find((candidate) => {
+        const baseFiles = byArm.get(candidate) ?? [];
+        const base = new Set(baseFiles);
+        return (
+          own.size === base.size &&
+          [...own].every((task) => base.has(task)) &&
+          sameRuntime(root, candidate, baseFiles, runtime)
+        );
       });
       return baseline === undefined ? [] : [{ label, baseline }];
     })

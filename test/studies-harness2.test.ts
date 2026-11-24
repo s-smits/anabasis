@@ -437,6 +437,15 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(none.log).toContain("NO OUTPUT");
     expect(existsSync(none.delivered)).toBe(false);
     expect((await rolled("spent", "true", ["error_max_budget_usd"])).attempts).toBe(1);
+    const partial = await rolled("partial", "echo draft > output/draft.md", [REFUSED, "success"]);
+    expect(partial.attempts).toBe(2);
+    expect(readFileSync(join(partial.delivered, "draft.md"), "utf8")).toBe("draft\n");
+    const replaced = await rolled("partial", "echo final > output/final.md", ["success"]);
+    expect(existsSync(join(replaced.delivered, "draft.md"))).toBe(false);
+    expect(readFileSync(join(replaced.delivered, "final.md"), "utf8")).toBe("final\n");
+    const refusedAll = await rolled("refused-all", "echo bad > output/bad.md", [REFUSED, REFUSED]);
+    expect(refusedAll.attempts).toBe(2);
+    expect(existsSync(refusedAll.delivered)).toBe(false);
   });
 
   it("lists a campaign harness's tools and finds its program before any rollout, and starts none without the word", async () => {

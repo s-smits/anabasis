@@ -117,6 +117,7 @@ export function findPairedArm(
 ): PairedArm | null {
   const digestRank = new Map(promotedDigests.map((digest, index) => [digest, index]));
   const matches = pairedArmsOf(readJudgedStore(store)).flatMap((pair) => {
+    if (pair.runtime !== pair.baselineRuntime) return [];
     if (explicitArm !== undefined && pair.arm !== explicitArm) return [];
     const rank = digestRank.get(pair.harness);
     if (explicitArm === undefined && rank === undefined) return [];
@@ -135,13 +136,13 @@ export function findPairedArm(
   });
   matches.sort((one, other) => {
     if (other.rank !== one.rank) return other.rank - one.rank;
+    if (other.tasks !== one.tasks) return other.tasks - one.tasks;
     const onePi = one.runtime === "pi-durable" ? 1 : 0;
     const otherPi = other.runtime === "pi-durable" ? 1 : 0;
     if (otherPi !== onePi) return otherPi - onePi;
     const oneBare = one.baselineTier === "bareSolver" ? 1 : 0;
     const otherBare = other.baselineTier === "bareSolver" ? 1 : 0;
     if (otherBare !== oneBare) return otherBare - oneBare;
-    if (other.tasks !== one.tasks) return other.tasks - one.tasks;
     return one.arm.localeCompare(other.arm);
   });
   const [best] = matches;

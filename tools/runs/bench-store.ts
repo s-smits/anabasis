@@ -41,8 +41,16 @@ export interface PairedBenchArm {
 }
 
 function solverTierOf(record: Pick<BenchRecord, "arm" | "buildOf">): SolverTier {
-  if (record.arm.startsWith(BASE_PREFIX)) return "bareSolver";
-  if (record.arm.startsWith(STARTER_PREFIX) || record.buildOf?.trim() === "starter") return "baseStarter";
+  const origin = record.buildOf?.trim() ?? "";
+  if (
+    origin === "base" ||
+    record.arm === "base" ||
+    record.arm.startsWith(BASE_PREFIX) ||
+    record.arm.startsWith("bare-")
+  ) {
+    return "bareSolver";
+  }
+  if (origin === "starter" || record.arm.startsWith(STARTER_PREFIX)) return "baseStarter";
   return "builtSolver";
 }
 
@@ -50,8 +58,13 @@ export function isBaselineArmName(arm: string): boolean {
   return BASELINE_PREFIXES.some((prefix) => arm.startsWith(prefix));
 }
 
-export function baselineArmsFor(byArm: ReadonlyMap<string, readonly unknown[]>, label: string): string[] {
+export function baselineCandidates(byArm: ReadonlyMap<string, readonly unknown[]>, label: string): string[] {
   return BASELINE_PREFIXES.map((prefix) => `${prefix}${label}`).filter((candidate) => byArm.has(candidate));
+}
+
+export function runtimeOfFile(file: string): string {
+  const raw = asRecord(capturedJsonParse(readFileSync(file, "utf8")));
+  return isString(raw?.runtime) ? raw.runtime : "claude-code";
 }
 
 function campaignNameOf(rawOf: string | null): string | null {
@@ -125,40 +138,52 @@ export function pairedArmsOf(records: readonly BenchRecord[]): PairedBenchArm[] 
   const pairs: PairedBenchArm[] = [];
   for (const [arm, own] of [...byArm.entries()].toSorted(([one], [other]) => one.localeCompare(other))) {
     if (isBaselineArmName(arm)) continue;
-    const [baselineArm] = baselineArmsFor(byArm, arm);
-    if (baselineArm === undefined) continue;
-    const baselineAll = byArm.get(baselineArm);
-    if (baselineAll === undefined) continue;
-    const baselineByTask = new Map(baselineAll.map((rec) => [rec.task, rec]));
-    const sharedTasks = own
-      .filter((rec) => baselineByTask.has(rec.task))
-      .map((rec) => rec.task)
-      .toSorted();
-    if (sharedTasks.length === 0) continue;
     const ownByTask = new Map(own.map((rec) => [rec.task, rec]));
-    const built = sharedTasks.flatMap((task) => {
-      const rec = ownByTask.get(task);
-      return rec === undefined ? [] : [rec];
+    const candidates: PairedBenchArm[] = [];
+    for (const baselineArm of baselineCandidates(byArm, arm)) {
+      const baselineAll = byArm.get(baselineArm);
+      if (baselineAll === undefined) continue;
+      const baselineByTask = new Map(baselineAll.map((rec) => [rec.task, rec]));
+      const sharedTasks = own
+        .filter((rec) => baselineByTask.has(rec.task))
+        .map((rec) => rec.task)
+        .toSorted();
+      if (sharedTasks.length === 0) continue;
+      const built = sharedTasks.flatMap((task) => {
+        const rec = ownByTask.get(task);
+        return rec === undefined ? [] : [rec];
+      });
+      const baseline = sharedTasks.flatMap((task) => {
+        const rec = baselineByTask.get(task);
+        return rec === undefined ? [] : [rec];
+      });
+      const [lead] = built;
+      const [baselineLead] = baseline;
+      if (lead === undefined || baselineLead === undefined) continue;
+      candidates.push({
+        arm,
+        baselineArm,
+        builtTier: solverTierOf(lead),
+        baselineTier: solverTierOf(baselineLead),
+        harness: lead.harness,
+        runtime: lead.runtime,
+        baselineRuntime: baselineLead.runtime,
+        sharedTasks,
+        built,
+        baseline,
+      });
+    }
+    candidates.sort((one, other) => {
+      const oneMatch = one.runtime === one.baselineRuntime ? 1 : 0;
+      const otherMatch = other.runtime === other.baselineRuntime ? 1 : 0;
+      if (otherMatch !== oneMatch) return otherMatch - oneMatch;
+      if (other.sharedTasks.length !== one.sharedTasks.length) {
+        return other.sharedTasks.length - one.sharedTasks.length;
+      }
+      return (other.baselineTier === "bareSolver" ? 1 : 0) - (one.baselineTier === "bareSolver" ? 1 : 0);
     });
-    const baseline = sharedTasks.flatMap((task) => {
-      const rec = baselineByTask.get(task);
-      return rec === undefined ? [] : [rec];
-    });
-    const [lead] = built;
-    const [baselineLead] = baseline;
-    if (lead === undefined || baselineLead === undefined) continue;
-    pairs.push({
-      arm,
-      baselineArm,
-      builtTier: solverTierOf(lead),
-      baselineTier: solverTierOf(baselineLead),
-      harness: lead.harness,
-      runtime: lead.runtime,
-      baselineRuntime: baselineLead.runtime,
-      sharedTasks,
-      built,
-      baseline,
-    });
+    const [best] = candidates;
+    if (best !== undefined) pairs.push(best);
   }
   return pairs;
 }

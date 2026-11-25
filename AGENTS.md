@@ -16,7 +16,7 @@ Scripts: `bun .claude/skills/<skill>/scripts/<name>.ts`. Metrics: `docs/plan.md`
 2. **Fix owners structurally upstream.** Refactor the owning boundary with fail-closed contracts and native primitives—not shims, mode switches or regex heuristics; weigh deep-stack rebase cost, patching locally only when structural work awaits §3.
 3. **Subtract, reuse and check the whole.** Exhaust existing owners (rule 12) before adding seats, tools, flags or guards; keep complexity flat/falling (`git complexity`), preferring simpler designs with ~90%+ of the gain, and judge edits by whole-system transfer over local proxies.
 4. **Sweep archives, simulate and predict before spending.** Replay rule/heuristic edits over `data/runs/` (`promotion-tuner`) proving real triggers (not `0/N`) and near-zero false positives; prove separable slices model-free (`system-path-simulation`) against the strongest objection and a before/after test or mutant, pre-register plain-prose count predictions before solve 1, and backtrack honestly.
-5. **Finish active work first.** Complete or checkpoint active work before newly arriving requests—never split focus mid-task unless told to drop or switch; queue new requests. Resolve routine forks with the strongest option and falsifier; pause only for missing permissions or §3 decisions, with recommendation. Audits, reviews and plans stay read-only. Report evidence rung (§9) and open items. Keep operator infra (hosts, logins, accounts, jobs, full run names) out of tracked files, commits and PRs.
+5. **Finish active work first.** Checkpoint it; new requests queue unless told to drop or switch. Resolve routine forks with the strongest option and falsifier; pause only for missing permissions or §3 decisions, with recommendation. Audits, reviews and plans stay read-only. Report evidence rung (§9) and open items. Keep operator infra (hosts, logins, accounts, jobs, full run names) out of tracked files, commits and PRs.
 
 ## 1. What Anabasis does
 
@@ -52,7 +52,7 @@ Examiner sees reference outcomes and winning harnesses; five items cross to buil
 
 Code owns protocol, walls, limits, verification, pairing, swaps, weights, statistics, cap and log; models own content and judgement (harness, solutions, tasks, lane when judged, rulings, diagnosis, hypothesis).
 
-1. **Supply facts, frame positively, omit numeric targets.** Describe good work, not "do not X" bans or targets (Examiner never sees targets/pass rates); bound prompt edits (~20–30% drift), prune noise.
+1. **Supply facts, frame positively, omit numeric targets.** Describe good work, not "do not X" bans or targets (Examiner never sees targets/pass rates); treat each prompt edit as an experiment naming its target failure and the read that would revert it; prune lines without effect.
 2. **Design for frontier models; trust judgement inside clean walls.** Give seats clean primitives and freedom (including lane choice when judged), not count floors, brittle heuristics or handholding; forbid only naming a task, copying its text or embedding its answer.
 3. **Code owns structure, walls and statistics; models own domain judgement.** Code validates schemas, enforces fail-closed contracts (`FIRST_PARTY_VENDORS`; unknown vendors refuse) and never lets a model set limits or identity. Draft audits reuse a seat and block only on mechanical probes. Under `--admit-judge`, a cross-family Referee commits a per-task brief before any pair vote (`referee.brief`, advisory flags only) and casts swapped pairwise votes (`referee.pair`, `judgePair` always-swap mean + equal-weight rubric-free `holistic`) on blinded valid pairs via `$0` offline extracts; code owns pairing, swaps, weights and statistics (`compare.ts`).
 4. **Permit full workspace when in doubt** (hiding only hidden values, credentials and other seats' private files: `SolveDirs`, `command.ts`).
@@ -64,7 +64,7 @@ Close gaming channels structurally in code, never with bans:
 - **Practice memorisation** (task IDs, rare codes, verbatim prompts): overfitting blocked by held-out comparisons; `check_harness` (`files.ts`) and WRI `names.ts` flag leaks.
 - **Oracle / hidden-value inversion**: closed by coarse bands (`bandOf`, `GAP_FLOOR`), keeping raw digits in logs.
 - **Measurement softening & fishing** (dropped checks, `vacuous-pass` like `Number("") === 0`, hedgable metrics, noisy re-compares): prevented by mechanical probes (`referee.draft`, `doNothing`, hidden-swap), host-gated fresh comparisons (`decide`, `written-after`) and WRI `gaming.ts`.
-- **Rubric & judge gaming** (bloat, cosmetic fluff, checklist farming): closed by cross-family separation, pre-vote briefs, swapped pairwise mean, equal-weight `holistic` and climbing `Task.rubric`.
+- **Rubric & judge gaming** (bloat, cosmetic fluff, checklist farming): reduced by cross-family seats (self-preference), pre-vote briefs, swapped pairwise mean (position), equal-weight `holistic` and climbing `Task.rubric`; length is only prompted and capped (`fairCap`), unmeasured.
 
 ## 3. The seats
 
@@ -80,7 +80,7 @@ A content-addressed **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/
 
 Seven decisions need approval (`operator-and-harness.md`; unattended launch pre-authorises freeze, `--admit-authored`, cross-family `--admit-judge` and promotion unless `--hitl`): freezing/rejecting contract/checks or admitting authored/judged instruments (`accept.ts --freeze`, `--admit`, `--admit-judge`); blind labels; cap/payer; infeasible tasks; manual promotion (`promote.ts --harness <digest> --yes`, `--despite`); solver inputs/limits (`baseStarter`, env, limits); stopping a live run.
 
-Present evidence and recommendation while continuing independent work. Approval covers only what it names ("keep going" grants none; a cycle covers runs, pauses, stack patches). Host says "a person" solely for these seven.
+Recommend with evidence while continuing other work. Approval covers only what it names ("keep going" grants none; a cycle covers runs, pauses, stack patches). Host says "a person" solely for these seven.
 
 ## 4. The Harness Builder
 
@@ -137,13 +137,13 @@ Own conclusions and subagent reports sit lowest until grounded higher. Compute c
 | Mechanism / refusal | Live log event where trigger fired / refusal text (proves only trigger) |
 | Harness attribution | Ablation against `programs-of:<digest>` |
 
-Give every rate its denominator and compare matched active hours, not wall-clock span. Optimise learning quality over cheap activity: separate **instrument health** (clean runs, 0 A/A steps, low crashes) from **product outcome** (`written-after` vs `chosen`, internal vs `baseStarter`, external vs `bareSolver`, same-domain delta vs prior version, weighting recent gaps highest). Triage inline via `.ana/wri/` + folds (`runs source|view`, `backtrack.ts`, `table.ts`, `trend.ts`, `starter-reads.ts`, `score.ts`).
+Give every rate its denominator and binomial interval (0/n: ≤3/n), count looks behind a reading (repeats inflate false steps), and compare matched active hours, not wall-clock span. Optimise learning quality over cheap activity: separate **instrument health** (clean runs, 0 A/A steps, low crashes) from **product outcome** (`written-after` vs `chosen`, internal vs `baseStarter`, external vs `bareSolver`, same-domain delta vs prior version, weighting recent gaps highest). Triage inline via `.ana/wri/` + folds (`runs source|view`, `backtrack.ts`, `table.ts`, `trend.ts`, `starter-reads.ts`, `score.ts`).
 
 ## 10. Runs with a real model
 
 Live runs spend budget and need approval per named run; seats run in Seatbelt/Bubblewrap (unavailable wall = typed non-result). See `run-improvement-campaign`, `run-management`, `whole-run-investigation` (`bun run runs`):
 1. **Worktree is the condition**: clean worktree at a published commit (`runs fresh`), `src/` untouched; paid seats refuse main checkout or `ana-followed` (`treeFault`).
-2. **Simulate & predict before spending** (`--dry-run`, `runs replay`, archive replays, seeded `runs rehearse`, wall probes); **pre-register plain-prose count predictions** with falsifiers before solve 1, backtrack at promotions and resolve before forking next.
+2. **Simulate & predict before spending** (Approach 4: `--dry-run`, `runs replay`, seeded `runs rehearse`, wall probes); pre-register falsifiable count predictions before solve 1, backtrack at promotions, resolve before forking.
 3. **1–2 concurrent rounds/host** (`leastOccupied`); verify cross-family reviewer auth on target host for judged runs; **never open, print or copy `--env-file`**.
 4. **Never stop a live run to patch it** (stack fixes for fresh runs); **read logs before prose**; **report every attempt**; **measured runs open fresh projects at one commit** (inherited promotions never count).
 
@@ -163,13 +163,13 @@ Run `stack-pr` (`scripts/stack.ts`) before branching/pushing: extend owning PR o
 
 Label PRs by category (`CATEGORIES`, `land.ts`) and highest importance: `I0` invalid/unsafe (runs pause), `I1` decision/measurement/wall/crash/stall/waste fix/removal, `I2` other prod/prompt/tooling, `I3` docs/prose/tests alone.
 
-**Shell & reviews**: pass command guard, edit via tools, leave profiles/SSH/env untouched; work inline; brief read-only subagents with source and bounded questions, verifying counts and `file:symbol`.
+**Shell & reviews**: leave profiles, SSH and env files untouched; verify reviewer counts and `file:symbol` at source.
 
 ## 12. Code that passes the first time
 
 Read `tools/oxlint/HABITS.md` first. Zero strict-lint findings, never disable rules (`bun run not-slop` for single-site false positives; fix systematic ones in rule source), import `node:` only via `src/meta`, files ≤800 nonblank lines, functions ≤115 lines, export only imported symbols.
 
-**Comments** (`ana/no-comments`, `delete-comment`): prose comments mark what code should say. Delete tautologies/stale notes, make surprises unrepresentable, move decisions to `docs/adr/`, encode constraints (`do not remove`, `keep this wording`) as types/checks/tests/lint, keep only provable `SAFETY:` or external invariants, deleting any keep you cannot prove.
+**Comments** (`ana/no-comments`, `delete-comment`): prose comments mark what code should say. Delete tautologies/stale notes, make surprises unrepresentable, move decisions to `docs/adr/`, encode constraints (`do not remove`, `keep this wording`) as types/checks/tests/lint, keep only provable `SAFETY:` or external invariants.
 
 ### Tests
 

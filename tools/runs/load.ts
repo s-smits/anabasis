@@ -16,6 +16,7 @@ interface Sample {
   readonly loads: readonly [number, number, number];
   /** The share of the CPU busy over the last interval, in percent. */
   readonly busy: number;
+  readonly system: string;
 }
 export type State<S = Sample> = S | "connecting" | "unreachable";
 export interface Watched<S = Sample> {
@@ -56,15 +57,15 @@ else
 fi
 `;
 // One-shot load reading for `minuteLoads`: same block format as `LOOP`, without `iostat`'s 1s or
-// `/proc/stat`'s 0.3s CPU-busy sleep, which `minuteLoads` never reads.
+// `/proc/stat`'s 0.3s CPU-busy sleep, which `minuteLoads` never reads, and with the system's name.
 const ONCE = String.raw`
 if [ -r /proc/loadavg ]; then
   read -r a b c _ < /proc/loadavg
-  printf '%s\n%s %s %s\n0\n---\n' "$(nproc)" "$a" "$b" "$c"
+  printf '%s\n%s %s %s\n0\n%s\n---\n' "$(nproc)" "$a" "$b" "$c" "$(uname -s)"
 else
   n=$(sysctl -n hw.ncpu 2>/dev/null || true)
   l=$(sysctl -n vm.loadavg 2>/dev/null | tr -d '{}' || true)
-  printf '%s\n%s\n0\n---\n' "$n" "$l"
+  printf '%s\n%s\n0\n%s\n---\n' "$n" "$l" "$(uname -s)"
 fi
 `;
 
@@ -81,12 +82,17 @@ function lapse(ms: number): Promise<null> {
 /** One sample from the loop's block, or null for a block that is not one, a count of no cores
  *  among them. */
 export function sampleOf(block: string): Sample | null {
-  const [cores, loads, idle] = block.trim().split("\n");
+  const [cores, loads, idle, system = ""] = block.trim().split("\n");
   const [one, five, fifteen] = (loads ?? "").trim().split(/\s+/u).map(Number);
   const numbers = [Number(cores), one, five, fifteen, Number(idle)];
   if (!numbers.every((value) => value !== undefined && Number.isFinite(value))) return null;
   if (one === undefined || five === undefined || fifteen === undefined || !(Number(cores) > 0)) return null;
-  return { cores: Number(cores), loads: [one, five, fifteen], busy: Math.max(0, 100 - Number(idle)) };
+  return {
+    cores: Number(cores),
+    loads: [one, five, fifteen],
+    busy: Math.max(0, 100 - Number(idle)),
+    system: system.trim(),
+  };
 }
 
 /** The sampling loop, a sample every `seconds`. */
@@ -187,11 +193,11 @@ export async function firstReadings<S>(
 export function byLoad(
   watched: readonly Watched[],
   at: Window,
-): { label: string; host: Host | undefined; load: number; cores: number }[] {
+): { label: string; host: Host | undefined; load: number; cores: number; system: string }[] {
   const read = watched.flatMap(({ label, host, state }) =>
     state === "connecting" || state === "unreachable"
       ? []
-      : [{ label, host, load: state.loads[at], cores: state.cores }],
+      : [{ label, host, load: state.loads[at], cores: state.cores, system: state.system }],
   );
   return read.toSorted((a, b) => a.load / a.cores - b.load / b.cores);
 }
@@ -202,13 +208,17 @@ export function byLoad(
 export async function minuteLoads(
   hosts: readonly (Host | undefined)[],
   waitMs: number,
-): Promise<{ order: { label: string; host: Host | undefined; share: number }[]; silent: string[] }> {
+): Promise<{
+  order: { label: string; host: Host | undefined; share: number; system: string }[];
+  silent: string[];
+}> {
   const watched = watchersOf(hosts, ONCE, sampleOf);
   await firstReadings(watched, 1000, () => true, waitMs);
-  const order = byLoad(watched, WINDOWS["1m"]).map(({ label, host, load, cores }) => ({
+  const order = byLoad(watched, WINDOWS["1m"]).map(({ label, host, load, cores, system }) => ({
     label,
     host,
     share: load / cores,
+    system,
   }));
   const silent = watched.flatMap(({ label }) => (order.some((each) => each.label === label) ? [] : [label]));
   return { order, silent };

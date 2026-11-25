@@ -38,7 +38,7 @@ Requires operator approval naming seats, model, effort, login and USD/time cap; 
 | --- | --- | --- | --- |
 | Examiner | Before session | `tools/d1b/examine.ts --session x-<n> --examiner <m> --examiner-effort <e>...` | `live-seat.ts read`, `pairs` |
 | Comparison | After `build.finished` | `tools/d2/checkpoint.ts --id g-<n> --new latest` | Comparison report |
-| Stretch | Before `build.started`/rest | `harness-builder.ts` (all seat models) | Log readers |
+| Stretch | Before `build.started`/rest | `harness-builder.ts`, its four seats named by `live-seat.ts start --model` (one or four, as `runs fresh`) | Log readers |
 
 Report: question & tier; seed/source/cut & live diff; pre-registered intent, rivals & outcome; what did not run; conditions (`blocking`\|`cleared`\|`accepted-risk`) with owner verdict; spend/minutes (tier 3); seed cleanup.
 

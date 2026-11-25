@@ -35,14 +35,15 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { processGroupExists, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
-import { ROUND, SEED_FILE } from "#tools/runs/registry.ts";
+import { BUILDER, ROUND, SEED_FILE } from "#tools/runs/registry.ts";
 import { codeLine, seedCut } from "#tools/runs/seed.ts";
+import { seats as seatFlags } from "#tools/runs/fresh.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 const USAGE = `usage:
   live-seat.ts start --tree <worktree> --name sim-<what> --out <prefix> --cap <dollars> --minutes <n>
-    [--login N] [--mention <text>]... -- <command> <its flags>
+    [--login N] [--model <one>|<b>,<e>,<r>,<s>] [--effort <lmhx x4>] [--mention <text>]... -- <command> <its flags>
   live-seat.ts read --seat <prefix> | --log <path> --from <event> [--mention <text>]... [--json]
   live-seat.ts watch --seat <prefix>
   live-seat.ts due <prefix>... [--hook]
@@ -73,6 +74,8 @@ const OPTIONS = {
   cap: "text",
   minutes: "int",
   login: "text",
+  model: "text",
+  effort: "text",
   seat: "abs",
   log: "abs",
   from: "int",
@@ -303,6 +306,18 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   if (command.length === 0) args.die("name the command after --");
   const closed = existsSync(`${out}.stopped`) ? readFileSync(`${out}.stopped`, "utf8") : "";
   if (closed !== "") args.die(`${out} was stopped (${closed}): its round is read; seat under another --out`);
+  const stretch = command[0]?.endsWith(BUILDER) === true;
+  if (
+    stretch &&
+    command.some((one) => /^--(?:builder|examiner|reviewer|solver)(?:-effort)?(?:=|$)/u.test(one))
+  ) {
+    args.die("a stretch names its seats with --model and --effort alone, as runs fresh does");
+  }
+  const model = stretch
+    ? (args.value("model") ??
+      args.die("name --model: one model, or four (Builder, Examiner, Referee, solver)"))
+    : null;
+  const seated = model === null ? [] : seatFlags(model, args.value("effort") ?? undefined).seated;
   const log = seedLog(tree, name, args.die);
   console.log(codeLine(tree, dirname(log)));
   const from = read(log).length;
@@ -311,7 +326,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
     // An ANA_CHECK_HOST the caller set for its own checks would send the seat's check tasks elsewhere.
     ANA_CHECK_HOST: "here",
   };
-  const child = capturedSpawn(["nice", "-n", "10", capturedExecPath, ...command, "--name", name], {
+  const child = capturedSpawn(["nice", "-n", "10", capturedExecPath, ...command, ...seated, "--name", name], {
     cwd: tree,
     env,
     detached: true,

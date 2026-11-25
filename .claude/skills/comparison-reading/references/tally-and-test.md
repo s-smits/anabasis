@@ -16,7 +16,7 @@ The score's sign classifies the task as a win, loss, or tie; validity dominates 
 
 A **step** (`readsStep`) registers when `p` is at or below the campaign's configured significance level. Each reading reports untied tasks, the win share detectable at 0.8 power (`detectable`), and the exact conditional false-positive rate (`falseRate`). At default level 0.02, at least 6 won tasks are needed to clear (`sweepOf`) and admission requires 8 frontier tasks (`comparisonFloor`; 4 and 6 at level 0.10; see `src/kernel/size.ts`).
 
-The five reading classifications (`Reading`, `src/campaign/comparison.ts`) are `step`, `no-step`, `not-scored` (zero tallied tasks or truncated by the dollar cap), `check-defects`, and `no-change`. Alongside the primary test, the time-mirrored **A/A control** splits reference solves into alternating halves (`pairsOf`) and runs a two-sided test at the same level (`readsStepEitherWay`) to monitor factor 2 (Honesty).
+The five reading classifications (`Reading`, `src/campaign/comparison.ts`) are `step`, `no-step`, `not-scored` (zero tallied tasks or truncated by the dollar cap), `check-defects`, and `no-change`. Alongside the primary test, the time-mirrored **A/A control** splits reference solves into alternating halves (`pairsOf`) and runs the same one-sided test at the same level (`readsStep`) to monitor factor 2 (Honesty); a control counts toward the honesty bar only where it is powered (`able`), pooled by release (`climb.ts:falsePromotionOf`, `table.ts --rows releases`).
 
 ## 3. Empirical basis of the scoring rules (`7f0add79:docs/plan.md`)
 

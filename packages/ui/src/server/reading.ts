@@ -5,9 +5,8 @@
  * log. A campaign with no opening project stands under `NO_PROJECT`, never guessed from a prompt or
  * a name. An environment ending's reason is the error that ended the campaign and may quote
  * whatever the failing step saw, so the default tier is not sent it, in a row or a next move
- * (`reasonSaid`). An A/A control reads a step, for the counter, where either side's scores clear
- * the level (`readsStepEitherWay`), as the whole-run reader reads one; the report's own `p` is
- * one-sided.
+ * (`reasonSaid`). An A/A control reads a step, for the counter, where its one-sided test clears
+ * the level (`readsStep`), as `climb.ts` and the release bar read one.
  */
 import { type Decided, decidedLine, type Ending } from "../../../../src/campaign/move.ts";
 import { BARS } from "../../../../src/campaign/climb.ts";
@@ -15,7 +14,7 @@ import { openSteps } from "../../../../src/campaign/handover.ts";
 import { reported } from "../../../../src/campaign/comparison.ts";
 import { namesOf } from "../../../../src/campaign/names.ts";
 import { budgetLeft } from "../../../../src/campaign/opening.ts";
-import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
+import { readsStep } from "../../../../src/kernel/compare.ts";
 import { endedOf, patienceOf } from "../../../../src/kernel/reports.ts";
 import { billedAll, billedParts } from "../../../../src/kernel/meter.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
@@ -185,9 +184,8 @@ const coreIn = once((log) => {
       patience: patienceOf(log.events),
       labels: { tasks: campaign.supply.awaiting, rejections: unsettledCount(log) },
       controls: bars.filter((bar) => bar.noise !== null).length,
-      controlSteps: bars.filter(
-        ({ noise, level }) => noise !== null && readsStepEitherWay(noise.scores, level),
-      ).length,
+      controlSteps: bars.filter(({ noise, level }) => noise !== null && readsStep(noise.scores, level))
+        .length,
       risk: epochsIn(log).at(-1)?.falsePromotion ?? null,
       runway: runwayIn(log),
     },

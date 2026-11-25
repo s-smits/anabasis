@@ -5,7 +5,7 @@
  * name>...` for the zone table as TSV across logs. For each comparison's final report it prints the
  * reading, full and unbilled sign-flip tests, frontier and retained tallies, A/A control, room
  * verdict and omitted-task counts, and re-reads the step (`readsStep`) and the A/A
- * (`readsStepEitherWay`), flagging any divergence. From `pairsReported` it reports the power zone
+ * (`readsStep`, one-sided as `climb.ts` reads it), flagging any divergence. From `pairsReported` it reports the power zone
  * (reference tasks with no, some or every solve valid; tasks untied on validity, on the objective
  * alone via `carriedBy`, or tied) and each arm's median ratio to the author's best recorded answer
  * (`sideGap`); since `sideGap` depends on hidden values, output stays on the exam side.
@@ -19,7 +19,6 @@ import {
   type Paired,
   pointsOf,
   readsStep,
-  readsStepEitherWay,
   scoresIn,
   testedSet,
   testOf,
@@ -99,7 +98,7 @@ export interface Row {
   readonly unbilled: Tested | null;
   readonly frontier: Tested | null;
   readonly retained: Tested | typeof UNMEASURED | null;
-  readonly aa: (Tally & { readonly flips: number | null; readonly either: boolean }) | null;
+  readonly aa: (Tally & { readonly flips: number | null; readonly step: boolean }) | null;
   readonly reverse: number | null;
   /** A step's wins to spare, or a reading without one's losses short of a step (null where turning
    *  every loss does not reach one). */
@@ -155,7 +154,7 @@ function aaOf(noise: JsonValue | undefined, level: number): Row["aa"] {
     losses,
     ties,
     flips: isNumber(set.flips) ? set.flips : null,
-    either: readsStepEitherWay(numbers(set.unbilled) ?? differences, level),
+    step: readsStep(numbers(set.unbilled) ?? differences, level),
   };
 }
 
@@ -410,7 +409,7 @@ function rowLines(row: Row, called: Called): string[] {
     ...testLines(row),
     aa === null
       ? "  A/A: not recorded"
-      : `  A/A ${formatTally(aa)}${aa.wins + aa.losses === 0 && aa.ties > 0 ? " (all tasks tied)" : ""}, flip rate ${percent(aa.flips)}, ${aa.either ? "two-sided false positive" : "no false positive"}`,
+      : `  A/A ${formatTally(aa)}${aa.wins + aa.losses === 0 && aa.ties > 0 ? " (all tasks tied)" : ""}, flip rate ${percent(aa.flips)}, ${aa.step ? "false positive" : "no false positive"}`,
     ...nearLines(row),
     ...pairedLines(row),
     `  reference headroom: ${row.room}; ${String(row.tallied)} scored${apart.length === 0 ? "" : `, ${apart.join(", ")}`}`,
@@ -422,9 +421,9 @@ function summaryLine(rows: readonly Row[]): string {
   const words = new Map<string, number>();
   for (const { reading } of rows) words.set(reading, (words.get(reading) ?? 0) + 1);
   const said = [...words].map(([word, n]) => `${String(n)} ${word}`).join(", ");
-  const aaSteps = rows.filter(({ aa }) => aa?.either === true).length;
+  const aaSteps = rows.filter(({ aa }) => aa?.step === true).length;
   const otherwise = rows.filter(({ reread, reading }) => reread !== null && reread !== reading).length;
-  return `${String(rows.length)} comparisons reported${rows.length === 0 ? "" : `: ${said}`}; ${String(aaSteps)} A/A read a step either way; ${String(otherwise)} read otherwise by this tree's stepOf`;
+  return `${String(rows.length)} comparisons reported${rows.length === 0 ? "" : `: ${said}`}; ${String(aaSteps)} A/A read a step; ${String(otherwise)} read otherwise by this tree's stepOf`;
 }
 
 export function readingLines(events: readonly LogEvent[], rows = rowsOf(events, null, null)): string[] {

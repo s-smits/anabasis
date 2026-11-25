@@ -99,17 +99,17 @@ async function everything(tier: Tier): Promise<string[]> {
 }
 
 describe("what a comparison came to", () => {
-  test("counts an A/A step either way where its scores without the bill clear the level", async () => {
+  test("counts an A/A step where its one-sided test of the scores without the bill clears the level", async () => {
     const units = `${KEY.split("/")[0] ?? ""}/${fixture.units}`;
     const { answer: controlReading } = await ask("campaign", { key: units }, "default");
     // At two solves a side b-1 and b-2 carry an A/A too, the first solve against the second.
     const control = controlReading.comparisons.find(({ id }) => id === "c-1");
-    // The second sample lost every task: a one-sided test of its wins reads nothing.
+    // The second sample lost every task: a one-sided test of its wins reads nothing, and counts none.
     expect([control?.noise?.tally, (control?.noise?.p ?? 0) > (control?.level ?? 1)]).toEqual([
       { wins: 0, losses: 4, ties: 0 },
       true,
     ]);
-    expect([controlReading.counters.controls, controlReading.counters.controlSteps]).toEqual([3, 1]);
+    expect([controlReading.counters.controls, controlReading.counters.controlSteps]).toEqual([3, 0]);
     const found = campaignsFound({ repo: fixture.root, trees: "directory" }).found.find(
       ({ name }) => name === fixture.units,
     );
@@ -119,7 +119,7 @@ describe("what a comparison came to", () => {
       [[0, 0, 0, 0], 0],
       [[1, 1, 1, -1], 0],
       [[1, 1, 1, 1], 3],
-      [[-1, -1, -1, -1], 3],
+      [[-1, -1, -1, -1], 0],
     ] as const) {
       const log = {
         events: events.map((event) => {

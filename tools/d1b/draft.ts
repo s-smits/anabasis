@@ -5,6 +5,7 @@
  * `contract.frozen`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import { unaudited } from "#src/campaign/decide.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
@@ -170,16 +171,15 @@ export async function draftCommand(
   // Unattended runs (without `--hitl`) admit author-computed checks and freeze at once, so the same
   // offline acceptance pass is not repeated.
   const after = read(log);
-  const refused = after.findLast(({ kind, data }) => kind === "referee.draft" && data.session === id)?.data
-    .error;
-  if (isString(refused) && nonRetryableProvider(refused)) {
+  const stood = after.some(({ kind, data }) => kind === "exam.drafted" && data.session === id);
+  const error = stood ? unaudited(after) : null;
+  if (error !== null && !nonRetryableProvider(error)) {
     throw new Error(
-      `the reviewer refused in a way no retry clears (${refused}), so the exam is not frozen and no solve is paid for: run it again once the reviewer's login works and the drafted exam is read from its log`,
+      `the reviewer's audit of the drafted exam ended on an error, so it is not frozen: ${error}`,
     );
   }
-  const stood = after.some(({ kind, data }) => kind === "exam.drafted" && data.session === id);
   const last = readings.at(-1);
-  if (stood && last !== undefined) {
+  if (stood && error === null && last !== undefined) {
     const unattended = openingOf(after)?.attended !== true;
     keepReading(log, last.checker, last.reading, {
       admitted: new Set(),

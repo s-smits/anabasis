@@ -668,6 +668,18 @@ describe.concurrent("staging and offline reading", () => {
   });
 });
 
+const PROMPTED: Parameters<typeof decide>[1] = {
+  patience: 3,
+  unprepared: false,
+  practice: null,
+  wanted: { target: 12, level: 0.02, solves: 2 },
+  pastStop: null,
+  prompted: true,
+  admits: [],
+  left: null,
+  promotions: null,
+};
+
 describe.concurrent("campaign draft lifecycle", () => {
   it("ends the campaign after three failed drafts across two sessions", async () => {
     await expect(draftCommand([])).rejects.toThrow("name --name, --session and --examiner");
@@ -678,17 +690,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     await draftCommand([...flags, "--session", "d-2"], putting(unformed, unformed));
     const events = read(campaignLog(name));
     expect(draftOf(events)).toBeNull();
-    const decided = decide(events, {
-      patience: 3,
-      unprepared: false,
-      practice: null,
-      wanted: { target: 12, level: 0.02, solves: 2 },
-      pastStop: null,
-      prompted: true,
-      admits: [],
-      left: null,
-      promotions: null,
-    });
+    const decided = decide(events, PROMPTED);
     expect(decided).toMatchObject({ move: "end", ending: "exam" });
     expect(decided.why).toContain("3 drafts in 2 sessions did not stand");
   });
@@ -714,7 +716,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     );
   });
 
-  it("stops before the freeze when the reviewer refused for good, and freezes past a usage limit", async () => {
+  it("freezes no exam whose audit ended on an error: ends on a refusal no retry clears, redrafts after a usage limit", async () => {
     const audited = (name: string, error: string) =>
       draftCommand(
         [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
@@ -724,16 +726,21 @@ describe.concurrent("campaign draft lifecycle", () => {
           return { verdict: "skipped", findings: [], summary: error, probes: [], error };
         },
       );
-    const frozen = (name: string) => read(campaignLog(name)).filter(({ kind }) => kind === "contract.frozen");
     const [refused, limited] = [`${STEM}-audit-refused`, `${STEM}-audit-limited`];
     await Promise.all([
-      expect(
-        audited(refused, "Codex error: The model is not supported when using Codex with a ChatGPT account"),
-      ).rejects.toThrow("no retry clears"),
-      audited(limited, "Codex error: The usage limit has been reached"),
+      audited(refused, "Codex error: The model is not supported when using Codex with a ChatGPT account"),
+      expect(audited(limited, "Codex error: The usage limit has been reached")).rejects.toThrow(
+        "usage limit",
+      ),
     ]);
-    expect(frozen(refused)).toHaveLength(0);
-    expect(frozen(limited)).toHaveLength(1);
+    for (const [name, next] of [
+      [refused, { move: "end", ending: "exam" }],
+      [limited, { move: "draft" }],
+    ] as const) {
+      const events = read(campaignLog(name));
+      expect(events.filter(({ kind }) => kind === "contract.frozen")).toHaveLength(0);
+      expect(decide(events, PROMPTED)).toMatchObject(next);
+    }
   });
 
   it("audits up to two passes using reviewer.effort, stops early on sound/skipped, and skips when no reviewer is configured", async () => {

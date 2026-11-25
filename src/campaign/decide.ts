@@ -2,6 +2,7 @@ import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import { INTERRUPTED, poolOf, roomOf } from "../kernel/reports.ts";
+import { nonRetryableProvider } from "../kernel/solve.ts";
 import { taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
@@ -180,6 +181,15 @@ function exam(ground: Ground): Move | null {
   const { events, plan, supply, refused } = ground;
   if (plan.prompted && draftOf(events) === null) return bound(ground) ?? drafting(events);
   if (refused.has("unread")) {
+    const error = unaudited(events);
+    if (error !== null) {
+      return nonRetryableProvider(error)
+        ? end(
+            "exam",
+            `the reviewer refused the drafted exam's audit in a way no retry clears (${error}): the exam is not frozen unaudited and no solve is paid for. Open the campaign again with a reviewer whose login answers`,
+          )
+        : drafting(events);
+    }
     return {
       move: "accept",
       why: "nobody has read the campaign's checker: every control and the do-nothing answer are put to the checks before a solve is paid for",
@@ -199,6 +209,13 @@ function exam(ground: Ground): Move | null {
     "exam",
     `the checker's last reading holds ${plural(faults, "fault")} and nobody froze it: the exam is not accepted until its author repairs it, or the operator admits each check by name and freezes (tools/c/accept.ts)${undecided.length === 0 ? "" : `. No engine the host installed decides ${undecided.join(", ")}, so each stands on the operator's word alone: --admit ${undecided.join(",")}`}`,
   );
+}
+
+export function unaudited(events: readonly LogEvent[]): string | null {
+  const session = events.findLast(({ kind }) => kind === "exam.drafted")?.data.session;
+  const error = events.findLast(({ kind, data }) => kind === "referee.draft" && data.session === session)
+    ?.data.error;
+  return isString(error) ? error : null;
 }
 
 function drafting(events: readonly LogEvent[]): Move {

@@ -108,14 +108,15 @@ export interface Run {
   readonly reads: number;
   readonly confirmed: number;
   readonly after: Tally;
-  /** The A/A comparisons able to read a step, and those that did (`falsePromotion`), pooled and
-   *  split by whether the reference's own validity flipped or only the objective varied. */
+  /** The A/A comparisons able to read a step, and those that read one one-sided as a promotion
+   *  would (`falsePromotion`), pooled and split by whether the reference's own validity flipped or only the objective varied. */
   readonly controls: number;
   readonly aaSteps: number;
   readonly aaValidityControls: number;
   readonly aaValiditySteps: number;
   readonly aaObjectiveControls: number;
   readonly aaObjectiveSteps: number;
+  readonly aaLevels: readonly number[];
   readonly ending: string;
 }
 
@@ -369,6 +370,7 @@ function runOf(
     aaValiditySteps: noise?.byMeasure.validity.errors ?? 0,
     aaObjectiveControls: noise?.byMeasure.objective.controls ?? 0,
     aaObjectiveSteps: noise?.byMeasure.objective.errors ?? 0,
+    aaLevels: noise?.levels ?? [],
     ending: ended ?? "no ending",
   };
 }

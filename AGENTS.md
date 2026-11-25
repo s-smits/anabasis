@@ -31,7 +31,7 @@ Paired comparisons (§7) solve held-out tasks afresh on both arms, verify validi
 Name target factor and empirical count (`docs/plan.md`):
 - **Supply** (precondition): informative gradient (`informative`, `compare.ts`); admission tracks unclosed frontier tasks (`comparisonFloor`).
 - **1. Climb**: promotions/campaign (`climb.ts`), confirmed when an epoch's first starter read beats starter (`confirmed`). Never expose the 6-promotion / 2-domain bar to seats.
-- **2. Honesty**: A/A control per comparison; bar is a 95% exact bound ≤2× level on false steps of powered A/As pooled over a release (`trend.ts --holds`).
+- **2. Honesty**: A/A control per comparison; bar is a 95% exact bound ≤2× level on false steps of powered A/As pooled over a release (`table.ts --rows releases`).
 - **3. Verdicts**: evidence-backed Referee rulings; against ≥30 blind labels (≥8 defects), bar is ≥3/4 defect detection and ≤1/10 voided earned rejections (`clears`, `agreement.ts`).
 - **4. Economy**: list-price dollars and wall-clock hours/promotion (`close.ts`, `meter.ts:billOf`, observational epoch attempts `climb.ts:BARS`).
 

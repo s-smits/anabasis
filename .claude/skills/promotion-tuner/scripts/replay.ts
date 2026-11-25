@@ -7,8 +7,15 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Found, campaignLogs, rehearsed } from "#skills/main/logs.ts";
+import { falseSteps } from "#skills/main/stats.ts";
 import { short } from "#src/campaign/move.ts";
-import { carriedBy as carriedOn, type Paired, readsStep, wholePoints } from "#src/kernel/compare.ts";
+import {
+  carriedBy as carriedOn,
+  type Paired,
+  readsStep,
+  upperBound,
+  wholePoints,
+} from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { DAY_MS } from "#src/meta/clock.ts";
@@ -17,7 +24,17 @@ import { resolve } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { knobbed, knobsOf, type Mechanism, ratioOf, type Resource, STANDARD, TODAY } from "./mechanisms.ts";
-import { type Comparison, once, paired, recordOf, selfTerms, type Task, timeOf } from "./record.ts";
+import {
+  type Comparison,
+  once,
+  paired,
+  readsStarter,
+  recordOf,
+  selfTerms,
+  swapped,
+  type Task,
+  timeOf,
+} from "./record.ts";
 import { epochLines } from "./time.ts";
 import { type Points, type Tree, loadTree } from "./tree.ts";
 
@@ -39,7 +56,7 @@ A panel of mechanisms beside the tree's own, in place of the replay, with any of
 --try        a mechanism as knobs over today's, as bill=0.05,when=tied (repeatable; see mechanisms.ts);
              standard: a set of the bill's, time's and the score's forms
 --mechanism  a file whose default export is a Mechanism or a list of them (repeatable)
---against    a candidate worktree, read by its own pointsOf and stepOf (repeatable)
+--against    a candidate worktree, read by its own pointsOf and readsStep, or stepOf where it has one (repeatable)
 --from       campaigns opened at or after this release tag or date; ${FROM} by default
 --record     keep the reduced record in this file (under data/derived/: it holds exam-side measures), and
              read it from there next time
@@ -76,10 +93,15 @@ interface Reading {
   readonly unbilled: readonly number[] | null;
   readonly level: number;
   readonly step: boolean;
+  readonly starter: boolean;
   /** The tasks it won, by the first measure that gave them points: validity, the objective, or the
    *  bill alone. */
   readonly wonBy: Readonly<Record<Measure, number>>;
-  readonly aa: { readonly differences: readonly number[]; readonly unbilled: readonly number[] } | null;
+  readonly aa: {
+    readonly differences: readonly number[];
+    readonly powered: boolean;
+    readonly step: boolean;
+  } | null;
 }
 
 interface Totals {
@@ -96,9 +118,12 @@ interface Totals {
   moved: number;
   toStep: number;
   fromStep: number;
+  byTest: number;
   storedTasks: number;
   controls: number;
+  powered: number;
   aaSteps: number;
+  levels: Set<number>;
   aaWon: number;
   aaLost: number;
   aaMoved: number;
@@ -128,7 +153,7 @@ interface Panel {
   readonly dropped: readonly Comparison[];
   readonly classes: Readonly<Record<"ahead" | "level" | "zero" | "behind", number>>;
   readonly starter: { readonly of: number; readonly reads: number };
-  readonly aa: { readonly of: number; readonly capable: number; readonly either: number };
+  readonly aa: { readonly of: number; readonly powered: number; readonly steps: number };
   readonly moved: Readonly<Record<"tasks" | "lossToWin" | "winToLoss" | "tieToWin" | "tieToLoss", number>>;
   readonly repeat: { readonly signed: number; readonly same: number };
   readonly later: Readonly<Record<"same" | "other" | "none" | "unread", number>>;
@@ -151,9 +176,12 @@ export function emptyTotals(): Totals {
     moved: 0,
     toStep: 0,
     fromStep: 0,
+    byTest: 0,
     storedTasks: 0,
     controls: 0,
+    powered: 0,
     aaSteps: 0,
+    levels: new Set(),
     aaWon: 0,
     aaLost: 0,
     aaMoved: 0,
@@ -228,18 +256,22 @@ function scoredSet(
 }
 
 /** The reference against itself on halves of its own solves, as the comparison's report reads it
- *  (`compared`, `src/campaign/comparison.ts`); null under two solves a side or an odd number. */
-function aaOf(tree: Tree, events: readonly LogEvent[], report: Reported): Reading["aa"] {
-  const terms = selfTerms(report);
+ *  (`compared`, `src/campaign/comparison.ts`), and whether the tree's rule reads it a step and could
+ *  read one at all (`falsePromotion`, `src/campaign/climb.ts`); null under two solves a side or an
+ *  odd number. */
+function aaOf(tree: Tree, events: readonly LogEvent[], report: Reported, level: number): Reading["aa"] {
+  const terms = selfTerms(events, report);
   if (terms === null) return null;
   const { versions } = report.data;
   const tasks = Array.isArray(versions) ? versions.filter(isString) : [];
   const scores = tree
     .pairsOf(events.slice(0, report.index + 1), tasks, terms.sides, terms.solves)
     .map((pair) => scoresOf(tree.points(pair)));
+  const [differences, unbilled] = [scores.map((one) => one.scored), scores.map((one) => one.unbilled)];
   return {
-    differences: scores.map((one) => one.scored),
-    unbilled: scores.map((one) => one.unbilled),
+    differences,
+    powered: tree.readsStep(differences.map(Math.abs), unbilled.map(Math.abs), level),
+    step: tree.readsStep(differences, unbilled, level),
   };
 }
 
@@ -256,7 +288,8 @@ function readingsOf(tree: Tree, events: readonly LogEvent[], totals: Totals): Re
       : null;
     const step = tree.readsStep(differences, unbilled, level);
     const weighted = weightedIn(points);
-    const aa = aaOf(tree, events, report);
+    const aa = aaOf(tree, events, report, level);
+    const starter = readsStarter(events, report);
     totals.readings += 1;
     totals.weighted += weighted ? 1 : 0;
     if (weighted) {
@@ -264,15 +297,29 @@ function readingsOf(tree: Tree, events: readonly LogEvent[], totals: Totals): Re
       totals.aaMoved +=
         aa !== null && aa.differences.join(",") !== numbers(asRecord(noise)?.differences).join(",") ? 1 : 0;
     }
-    totals.toStep += step && reading !== "step" ? 1 : 0;
-    totals.fromStep += !step && reading === "step" ? 1 : 0;
+    if (!starter && step !== (reading === "step")) {
+      totals.toStep += step ? 1 : 0;
+      totals.fromStep += step ? 0 : 1;
+      const stored = sets.flatMap((set) => set.stored);
+      totals.byTest += tree.readsStep(stored, null, level) === step ? 1 : 0;
+    }
     const wonBy = { validity: 0, objective: 0, bill: 0 };
     for (const one of sets.flatMap((set) => set.points)) {
       const by = scoresOf(one).scored > 0 ? carriedBy(one) : null;
       if (by !== null) wonBy[by] += 1;
     }
     return [
-      { session: report.session, key: `${old}>${fresh}`, differences, unbilled, level, step, wonBy, aa },
+      {
+        session: report.session,
+        key: `${old}>${fresh}`,
+        differences,
+        unbilled,
+        level,
+        step,
+        starter,
+        wonBy,
+        aa,
+      },
     ];
   });
 }
@@ -280,10 +327,10 @@ function readingsOf(tree: Tree, events: readonly LogEvent[], totals: Totals): Re
 const toldReading = (tree: Tree, reading: Reading) =>
   `${reading.session} ${formatTally(reading.differences)} p ${tree.flipP(reading.differences).toFixed(4)}; without the bill ${reading.unbilled === null ? "unread" : `${formatTally(reading.unbilled)} p ${tree.flipP(reading.unbilled).toFixed(4)}`}`;
 
-const aaLine = (tree: Tree, reading: Reading) =>
+const aaLine = (reading: Reading) =>
   reading.aa === null
     ? "A/A unread"
-    : `A/A ${formatTally(reading.aa.differences)}${tree.readsStepEitherWay(reading.aa.differences, reading.level, reading.aa.unbilled) ? " STEP" : ""}`;
+    : `A/A ${formatTally(reading.aa.differences)}${reading.aa.step ? " STEP" : ""}`;
 
 function promotedLines(
   tree: Tree,
@@ -297,9 +344,7 @@ function promotedLines(
   const later = readings.slice(at + 1);
   const against = later.filter(({ differences }) => lost(differences) > won(differences));
   const doubts = [
-    ...(rests.aa !== null && tree.readsStepEitherWay(rests.aa.differences, rests.level, rests.aa.unbilled)
-      ? ["its A/A read a step"]
-      : []),
+    ...(rests.aa?.step === true ? ["its A/A read a step"] : []),
     ...(against.length > 0 ? [`${String(against.length)} later reading lost more than it won`] : []),
   ];
   for (const measure of MEASURES) totals.wonBy[measure] += rests.wonBy[measure];
@@ -309,7 +354,7 @@ function promotedLines(
   const verdict = doubts.length === 0 ? "rightful" : `in doubt: ${doubts.join("; ")}`;
   return [
     `    ${toldReading(tree, rests)}: promotes; ${recorded ? verdict : "added by this score"}`,
-    `    won by validity ${String(rests.wonBy.validity)}, by the objective ${String(rests.wonBy.objective)}, by the bill alone ${String(rests.wonBy.bill)}; ${aaLine(tree, rests)}`,
+    `    won by validity ${String(rests.wonBy.validity)}, by the objective ${String(rests.wonBy.objective)}, by the bill alone ${String(rests.wonBy.bill)}; ${aaLine(rests)}`,
     `    later readings of the pair: ${later.length === 0 ? "none" : later.map((one) => toldReading(tree, one)).join(", ")}`,
   ];
 }
@@ -320,7 +365,10 @@ function pairLines(
   promotions: readonly Promotion[],
   totals: Totals,
 ) {
-  const pairs = Map.groupBy(readings, ({ key }) => key);
+  const pairs = Map.groupBy(
+    readings.filter(({ starter }) => !starter),
+    ({ key }) => key,
+  );
   const lines: string[] = [];
   for (const [key, list] of pairs) {
     const recorded = promotions.some((one) => one.key === key);
@@ -335,7 +383,7 @@ function pairLines(
     if (recorded) totals.dropped += 1;
     for (const one of list) {
       lines.push(
-        `    ${toldReading(tree, one)}: reads no step by the tree's rule at ${String(one.level)}; ${aaLine(tree, one)}`,
+        `    ${toldReading(tree, one)}: reads no step by the tree's rule at ${String(one.level)}; ${aaLine(one)}`,
       );
     }
     lines.push(`    ${recorded ? "NOT PROMOTED by this score" : "no promotion"}`);
@@ -383,7 +431,9 @@ export function campaignLines(tree: Tree, found: Found, totals: Totals): string[
   for (const { aa, level } of readings) {
     if (aa === null) continue;
     totals.controls += 1;
-    totals.aaSteps += tree.readsStepEitherWay(aa.differences, level, aa.unbilled) ? 1 : 0;
+    totals.powered += aa.powered ? 1 : 0;
+    totals.aaSteps += aa.step ? 1 : 0;
+    if (aa.powered) totals.levels.add(level);
     totals.aaWon += won(aa.differences);
     totals.aaLost += lost(aa.differences);
   }
@@ -413,15 +463,13 @@ function totalLines(tree: Tree, totals: Totals): string[] {
     `totals, tree ${tree.path} at ${tree.commit}, weights ${weights}, the recorded level`,
     `  campaigns ${String(totals.campaigns)}, with a reading ${String(totals.compared)}; promotions on record ${String(totals.recorded)}: rightful ${String(totals.rightful)}, in doubt ${String(totals.doubted)}, not promoted by this score ${String(totals.dropped)}, on readings with no frontier (before 12 October) ${String(totals.unread)}`,
     `  pairs this score promotes ${String(totals.rightful + totals.doubted + totals.added)} (added ${String(totals.added)})`,
-    `  readings ${String(totals.readings)}${reconciled}; reading otherwise than recorded: to a step ${String(totals.toStep)}, from a step ${String(totals.fromStep)}; tasks read from the stored difference for want of a pair ${String(totals.storedTasks)}`,
-    `  A/A controls ${String(totals.controls)}, steps ${String(totals.aaSteps)}, untied won ${String(totals.aaWon)} lost ${String(totals.aaLost)}`,
+    `  readings ${String(totals.readings)}${reconciled}; candidates read otherwise than recorded: to a step ${String(totals.toStep)}, from a step ${String(totals.fromStep)}, of which ${String(totals.byTest)} by this tree's test on the stored scores and the rest by its scores; tasks read from the stored difference for want of a pair ${String(totals.storedTasks)}`,
+    `  A/A controls ${String(totals.controls)}, powered ${String(totals.powered)}, false steps ${falseSteps(totals.aaSteps, totals.powered, [...totals.levels])}; untied won ${String(totals.aaWon)} lost ${String(totals.aaLost)}`,
     `  tasks the promoting readings won: by validity ${String(validity)}, by the objective ${String(objective)}, by the bill alone ${String(bill)}`,
     `  steps followed by a reading of the same pair ${String(totals.followed)}, of which stepped again ${String(totals.cleared)} and won at least as many as lost ${String(totals.held)}`,
     `  per promotion: hours ${per(totals.hours, " h")}; dollars ${per(totals.dollars, "")}`,
   ];
 }
-
-const swapped = (task: Task): Task => ({ ...task, old: task.fresh, fresh: task.old });
 
 /** A tree's own rule as a mechanism: its `pointsOf`, and its `stepOf` given the scores without a
  *  bill where it scores one. */
@@ -535,7 +583,13 @@ function panelOf(mechanism: Mechanism, base: Mechanism, comparisons: readonly Co
   const steps = stepsUnder(mechanism, candidates);
   const baseSteps = stepsUnder(base, candidates);
   const added = candidates.filter((one) => steps.has(one) && !baseSteps.has(one));
-  const reads = controls.map(({ aa, level }) => ({ read: readOf(mechanism, aa, level), level }));
+  const reads = controls.map(({ aa, level }) => ({ read: readOf(mechanism, aa, level), aa, level }));
+  const powered = ({ read, aa, level }: (typeof reads)[number]) =>
+    (mechanism.test ?? readsStep)(
+      read.scores.map(Math.abs),
+      level,
+      aa.map((task, at) => ((read.scores[at] ?? 0) < 0 ? swapped(task) : task)),
+    );
   const ratio = (resource: Resource) =>
     median([...steps].flatMap(({ tasks }) => ratioOf(tasks, resource) ?? [])) ?? null;
   return {
@@ -550,10 +604,8 @@ function panelOf(mechanism: Mechanism, base: Mechanism, comparisons: readonly Co
     },
     aa: {
       of: controls.length,
-      // Could these margins read a step at all: the signing that wins every untied task. Every test
-      // here reads that signing as its least p, so the sign-flip test answers for all of them.
-      capable: reads.filter(({ read, level }) => readsStep(read.scores.map(Math.abs), level)).length,
-      either: reads.filter(({ read }) => read.up || read.down).length,
+      powered: reads.filter(powered).length,
+      steps: reads.filter((one) => one.read.up && powered(one)).length,
     },
     moved: movedOf(mechanism, base, comparisons),
     repeat: repeatOf(mechanism, candidates),
@@ -578,9 +630,9 @@ function panelLines(panels: readonly Panel[], comparisons: readonly Comparison[]
   const hours = solves.reduce((all, { seconds }) => all + (seconds ?? 0), 0) / HOUR;
   const width = Math.max(10, ...panels.map(({ name }) => name.length));
   const candidates = comparisons.filter(({ kind }) => kind === "candidate").length;
-  const header = `${"mechanism".padEnd(width)} steps   +   - | ahead lvl 0-0 bhd | starter  A/A (could) | repeat | bill turns  secs | $/step h/step untied`;
+  const header = `${"mechanism".padEnd(width)} steps   +   - | ahead lvl 0-0 bhd | starter  A/A (powered) | repeat | bill turns  secs | $/step h/step untied`;
   return [
-    `steps of ${String(candidates)} candidate comparisons; + and - against the first row; bill, turns and secs are the new side over the reference in the comparisons it steps on`,
+    `steps of ${String(candidates)} candidate comparisons; + and - against the first row; A/A is one-sided false steps of powered A/As (of all), with the 95% exact bound; bill, turns and secs are the new side over the reference in the comparisons it steps on`,
     header,
     ...panels.map((one) => {
       const { steps, added, dropped, classes, starter, aa, repeat, ratios, untied } = one;
@@ -588,7 +640,7 @@ function panelLines(panels: readonly Panel[], comparisons: readonly Comparison[]
       return [
         `${one.name.padEnd(width)} ${pad(String(steps.size), 5)} ${pad(`+${String(added.length)}`, 3)} ${pad(`-${String(dropped.length)}`, 3)}`,
         `${pad(String(classes.ahead), 5)} ${pad(String(classes.level), 3)} ${pad(String(classes.zero), 3)} ${pad(String(classes.behind), 3)}`,
-        `${pad(`${String(starter.reads)}/${String(starter.of)}`, 7)} ${pad(`${String(aa.either)}/${String(aa.capable)}`, 4)} ${pad(`(${String(aa.of)})`, 7)}`,
+        `${pad(`${String(starter.reads)}/${String(starter.of)}`, 7)} ${pad(`${String(aa.steps)}/${String(aa.powered)}`, 5)} ${pad(`(${String(aa.of)})`, 5)} ${pad(`${(100 * upperBound(aa.steps, aa.powered)).toFixed(1)}%`, 6)}`,
         pad(share(repeat.same, repeat.signed), 6),
         `${pad(two(ratios.bill), 4)} ${pad(two(ratios.turns), 5)} ${pad(two(ratios.seconds), 5)}`,
         `${pad(per(dollars), 6)} ${pad(per(hours), 6)} ${pad(untied === null ? "-" : String(untied), 6)}`,

@@ -6,14 +6,14 @@
  */
 import { epochsOf } from "#src/campaign/climb.ts";
 import { startOf } from "#src/campaign/comparison.ts";
-import { objectiveRuleIn, pairsOf, type Paired } from "#src/kernel/compare.ts";
-import { failWrongPasses, familiesOf, wrongPasses } from "#src/kernel/history.ts";
+import { judgeIn, objectiveRuleIn, type Paired } from "#src/kernel/compare.ts";
+import { familiesOf } from "#src/kernel/history.ts";
 import { type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -32,6 +32,8 @@ export interface Task {
   readonly task: string;
   readonly family: string | null;
   readonly direction: "lower" | "higher" | null;
+  readonly scale?: "unit";
+  readonly judged?: Paired["judged"];
   readonly retained: boolean;
   readonly old: readonly Solve[];
   readonly fresh: readonly Solve[];
@@ -63,7 +65,7 @@ const AT = '{"at":"';
 const numberOr = (value: unknown) => (isNumber(value) ? value : null);
 
 export function paired(task: Task): Paired {
-  const { direction, old, fresh } = task;
+  const { direction, scale, old, fresh } = task;
   return {
     task: task.task,
     old: old.map(({ valid }) => valid),
@@ -76,8 +78,14 @@ export function paired(task: Task): Paired {
       "objective",
       direction === null
         ? undefined
-        : { direction, old: old.map(({ measure }) => measure), fresh: fresh.map(({ measure }) => measure) },
+        : {
+            direction,
+            ...keyIfDefined("scale", scale),
+            old: old.map(({ measure }) => measure),
+            fresh: fresh.map(({ measure }) => measure),
+          },
     ),
+    ...keyIfDefined("judged", task.judged),
   };
 }
 
@@ -102,35 +110,53 @@ function taskOf(
     task: pair.task,
     family: families.get(pair.task) ?? null,
     direction: pair.objective?.direction ?? null,
+    ...keyIfDefined("scale", pair.objective?.scale),
+    ...keyIfDefined("judged", pair.judged),
     retained: retained.has(pair.task),
     old: side("old"),
     fresh: side("fresh"),
   };
 }
 
-/** The reference's halves mirrored as `comparison.ts` reads them (`halves: "mirrored"`); null at an
- *  odd count of solves. */
-export function selfTerms({ session, data }: Reported) {
+/** The reference's halves mirrored as `comparison.ts` reads them (`halves: "mirrored"`, with the
+ *  report's objective and judge); null at an odd count of solves. */
+export function selfTerms(events: readonly LogEvent[], { session, data }: Reported) {
   const { old, setting, solves } = data;
   if (!isString(old) || !isString(setting) || !isNumber(solves) || solves % 2 !== 0) return null;
+  const start = startOf(events, session);
   const sides = {
     old,
     fresh: old,
     setting,
     comparison: session,
     objective: objectiveRuleIn(data),
+    judge: start === undefined ? undefined : judgeIn(start),
     halves: "mirrored" as const,
   };
   return { sides, solves: solves / 2 };
 }
 
-function selfPairs(events: readonly LogEvent[], report: Reported, versions: readonly string[]): Paired[] {
-  const terms = selfTerms(report);
-  if (terms === null) return [];
-  const wrong = wrongPasses(asRecord(asRecord(report.data.settled)?.passes) ?? {});
-  const before = failWrongPasses(events.slice(0, report.index + 1), wrong);
-  return pairsOf(before, versions, terms.sides, terms.solves).pairs;
+export function readsStarter(events: readonly LogEvent[], { session, data }: Reported): boolean {
+  return data.fresh === (startOf(events, session)?.starter ?? data.starter);
 }
+
+export const swapped = (task: Task): Task => ({
+  ...task,
+  old: task.fresh,
+  fresh: task.old,
+  ...keyIfDefined(
+    "judged",
+    task.judged && {
+      weights: task.judged.weights,
+      votes: task.judged.votes.map(({ fresh, old, judge, holistic }) => ({
+        fresh: old,
+        old: fresh,
+        judge: -judge,
+        holistic: -holistic,
+      })),
+    },
+  ),
+});
 
 function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] {
   const finished = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
@@ -147,8 +173,6 @@ function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] 
     if (pairs.length === 0 || !isString(old) || !isString(fresh)) return [];
     const start = startOf(events, report.session) ?? {};
     const retained = new Set(Array.isArray(start.retained) ? start.retained.filter(isString) : []);
-    const starter = start.starter ?? report.data.starter;
-    const versions = pairs.map(({ task }) => task);
     const of = (pair: Paired) => taskOf(pair, retained, finished, families);
     const next = epochs.find(({ from }) => from > report.index);
     return [
@@ -157,13 +181,13 @@ function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] 
         pack: packOf(name),
         opened,
         session: report.session,
-        kind: fresh === starter ? "starter" : "candidate",
+        kind: readsStarter(events, report) ? "starter" : "candidate",
         old,
         fresh,
         level: numberOr(level) ?? 0,
         reading: isString(reading) ? reading : "",
         tasks: pairs.map(of),
-        aa: selfPairs(events, report, versions).map(of),
+        aa: pairsReported(events, report, "old").map(of),
         after: {
           promoted: promotions.filter(({ index }) => index > report.index).map(({ harness }) => harness),
           readings: reports.length - at - 1,

@@ -30,13 +30,13 @@ path	count
 .claude/skills/oracle-handover/scripts/document.ts	7
 .claude/skills/oracle-handover/scripts/open-pulls.ts	11
 .claude/skills/oracle-handover/scripts/slice.ts	6
-.claude/skills/promotion-tuner/scripts/mechanisms.ts	8
+.claude/skills/promotion-tuner/scripts/mechanisms.ts	7
 .claude/skills/promotion-tuner/scripts/outside.ts	5
 .claude/skills/promotion-tuner/scripts/record.ts	7
-.claude/skills/promotion-tuner/scripts/replay.ts	15
+.claude/skills/promotion-tuner/scripts/replay.ts	13
 .claude/skills/promotion-tuner/scripts/table.ts	3
 .claude/skills/promotion-tuner/scripts/time.ts	2
-.claude/skills/promotion-tuner/scripts/tree.ts	9
+.claude/skills/promotion-tuner/scripts/tree.ts	7
 .claude/skills/promotion-tuner/scripts/trend.ts	19
 .claude/skills/repository-practice/scripts/direction.ts	1
 .claude/skills/repository-practice/scripts/preflight.ts	7

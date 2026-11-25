@@ -1,10 +1,13 @@
 /**
  * A promotion mechanism, so one can be tried without a candidate tree: a task's score, a test over
  * the scores, and a guard that may refuse a step. Any may be free code in a file (`--mechanism`);
- * most are written as knobs (`--try bill=0.05,when=tied`).
+ * most are written as knobs (`--try bill=0.05,when=tied`). A task's answers are production's
+ * `pointsOf` reweighted, and only `room` and `gain` read the objective again, by `gainOver`; a
+ * judged task keeps production's objective under them.
  */
-import { flipP, GAP_FLOOR, rawFlipP, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
-import type { Solve, Task } from "./record.ts";
+import { flipP, GAP_FLOOR, gainOver, pointsOf, rawFlipP, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { paired, type Solve, type Task } from "./record.ts";
 
 export interface Mechanism {
   readonly name: string;
@@ -103,16 +106,10 @@ export const STANDARD = [
 const POINTS = 1000;
 const NEAR = 1e-9;
 
-function objectiveGain(
-  knobs: Knobs,
-  direction: Task["direction"],
-  one: number | null,
-  other: number | null,
-): number {
-  if (direction === null || one === null || other === null) return 0;
-  const larger = Math.max(Math.abs(one), Math.abs(other));
-  if (larger === 0) return 0;
-  const gain = Math.max(-1, Math.min(1, (direction === "lower" ? other - one : one - other) / larger));
+function objectiveGain(knobs: Knobs, task: Task, one: number | null, other: number | null): number {
+  const { direction, scale } = task;
+  if (direction === null) return 0;
+  const gain = gainOver({ direction, ...keyIfDefined("scale", scale) }, one, other);
   if (Math.abs(gain) < knobs.room) return 0;
   if (knobs.gain === "sign") return Math.sign(gain);
   if (knobs.gain === "log") {
@@ -131,12 +128,11 @@ function resourceGain(knobs: Knobs, fresh: number | null, old: number | null): n
 }
 
 function partsOf(task: Task, knobs: Knobs) {
-  const sums = { validity: 0, objective: 0, bill: 0, turns: 0, seconds: 0 };
+  const sums = { objective: 0, bill: 0, turns: 0, seconds: 0 };
   for (const fresh of task.fresh) {
     for (const old of task.old) {
-      if (fresh.valid !== old.valid) sums.validity += fresh.valid ? 1 : -1;
       if (!fresh.valid || !old.valid) continue;
-      sums.objective += objectiveGain(knobs, task.direction, fresh.measure, old.measure);
+      sums.objective += objectiveGain(knobs, task, fresh.measure, old.measure);
       for (const [name, pick] of Object.entries(RESOURCES)) {
         // SAFETY: the keys of `RESOURCES` are `Resource`, and `sums` holds each.
         sums[name as Resource] += resourceGain(knobs, pick(fresh), pick(old));
@@ -144,9 +140,12 @@ function partsOf(task: Task, knobs: Knobs) {
     }
   }
   const each = POINTS / Math.max(1, task.fresh.length * task.old.length);
+  const { validity, objective } = pointsOf(paired(task));
+  const curved = task.judged === undefined && (knobs.room !== GAP_FLOOR || knobs.gain !== "share");
   return {
-    // Each measure is scaled before the sum, in production's order (`pointsOf`), so floats round alike.
-    answers: sums.validity * knobs.validity * each + sums.objective * knobs.objective * each,
+    answers:
+      validity * (knobs.validity / WEIGHTS.validity) +
+      (curved ? sums.objective * knobs.objective * each : objective * (knobs.objective / WEIGHTS.objective)),
     resources: (sums.bill * knobs.bill + sums.turns * knobs.turns + sums.seconds * knobs.seconds) * each,
   };
 }

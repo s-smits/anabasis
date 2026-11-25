@@ -39,7 +39,6 @@ export interface Tree {
   points: (pair: Paired) => Points;
   flipP: (differences: readonly number[]) => number;
   readsStep: (differences: readonly number[], unbilled: readonly number[] | null, level: number) => boolean;
-  readsStepEitherWay: (differences: readonly number[], level: number, unbilled: readonly number[]) => boolean;
   billedBetween: (events: readonly LogEvent[], from: number, to: number) => number;
 }
 
@@ -86,12 +85,6 @@ export async function loadTree(path: string): Promise<Tree> {
         return false;
       }
     },
-    // A two-argument `readsStep` reads the scores without the bill and the level; an older one
-    // reads the scores as they stand first.
-    readsStepEitherWay: (differences, level, unbilled) =>
-      isFunction(compare.readsStep) && compare.readsStep.length === 2
-        ? compare.readsStepEitherWay(unbilled, level)
-        : Reflect.apply(compare.readsStepEitherWay, undefined, [differences, level, unbilled]) === true,
     billedBetween: (events, from, to) => Number(Reflect.apply(billing, undefined, [events, from, to])),
   };
 }

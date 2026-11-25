@@ -36,6 +36,7 @@ interface FalsePromotion {
   readonly incapable: number;
   readonly tied: number;
   readonly byMeasure: Readonly<Record<"validity" | "objective", ControlSlice>>;
+  readonly levels: readonly number[];
   readonly union: number;
 }
 
@@ -271,6 +272,7 @@ function falsePromotionOf(
     incapable: read.length - controls,
     tied: read.filter(({ tied }) => tied).length,
     byMeasure: { validity: sliceCount("validity"), objective: sliceCount("objective") },
+    levels: [...new Set(read.filter(({ able }) => able).map(({ level }) => level))],
     union: Math.min(
       1,
       rates.reduce((sum, rate) => sum + rate, 0),

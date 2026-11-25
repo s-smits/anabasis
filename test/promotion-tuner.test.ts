@@ -17,12 +17,20 @@ const CHEAP: Paired[] = Array.from({ length: 6 }, (_, at) => ({
   used: { old: [{ billed: 2 }, { billed: 2 }], fresh: [{ billed: 1 }, { billed: 1 }] },
 }));
 
+interface Record {
+  readonly before?: readonly LogEvent[];
+  readonly promoted?: boolean;
+  readonly aa?: readonly Paired[];
+}
+
 function replay(
   tree: Tree,
   pairs: readonly Paired[],
-  frontier: JsonObject = { ...scored(pairs), of: pairs.map(({ task }) => task) },
+  { before = [], promoted = true, aa = pairs }: Record = {},
 ) {
+  const frontier: JsonObject = { ...scored(pairs), of: pairs.map(({ task }) => task) };
   const events: LogEvent[] = [
+    ...before,
     {
       at: "2026-10-26T00:00:00.000Z",
       kind: "comparison.reported",
@@ -41,15 +49,19 @@ function replay(
         points: { validity: 0, objective: 0, bill: 600 },
       },
     },
-    {
-      at: "2026-10-26T00:01:00.000Z",
-      kind: "harness.promoted",
-      data: { from: "reference", harness: "candidate" },
-    },
+    ...(promoted
+      ? [
+          {
+            at: "2026-10-26T00:01:00.000Z",
+            kind: "harness.promoted" as const,
+            data: { from: "reference", harness: "candidate" },
+          },
+        ]
+      : []),
   ];
   const totals = emptyTotals();
   campaignLines(
-    { ...tree, read: () => events, pairsReported: () => [...pairs], pairsOf: () => [...pairs] },
+    { ...tree, read: () => events, pairsReported: () => [...pairs], pairsOf: () => [...aa] },
     { name: "recorded", path: "unused" },
     totals,
   );
@@ -69,6 +81,33 @@ it("promotes and diagnoses A/A steps by the tree's own rule", async () => {
       steps,
     ]);
   }
+});
+
+it("counts an A/A false step one-sided, as a promotion reads, over the A/As that could read one", async () => {
+  const tree = await loadTree(ROOT);
+  const lean = (fresh: boolean) =>
+    CHEAP.map((pair) => ({ ...pair, old: [!fresh, !fresh], fresh: [fresh, fresh] }));
+  const read = (aa: readonly Paired[]) => {
+    const { controls, powered, aaSteps } = replay(tree, CHEAP, { aa });
+    return [controls, powered, aaSteps];
+  };
+  expect([read(lean(true)), read(lean(false)), read(CHEAP.slice(0, 2))]).toEqual([
+    [1, 1, 1],
+    [1, 1, 0],
+    [1, 0, 0],
+  ]);
+});
+
+it("reads a starter read's step as no promotion, though the new side won every task", async () => {
+  const tree = await loadTree(ROOT);
+  const won = CHEAP.map((pair) => ({ ...pair, old: [false, false] }));
+  const started = (starter: string): LogEvent => ({
+    at: "2026-10-25T23:59:00.000Z",
+    kind: "comparison.started",
+    data: { session: "g-1", old: "reference", fresh: "candidate", starter },
+  });
+  const added = (starter: string) => replay(tree, won, { before: [started(starter)], promoted: false }).added;
+  expect([added("candidate"), added("elsewhere")]).toEqual([0, 1]);
 });
 
 it("credits a won task to the measure that carried it, the bill where a tree before 2 November scored one", async () => {
@@ -123,7 +162,7 @@ it("uses a candidate tree's own stepOf without requiring a readsStep export", as
       writeFileSync(
         join(tree, "src", "kernel", "compare.ts"),
         `import * as real from "${join(ROOT, "src", "kernel", "compare.ts")}";\n` +
-          "export const { WEIGHTS, flipP, pairsOf, pointsOf, readsStepEitherWay } = real;\n" +
+          "export const { WEIGHTS, flipP, pairsOf, pointsOf } = real;\n" +
           `export const stepOf = ${rule};\n`,
       );
       execTextSync("git", ["-C", tree, "init", "-q"]);

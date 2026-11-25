@@ -7,8 +7,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, printed } from "#skills/main/print.ts";
 import { loadRuns, type Run, rungsOf } from "#skills/main/runs.ts";
-import { type Shift, shiftOf } from "#skills/main/stats.ts";
-import { upperBound } from "#src/kernel/compare.ts";
+import { falseSteps as againstBar, type Shift, shiftOf } from "#skills/main/stats.ts";
 import { DAY_MS } from "#src/meta/clock.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { median } from "#src/meta/tally.ts";
@@ -128,9 +127,11 @@ const lower = (measure: Measure): Measure => ({ ...measure, better: "lower" });
 
 function falseSteps(name: string, part: Each, whole: Each): Measure {
   const measure = lower(rate("honesty", name, part, whole));
-  const bound = (runs: readonly Run[]) =>
-    (100 * upperBound(total(runs, part), total(runs, whole))).toFixed(1);
-  return { ...measure, counts: (runs) => `${measure.counts(runs)}, 95% bound ${bound(runs)}%` };
+  const levels = (runs: readonly Run[]) => [...new Set(runs.flatMap(({ aaLevels }) => aaLevels))];
+  return {
+    ...measure,
+    counts: (runs) => againstBar(total(runs, part), total(runs, whole), levels(runs)),
+  };
 }
 
 /** Every measure a list of runs is read by, in table order: `table.ts` prints a run's own counts
@@ -187,17 +188,17 @@ export const MEASURES = {
     (run) => run.stepped,
   ),
   aa: falseSteps(
-    "A/A steps, of A/A able to read one",
+    "A/A false steps, of powered A/As",
     (run) => run.aaSteps,
     (run) => run.controls,
   ),
   aaValidity: falseSteps(
-    "A/A steps where reference validity varied",
+    "A/A false steps where reference validity varied",
     (run) => run.aaValiditySteps,
     (run) => run.aaValidityControls,
   ),
   aaObjective: falseSteps(
-    "A/A steps on objective alone",
+    "A/A false steps on objective alone",
     (run) => run.aaObjectiveSteps,
     (run) => run.aaObjectiveControls,
   ),
@@ -383,6 +384,7 @@ function packLines(
   const notes = [
     read.line,
     left > 0 && `Left out: ${String(left)} earlier runs under settings the newest window does not hold.`,
+    "Honesty here counts the windows' runs to the horizon above; the honesty bar pools whole runs by release (`table.ts --rows releases`).",
     pack === ALL &&
       "Every pack and setting is pooled here, so a difference can be the mix of packs alone: read each pack's block first.",
     earlier.length === 0 && "No earlier window holds a run to read the newest against.",

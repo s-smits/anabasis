@@ -67,6 +67,7 @@ function run(over: Partial<Run> & { readonly promoted?: number }): Run {
     aaValiditySteps: 0,
     aaObjectiveControls: 0,
     aaObjectiveSteps: 0,
+    aaLevels: [0.02],
     ending: "budget",
     ...rest,
   };
@@ -81,11 +82,17 @@ const HOURS: Measure = {
   counts: (runs) => String(runs.length),
 };
 
-it("prints each A/A false-step rate beside its 95% exact upper bound, pooled over the runs", () => {
+it("prints each one-sided A/A false-step count beside its 95% exact bound and the honesty bar, pooled over the runs", () => {
   const pooled = [run({ controls: 107, aaSteps: 1 }), run({ controls: 100, aaSteps: 1 })];
-  expect(MEASURES.aa.counts(pooled)).toBe("2/207, 95% bound 3.0%");
-  expect(MEASURES.aa.counts([run({ controls: 10 })])).toBe("0/10, 95% bound 25.9%");
-  expect(MEASURES.aa.counts([run({})])).toBe("0/0, 95% bound 100.0%");
+  expect(MEASURES.aa.counts(pooled)).toBe("2/207 one-sided, 95% bound 3.0%, bar 4.0% at level 0.02: met");
+  expect(MEASURES.aa.counts([run({ controls: 10 })])).toBe(
+    "0/10 one-sided, 95% bound 25.9%, bar 4.0% at level 0.02: open",
+  );
+  const mixed = [...pooled, run({ controls: 30, aaLevels: [0.1] })];
+  expect(MEASURES.aa.counts(mixed)).toBe(
+    "2/237 one-sided, 95% bound 2.6%, bar 4.0% at level 0.02 (the least): met",
+  );
+  expect(MEASURES.aa.counts([run({ aaLevels: [] })])).toBe("0/0 one-sided, 95% bound 100.0%, no level");
 });
 
 it("reads a difference past the spread by the measure's own direction", () => {

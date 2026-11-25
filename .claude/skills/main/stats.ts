@@ -1,4 +1,5 @@
-/** Two-sample permutation test over campaign-level units. */
+/** Two-sample permutation test over campaign-level units, and the honesty bar's exact bound. */
+import { upperBound } from "#src/kernel/compare.ts";
 
 /** Maximum combinations for exact enumeration before falling back to deterministic shuffles. */
 const DRAWS = 4000;
@@ -87,4 +88,14 @@ export function shiftOf<Unit>(
   };
   const recorded = Math.abs(after - before);
   return { p: share(recorded), least: share(Math.max(recorded, ...read)) };
+}
+
+export function falseSteps(steps: number, powered: number, levels: readonly number[]): string {
+  const bound = upperBound(steps, powered);
+  const level = levels.length === 0 ? null : Math.min(...levels);
+  const bar =
+    level === null
+      ? "no level"
+      : `bar ${(200 * level).toFixed(1)}% at level ${String(level)}${levels.length > 1 ? " (the least)" : ""}: ${bound <= 2 * level ? "met" : "open"}`;
+  return `${String(steps)}/${String(powered)} one-sided, 95% bound ${(100 * bound).toFixed(1)}%, ${bar}`;
 }

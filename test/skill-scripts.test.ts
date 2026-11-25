@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { gitText } from "#src/meta/git.ts";
 import { analyzeStack, formatAnalysis, parseNumstat } from "#skills/consolidate-stack/scripts/analyze.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
-import { sanitised } from "#skills/oracle-handover/scripts/document.ts";
+import { sanitised, seenParts, untested } from "#skills/oracle-handover/scripts/document.ts";
 import { pasted, pullsInto } from "#skills/oracle-handover/scripts/open-pulls.ts";
 import {
   keptRepublish,
@@ -610,6 +610,25 @@ describe("an Oracle folder of the open pull requests", () => {
 });
 
 describe("an Oracle document's parts", () => {
+  it("prints a finding's log parts from its selectors alone, and a pull request's diff without its tests", () => {
+    expect(
+      seenParts(
+        "run-a comparison.reported{1,~1} Builder:b-1{4-7}; run-b absent, run-c shows the gap; run-d cannot show",
+      ),
+    ).toEqual([["run-a", ["comparison.reported{1,~1}", "Builder:b-1{4-7}"]]]);
+    expect(
+      seenParts(
+        "run-a Builder:b-1[read_opening,compare]{~1}, comparison.reported{2}. (Examiner:x-2{3}); run-b Builder shows it, e.g. v1.2; comparison.reported{9}",
+      ),
+    ).toEqual([
+      ["run-a", ["Builder:b-1[read_opening,compare]{~1}", "comparison.reported{2}", "Examiner:x-2{3}"]],
+    ]);
+    const file = (path: string) => `diff --git a/${path} b/${path}\n+x\n`;
+    expect(untested(file("src/a.ts") + file("test/a.test.ts") + file("tools/test/b.ts"))).toBe(
+      file("src/a.ts") + file("tools/test/b.ts"),
+    );
+  });
+
   it("gives each machine one alias across its names and drops home folders", () => {
     const made = sanitised("ran on box-two (ssh two-ssh) from /Users/someone/Developer/x and /home/other/y", [
       ["box-one"],

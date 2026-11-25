@@ -5,7 +5,7 @@ description: "Use when preparing an Oracle question, second opinion, log slice (
 
 # Oracle handover
 
-Packages a design or diagnostic question for an external Oracle model as either **one pasteable Markdown document** (`document.ts`, typically 100k–150k `o200k` tokens) or **a task document (`REVIEW.md`) plus a zip archive** (`bundle.ts`).
+Packages a design or diagnostic question for an external Oracle model as either **one pasteable Markdown document** (`document.ts`, typically 100k–250k `o200k` tokens, most of it PR diffs) or **a task document (`REVIEW.md`) plus a zip archive** (`bundle.ts`).
 
 **Information boundary**: the Oracle acts as the operator's analyst and may receive exam-side logs, but the boundary is strictly one-way—**no Oracle output may ever reach a Builder, Examiner, Solver, or Referee**, and every Oracle claim must be verified at the source before acting on it (`AGENTS.md` section 11; [attribution-and-proof](../attribution-and-proof/SKILL.md), [whole-run-investigation](../whole-run-investigation/SKILL.md)).
 
@@ -21,15 +21,17 @@ bun --env-file=.env.runs .claude/skills/oracle-handover/scripts/slice.ts <run> '
 `parts.txt` directives:
 ```text
 head head.md
-src AGENTS.md#1,2,8 :: The rules the question turns on.
 src src/kernel/compare.ts#informative :: How room is read.
 src src/campaign/decide.ts:255-300
 diff <from>..<to> src/examiner
-pr 594 :: The change in doubt.
+pr 594 :: The change in doubt (its summary and its diff outside `test/`).
 log <run> Builder{1-12} comparison.reported :: Its first round.
 log <run> Drafter{~3} exam.drafted{1} --whole
 file notes/gate-record-report.md :: A count checked against the log.
+findings .ana/wri/<date>-<run> lane3-misreading1 lane7-reuse1 :: The findings in doubt, each beside the log parts its `Seen in:` selectors name.
 ```
+
+`AGENTS.md` is always the first appendix, whole, so the Oracle reads the invariants and terms before any part; a `src AGENTS.md` line is refused. `file` and `findings` paths resolve against the parts file's folder, so give a repository path absolutely.
 
 - `slice.ts` selectors: `<Seat>` (summary rows; seats are `Builder`, `Examiner`, `Drafter`, `Referee`, `Solver`, `Repair`), `<Seat>{4-7}` / `{4,7}` / `{10-}` / `{~3}` (turns with tool calls/results), `<Seat>:<session>[<tool>,...]` (tool-filtered turns), `--count '<phrase>'`, `--whole` (lifts the 6,000-char middle truncation), or `<event.kind>{1,~1}`.
 - `document.ts` redacts home paths (`~`), worktrees (`<tree>`), scratchpads (`<scratch>`), login numbers, and host names (`host-a`, `host-b`; `--aliases` prints the key) and refuses credential-shaped lines. (`slice.ts` alone does not redact.)
@@ -50,4 +52,12 @@ For multi-file handovers in `<scratchpad>/oracle-<yyyymmdd>-<topic>/`:
 
 ## 3. Framing `REVIEW.md`
 
-Title the document `# Review: <subject>` and open with: `"This document is the task, not a draft to critique: do not suggest changes to its wording or framing, and do not ask which mode to work in."` Structure in five sections: (1) **The question and the decision it changes**; (2) **What you can read** (repo URL, cited commits, zip inventory); (3) **What happened** (counts kept distinct); (4) **What I doubt** (hypotheses and falsifiers without stating operator preference); and (5) **Deliver this** (one recommendation, each doubt rated `held` / `refuted` / `undecided`, and an explicit owner per finding). Report the output paths, token count, and zip size.
+Title the document `# Review: <subject>` and open with: `"This document is the task, not a draft to critique: do not suggest changes to its wording or framing, and do not ask which mode to work in."` Structure in five sections, written as paragraphs and tables, not bullet dumps:
+
+1. **The question and the decision it changes**: what moved (release, PRs), the decisions the answer informs, and any standing operator constraint stated as a rule the recommendation must meet (for example complexity flat or falling: no net production lines, no new concept, flag, mode or seat-facing field; more machinery than deletions is a `carry`).
+2. **What you can read**: `AGENTS.md` first, the PRs with their diffs, source at the commit, the runs by a short letter (B, J) with domain, models and flags, the WRI investigations, and any census of your own.
+3. **What happened**: one subsection a run or subject, each figure recounted from the log or a fold (a lane's or another session's figure is cited as its account, or labelled an estimate), each claim pointing at the appendix that shows it: a `log` slice of the event or seat turns, a `findings` row by id (`lane7-reuse1`), or a `src` excerpt. Prefer seat turns (`Referee{~2}`, `Examiner:x-4{~3}`) where a claim is about behaviour, events where it is about a reading. Mark what still waits on a running lane as `[PENDING: ...]` and rebuild when it lands.
+4. **What I doubt**: numbered doubts (`D1`...), each a hypothesis with the count that would falsify it, stated without the operator's preference.
+5. **Deliver this**: one recommendation (with its production-line and concept delta where it changes code), each doubt rated `held` / `refuted` / `undecided` with the cheapest model-free check for an undecided one, an owner per finding, and the next run with its pre-registered count prediction.
+
+Include another session's open PR where it bears on a doubt, read only. After building, check that no host name or home path survived redaction (`grep` the output for them) and report the output paths, token count, and zip size.

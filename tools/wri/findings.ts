@@ -8,7 +8,7 @@ import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { REFERENCES } from "./catalogue.ts";
-import { rowsOf, tablesOf } from "./ledger.ts";
+import { idsOf, rowsOf, tablesOf } from "./ledger.ts";
 
 export const VERDICTS = ["confirmed", "plausible", "refuted"] as const;
 type Verdict = (typeof VERDICTS)[number];
@@ -42,7 +42,9 @@ interface Vetted {
   readonly findings: readonly Finding[];
 }
 
-const laneOf = (reference: string) => reference.split(".")[0] ?? reference;
+const FINDING = /lane\d+-[a-z]+\d+|\d+(?:\.\d+)?|primary/gu;
+const laneOf = (reference: string) =>
+  /^lane(\d+)-/u.exec(reference)?.[1] ?? reference.split(".")[0] ?? reference;
 export const plain = (cell = "") => cell.replaceAll(/[*`]/gu, "").trim();
 export const firstWord = (cell: string) => /^[a-z]+/u.exec(cell.toLowerCase())?.[0] ?? "";
 
@@ -67,10 +69,7 @@ function findingsIn(vetting: string): Finding[] {
         {
           id: `vet-${id}`,
           verdict,
-          lanes:
-            cell(row, "lanes")
-              .toLowerCase()
-              .match(/\d+(?:\.\d+)?|primary/gu) ?? [],
+          lanes: cell(row, "lanes").toLowerCase().match(FINDING) ?? [],
           standing: cell(row, "standing"),
           owner: cell(row, "owner"),
           importance: cell(row, "importance"),
@@ -102,12 +101,22 @@ export function vettingFaults(
   const found = findingsIn(vetting);
   const rows = tables.reduce((sum, table) => sum + table.rows.length, 0);
   const named = new Set(found.flatMap(({ lanes }) => lanes));
-  const written = reports.matchAll(/^- lane (\d+): ok, [a-z ]+, (\d+) findings?,/gmu);
-  const unnamed = [...written].flatMap(([, lane = "", count]) => {
-    if (named.has(lane)) return [];
-    const each = Array.from({ length: Number(count) }, (_, index) => `${lane}.${String(index + 1)}`);
-    return each.filter((one) => !named.has(one));
-  });
+  const counts = new Map(
+    [...reports.matchAll(/^- lane (\d+): ok, [a-z ]+, (\d+) findings?,/gmu)].map(([, lane = "", count]) => [
+      lane,
+      Number(count),
+    ]),
+  );
+  const listed = [
+    ...idsOf(reports),
+    ...[...reports.matchAll(/^ {2}- (\d+\.\d+), observation/gmu)].map(([, id = ""]) => id),
+  ].filter((id) => counts.has(laneOf(id)));
+  const counted = [...counts].flatMap(([lane, count]) =>
+    listed.some((id) => laneOf(id) === lane)
+      ? []
+      : Array.from({ length: count }, (_, index) => `${lane}.${String(index + 1)}`),
+  );
+  const unnamed = [...listed, ...counted].filter((id) => !named.has(id) && !named.has(laneOf(id)));
   const ids = found.map(({ id }) => id);
   const owes = (finding: Finding) => [
     ...(finding.standing === NEW || keys.includes(finding.standing)

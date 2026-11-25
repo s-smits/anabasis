@@ -4,12 +4,14 @@
  * `bun --env-file=.env.runs document.ts <parts> --commit <sha> --out <md>` (`--aliases` prints the
  * host aliases alone). `<parts>` holds one part a line, `#` a comment, and ` :: <why>` after a part
  * prints under it: `head <md>`, `src <path>[:A-B | #name | #1,2]`, `diff <from>..<to> [paths]`, `pr
- * <N>`, `log <run> <selector>... [--whole]` (`slice.ts`) and `file <local path>`. Source comes from
+ * <N>` (its summary and its diff outside `test/`), `log <run> <selector>... [--whole]` (`slice.ts`), `file <local path>` and `findings <WRI folder>
+ * [id...]` (its `reports.md` findings table, and the log parts each `Seen in:` selector names). Source comes from
  * a published commit (`publishedAt`), never the working tree, so the Oracle does not report
  * contradictions the stack's top has resolved. Home folders become `~/` and each machine
  * `ANA_HOSTS` names an alias (`host-a`, ...); a credential refuses it, and so does a `.env.runs`
  * naming hosts this command did not load. Its size is printed, never capped, in o200k tokens at
- * 3.17 bytes each.
+ * 3.17 bytes each. The repository's `AGENTS.md` is always the first appendix, whole, so the Oracle
+ * reads the invariants and terms before any part.
  */
 import * as ts from "typescript5";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
@@ -20,8 +22,12 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { publishedAt } from "#tools/runs/code.ts";
 import { envRunsFile, hostsOf, ownName } from "#tools/runs/host-config.ts";
 import { ghOrThrow } from "#tools/runtime/pulls.ts";
+import { AGENTS_MD } from "#tools/loc/source-policy.ts";
 import { scanText } from "#tools/secrets/rules.ts";
-import { DEFAULT_MAX_CHARS, fenced, sliceRun } from "./slice.ts";
+import { REPORTS } from "#tools/wri/index.ts";
+import { FINDINGS_HEAD } from "#tools/wri/investigation.ts";
+import { rowsOf } from "#tools/wri/ledger.ts";
+import { DEFAULT_MAX_CHARS, fenced, parseSelector, sliceRun } from "./slice.ts";
 
 interface Part {
   readonly title: string;
@@ -134,6 +140,56 @@ function srcPart(at: At, spec: string): Part {
   };
 }
 
+export const untested = (diff: string): string =>
+  diff
+    .split(/^(?=diff --git )/mu)
+    .filter((file) => !file.startsWith("diff --git a/test/"))
+    .join("");
+
+const isSelector = (word: string): boolean => {
+  if (!/[{[:]/u.test(word)) return false;
+  try {
+    parseSelector(word);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const seenParts = (seen: string): [string, string[]][] =>
+  seen.split(";").flatMap((entry) => {
+    const [run = "", ...words] = entry
+      .trim()
+      .split(/[\s,]+(?![^{[]*[}\]])/u)
+      .map((word) => word.replaceAll(/^[(`]+|[).,`]+$/gu, ""));
+    const selectors = words.filter(isSelector);
+    return selectors.length === 0 || isSelector(run) ? [] : [[run, selectors]];
+  });
+
+async function findingsPart(at: At, [folder = "", ...ids]: string[]): Promise<Part> {
+  const all = rowsOf(readFileSync(resolve(at.base, folder, REPORTS), "utf8"), "id");
+  const unknown = ids.filter((id) => !all.some(([row]) => row === id));
+  if (all.length === 0 || unknown.length > 0) {
+    throw new CommandFailure(`${folder}: no finding ${unknown.join(", ") || "in its findings table"}`);
+  }
+  const rows = all.filter(([id = ""]) => ids.length === 0 || ids.includes(id));
+  const shown = { whole: false, maxChars: DEFAULT_MAX_CHARS };
+  const slices = await Promise.all(
+    rows.flatMap(({ 0: id = "", 5: seen = "" }) =>
+      seenParts(seen).map(
+        async ([run, selectors]) => `### ${id}\n\n${await sliceRun(run, selectors, shown)}`,
+      ),
+    ),
+  );
+  return {
+    title: `findings of ${basename(folder)}`,
+    link: "",
+    body: [[FINDINGS_HEAD, ...rows.map((row) => `| ${row.join(" | ")} |`)].join("\n"), ...slices].join(
+      "\n\n",
+    ),
+  };
+}
+
 const PARTS = {
   src: (at, words) => srcPart(at, words.join(" ")),
   diff: (at, [range = "", ...paths]) => {
@@ -147,7 +203,7 @@ const PARTS = {
   pr: (at, [number = ""]) => ({
     title: `PR #${number}`,
     link: `${at.web}/pull/${number}/files`,
-    body: pullTold(at.repo, number),
+    body: `${pullTold(at.repo, number)}\n\n${fenced(untested(ghOrThrow(at.repo, ["pr", "diff", number])), "diff")}`,
   }),
   log: async (_, words) => {
     const [run = "", ...selectors] = words.filter((word) => word !== "--whole");
@@ -157,6 +213,7 @@ const PARTS = {
       body: await sliceRun(run, selectors, { whole: words.includes("--whole"), maxChars: DEFAULT_MAX_CHARS }),
     };
   },
+  findings: findingsPart,
   file: (at, [path = ""]) => ({
     title: basename(path),
     link: "",
@@ -196,7 +253,10 @@ export function sanitised(text: string, machines: readonly (readonly string[])[]
 async function documentOf(partsFile: string, repo: string, commit: string) {
   const at: At = { repo, sha: publishedAt(repo, commit), web: webOf(repo), base: dirname(partsFile) };
   const head: string[] = [];
-  const parts: Part[] = [];
+  const rules = srcPart(at, AGENTS_MD);
+  const parts: Part[] = [
+    { ...rules, body: `Read this first: the repository's invariants, terms and rules.\n\n${rules.body}` },
+  ];
   for (const line of readFileSync(partsFile, "utf8")
     .split("\n")
     .map((each) => each.trim())) {
@@ -205,6 +265,9 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
     const [spec, why] = cut === -1 ? [line, undefined] : [line.slice(0, cut), line.slice(cut + 4)];
     // A parts line is not shell: a quoted word loses its quotes and nothing more.
     const [verb = "", ...words] = spec.split(/\s+/u).map((word) => word.replace(/^(['"])(.*)\1$/u, "$2"));
+    if (verb === "src" && words[0]?.startsWith(AGENTS_MD) === true) {
+      throw new CommandFailure(`${spec}: ${AGENTS_MD} is always the first part, whole`);
+    }
     if (verb === "head") head.push(readFileSync(resolve(at.base, words.join(" ")), "utf8").trim());
     else if (isVerb(verb)) {
       const part = await PARTS[verb](at, words);

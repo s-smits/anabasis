@@ -16,7 +16,7 @@ import { scanTokens } from "./token-facts.ts";
 export const NEW_FILE_CEILING = 800;
 export const NEW_FUNCTION_CEILING = 115;
 export const AGENTS_MD_BYTE_CEILING = 24_000;
-const AGENTS_MD = "AGENTS.md";
+export const AGENTS_MD = "AGENTS.md";
 
 const SOURCE_ROOTS = ["src", "tools", "vendor", ".claude/skills"] as const;
 /** Production roots whose source files must not import helper or test trees (`AGENTS.md` §12). */

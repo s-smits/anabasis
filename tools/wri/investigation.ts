@@ -68,16 +68,21 @@ const RESOLUTION_SYNONYMS = new Map<string, Resolution>([
 const PREDICTION = "Prediction";
 const DETAIL = 300;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
-const [OBSERVATION, CAUSE, OWNER] = FIELDS;
+const [OBSERVATION, CAUSE, OWNER, , DECISION] = FIELDS;
 const SEEN = "Seen in:";
 const TITLE = "### ";
+export const FINDINGS_HEAD =
+  "| id | owner | observation | cause | finding | seen in | decision |\n| --- | --- | --- | --- | --- | --- | --- |";
 const [CONFIRMED, PLAUSIBLE] = VETTED;
 
 interface Written {
+  readonly id: string;
   readonly title: string;
   readonly owner: string;
   readonly observation: string;
   readonly cause: string;
+  readonly seen: string;
+  readonly decision: string;
 }
 export const ROWS = {
   "REFUSALS BY CHECK": "checks",
@@ -295,7 +300,6 @@ function form(
   names: readonly string[],
   lane: "open" | "alone",
 ): string[] {
-  const several = names.length > 1;
   const open = lane === "open";
   return [
     [
@@ -305,15 +309,13 @@ function form(
       "",
       "## Findings",
       "",
-      "### <one line naming the finding>",
+      "### <kind>: <one line naming the finding>",
       `Observation: <${CONFIRMED} | ${PLAUSIBLE}>, then what the log or the bytes show, cited by event kind, solve id, the first eight characters of a version or digest, check id and count, and last the command, or the file and line, that prints it again; plausible where you read a sample and nothing recounts it`,
       `Cause: <${CONFIRMED} | ${PLAUSIBLE}>, then what you infer, apart from the observation: why the owner let it through, at its file and line in the tree that ran where the owner is code or a prompt, and the count that parts it from the nearest other cause; plausible until that count is read, with what would settle it`,
       "Owner: exactly one owner",
       "Reverses if: the observation that would reverse the finding",
       "Decision: what it changes for the operator; a remedy only beside the count on record that it would have moved",
-      ...(several
-        ? [`${SEEN} ${names.map((name) => `${name} <shows | absent | cannot show>`).join(", ")}`]
-        : []),
+      `${SEEN} ${names.map((name) => `${name} <the log parts that show it, as slice.ts selectors such as comparison.reported{2} or Builder:b-1{4-7} | absent | cannot show>`).join("; ")}`,
       "",
       "## Checked",
       "With a verdict of no finding, which leaves Findings empty: what you checked and found sound, in sentences without the five fields",
@@ -334,7 +336,8 @@ function form(
           "Where a lane's evidence leads past its question, follow it to the code or the text that let it through, and write what you find in that lane's report with the same fields. Where a lane matters less for these campaigns, at the point their logs have reached, than the other lanes your session was given, you may leave it unread: write only the heading and `Verdict: omitted`, then one sentence why (its question does not arise here, the primary's section already settles it, or another of your lanes covers it).",
         ]
       : []),
-    `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 20, 13 October).`,
+    "Each of the six fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 20, 13 October).",
+    "A heading's `<kind>` is one lowercase word naming the defect's class in your own terms (a misreading, a missing right, a leak, a reuse); the collector numbers each kind within the lane and cites the finding as `lane<N>-<kind><k>`. A selector on the `Seen in:` line points at the log part a reader opens to see the finding, so an Oracle handover prints it beside the finding.",
     `An owner is one of: ${owners.map((owner) => `\`${owner}\``).join(", ")}. Name the file beside \`host\` and a prompt owner.`,
     "You read and you report. Write no file but your report, and scratch in a temporary directory of your own, never under the campaign's folder or the checkout. Start no solve, no session, no round and no check run; `wri.ts grade` is the one exception, and only where your lane names it. Reply with the report's path and one line per finding.",
   ];
@@ -537,7 +540,7 @@ export function reportOf(
     };
   }
   const lines = text.split("\n");
-  const written = writtenIn(lines);
+  const written = writtenIn(lines, lane.number);
   const verdictLine =
     lines
       .find((line) => line.startsWith("Verdict:"))
@@ -561,7 +564,7 @@ export function reportOf(
     verdict === "finding" || verdict === "no finding"
       ? predictionsForLane(lane, shared).flatMap(({ id }) => (id in resolved ? [] : [id]))
       : [];
-  const fields = names.length > 1 ? [...FIELDS, SEEN] : FIELDS;
+  const fields = names.length > 1 || lines.some((line) => line.startsWith(SEEN)) ? [...FIELDS, SEEN] : FIELDS;
   const counts = fields.map((field) => lines.filter((line) => line.startsWith(field)).length);
   const [findings = 0] = counts;
   const named = lines.flatMap((line) => (line.startsWith(OWNER) ? [line.slice(OWNER.length)] : []));
@@ -574,7 +577,7 @@ export function reportOf(
         line.startsWith(SEEN) &&
         !line
           .slice(SEEN.length)
-          .split(/[,;]/u)
+          .split(/[,;](?![^{]*\})/u)
           .some((entry) => entry.trim().split(" ")[0] === name),
     ),
   );
@@ -611,22 +614,31 @@ export function reportOf(
   return { lane: lane.number, state, faults, verdict, written, resolved };
 }
 
-function writtenIn(lines: readonly string[]): Written[] {
+function writtenIn(lines: readonly string[], lane: number): Written[] {
   const markOf = (fieldText: string) => {
     const word = firstWord(plain(fieldText));
     return word === CONFIRMED || word === PLAUSIBLE ? word : "unmarked";
   };
   const starts = lines.flatMap((line, at) => (line.startsWith(OBSERVATION) ? [at] : []));
+  const kinds: string[] = [];
   return starts.map((at, index) => {
     const own = lines.slice(at, starts[index + 1]);
     const fieldValue = (field: string) =>
       own.find((line) => line.startsWith(field))?.slice(field.length) ?? "";
-    const heading = lines.slice((starts[index - 1] ?? -1) + 1, at).findLast((line) => line.startsWith(TITLE));
+    const heading =
+      lines.slice((starts[index - 1] ?? -1) + 1, at).findLast((line) => line.startsWith(TITLE)) ?? "";
+    const [, named = "finding", title = heading.slice(TITLE.length)] =
+      /^### ([a-z]+): (.*)$/iu.exec(heading) ?? [];
+    const kind = named.toLowerCase();
+    kinds.push(kind);
     return {
-      title: heading?.slice(TITLE.length).trim() ?? "",
+      id: `lane${String(lane)}-${kind}${String(kinds.filter((one) => one === kind).length)}`,
+      title: title.trim(),
       owner: fieldValue(OWNER).trim(),
       observation: markOf(fieldValue(OBSERVATION)),
       cause: markOf(fieldValue(CAUSE)),
+      seen: fieldValue(SEEN).trim(),
+      decision: fieldValue(DECISION).trim(),
     };
   });
 }
@@ -638,18 +650,19 @@ export function reportIndex(
   shared = "",
 ): string {
   const fired = new Set(campaigns.flatMap(({ overview }) => overview.triggers.map(({ lane }) => lane)));
-  const lanes = reports.flatMap(({ lane, state, verdict, faults, written }) => {
+  const lanes = reports.map(({ lane, state, verdict, faults, written }) => {
     const trigger = fired.has(lane) ? " although its trigger fired" : "";
     const read = verdict === "omitted" ? `omitted${trigger}` : verdict;
     const tail = state === "ok" ? `${read ?? ""}, ${plural(written.length, "finding")}` : faults.join("; ");
-    return [
-      `- lane ${String(lane)}: ${state}${tail === "" ? "" : `, ${tail}`}, at \`${pathOf(lane)}\``,
-      ...written.map(
-        ({ title, owner, observation, cause }, index) =>
-          `  - ${String(lane)}.${String(index + 1)}, observation ${observation}, cause ${cause}, owner ${owner}: ${title}`,
-      ),
-    ];
+    return `- lane ${String(lane)}: ${state}${tail === "" ? "" : `, ${tail}`}, at \`${pathOf(lane)}\``;
   });
+  const found = reports.flatMap(({ written }) =>
+    written.map(({ id, owner, observation, cause, title, seen, decision }) =>
+      [id, owner, observation, cause, title, seen, decision]
+        .map((cell) => cell.replaceAll("|", "/"))
+        .join(" | "),
+    ),
+  );
   const predictions = predictionsOf(shared).map(({ id, lanes: named }) => {
     const resolutionNotes = RESOLUTIONS.flatMap((how) => {
       const by = reports.filter(({ resolved }) => resolved[id] === how).map(({ lane }) => lane);
@@ -660,6 +673,7 @@ export function reportIndex(
   });
   return [
     ...lanes,
+    ...(found.length === 0 ? [] : ["", FINDINGS_HEAD, ...found.map((row) => `| ${row} |`)]),
     ...(predictions.length === 0
       ? []
       : ["", "Each prediction, as the lanes resolved it:", "", ...predictions]),

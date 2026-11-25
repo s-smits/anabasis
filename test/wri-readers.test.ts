@@ -28,6 +28,8 @@ import { continuityRows } from "../tools/wri/continuity.ts";
 import { deliverableRows } from "../tools/wri/deliverables.ts";
 import { READERS } from "../tools/wri/derive.ts";
 import { diagnosticRows } from "../tools/wri/diagnostics.ts";
+import { vettingFaults } from "../tools/wri/findings.ts";
+import { rowsOf } from "../tools/wri/ledger.ts";
 import { epochSpendLines } from "../tools/wri/epoch-spend.ts";
 import { executionRows } from "../tools/wri/execution.ts";
 import { indexOf, TRIGGERS } from "../tools/wri/folds.ts";
@@ -296,17 +298,55 @@ describe("a lane's report, as the synthesis collects it", () => {
     expect(reportOf(lane(number), text, owners, names)).toMatchObject({ state, verdict, faults });
   });
 
-  it("collects no file as missing, and indexes each finding by its id with its marks", () => {
+  it("collects no file as missing, and tables each finding under its kind's number with its marks and pointer", () => {
     expect(reportOf(lane(4), null, owners, one).state).toBe("missing");
+    const seen = "Seen in: buffer-a comparison.reported{1,~1} Builder:b-1{4-7}\n";
     const report = reportOf(
       lane(4),
-      `${head}\nVerdict: finding, two.\n${finding("First")}${finding("Second")}`,
+      `${head}\nVerdict: finding, three.\n${finding("Misreading: First", seen)}${finding("leak: Second", seen)}${finding("misreading: Third | fourth", seen)}`,
       owners,
       one,
     );
+    expect(report.faults).toEqual([]);
     const index = reportIndex([report], (number) => `/r/${String(number)}.md`, []);
-    expect(index).toContain("- lane 4: ok, finding, 2 findings, at `/r/4.md`");
-    expect(index).toContain("  - 4.2, observation confirmed, cause plausible, owner pack/evaluator: Second");
+    expect(index).toContain("- lane 4: ok, finding, 3 findings, at `/r/4.md`");
+    expect(rowsOf(index, "id")).toEqual(
+      [
+        ["lane4-misreading1", "First"],
+        ["lane4-leak1", "Second"],
+        ["lane4-misreading2", "Third / fourth"],
+      ].map(([id = "", title = ""]) => [
+        id,
+        "pack/evaluator",
+        "confirmed",
+        "plausible",
+        title,
+        "buffer-a comparison.reported{1,~1} Builder:b-1{4-7}",
+        "whether a repair is owed",
+      ]),
+    );
+    const untitled = reportOf(lane(4), `${head}\nVerdict: finding, one.\n${finding()}`, owners, one);
+    expect(untitled.written.map(({ id }) => id)).toEqual(["lane4-finding1"]);
+    const vetting = (named: string) =>
+      `| id | finding | lanes | standing | owner | importance | verdict | fate |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| vet-1 | f | ${named} | new | host | I2 | plausible | |`;
+    const unnamed = (named: string) =>
+      vettingFaults(vetting(named), index, []).filter((f) => f.startsWith("no row"));
+    expect(unnamed("lane4-misreading1, lane4-leak1")).toEqual([
+      "no row names the lane findings lane4-misreading2",
+    ]);
+    expect(unnamed("4")).toEqual([]);
+    expect(
+      vettingFaults(
+        vetting("primary"),
+        "- lane 3: ok, finding, 1 finding, at `x`\n  - 3.1, observation confirmed",
+        [],
+      ),
+    ).toEqual(["no row names the lane findings 3.1"]);
+    const counted = "- lane 3: ok, finding, 2 findings, at `x`\n- lane 5: invalid, no Verdict line, at `y`\n";
+    expect(vettingFaults(vetting("primary"), counted, [])).toEqual([
+      "no row names the lane findings 3.1, 3.2",
+    ]);
+    expect(vettingFaults(vetting("3"), counted, [])).toEqual([]);
   });
 
   it("excludes ladder comparisons from scoreRows just like lastReports does", () => {

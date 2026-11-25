@@ -11,7 +11,9 @@
  * through the check runner, whose deadline `--timeout` sets, or on this machine where
  * `ANA_CHECK_HOST` is `here` or no host is listed. `--jobs N` is the most at once (default: every
  * slot the hosts give, or one here). Every place first passes the suites unmutated, or takes no
- * mutants; a place that gives no verdict puts its mutant back for another and takes no more. A run
+ * mutants; a place that gives no verdict puts its mutant back for another and takes no more. Copies
+ * are refreshed from the tree on every run and live at `--clones <prefix>` when given, so passes over
+ * one tree can share them. `--until` stops taking mutants at that time, leaving the rest unrun. A run
  * that outputs no pass, fail, or bail count, or that `--timeout` ends, records `null` rather than a
  * kill: a slow suite can reach the timeout unmutated, and a mutant that hangs fails on the suite's
  * own per-test timeout. `report` tabulates per-file kills across `--old` and the remaining suites (or
@@ -195,6 +197,9 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
     .filter(({ id }) => !done.has(id) && (wanted?.has(id) ?? true));
   const originals = new Map(files.map((file) => [file, readFileSync(join(root, file), "utf8")]));
   const seconds = args.int("timeout") ?? 300;
+  const until = args.value("until");
+  const deadline = until === null ? Number.POSITIVE_INFINITY : Date.parse(until);
+  if (Number.isNaN(deadline)) return args.die(`--until ${String(until)} is not a time`);
   const ran = (count: number) =>
     console.log(`${String(count)} mutants run, ${String(done.size)} held before`);
   if (todo.length === 0) return ran(0);
@@ -228,6 +233,10 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
   const queue = [...todo];
   const take = async (worker: Worker): Promise<boolean> => {
     for (let mutant = queue.shift(); mutant !== undefined; mutant = queue.shift()) {
+      if (Date.now() >= deadline) {
+        queue.unshift(mutant);
+        return true;
+      }
       const killed = await killsOf(worker, mutant);
       if (killed === "elsewhere") {
         queue.push(mutant);
@@ -239,13 +248,15 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
     }
     return true;
   };
-  for (let live = workers.filter(({ place }) => fit.includes(place)); queue.length > 0 && live.length > 0; ) {
+  const open = () => queue.length > 0 && Date.now() < deadline;
+  for (let live = workers.filter(({ place }) => fit.includes(place)); open() && live.length > 0; ) {
     const answers = await Promise.all(live.map(take));
     live = live.filter((_, index) => answers[index] === true);
   }
   ran(todo.length - queue.length);
   if (queue.length > 0) {
-    args.die(`${String(queue.length)} mutants left unrun, since no place gave a verdict; run again`);
+    const why = Date.now() >= deadline ? ` at ${String(until)}` : ", since no place gave a verdict";
+    args.die(`${String(queue.length)} mutants left unrun${why}; run again`);
   }
 }
 
@@ -264,10 +275,11 @@ function workersFor(
   if (places[0]?.remote !== undefined) console.error(`mutants run on ${namedPlaces(places)} at once`);
   const workers = places
     .flatMap((place) => Array.from({ length: place.slots }, () => place))
-    .map((place, index) => ({ place, clone: `${out}.clone-${String(index)}` }));
+    .map((place, index) => ({ place, clone: `${args.value("clones") ?? out}.clone-${String(index)}` }));
   for (const { place, clone } of workers) {
-    const kept = (path: string) => !routed(place) || basename(path) !== "node_modules";
-    if (!existsSync(clone)) cpSync(root, clone, { recursive: true, filter: kept });
+    const local = !routed(place) && !existsSync(join(clone, "node_modules"));
+    const kept = (path: string) => local || basename(path) !== "node_modules";
+    cpSync(root, clone, { recursive: true, force: true, filter: kept });
     for (const [file, text] of originals) writeFileSync(join(clone, file), text);
   }
   return workers;
@@ -322,7 +334,7 @@ function report(args: CommandArgs, results: readonly string[]): void {
 if (import.meta.main) {
   const usage = [
     "usage: mutate.ts list <worktree> <file>...",
-    "       mutate.ts run <worktree> <file>... --out <jsonl> --suites <json> [--jobs N] [--only <ids>] [--stop-at-kill] [--timeout s]",
+    "       mutate.ts run <worktree> <file>... --out <jsonl> --suites <json> [--jobs N] [--only <ids>] [--stop-at-kill] [--timeout s] [--until <time>] [--clones <prefix>]",
     "       mutate.ts report <jsonl>... [--old <suite>] [--survivors]",
   ].join("\n");
   await runCommand(
@@ -338,6 +350,8 @@ if (import.meta.main) {
         timeout: "int",
         old: "text",
         survivors: "flag",
+        until: "text",
+        clones: "text",
       },
       positionals: [2, Number.POSITIVE_INFINITY],
     },

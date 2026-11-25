@@ -2,14 +2,14 @@
  * A measured campaign from a blank project in one command. It names the run
  * `<pack>-fresh-<model>[-<suffix>]-<host>` (`-r<n>` where taken) and the project `<pack>-fresh`,
  * makes a worktree kept for that run alone at `--at` (default `HEAD`), and starts it by `launch`
- * (`manage.ts`). The prompt is `<pack>-prompt.txt` in `ANA_PROMPTS`. `--effort` is four letters of
- * `lmhx`: Builder, Examiner, Referee, solver. Without `--host`, placement picks the machine
- * (`leastOccupied`, `placement.ts`); a peer's own `fresh` is told `--placed` so it does not place
+ * (`manage.ts`). The prompt is `<pack>-prompt.txt` in `ANA_PROMPTS`. `--model` names one model for
+ * every seat or four in order, and `--effort` four letters of `lmhx`: Builder, Examiner, Referee,
+ * solver. Without `--host`, placement picks the machine (`leastOccupied`, `placement.ts`); a peer's own `fresh` is told `--placed` so it does not place
  * the run again over itself alone. Several packs are planned as one (`plan`), and nothing launches
  * while a login it takes is missing from its host. A solve's limits are the campaign's (`LIMITS`,
  * `tools/d2/campaign.ts`) unless flags after `--` name others.
  *
- *   bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800]
+ *   bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>[,<b>,<c>,<d>]] [--effort hhmm] [--login N] [--budget 800]
  *     [--at <commit>] [--as <suffix>] [--host <host> | --placed] [--yes] [-- <more of the campaign command's flags>]
  */
 import { existsSync } from "#src/meta/filesystem.ts";
@@ -65,6 +65,7 @@ const NAMED = {
   gpt: { id: "openai-codex/gpt-6.1-sol", effort: "hhhh" },
 } as const;
 const LEVELS = { l: "low", m: "medium", h: "high", x: "xhigh" } as const;
+const SEATS = ["builder", "examiner", "reviewer", "solver"] as const;
 
 function parsed(own: readonly string[]) {
   return parseArgs({
@@ -85,10 +86,8 @@ function parsed(own: readonly string[]) {
   });
 }
 
-/**
- * `--model`: a named condition, or any model a backend serves as `<provider>/<id>`, at high in
- * every seat and named by its id; refused before a worktree is made where no backend serves it.
- */
+/** A named condition, or any model a backend serves as `<provider>/<id>` at high in every seat and
+ *  named by its id; refused before a worktree is made where no backend serves it. */
 function modelOf(model: string): { id: string; effort: string; label: string } {
   const named = Object.entries(NAMED).find(([one]) => one === model);
   if (named !== undefined) return { ...named[1], label: named[0] };
@@ -99,20 +98,32 @@ function modelOf(model: string): { id: string; effort: string; label: string } {
   return { id: model, effort: "hhhh", label: model.split("/").at(-1) ?? model };
 }
 
-/** The four seats' flags for model `id` at `letters`, one of `lmhx` a seat. */
-export function seats(id: string, letters: string): string[] {
-  const usage = "--effort takes four of lmhx, for the Builder, the Examiner, the Referee and the solver";
+/**
+ * The four seats' flags for `--model` and `--effort`. `model` is one model for every seat, or four
+ * comma-separated in `SEATS` order. Without `effort`, each seat takes its own model's letter for that
+ * seat. The run is named by the solver's model.
+ */
+export function seats(model: string, effort: string | undefined): { label: string; seated: string[] } {
+  const names = model.split(",");
+  if (names.length !== 1 && names.length !== SEATS.length) {
+    throw new Error("--model takes one model, or four comma-separated: Builder, Examiner, Referee, solver");
+  }
+  const models = SEATS.map((_, seat) => modelOf(names[names.length === 1 ? 0 : seat] ?? ""));
+  const letters = effort ?? models.map((one, seat) => one.effort[seat]).join("");
   const level = (letter: string) => Object.entries(LEVELS).find(([one]) => one === letter)?.[1];
   const levels = letters.split("").map(level);
-  if (levels.length !== 4 || levels.includes(undefined)) throw new Error(usage);
-  const [build, examine, review, solve] = levels;
-  const seat = (name: string, at: string | undefined) => [`--${name}`, id, `--${name}-effort`, at ?? ""];
-  return [
-    ...seat("builder", build),
-    ...seat("examiner", examine),
-    ...seat("reviewer", review),
-    ...seat("solver", solve),
-  ];
+  if (levels.length !== SEATS.length || levels.includes(undefined)) {
+    throw new Error("--effort takes four of lmhx, for the Builder, the Examiner, the Referee and the solver");
+  }
+  return {
+    label: models.at(-1)?.label ?? model,
+    seated: SEATS.flatMap((name, seat) => [
+      `--${name}`,
+      models[seat]?.id ?? "",
+      `--${name}-effort`,
+      levels[seat] ?? "",
+    ]),
+  };
 }
 
 export async function fresh(args: readonly string[], read: typeof readLogins = readLogins): Promise<void> {
@@ -129,8 +140,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
     throw new Error("a pack and suffix each take a safe path segment");
   }
   const here = runtimeProcess.cwd();
-  const model = modelOf(values.model);
-  const seated = seats(model.id, values.effort ?? model.effort);
+  const { label, seated } = seats(values.model, values.effort);
   if (positionals.length > 1 && values.host !== undefined) {
     throw new Error("a batch chooses its hosts automatically");
   }
@@ -141,7 +151,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   const commit = publishedAt(here, values.at);
   for (const item of planned) {
     try {
-      await startPlanned(item, { ...values, label: model.label, seated, more, commit });
+      await startPlanned(item, { ...values, label, seated, more, commit });
     } finally {
       runtimeProcess.chdir(here);
     }

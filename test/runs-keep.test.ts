@@ -405,8 +405,8 @@ describe("the login a run goes on with", () => {
   });
 
   it("bills only the effective seats after the campaign's overrides", () => {
-    const preset = seats(OPUS, "hhhh");
-    const overrides = seats("openai-codex/gpt-6.1-sol", "hhhh");
+    const preset = seats(OPUS, "hhhh").seated;
+    const overrides = seats("openai-codex/gpt-6.1-sol", "hhhh").seated;
     expect(billsLogin([], [...preset, ...overrides])).toBe(false);
     expect(billsLogin([], [...overrides, "--prompt", "claude/a domain"])).toBe(false);
     const opening = event("campaign.opened", {
@@ -416,5 +416,41 @@ describe("the login a run goes on with", () => {
       solver: { model: OPUS, effort: "high" },
     });
     expect(billsLogin([opening], overrides)).toBe(false);
+  });
+});
+
+describe("the seats a fresh run names", () => {
+  const NAMES = ["opus", "sonnet", "gpt", "claude/claude-haiku-5-5"];
+  const seatOf = (flags: readonly string[], seat: number) => flags.slice(seat * 4, seat * 4 + 4);
+
+  it("gives each of four models its own seat at its own letter, and one model every seat", () => {
+    const four = NAMES.flatMap((a) =>
+      NAMES.flatMap((b) => NAMES.flatMap((c) => NAMES.map((d) => [a, b, c, d]))),
+    );
+    for (const names of four) {
+      const { label, seated } = seats(names.join(","), undefined);
+      for (const [seat, name] of names.entries()) {
+        expect(seatOf(seated, seat)).toEqual(seatOf(seats(name, undefined).seated, seat));
+      }
+      expect(label).toBe(seats(names.at(-1) ?? "", undefined).label);
+      expect(seats(names.join(","), "lmhx").seated.filter((_, at) => at % 4 === 3)).toEqual([
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+      ]);
+    }
+    for (const name of NAMES) {
+      expect(seats(name, "hmxl")).toEqual(seats([name, name, name, name].join(","), "hmxl"));
+    }
+  });
+
+  it("refuses two, three or five models, and an effort of other than four letters", () => {
+    for (const count of [2, 3, 5]) {
+      expect(() => seats(Array.from({ length: count }, () => "opus").join(","), undefined)).toThrow(
+        "--model takes",
+      );
+    }
+    expect(() => seats("opus", "hhm")).toThrow("--effort takes");
   });
 });

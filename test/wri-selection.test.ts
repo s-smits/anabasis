@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 import { starterReads } from "../src/campaign/climb.ts";
-import { flipP, readsStep } from "../src/kernel/compare.ts";
+import { flipP, isSignificant } from "../src/kernel/compare.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -14,13 +14,13 @@ const NEW = "b".repeat(64);
 const AT = "2026-10-30T00:00:00.000Z";
 const chose = Array.from({ length: 7 }, (_, nth) => `chose-${String(nth)}`);
 
-/** Every sign draw of the untied `free`, each asked of `readsStep` with `fixed` as scored. */
+/** Every sign draw of the untied `free`, each asked of `isSignificant` with `fixed` as scored. */
 function brute(fixed: readonly number[], free: readonly number[], level: number): number {
   const untied = free.filter((one) => one !== 0).map(Math.abs);
   let confirm = 0;
   for (let draw = 0; draw < 2 ** untied.length; draw += 1) {
     const signs = untied.map((size, at) => (Math.floor(draw / 2 ** at) % 2 === 1 ? size : -size));
-    if (readsStep([...fixed, ...signs], level)) confirm += 1;
+    if (isSignificant([...fixed, ...signs], level)) confirm += 1;
   }
   return confirm;
 }
@@ -35,7 +35,7 @@ function margins(count: number, seed: number): number[] {
 }
 
 describe("how many sign draws of the tasks written after read a step", () => {
-  it("agrees with every draw asked of readsStep, at each size brute force reaches", () => {
+  it("agrees with every draw asked of isSignificant, at each size brute force reaches", () => {
     for (let free = 0; free <= 14; free += 1) {
       for (const [seed, level] of [
         [free + 1, 0.02],
@@ -58,7 +58,7 @@ describe("how many sign draws of the tasks written after read a step", () => {
   it("takes the test's threshold over every untied size, not over the fixed tasks' alone", () => {
     // Six fixed wins of 100 read a step alone (1 in 64), but beside one large task lost they do not.
     const fixed = [100, 100, 100, 100, 100, 100];
-    expect(readsStep(fixed, 0.02)).toBe(true);
+    expect(isSignificant(fixed, 0.02)).toBe(true);
     expect(flipP([...fixed, -900])).toBeGreaterThan(0.02);
     expect(stepCount(fixed, [900], 0.02).confirm).toBe(1n);
   });

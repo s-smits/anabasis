@@ -27,7 +27,7 @@ would exceed `--cap`.
 
 ## Room for improvement
 
-`roomOf` (`src/kernel/reports.ts`) classifies the pool as **room** when at least one task is
+`headroomOf` (`src/kernel/reports.ts`) classifies the pool as **room** when at least one task is
 informative for the reference (`informative`), **too-hard** when no valid answer exists on record
 for any task, and **none** otherwise. Because the superior answer may belong to the reference, the
 candidate, or the task author, headroom can arise from either validity or the declared objective.

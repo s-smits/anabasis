@@ -8,7 +8,7 @@ export type Ending =
   | "control"
   | "finished";
 
-export type Decided = (
+export type ScheduledAction = (
   | { readonly move: "draft"; readonly why: string }
   | { readonly move: "accept"; readonly why: string }
   | { readonly move: "prepare"; readonly why: string }
@@ -35,7 +35,7 @@ export type Decided = (
 
 export const short = (digest: string): string => digest.slice(0, 8);
 
-export function decidedLine(decided: Decided): string {
+export function decidedLine(decided: ScheduledAction): string {
   const named = (harness: string) => (harness.length > 16 ? short(harness) : `the ${harness} harness`);
   const what = (): string => {
     switch (decided.move) {

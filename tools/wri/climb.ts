@@ -4,7 +4,14 @@
  */
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { differenceOf, flipP, readsStep, type Paired, pointsOf, wholePoints } from "#src/kernel/compare.ts";
+import {
+  differenceOf,
+  flipP,
+  isSignificant,
+  type Paired,
+  pointsOf,
+  wholePoints,
+} from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { validityOf } from "#tools/d2/close.ts";
@@ -138,13 +145,13 @@ export function safeguardTriggers(log: Index): Trigger[] {
     const level = count(rests[0]?.last.level);
     const reports = rests.map(({ last }) => last);
     const joined = joinedTest(reports);
-    if (rests.length === 0 || !readsStep(joined, level)) return [];
+    if (rests.length === 0 || !isSignificant(joined, level)) return [];
     const harness = `${short(text(data.harness))} ${formatDiff(joined)} joined at level ${String(level)}`;
     const settled = rests.map(({ last, pairs }) => ({ tested: new Set(testedOf(last).of), pairs: pairs() }));
     const valid = measuredOf(settled, (pair) => wholePoints(pointsOf(pair).validity));
     return [{ level, harness, valid, scored: measuredOf(settled, differenceOf) }];
   });
-  const beyond = promotions.filter(({ valid, level }) => !readsStep(valid, level));
+  const beyond = promotions.filter(({ valid, level }) => !isSignificant(valid, level));
   return emitIf(
     beyond.length > 0,
     "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",

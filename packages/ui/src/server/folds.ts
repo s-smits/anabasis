@@ -4,7 +4,7 @@
  * `Log`, and the old one's folds go with it.
  */
 import { epochsOf } from "../../../../src/campaign/climb.ts";
-import { campaignOf } from "../../../../src/campaign/handover.ts";
+import { campaignOf } from "../../../../src/campaign/summary.ts";
 import { openingOf } from "../../../../src/campaign/opening.ts";
 import { conditionsOf } from "../../../../src/kernel/condition.ts";
 import { proposalsOf } from "../../../../src/kernel/history.ts";

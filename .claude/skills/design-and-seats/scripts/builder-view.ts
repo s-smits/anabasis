@@ -5,7 +5,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatComparisonHistory, formatPracticeFailures, formatSessionStart } from "#src/builder/past.ts";
-import { campaignOf } from "#src/campaign/handover.ts";
+import { campaignOf } from "#src/campaign/summary.ts";
 import { short } from "#src/campaign/move.ts";
 import { namesOf } from "#src/campaign/names.ts";
 import { proposalsOf } from "#src/kernel/history.ts";

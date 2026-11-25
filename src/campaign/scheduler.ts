@@ -1,7 +1,7 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
-import { INTERRUPTED, poolOf, roomOf } from "../kernel/reports.ts";
+import { INTERRUPTED, poolOf, headroomOf } from "../kernel/reports.ts";
 import { nonRetryableProvider } from "../kernel/solve.ts";
 import { taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
@@ -9,14 +9,14 @@ import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { comparisonFloor } from "./admission.ts";
 import { epochsOf, tasksByEpoch } from "./climb.ts";
-import { crashedRun, cutShort, groundOf, heldOut, type Plan, sessionEnded } from "./ground.ts";
-import { type Decided, type Ending, short } from "./move.ts";
-import { pendingWords } from "./word.ts";
+import { crashedRun, cutShort, campaignState, heldOut, type Plan, sessionEnded } from "./state.ts";
+import { type ScheduledAction, type Ending, short } from "./move.ts";
+import { pendingSignals } from "./signal.ts";
 
 const PROMOTED = "harness.promoted";
 
-type Ground = ReturnType<typeof groundOf>;
-type Move<Each = Decided> = Each extends unknown ? Omit<Each, "code"> : never;
+type Ground = ReturnType<typeof campaignState>;
+type Move<Each = ScheduledAction> = Each extends unknown ? Omit<Each, "code"> : never;
 type Reading = Ground["reports"][number];
 
 const ROWS: readonly {
@@ -79,8 +79,8 @@ const compare = (why: string, fresh = "latest"): Move => ({
   why,
 });
 
-export function decide(events: readonly LogEvent[], plan: Plan): Decided {
-  const ground = groundOf(events, plan);
+export function nextAction(events: readonly LogEvent[], plan: Plan): ScheduledAction {
+  const ground = campaignState(events, plan);
   for (const row of ROWS) {
     const named = row.move(ground);
     if (named === null) continue;
@@ -90,7 +90,7 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
 }
 
 export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: string): string | null {
-  return readStep(groundOf(events, plan), harness)
+  return readStep(campaignState(events, plan), harness)
     ? null
     : `harness ${short(harness)} has no comparison that read a step against the reference harness`;
 }
@@ -114,7 +114,7 @@ function fruitlessRun({ events, reports, reference }: Ground) {
   const compared = reports.map(({ id, old, report, reported }) => ({
     at: reported,
     id,
-    gain: report.reading !== "not-scored" && (old !== reference || roomOf(report) === "room"),
+    gain: report.reading !== "not-scored" && (old !== reference || headroomOf(report) === "room"),
   }));
   const gatedAt = new Map(
     events.flatMap(({ kind, data }, at) =>
@@ -141,7 +141,7 @@ function attemptsIn(run: ReturnType<typeof fruitlessRun>): number {
 }
 
 export function supplyRun(events: readonly LogEvent[], plan: Plan): number {
-  return attemptsIn(fruitlessRun(groundOf(events, plan)));
+  return attemptsIn(fruitlessRun(campaignState(events, plan)));
 }
 
 function outOfPatience(ground: Ground, wants: "tasks" | "room", why: string): Move | null {
@@ -163,7 +163,7 @@ function examine(ground: Ground, wants: "tasks" | "room", why: string): Move {
 }
 
 function stop({ events, plan }: Ground): Move | null {
-  const words = pendingWords(events);
+  const words = pendingSignals(events);
   const stopped = words.find(({ word }) => word === "stop");
   if (stopped === undefined) {
     const promoted = events.filter(({ kind }) => kind === PROMOTED).length;
@@ -292,7 +292,7 @@ function tasks(ground: Ground): Move | null {
   if (supply.released === 0 && supply.held >= 2 && plan.practice !== 0) {
     return { move: "prepare", why: "no task is released for practice: the contract's draw releases some" };
   }
-  const asked = pendingWords(events).find(({ word }) => word === "tasks");
+  const asked = pendingSignals(events).find(({ word }) => word === "tasks");
   if (asked !== undefined && pendingPromotion(ground) === null) {
     return {
       move: "examine",
@@ -314,7 +314,7 @@ function tasks(ground: Ground): Move | null {
 }
 
 export function tasksToAskFor(events: readonly LogEvent[], plan: Plan): number {
-  const count = shortBy(groundOf(events, plan));
+  const count = shortBy(campaignState(events, plan));
   return count === 0 ? 0 : Math.max(count, sweepOf(plan.wanted.level) + (plan.practice ?? 0));
 }
 
@@ -395,7 +395,7 @@ function noRoom(ground: Ground): Move | null {
   const last = reports.findLast(({ old, fresh }) => old === reference || fresh === reference);
   if (last === undefined || enoughWrittenSince(ground, last)) return null;
   const side = last.old === reference ? "old" : "fresh";
-  const room = roomOf(last.report, side);
+  const room = headroomOf(last.report, side);
   if (room === "room") {
     const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
     if (promotedAt === -1 || events[promotedAt]?.kind === "harness.reverted") return null;
@@ -450,7 +450,7 @@ function uncomparedTasks(ground: Ground): Move | null {
     none: "left no evaluation headroom",
     "too-hard": "produced no valid answers on either arm",
     room: null,
-  }[roomOf(read.report)];
+  }[headroomOf(read.report)];
   return whatItLeft === null ? null : compare(`comparison ${read.id} ${whatItLeft}, ${later}`);
 }
 

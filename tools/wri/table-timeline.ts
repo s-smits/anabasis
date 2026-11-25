@@ -6,8 +6,8 @@
  *
  *   bun tools/wri/table-timeline.ts <log>
  */
-import { type Decided, short } from "#src/campaign/move.ts";
-import { decide } from "#src/campaign/decide.ts";
+import { type ScheduledAction, short } from "#src/campaign/move.ts";
+import { nextAction } from "#src/campaign/scheduler.ts";
 import { type EventKind, eventsOf, type LogEvent, TRACE_KINDS } from "#src/kernel/log.ts";
 import type { Call } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
@@ -20,7 +20,7 @@ import { printRows } from "./folds.ts";
 import { openAt } from "./launches.ts";
 
 interface Table {
-  readonly decided: Decided;
+  readonly decided: ScheduledAction;
   readonly key: string;
 }
 
@@ -56,7 +56,7 @@ const REPO = resolve(import.meta.dir, "../..");
 
 const named = (harness: string) => (harness.length > 16 ? short(harness) : harness);
 
-function keyOf(decided: Decided): string {
+function keyOf(decided: ScheduledAction): string {
   const head = `${decided.move}/${decided.code}`;
   if (decided.move === "compare") {
     return `${head} ${named(decided.fresh)} against ${named(decided.reference)}`;
@@ -112,7 +112,7 @@ function compactReplay(events: readonly LogEvent[]) {
       const { cut, prefix } = prefixAt(upTo);
       const known = tables.get(cut);
       if (known !== undefined) return known;
-      const decided = decide(prefix, planOn(prefix));
+      const decided = nextAction(prefix, planOn(prefix));
       const table = { decided, key: keyOf(decided) };
       tables.set(cut, table);
       return table;

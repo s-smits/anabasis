@@ -1,18 +1,18 @@
 /**
  * `bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]`: a
  * campaign's setup, sessions, comparisons, climb summary, and the next action the decision table
- * selects (`decide`, `src/campaign/decide.ts`). Terms fall back from flags to `campaign.opened`
+ * selects (`decide`, `src/campaign/scheduler.ts`). Terms fall back from flags to `campaign.opened`
  * (`src/campaign/opening.ts`) to defaults, so it matches `tools/d2/harness-builder.ts` on the same
  * log.
  */
 import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
-import { decide } from "#src/campaign/decide.ts";
+import { nextAction } from "#src/campaign/scheduler.ts";
 import { comparisonFloor, refusals, supplyOf } from "#src/campaign/admission.ts";
-import { askedOf, type Plan } from "#src/campaign/ground.ts";
-import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
+import { askedOf, type Plan } from "#src/campaign/state.ts";
+import { type ScheduledAction, decidedLine, short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
-import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/handover.ts";
+import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/summary.ts";
 import { type EventKind, eventsOf, type LogEvent, read as readEvents } from "#src/kernel/log.ts";
 import { type Call, traced } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
@@ -24,7 +24,7 @@ import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
 import { Misused, processes } from "./registry.ts";
 import { readAcross } from "./snapshots.ts";
-import { dollars } from "./said.ts";
+import { dollars } from "./summary.ts";
 import { lastLaunch } from "./receipt.ts";
 import { lifeOf } from "./diagnosis.ts";
 import { runReason, runState } from "./state.ts";
@@ -134,8 +134,8 @@ export function viewLines(name: string, campaign: Campaign, now: number, called:
  * The decision table on `events` under flag overrides, recorded opening terms and defaults; shared
  * with the UI server (`packages/ui/src/server/reading.ts`).
  */
-export function decidedOn(events: readonly LogEvent[], values: ViewFlags = {}): Decided {
-  return decide(events, planOn(events, values));
+export function decidedOn(events: readonly LogEvent[], values: ViewFlags = {}): ScheduledAction {
+  return nextAction(events, planOn(events, values));
 }
 
 export function planOn(events: readonly LogEvent[], values: ViewFlags = {}): Plan {

@@ -9,8 +9,8 @@
  * comparison has not reported (`Rulings`). Every answer carries its tier and its issues.
  */
 import type { Supply } from "../../../src/campaign/admission.ts";
-import type { Handover } from "../../../src/campaign/handover.ts";
-import type { Decided, Ending as CampaignEnding } from "../../../src/campaign/move.ts";
+import type { Handover } from "../../../src/campaign/summary.ts";
+import type { ScheduledAction, Ending as CampaignEnding } from "../../../src/campaign/move.ts";
 import type { Seat, Terms } from "../../../src/campaign/opening.ts";
 import type { Measures, Tally } from "../../../src/kernel/compare.ts";
 import type { EventKind } from "../../../src/kernel/log.ts";
@@ -238,7 +238,7 @@ export interface Counters {
 
 /** The table's next move (`decide`) and its line (`decidedLine`). The default tier gets a stand-in
  *  for an environment ending's reason, and the line is built from that. */
-export type NextMove = Decided & { readonly line: string };
+export type NextMove = ScheduledAction & { readonly line: string };
 
 export interface CampaignReading extends Answer {
   readonly row: CampaignRow;
@@ -345,7 +345,7 @@ export interface Sensitivity {
     readonly detectable: number | null;
     readonly falseRate: number;
   } | null;
-  /** The tallied tasks informative for each harness, which room is read by (`roomOf`); null in a
+  /** The tallied tasks informative for each harness, which room is read by (`headroomOf`); null in a
    *  report written by an older host. */
   readonly informative: { readonly old: number; readonly fresh: number } | null;
   readonly unsolved: number;

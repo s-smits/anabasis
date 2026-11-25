@@ -3,7 +3,7 @@
  * from and the operator's words, the Builder's conversation across compactions, the drafted exam,
  * the launches, whether the log reads in order, and the Referee's refused evidence.
  */
-import { ANSWERED, PAUSE, pendingWords } from "#src/campaign/word.ts";
+import { ANSWERED, PAUSE, pendingSignals } from "#src/campaign/signal.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -12,7 +12,7 @@ import type { Receipt } from "../runs/receipt.ts";
 import { fired, emitIf, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
 /** Endings the campaign went on from, and the operator's words with how many an event acted on,
- *  read as the host reads them (`pendingWords`). */
+ *  read as the host reads them (`pendingSignals`). */
 function moveTriggers(log: Index): Trigger[] {
   const last = log.events.length - 1;
   const endings = log.events.flatMap(({ kind, data }, index) =>
@@ -28,7 +28,7 @@ function moveTriggers(log: Index): Trigger[] {
     ...emitIf(
       words.length > 0,
       "OPERATOR WORDS",
-      `${tally(countBy(words, said))}; of the words a move answers, ${share(owed - pendingWords(log.events).length, owed)} acted on`,
+      `${tally(countBy(words, said))}; of the words a move answers, ${share(owed - pendingSignals(log.events).length, owed)} acted on`,
     ),
   ];
 }

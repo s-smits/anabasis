@@ -5,17 +5,17 @@
 import { Type } from "typebox";
 import { type AgentTool, textsOf } from "#src/agent/session.ts";
 import { comparisonFloor, Refused, stopRule } from "#src/campaign/admission.ts";
-import { CRASHES_IN_A_ROW, decide, practiceDue, supplyRun } from "#src/campaign/decide.ts";
-import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
-import { campaignOf } from "#src/campaign/handover.ts";
-import { type Decided, short } from "#src/campaign/move.ts";
+import { CRASHES_IN_A_ROW, nextAction, practiceDue, supplyRun } from "#src/campaign/scheduler.ts";
+import { comparisonsOf, crashedRun } from "#src/campaign/state.ts";
+import { campaignOf } from "#src/campaign/summary.ts";
+import { type ScheduledAction, short } from "#src/campaign/move.ts";
 import type { Opening } from "#src/campaign/opening.ts";
 import { frontierOverlap, OVERLAP_LIMIT } from "#src/campaign/round.ts";
 import { formatComparisonHistory } from "#src/builder/past.ts";
 import { seedSavedHarnesses, snapshot } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
-import { pendingWords } from "#src/campaign/word.ts";
+import { pendingSignals } from "#src/campaign/signal.ts";
 import { conversing, type Examined, examine } from "#src/examiner/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, CALL_KINDS, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
@@ -57,13 +57,13 @@ import { type Campaign, type Seated, solved } from "./round.ts";
 
 type ActionMove = "examine" | "compare";
 
-type Compare = Extract<Decided, { move: "compare" }>;
+type Compare = Extract<ScheduledAction, { move: "compare" }>;
 
 type Outcome = { readonly said: string } | { readonly refused: string };
 
 type ActionRun = (
   turn: Turn,
-  decided: Decided,
+  decided: ScheduledAction,
   begin: (named: JsonObject) => void,
   signal: AbortSignal | undefined,
   unlock: () => void,
@@ -125,12 +125,12 @@ async function refreshCampaign(context: CampaignContext, bench: Bench): Promise<
 
 function actionTurn(context: CampaignContext) {
   let turn = turnOf(context);
-  const words = pendingWords(turn.events).filter(({ word }) => word === "budget");
+  const words = pendingSignals(turn.events).filter(({ word }) => word === "budget");
   if (words.length > 0) {
     context.opening = opened(context.log, context.values, context.paid, words);
     turn = turnOf(context);
   }
-  return { turn, decided: decide(turn.events, turn.plan) };
+  return { turn, decided: nextAction(turn.events, turn.plan) };
 }
 
 /**
@@ -212,7 +212,7 @@ async function runAction(
     if (decided.move === "end") {
       return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
     }
-    if (move !== "examine" && pendingWords(turn.events).some(({ word }) => word === "tasks")) {
+    if (move !== "examine" && pendingSignals(turn.events).some(({ word }) => word === "tasks")) {
       return text("Other tasks are to be written before another action: examine does that.");
     }
     const named = decided.move === move;
@@ -338,7 +338,7 @@ async function comparedOf(
   context: CampaignContext,
   bench: Bench,
   { events, plan }: Turn,
-  decided: Decided,
+  decided: ScheduledAction,
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
   const latest = latestBuilt(events);
   if (decided.move === "compare" && decided.id !== undefined) return { move: decided, note: "" };

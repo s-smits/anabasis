@@ -4,7 +4,7 @@
  *
  *   bun tools/d2/promote.ts --name buffer --harness latest [--yes] [--despite "<why>"]
  */
-import { unpromoted } from "#src/campaign/decide.ts";
+import { unpromoted } from "#src/campaign/scheduler.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { comparedAs, promoted } from "#src/kernel/reports.ts";

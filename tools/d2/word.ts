@@ -1,6 +1,6 @@
 /**
  * A word the operator leaves for a running campaign: one `campaign.word` event the campaign reads
- * at the next move's boundary (`pendingWords`, `src/campaign/word.ts`), never waited for. `--stop
+ * at the next move's boundary (`pendingSignals`, `src/campaign/signal.ts`), never waited for. `--stop
  * "<why>"` ends it (ending `operator`; run again, it goes on from the log), `--tasks "<why>"` has
  * an Examiner write tasks before anything else is built or compared, and `--budget <dollars>` sets
  * the total from there on. No seat reads a word or its reason. This command and the campaign both
@@ -11,7 +11,7 @@
  *   bun tools/d2/word.ts --name buffer --budget 250
  */
 import { openingOf } from "#src/campaign/opening.ts";
-import { ANSWERED, type Answered } from "#src/campaign/word.ts";
+import { ANSWERED, type Answered } from "#src/campaign/signal.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";

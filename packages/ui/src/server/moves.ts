@@ -2,7 +2,7 @@
  * Campaign moves (`campaignOf` steps with log places, times and withheld-aware rulings) and the
  * comparison chart's bars (`ComparisonBar`).
  */
-import { nextBound } from "../../../../src/campaign/handover.ts";
+import { nextBound } from "../../../../src/campaign/summary.ts";
 import { fixedIn, type Report, reported } from "../../../../src/campaign/comparison.ts";
 import {
   carriedBy,

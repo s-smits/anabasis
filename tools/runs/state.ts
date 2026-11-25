@@ -2,7 +2,7 @@
  * Where a run stands, one fold that pulse, alerts, the keeper and view share: a process writing its
  * log outranks the log, and with none a keeper outranks the environment's ending and no other.
  */
-import { pauseSince } from "#src/campaign/word.ts";
+import { pauseSince } from "#src/campaign/signal.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";

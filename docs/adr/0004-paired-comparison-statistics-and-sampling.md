@@ -24,7 +24,7 @@ Promotion decisions rest on paired comparisons of a candidate harness against th
    - One retained task (exhausted or from prior epochs) is drawn per three frontier tasks using a comparison-rotated deterministic seed (`draw`), scored jointly with the frontier to catch regressions while reported separately (`UNMEASURED` when empty rather than zero regressions).
    - `frontierOverlap` caps projected overlap at `OVERLAP_LIMIT = 0.8` between consecutive `no-step` candidate comparisons on the same reference, reading pre-registered starts alone so candidate outcomes never cross the wall.
 
-4. **First-starter-comparison confirmation and underpowered-lead revert guard (`src/campaign/climb.ts`, `againstStarter`; `src/campaign/decide.ts`, `unconfirmedRevert`)**
+4. **First-starter-comparison confirmation and underpowered-lead revert guard (`src/campaign/climb.ts`, `againstStarter`; `src/campaign/scheduler.ts`, `unconfirmedRevert`)**
    - A promotion is confirmed only by the epoch's first starter comparison that tallies at least one task, preventing later draws from overwriting a failed confirmation. Scores are negated to orient them from the reference's perspective, and `starterReads` separates `written after` and `unchosen` tasks from winner's-curse-selected tasks.
    - `unconfirmedRevert` reverts a reference that fails its first scored starter read unless it led (`wins > losses`) in an underpowered comparison (`starter_able === false`) that could not clear its significance level even at 100% wins. All-tied and losing underpowered reads still revert.
 

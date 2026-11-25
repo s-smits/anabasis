@@ -6,7 +6,7 @@
  * [--tree <worktree>]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import type { Plan } from "#src/campaign/ground.ts";
+import type { Plan } from "#src/campaign/state.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -28,7 +28,7 @@ interface Readers {
   readonly size: typeof import("#src/kernel/size.ts");
   readonly condition: typeof import("#src/kernel/condition.ts");
   readonly record: typeof import("#src/examiner/record.ts");
-  readonly decide: typeof import("#src/campaign/decide.ts");
+  readonly decide: typeof import("#src/campaign/scheduler.ts");
   readonly move: typeof import("#src/campaign/move.ts");
   readonly comparison: typeof import("#src/campaign/comparison.ts");
 }
@@ -283,7 +283,7 @@ const decision: Scenario = ({ readers, log, table }) => {
   built.release("p1");
   const rows: string[][] = [];
   const next = (after: string) => {
-    const decided = readers.decide.decide(built.events, PLAN);
+    const decided = readers.decide.nextAction(built.events, PLAN);
     rows.push([after, decided.code, readers.move.decidedLine(decided)]);
   };
   built.compare("b-1", { old: "h1", fresh: "h2" }, ten("FP/FP"));
@@ -311,7 +311,7 @@ async function main(args: CommandArgs): Promise<number> {
     size: (await import(join(tree, "src/kernel/size.ts"))) as Readers["size"],
     condition: (await import(join(tree, "src/kernel/condition.ts"))) as Readers["condition"],
     record: (await import(join(tree, "src/examiner/record.ts"))) as Readers["record"],
-    decide: (await import(join(tree, "src/campaign/decide.ts"))) as Readers["decide"],
+    decide: (await import(join(tree, "src/campaign/scheduler.ts"))) as Readers["decide"],
     move: (await import(join(tree, "src/campaign/move.ts"))) as Readers["move"],
     comparison: (await import(join(tree, "src/campaign/comparison.ts"))) as Readers["comparison"],
   };

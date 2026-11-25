@@ -38,7 +38,11 @@ export interface Tree {
   ) => Paired[];
   points: (pair: Paired) => Points;
   flipP: (differences: readonly number[]) => number;
-  readsStep: (differences: readonly number[], unbilled: readonly number[] | null, level: number) => boolean;
+  isSignificant: (
+    differences: readonly number[],
+    unbilled: readonly number[] | null,
+    level: number,
+  ) => boolean;
   billedBetween: (events: readonly LogEvent[], from: number, to: number) => number;
 }
 
@@ -73,11 +77,11 @@ export async function loadTree(path: string): Promise<Tree> {
     pairsOf: (events, versions, sides, solves) => compare.pairsOf(events, versions, sides, solves).pairs,
     points: (pair) => ({ bill: 0, ...compare.pointsOf(pair) }),
     flipP: (differences) => compare.flipP(differences),
-    // The tree's own rule: `stepOf` where it exports one, else `readsStep` on the scores. A rule
+    // The tree's own rule: `stepOf` where it exports one, else `isSignificant` on the scores. A rule
     // that needs scores without the bill where none can be read refuses them, and reads no step.
-    readsStep: (differences, unbilled, level) => {
+    isSignificant: (differences, unbilled, level) => {
       const stepOf: unknown = Reflect.get(compare, "stepOf");
-      if (!isFunction(stepOf)) return compare.readsStep(differences, level);
+      if (!isFunction(stepOf)) return compare.isSignificant(differences, level);
       try {
         const frontier = unbilled === null ? { differences } : { differences, unbilled };
         return Reflect.apply(stepOf, undefined, [{ frontier, retained: UNMEASURED }, level]) === "step";

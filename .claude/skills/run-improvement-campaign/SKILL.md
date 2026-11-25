@@ -140,11 +140,11 @@ On stalls (spend without milestone progress; exclude rule-15 limit waits), walk 
 | --- | --- | --- | --- | --- |
 | 1 | supply | 3 | `tasks`/`short` rows, refused drafts (`< comparisonFloor`) | `src/examiner/prompt.ts`, `heard` (`record.ts`), `propose_tasks` (`write.ts`), `supplyRun`/`tasksToAskFor` (`decide.ts`), `comparisonFloor` (`admission.ts`) |
 | 2 | instrument | 4 | `exam` ending, checker faults, tasks set aside, audit ceremony | `planOf` (`opening.ts`), `readChecker` (`acceptance.ts`), `reviewDraft` (`src/audit/draft-audit.ts`), check author |
-| 3 | room | 1 | `no-room`, zero `valid.informative.old` | Link 1; `roomOf` (`reports.ts`) |
+| 3 | room | 1 | `no-room`, zero `valid.informative.old` | Link 1; `headroomOf` (`reports.ts`) |
 | 4 | session | 1 | Unchanged `build.finished`, idle sessions, practice all passing | `src/builder/prompt.ts`, `tools/d2/campaign-actions.ts`, `idleOf` (`campaign-terms.ts`) |
 | 5 | size | 2 | Excess ties, near miss, high `scored.detectable` | `--target` for next run; link 1 |
 | 6 | host | 2 | `HOST LOADED`, `LOAD MOVED`, long `campaign.waited` | Concurrent campaigns/host |
-| 7 | promotion | 2 | `no-step` near alpha, retained loss, A/A step | Links 1 & 5; `readsStep` (`compare.ts`) |
+| 7 | promotion | 2 | `no-step` near alpha, retained loss, A/A step | Links 1 & 5; `isSignificant` (`compare.ts`) |
 | 8 | next epoch | 1 | Refused drafts, thin frontier after promotion | `make` (`harness-builder.ts`), `ROWS` (`decide.ts`) |
 
 ## Event hooks and timers

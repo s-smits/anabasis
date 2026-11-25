@@ -409,12 +409,12 @@ tools/runs/registry.ts	13
 tools/runs/rehearse.ts	11
 tools/runs/replay.ts	2
 tools/runs/retire.ts	22
-tools/runs/said.ts	13
 tools/runs/search.ts	8
 tools/runs/seed.ts	17
 tools/runs/snapshots.ts	10
 tools/runs/state.ts	8
 tools/runs/stop.ts	9
+tools/runs/summary.ts	13
 tools/runs/sync.ts	22
 tools/runs/usage-model.ts	4
 tools/runs/view.ts	9

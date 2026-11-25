@@ -9,7 +9,7 @@
  * parts.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { type Handover, campaignOf } from "#src/campaign/handover.ts";
+import { type Handover, campaignOf } from "#src/campaign/summary.ts";
 import { short } from "#src/campaign/move.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";

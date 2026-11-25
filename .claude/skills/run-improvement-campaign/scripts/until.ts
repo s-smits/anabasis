@@ -11,7 +11,7 @@ import { type EventKind, isKind, type LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { logEvents } from "#tools/runs/registry.ts";
-import { PROMOTED, REPORTED, TRIGGER_AT } from "#tools/runs/said.ts";
+import { PROMOTED, REPORTED, TRIGGER_AT } from "#tools/runs/summary.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 interface BoundSpec {

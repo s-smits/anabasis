@@ -7,7 +7,7 @@ Expands `AGENTS.md` §6 (recorded terms, practice release, refusals, defaults). 
 
 ## Practice release
 
-Triggered after comparisons/promotions (`practiceDue`, `src/campaign/decide.ts`) and executed by host (`releasePendingPractice`, `tools/d2/campaign-actions.ts`) on task admission, Examiner finish, Builder opening with fresh admissions, and non-promoting readings (releasing 1 task if none were newly admitted). Never releases while a comparison is unreported; excludes tasks doubted by a reference rejection (`practicePool`, `poolOf`). Priority order (`releaseOrder`, `src/kernel/reports.ts`):
+Triggered after comparisons/promotions (`practiceDue`, `src/campaign/scheduler.ts`) and executed by host (`releasePendingPractice`, `tools/d2/campaign-actions.ts`) on task admission, Examiner finish, Builder opening with fresh admissions, and non-promoting readings (releasing 1 task if none were newly admitted). Never releases while a comparison is unreported; excludes tasks doubted by a reference rejection (`practicePool`, `poolOf`). Priority order (`releaseOrder`, `src/kernel/reports.ts`):
 1. Tasks the reference failed across two comparisons;
 2. Half (rounded down, counting already released) of tasks leaving headroom on the reference's last reading;
 3. Remaining tasks in deterministic hash order (passing tasks still expose the objective).
@@ -20,8 +20,8 @@ Inspects reference solves only, so candidate wins never influence practice selec
 
 ## Defaults & Examiner finish
 
-- `--target`/`--solves`: `SIZE` (`src/kernel/size.ts`); `GAP_FLOOR` is shared across tally, admission, frontier and `roomOf`; `--defects` applies to manual comparisons only.
+- `--target`/`--solves`: `SIZE` (`src/kernel/size.ts`); `GAP_FLOOR` is shared across tally, admission, frontier and `headroomOf`; `--defects` applies to manual comparisons only.
 - `--reserve`: sits above observed single-solve bills (gates launch; never interrupts running solves; inspect with `scripts/bills.ts` before changing).
 - Selectors default to `--parent latest`, `--reference promoted`.
 - Builder gets 24 `--practice-solves` (trimmed by remaining budget via `practiceLeft`, `src/builder/tools.ts`). Examiner gets 240 min, 200 turns, 36 proposals (`tools/d1b/examine.ts`).
-- Examiner ends on meeting `tasksToAskFor` (`src/campaign/decide.ts`: practice + floor before comparison 1, comparison target thereafter, ≥1 sweep), calling `finish` twice without a proposal, or hitting proposal cap. Early `finish` declines without stating a numeric count. The first two endings suspend the session for the next wake.
+- Examiner ends on meeting `tasksToAskFor` (`src/campaign/scheduler.ts`: practice + floor before comparison 1, comparison target thereafter, ≥1 sweep), calling `finish` twice without a proposal, or hitting proposal cap. Early `finish` declines without stating a numeric count. The first two endings suspend the session for the next wake.

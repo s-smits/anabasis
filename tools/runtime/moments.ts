@@ -107,7 +107,7 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "measurement",
-    path: /(^|\/)src\/kernel\/(compare|reports|size|solve)\.ts$|(^|\/)src\/campaign\/(comparison|round|decide|admission|climb|ground)\.ts$/u,
+    path: /(^|\/)src\/kernel\/(compare|reports|size|solve)\.ts$|(^|\/)src\/campaign\/(comparison|round|scheduler|admission|climb|state)\.ts$/u,
     said: "Evaluation (AGENTS.md §7; rules 1, 4, 5, 12): pre-register terms, solve both arms afresh, keep one owner per decision. Verify reader changes with `bun run runs replay` and replay decision-rule changes over `data/runs/` before editing (`size.ts`, `reading.ts`, `draw.ts`, `starter-reads.ts`).",
     skill: "comparison-reading",
     also: [

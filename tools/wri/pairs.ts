@@ -18,7 +18,7 @@ import {
   testOf,
   unsolved,
 } from "#src/kernel/compare.ts";
-import { campaignOf } from "#src/campaign/handover.ts";
+import { campaignOf } from "#src/campaign/summary.ts";
 import { OPENING, proposalsOf } from "#src/kernel/history.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, poolOf, type Reported } from "#src/kernel/reports.ts";

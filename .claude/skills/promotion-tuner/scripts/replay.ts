@@ -12,7 +12,7 @@ import { short } from "#src/campaign/move.ts";
 import {
   carriedBy as carriedOn,
   type Paired,
-  readsStep,
+  isSignificant,
   upperBound,
   wholePoints,
 } from "#src/kernel/compare.ts";
@@ -56,7 +56,7 @@ A panel of mechanisms beside the tree's own, in place of the replay, with any of
 --try        a mechanism as knobs over today's, as bill=0.05,when=tied (repeatable; see mechanisms.ts);
              standard: a set of the bill's, time's and the score's forms
 --mechanism  a file whose default export is a Mechanism or a list of them (repeatable)
---against    a candidate worktree, read by its own pointsOf and readsStep, or stepOf where it has one (repeatable)
+--against    a candidate worktree, read by its own pointsOf and isSignificant, or stepOf where it has one (repeatable)
 --from       campaigns opened at or after this release tag or date; ${FROM} by default
 --record     keep the reduced record in this file (under data/derived/: it holds exam-side measures), and
              read it from there next time
@@ -270,8 +270,8 @@ function aaOf(tree: Tree, events: readonly LogEvent[], report: Reported, level: 
   const [differences, unbilled] = [scores.map((one) => one.scored), scores.map((one) => one.unbilled)];
   return {
     differences,
-    powered: tree.readsStep(differences.map(Math.abs), unbilled.map(Math.abs), level),
-    step: tree.readsStep(differences, unbilled, level),
+    powered: tree.isSignificant(differences.map(Math.abs), unbilled.map(Math.abs), level),
+    step: tree.isSignificant(differences, unbilled, level),
   };
 }
 
@@ -286,7 +286,7 @@ function readingsOf(tree: Tree, events: readonly LogEvent[], totals: Totals): Re
     const unbilled = sets.every((set) => set.unbilled !== null)
       ? sets.flatMap((set) => set.unbilled ?? [])
       : null;
-    const step = tree.readsStep(differences, unbilled, level);
+    const step = tree.isSignificant(differences, unbilled, level);
     const weighted = weightedIn(points);
     const aa = aaOf(tree, events, report, level);
     const starter = readsStarter(events, report);
@@ -301,7 +301,7 @@ function readingsOf(tree: Tree, events: readonly LogEvent[], totals: Totals): Re
       totals.toStep += step ? 1 : 0;
       totals.fromStep += step ? 0 : 1;
       const stored = sets.flatMap((set) => set.stored);
-      totals.byTest += tree.readsStep(stored, null, level) === step ? 1 : 0;
+      totals.byTest += tree.isSignificant(stored, null, level) === step ? 1 : 0;
     }
     const wonBy = { validity: 0, objective: 0, bill: 0 };
     for (const one of sets.flatMap((set) => set.points)) {
@@ -484,12 +484,12 @@ function treeMechanism(tree: Tree, name: string): Mechanism {
       const { validity, objective, bill } = tree.points(paired(task));
       return wholePoints(validity + objective + bill);
     },
-    test: (scores, level, tasks) => tree.readsStep(scores, tasks.map(answers), level),
+    test: (scores, level, tasks) => tree.isSignificant(scores, tasks.map(answers), level),
   };
 }
 
 function readOf(mechanism: Mechanism, tasks: readonly Task[], level: number): Read {
-  const test = mechanism.test ?? readsStep;
+  const test = mechanism.test ?? isSignificant;
   const scores = tasks.map(mechanism.score);
   return {
     scores,
@@ -585,7 +585,7 @@ function panelOf(mechanism: Mechanism, base: Mechanism, comparisons: readonly Co
   const added = candidates.filter((one) => steps.has(one) && !baseSteps.has(one));
   const reads = controls.map(({ aa, level }) => ({ read: readOf(mechanism, aa, level), aa, level }));
   const powered = ({ read, aa, level }: (typeof reads)[number]) =>
-    (mechanism.test ?? readsStep)(
+    (mechanism.test ?? isSignificant)(
       read.scores.map(Math.abs),
       level,
       aa.map((task, at) => ((read.scores[at] ?? 0) < 0 ? swapped(task) : task)),

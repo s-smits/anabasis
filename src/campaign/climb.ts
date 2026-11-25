@@ -4,8 +4,8 @@ import {
   type Paired,
   pointsOf,
   upperBound,
-  readsStep,
-  readsStepEitherWay,
+  isSignificant,
+  isSignificantTwoSided,
   scoresIn,
   type Tally,
   testedSet,
@@ -204,8 +204,8 @@ function againstStarter(
   return {
     starter_tally: { wins, losses, ties },
     starter_read: first.session,
-    confirmed: readsStep(ahead, level),
-    starter_able: readsStep(ahead.map(Math.abs), level),
+    confirmed: isSignificant(ahead, level),
+    starter_able: isSignificant(ahead.map(Math.abs), level),
   };
 }
 
@@ -218,7 +218,7 @@ function measureSliceOf(data: JsonObject, noise?: JsonObject): "validity" | "obj
 }
 
 function controlOf(index: number, level: number, scores: readonly number[], slice: "validity" | "objective") {
-  const able = readsStep(scores.map(Math.abs), level);
+  const able = isSignificant(scores.map(Math.abs), level);
   const tied = scores.length > 0 && scores.every((one) => one === 0);
   return {
     index,
@@ -227,8 +227,8 @@ function controlOf(index: number, level: number, scores: readonly number[], slic
     slice,
     able,
     tied,
-    step: readsStep(scores, level),
-    either: readsStepEitherWay(scores, level),
+    step: isSignificant(scores, level),
+    either: isSignificantTwoSided(scores, level),
   };
 }
 
@@ -328,9 +328,9 @@ function tasksChosenBefore(
 
 export function unselectedOf(ahead: readonly number[], level: number): Unselected {
   const behind = ahead.map((one) => -one);
-  if (readsStep(ahead, level)) return "a step";
-  if (readsStep(behind, level)) return "a step for the starter";
-  return readsStep(ahead.map(Math.abs), level) ? "no step" : "too few";
+  if (isSignificant(ahead, level)) return "a step";
+  if (isSignificant(behind, level)) return "a step for the starter";
+  return isSignificant(ahead.map(Math.abs), level) ? "no step" : "too few";
 }
 
 export function starterReads(events: readonly LogEvent[]): StarterRead[] {

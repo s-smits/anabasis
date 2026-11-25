@@ -13,7 +13,7 @@ Anabasis separates the exam side (held-out tasks, hidden values, check source, R
 1. **Coarse gain bands for practice objective feedback (`src/builder/tools.ts`, `bandOf`, `BAND_EDGES`)**
    Valid practice answers are reported to the Builder only as coarse relative-gain bands against the author's recorded answer (`GAP_FLOOR`, 10%, 50%, 90%), never as raw objective values. A numeric objective can depend on hidden task values; four significant digits across several practice solves provide ~13 bits per answer and permit solving for hidden parameters directly. Coarse bands reduce leakage to ~3 bits while still showing whether an edit closed on the author's answer. Full numeric precision remains in `log.jsonl`.
 
-2. **Reference-only practice pools and feasibility (`src/kernel/reports.ts`, `poolOf`, `releaseOrder`; `src/campaign/decide.ts`, `practiceDue`)**
+2. **Reference-only practice pools and feasibility (`src/kernel/reports.ts`, `poolOf`, `releaseOrder`; `src/campaign/scheduler.ts`, `practiceDue`)**
    Practice eligibility, `practiceFrontier`, `practicePool`, `doubted`, `awaiting`, and `releaseOrder` depend strictly on reference solves and author answers (`validAnswer: "independent"`), never on candidate solves (`validAnswer: "known"`). Candidate outcomes therefore cannot change which tasks enter practice or how many tasks are released.
 
 3. **Reference-only disputes during comparisons (`src/campaign/round.ts`, `floor`)**

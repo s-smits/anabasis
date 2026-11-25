@@ -5,7 +5,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";
-import { detectable, power, readsStep, sweepOf, testOf } from "#src/kernel/compare.ts";
+import { detectable, power, isSignificant, sweepOf, testOf } from "#src/kernel/compare.ts";
 import { smallestSteps, SIZE, sizeLines } from "#src/kernel/size.ts";
 
 const USAGE = `usage:
@@ -40,7 +40,7 @@ function scoresRead(scores: readonly number[], level: number, unbilled: readonly
     ...testOf(scores),
     falseRate: power(scores, 0.5, level),
     detectable: detectable(scores, level),
-    step: unbilled === null ? null : readsStep(unbilled, level),
+    step: unbilled === null ? null : isSignificant(unbilled, level),
   };
 }
 
@@ -75,7 +75,7 @@ function scoresLines(scores: readonly number[], level: number, unbilled: readonl
     ...(read.step === null
       ? []
       : [
-          `with the unbilled scores: ${read.step ? "step" : "no-step"} (readsStep: a step is read on these alone)`,
+          `with the unbilled scores: ${read.step ? "step" : "no-step"} (isSignificant: a step is read on these alone)`,
         ]),
   ];
 }

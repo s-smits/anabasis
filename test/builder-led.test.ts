@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { supplyOf } from "../src/campaign/admission.ts";
-import { crashedRun } from "../src/campaign/ground.ts";
+import { crashedRun } from "../src/campaign/state.ts";
 import { short } from "../src/campaign/move.ts";
-import { pendingWords } from "../src/campaign/word.ts";
+import { pendingSignals } from "../src/campaign/signal.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { sizeLines } from "../src/kernel/size.ts";
@@ -832,7 +832,7 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
     );
     expect(promoted).toBeGreaterThan(word);
     expect(answered).toBeGreaterThan(promoted);
-    expect(pendingWords(events)).toEqual([]);
+    expect(pendingSignals(events)).toEqual([]);
   });
 
   const everythingRead = async (

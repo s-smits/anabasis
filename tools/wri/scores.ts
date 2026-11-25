@@ -18,7 +18,7 @@ import {
   type Paired,
   pointsOf,
   GAP_FLOOR,
-  readsStep,
+  isSignificant,
   testOf,
   wholePoints,
 } from "#src/kernel/compare.ts";
@@ -202,7 +202,7 @@ function reportedLines(events: readonly LogEvent[], report: Reported, ctx: Score
   const [validityMeasure, objectiveMeasure] = [MEASURES[1]?.[1], MEASURES[2]?.[1]];
   const valTally = validityMeasure === undefined ? "none" : tallied(tested.map(validityMeasure));
   const objTally = objectiveMeasure === undefined ? "none" : tallied(tested.map(objectiveMeasure));
-  const step = readsStep(recorded, level);
+  const step = isSignificant(recorded, level);
   const sparePart = step ? `; spare ${String(spareOf(recorded, level))} wins` : "";
   const repeat = repeatLine(pairs, ctx.verdicts);
   const lines = [

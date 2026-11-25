@@ -1,7 +1,7 @@
 // Behavioural and boundary tests for drafted exams (`src/examiner/draft.ts`), staging and offline
 // acceptance (`tools/d2/exam.ts`), and campaign drafting lifecycle (`tools/d1b/draft.ts`).
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { decide } from "../src/campaign/decide.ts";
+import { nextAction } from "../src/campaign/scheduler.ts";
 import { type Draft, draftFaults, drafting, draftOf } from "../src/examiner/draft.ts";
 import { examine, type Session } from "../src/examiner/session.ts";
 import { authoredFaults } from "../src/kernel/acceptance.ts";
@@ -668,7 +668,7 @@ describe.concurrent("staging and offline reading", () => {
   });
 });
 
-const PROMPTED: Parameters<typeof decide>[1] = {
+const PROMPTED: Parameters<typeof nextAction>[1] = {
   patience: 3,
   unprepared: false,
   practice: null,
@@ -690,7 +690,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     await draftCommand([...flags, "--session", "d-2"], putting(unformed, unformed));
     const events = read(campaignLog(name));
     expect(draftOf(events)).toBeNull();
-    const decided = decide(events, PROMPTED);
+    const decided = nextAction(events, PROMPTED);
     expect(decided).toMatchObject({ move: "end", ending: "exam" });
     expect(decided.why).toContain("3 drafts in 2 sessions did not stand");
   });
@@ -739,7 +739,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     ] as const) {
       const events = read(campaignLog(name));
       expect(events.filter(({ kind }) => kind === "contract.frozen")).toHaveLength(0);
-      expect(decide(events, PROMPTED)).toMatchObject(next);
+      expect(nextAction(events, PROMPTED)).toMatchObject(next);
     }
   });
 

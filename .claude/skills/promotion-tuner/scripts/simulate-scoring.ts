@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { scored, type JudgeWeights, judgedPairs, type Paired, readsStep } from "#src/kernel/compare.ts";
+import { scored, type JudgeWeights, judgedPairs, type Paired, isSignificant } from "#src/kernel/compare.ts";
 
 const USAGE = `usage:
   bun .claude/skills/promotion-tuner/scripts/simulate-scoring.ts
@@ -198,7 +198,7 @@ function main(args: CommandArgs): number {
         const pairs = Array.from({ length: tasks }, (_, at) =>
           taskPair(draw, { scenario, step, solves, bias, mixed }, at),
         );
-        if (readsStep(scored(pairs).differences, level)) stepped += 1;
+        if (isSignificant(scored(pairs).differences, level)) stepped += 1;
       }
       return `${((100 * stepped) / trials).toFixed(2)}%`;
     });

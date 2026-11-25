@@ -108,7 +108,7 @@ export const askedOf = (plan: Plan) => ({
   pastStop: plan.pastStop ?? undefined,
 });
 
-export function groundOf(events: readonly LogEvent[], plan: Plan) {
+export function campaignState(events: readonly LogEvent[], plan: Plan) {
   const supply = supplyOf(events);
   const all = comparisonsOf(events);
   const reports = all.filter((each): each is Reported => each.report !== null && each.reported !== null);

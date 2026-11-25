@@ -8,7 +8,7 @@
  * seed of the campaign with its own solver and trial log (`openCampaign`), solves through the
  * campaign's paid seat at the host's load (`solved`, `gated`), is read back by the log's folds
  * (`ranUnder`, `verdictsOf`, `billedAll`), and two systems are scored as a comparison scores its
- * pairs (`scored`, `readsStep`, `detectable`, `carriedBy`).
+ * pairs (`scored`, `isSignificant`, `detectable`, `carriedBy`).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import {
@@ -18,7 +18,7 @@ import {
   flipP,
   type Paired,
   pointsOf,
-  readsStep,
+  isSignificant,
   scored,
 } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
@@ -46,7 +46,7 @@ import {
 } from "#tools/d2/round.ts";
 import { recordedSetting, settingNamed } from "#tools/d2/setting.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
-import { dollars } from "#tools/runs/said.ts";
+import { dollars } from "#tools/runs/summary.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
 import { checkTrial, trialTerms, unruledIn } from "./trial.ts";
 
@@ -216,9 +216,9 @@ export function pairLines(
   const carried = pairs.map((pair) => carriedBy(pointsOf(pair)));
   const by = (measure: string) => carried.filter((one) => one === measure).length;
   const shift = detectable(differences, at.level);
-  const reading = readsStep(differences, at.level)
+  const reading = isSignificant(differences, at.level)
     ? `${x} is better: a step at the level ${String(at.level)}`
-    : readsStep(other, at.level)
+    : isSignificant(other, at.level)
       ? `${y} is better: a step at the level ${String(at.level)}`
       : `no step either way at the level ${String(at.level)}. That is no proof they are equal: ${shift === null ? "too few tasks are untied for any difference to show" : `this size shows four times in five a side that wins ${String(Math.round(shift * 100))}% of the untied tasks`}`;
   return [

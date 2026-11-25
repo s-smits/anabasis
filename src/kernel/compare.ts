@@ -156,14 +156,14 @@ export function flipP(differences: readonly number[]): number {
   return rawFlipP(signedRanks(differences));
 }
 
-export function readsStep(scores: readonly number[], level: number): boolean {
+export function isSignificant(scores: readonly number[], level: number): boolean {
   return flipP(scores) <= level;
 }
 
-export function readsStepEitherWay(scores: readonly number[], level: number): boolean {
+export function isSignificantTwoSided(scores: readonly number[], level: number): boolean {
   return (
-    readsStep(scores, level) ||
-    readsStep(
+    isSignificant(scores, level) ||
+    isSignificant(
       scores.map((one) => -one),
       level,
     )

@@ -12,7 +12,7 @@
  */
 import { barLines, promotionsWorth, riskLines, starterIn, worthLine } from "#src/campaign/climb.ts";
 import { UNSETTLED } from "#src/campaign/comparison.ts";
-import { campaignOf, type Handover } from "#src/campaign/handover.ts";
+import { campaignOf, type Handover } from "#src/campaign/summary.ts";
 import { short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { copyHarness } from "#src/builder/kept.ts";
@@ -21,7 +21,7 @@ import { openingOf } from "#src/campaign/opening.ts";
 import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { comparisonsOf } from "#src/campaign/ground.ts";
+import { comparisonsOf } from "#src/campaign/state.ts";
 import { endedOf, lastReports, promoted } from "#src/kernel/reports.ts";
 import { billedAll, billedParts, costLine, spendOf } from "#src/kernel/meter.ts";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";

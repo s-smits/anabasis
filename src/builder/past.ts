@@ -1,5 +1,5 @@
 import { plural } from "../meta/text.ts";
-import type { Campaign, Handover, PracticeFail } from "../campaign/handover.ts";
+import type { Campaign, Handover, PracticeFail } from "../campaign/summary.ts";
 import { short } from "../campaign/move.ts";
 import type { Built } from "./session.ts";
 

@@ -133,7 +133,7 @@ left plausible, and what is confirmed but sits in source a live run is proving.
     solve's bill, reaches a Builder only at a `compare` while an earlier comparison is unreported,
     which no fixture sets up beside a cap.
 30. **The table guards a remaining budget that cannot be missing** (read, `decide`,
-    `src/campaign/decide.ts`): under `cap-short` the cap is the plan's remaining budget, so the
+    `src/campaign/scheduler.ts`): under `cap-short` the cap is the plan's remaining budget, so the
     fallback for none is never taken, and "no comparison open" is spelled in two ways in one file.
 31. **Two landings can both hold a clone while trees are mixed** (reported,
     `tools/runtime/landing.ts` with `src/meta/holder.ts`). An older landing's record is read
@@ -224,7 +224,7 @@ spend. These are what they left.
 - 10 November 2026, the operator, after the release: "review current PR stack and overhaul /
   supersede where needed", and "triage with most recent runs to improve further". Rows 17 to 27.
 - 10 November 2026, the operator, on the rows left for their word: "Regarding waiting on me, reach
-  time philosophy and fill those in yourself. Stein philosophy." Decided from it, each with what
+  time philosophy and fill those in yourself. Stein philosophy." ScheduledAction from it, each with what
   would overturn it: row 17 is mended inside `startRefusal`; row 18 records the reach each solve
   was told in `solve.started` and fixes nothing else until one task's two sides record different
   reach; row 5 loses its clause with the next change to a seat's prompt and not before, since a

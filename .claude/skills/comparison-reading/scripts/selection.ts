@@ -4,7 +4,7 @@
  * of one conversation, so whether they are independent draws is the question itself;
  * `starter-reads.ts` reports each session slice's tally directly.
  */
-import { readsStep, signedRanks } from "#src/kernel/compare.ts";
+import { isSignificant, signedRanks } from "#src/kernel/compare.ts";
 
 /** Sign assignments (`confirm` out of `draws = 2^free`) that register a step at `level`. */
 export interface StepCount {
@@ -48,7 +48,7 @@ function signsFor(sizes: readonly number[], goal: number): number[] {
 /**
  * How many sign assignments to the untied `free` margins register a step at `level` beside `fixed`.
  * Flipping the signs of `free` leaves every unsigned rank in `[...fixed, ...free]` unchanged, so
- * `readsStep` depends on those signs only through their positive rank sum, and is monotone in it.
+ * `isSignificant` depends on those signs only through their positive rank sum, and is monotone in it.
  */
 export function stepCount(fixed: readonly number[], free: readonly number[], level: number): StepCount {
   const fixedCount = fixed.filter((one) => one !== 0).length;
@@ -60,7 +60,7 @@ export function stepCount(fixed: readonly number[], free: readonly number[], lev
   const totals = ways.flatMap((count, total) => (count > 0n ? [total] : []));
   const steps = (total: number) => {
     const signed = signsFor(freeRanks, total).map((rank, at) => Math.sign(rank) * (sizes[at] ?? 0));
-    return readsStep([...fixed, ...signed], level);
+    return isSignificant([...fixed, ...signed], level);
   };
   let [low, high] = [0, totals.length];
   while (low < high) {

@@ -45,7 +45,7 @@ bun .claude/skills/design-and-seats/scripts/builder-view.ts <log.jsonl | campaig
 - `builder-view.ts` prints the history messages for the next Builder session (`src/builder/past.ts`),
   starting from `--parent` or from `--parent latest`. Any held-out task, check, or Referee ruling
   appearing in its output is a violation of rule 3 and must be fixed in `past.ts` or
-  `src/campaign/handover.ts`.
+  `src/campaign/summary.ts`.
 
 The first two scripts emit identifiers, paths, and counts without exposing checks, hidden values, or
 task text; the third prints build-side text by construction.

@@ -9,11 +9,11 @@
  *     --examiner claude/claude-opus-5-5 --reviewer claude/claude-opus-5-5 [--moves 1] [--dry-run] [--hitl]
  */
 import { backends } from "#src/agent/backends/models.ts";
-import { decide } from "#src/campaign/decide.ts";
-import { sessionEnded } from "#src/campaign/ground.ts";
-import { type Decided, decidedLine } from "#src/campaign/move.ts";
+import { nextAction } from "#src/campaign/scheduler.ts";
+import { sessionEnded } from "#src/campaign/state.ts";
+import { type ScheduledAction, decidedLine } from "#src/campaign/move.ts";
 import { type Opening, openingOf, SEATS } from "#src/campaign/opening.ts";
-import { pendingWords } from "#src/campaign/word.ts";
+import { pendingSignals } from "#src/campaign/signal.ts";
 import { keepCutNotes, keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
@@ -77,7 +77,10 @@ const ENDED = "campaign.ended";
 const WHOLE: ReadonlySet<unknown> = new Set(["finished", "wall", "turns"]);
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
-type Made = Extract<Decided, { move: "draft" | "accept" | "prepare" | "compare" | "promote" | "revert" }>;
+type Made = Extract<
+  ScheduledAction,
+  { move: "draft" | "accept" | "prepare" | "compare" | "promote" | "revert" }
+>;
 
 /**
  * A crashed Builder session's move throws where it is read back (`spent`); that is a provider's
@@ -189,7 +192,11 @@ export async function endCut(log: string): Promise<void> {
   }
 }
 
-function ended(log: string, events: readonly LogEvent[], decided: Extract<Decided, { move: "end" }>): void {
+function ended(
+  log: string,
+  events: readonly LogEvent[],
+  decided: Extract<ScheduledAction, { move: "end" }>,
+): void {
   // An ending on a word the operator just left is a new one, whatever the last event says.
   if (decided.answers === undefined && endedOf(events)?.ending === decided.ending) return;
   append(log, ENDED, {
@@ -203,8 +210,8 @@ function ended(log: string, events: readonly LogEvent[], decided: Extract<Decide
 
 async function converse(
   context: CampaignContext,
-  named: Exclude<Decided, { move: "end" }>,
-): Promise<Decided | null> {
+  named: Exclude<ScheduledAction, { move: "end" }>,
+): Promise<ScheduledAction | null> {
   const { log, values, seats } = context;
   const turn = turnOf(context);
   const { cap, reviewer, pastStop } = sharedOf(turn);
@@ -245,7 +252,7 @@ async function converse(
   // A finish that ended the campaign would often leave most of its budget unspent seconds after a
   // promotion, so another conversation follows until `IDLE` in a row made no move.
   const idle = WHOLE.has(how) ? idleOf(after) : 0;
-  const table = decide(after, turnOf(context).plan);
+  const table = nextAction(after, turnOf(context).plan);
   // A Builder's `finish` does not end the campaign while a comparison is owed, and the Examiner session
   // the table names starts beside the next conversation rather than after `IDLE` idle ones.
   if (idle < IDLE || table.move === "promote" || table.move === "compare") {
@@ -258,8 +265,8 @@ async function converse(
 
 async function lead(
   context: CampaignContext,
-  named: Exclude<Decided, { move: "end" }>,
-): Promise<Decided | null> {
+  named: Exclude<ScheduledAction, { move: "end" }>,
+): Promise<ScheduledAction | null> {
   const { log, values, seats } = context;
   const left = await converse(context, named);
   if (left === null) {
@@ -346,7 +353,7 @@ async function runMade(decided: Made, turn: Turn, log: string, from: number): Pr
 export async function harnessBuilder(
   args: readonly string[],
   seats: Seats = { seated: solved },
-): Promise<Decided> {
+): Promise<ScheduledAction> {
   // A dry run only reports the drift, else it could pass in a main clone whose real run is then
   // refused.
   const manifest = join(REPO, "package.json");
@@ -376,10 +383,10 @@ export async function harnessBuilder(
   if (!given["dry-run"]) await endCut(log);
   const values: Values = { ...given, ...opening.terms };
   const held = queued({ ...seats, loaded: values.loaded }, log, began);
-  let last: Decided["move"] | null = null;
+  let last: ScheduledAction["move"] | null = null;
   for (let made = 0; ; ) {
     let events = read(log);
-    const totals = pendingWords(events).filter(({ word }) => word === "budget");
+    const totals = pendingSignals(events).filter(({ word }) => word === "budget");
     if (totals.length > 0) {
       opening = opened(log, values, paid, totals);
       events = read(log);
@@ -398,7 +405,7 @@ export async function harnessBuilder(
       if (!values["dry-run"]) keepSetting(log, setting);
     }
     const from = made === 0 && !values["dry-run"] ? read(log).length : events.length;
-    const decided = decide(events, plan);
+    const decided = nextAction(events, plan);
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );

@@ -2,7 +2,7 @@
  * Summarises Examiner session activity and campaign progression per log: `ambition.ts <log or
  * campaign folder>...`.
  */
-import { campaignOf, type Handover } from "#src/campaign/handover.ts";
+import { campaignOf, type Handover } from "#src/campaign/summary.ts";
 import { familySizes, proposalsOf } from "#src/kernel/history.ts";
 import { promoted } from "#src/kernel/reports.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";

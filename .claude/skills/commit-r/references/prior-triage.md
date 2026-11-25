@@ -32,7 +32,7 @@ Launch in parallel with step 2 (oracle capture) or while an earlier commit's sim
 
 ### Round 2: Live tuning & cross-boundary validation (during steps 4 to 7)
 
-Once the first implementation or refinement is in place, continue the **same** subagent with `git diff <base>` and **3 to 5 closely coupled files outside the rewritten compartment** (for example: `src/campaign/decide.ts`, `src/campaign/admission.ts`, `src/kernel/condition.ts`, `src/audit/auditor.ts`, `test/builder-led.test.ts`, picking the real neighbours of the edited owner).
+Once the first implementation or refinement is in place, continue the **same** subagent with `git diff <base>` and **3 to 5 closely coupled files outside the rewritten compartment** (for example: `src/campaign/scheduler.ts`, `src/campaign/admission.ts`, `src/kernel/condition.ts`, `src/audit/auditor.ts`, `test/builder-led.test.ts`, picking the real neighbours of the edited owner).
 
 Require a concrete verdict per adjacent file citing exact `file:line` interactions:
 - `VALIDATED`: boundary holds cleanly with no change needed.

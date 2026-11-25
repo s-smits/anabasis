@@ -22,7 +22,7 @@ bun --env-file=.env.runs .claude/skills/oracle-handover/scripts/slice.ts <run> '
 ```text
 head head.md
 src src/kernel/compare.ts#informative :: How room is read.
-src src/campaign/decide.ts:255-300
+src src/campaign/scheduler.ts:255-300
 diff <from>..<to> src/examiner
 pr 594 :: The change in doubt (its summary and its diff outside `test/`).
 log <run> Builder{1-12} comparison.reported :: Its first round.

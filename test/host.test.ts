@@ -6,7 +6,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { resetOf } from "../src/agent/backends/claude.ts";
-import { crashedRun } from "../src/campaign/ground.ts";
+import { crashedRun } from "../src/campaign/state.ts";
 import { affords, flying } from "../src/campaign/opening.ts";
 import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";

@@ -1,10 +1,10 @@
 /**
- * Harbor trial score reader and paired arm comparison (`trials.py`, `flipP`, `readsStep`).
+ * Harbor trial score reader and paired arm comparison (`trials.py`, `flipP`, `isSignificant`).
  * Non-results (`null` scores, provider/crash endings, non-timeout Harbor exceptions) leave the
  * denominators; a pairing needs complete `streams` on both sides and reports mean percentage-point
  * gaps, seeded 95% bootstrap intervals and exact paired sign-flip p-values.
  */
-import { flipP, readsStep, readsStepEitherWay } from "#src/kernel/compare.ts";
+import { flipP, isSignificant, isSignificantTwoSided } from "#src/kernel/compare.ts";
 import { CALL_KINDS, read } from "#src/kernel/log.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
@@ -191,8 +191,8 @@ export function readArms(
     lost: units.filter((each) => each < 0).length,
     tied: units.filter((each) => each === 0).length,
     p: flipP(units),
-    step: readsStep(units, level),
-    eitherWay: readsStepEitherWay(units, level),
+    step: isSignificant(units, level),
+    eitherWay: isSignificantTwoSided(units, level),
   };
 }
 

@@ -8,7 +8,7 @@
  * or every ruling would hide for good.
  */
 import { toLabel } from "../../../../src/campaign/comparison.ts";
-import type { Handover } from "../../../../src/campaign/handover.ts";
+import type { Handover } from "../../../../src/campaign/summary.ts";
 import { rejected } from "../../../../src/kernel/solves.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import type { Rulings, Withheld } from "../models.ts";

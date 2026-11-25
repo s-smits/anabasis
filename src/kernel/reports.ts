@@ -149,7 +149,7 @@ export function comparedAs(events: readonly LogEvent[], harness: string) {
   );
 }
 
-export function roomOf(report: JsonObject, side: "old" | "fresh" = "old"): "none" | "too-hard" | "room" {
+export function headroomOf(report: JsonObject, side: "old" | "fresh" = "old"): "none" | "too-hard" | "room" {
   const valid = asRecord(report.valid);
   const informativeCount = asRecord(valid?.informative)?.[side];
   if (!isNumber(informativeCount) || informativeCount > 0) return "room";

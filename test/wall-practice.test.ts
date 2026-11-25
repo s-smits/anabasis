@@ -5,7 +5,7 @@
 // harness answered. Logs with one reference record and one tally are grouped, and the Builder's view
 // must be one value in each group.
 import { describe, expect, it } from "bun:test";
-import { practiceDue } from "../src/campaign/decide.ts";
+import { practiceDue } from "../src/campaign/scheduler.ts";
 import { scored } from "../src/kernel/compare.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";

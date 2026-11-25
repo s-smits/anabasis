@@ -20,7 +20,7 @@ import {
   pausePointReached,
   pauseWaitMs,
   unpromotedStep,
-} from "#src/campaign/word.ts";
+} from "#src/campaign/signal.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
 import { keysIf } from "#src/meta/optional-key.ts";

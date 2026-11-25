@@ -5,7 +5,7 @@
  * They print only event kinds, counts, enums, session ids, 8-character digests, dollars and ratios.
  */
 import { starterIn } from "#src/campaign/climb.ts";
-import { PAUSE, pauseKindsOf, pausePointReached } from "#src/campaign/word.ts";
+import { PAUSE, pauseKindsOf, pausePointReached } from "#src/campaign/signal.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type EventKind, eventsOf, type LogEvent } from "#src/kernel/log.ts";

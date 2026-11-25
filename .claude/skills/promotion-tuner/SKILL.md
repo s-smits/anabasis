@@ -14,7 +14,7 @@ Evaluates alternative scoring and promotion rules off-policy against archived so
 | Validity & objective weights | `WEIGHTS`, `src/kernel/compare.ts` (step 5) | `validity=`, `objective=` |
 | Resource metric as gain or guard | none in production | `bill=`, `turns=`, `seconds=` (`when=`, `side=`, `lead=`, `floor=`); `mostBill=`, `mostTurns=`, `mostSeconds=` |
 | Objective gap floor & gain curve | `GAP_FLOOR`, `gainOver`, `pointsOf` (a judged task keeps production's objective) | `room=`, `gain=` |
-| Test, unit & inclusion | `flipP` (exact signed-rank), one-sided `readsStep`, `pairsOf` | `test=` (`rank`\|`flip`\|`sign`), `untied=`, `level=`, `unit=` (`family`\|`first`), `retained=` |
+| Test, unit & inclusion | `flipP` (exact signed-rank), one-sided `isSignificant`, `pairsOf` | `test=` (`rank`\|`flip`\|`sign`), `untied=`, `level=`, `unit=` (`family`\|`first`), `retained=` |
 | Custom rule or worktree | | `--mechanism <file>`, `--against <worktree>` |
 
 ## Commands

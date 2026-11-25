@@ -6,10 +6,10 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { refusals, stopRule, supplyOf } from "#src/campaign/admission.ts";
-import { CRASHES_IN_A_ROW, decide, supplyRun } from "#src/campaign/decide.ts";
-import { askedOf, crashedRun } from "#src/campaign/ground.ts";
+import { CRASHES_IN_A_ROW, nextAction, supplyRun } from "#src/campaign/scheduler.ts";
+import { askedOf, crashedRun } from "#src/campaign/state.ts";
 import { decidedLine } from "#src/campaign/move.ts";
-import { pendingWords } from "#src/campaign/word.ts";
+import { pendingSignals } from "#src/campaign/signal.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
@@ -49,8 +49,8 @@ function standingOf(events: readonly LogEvent[]) {
     crashes: { count: crashes.count, of: CRASHES_IN_A_ROW, last: crashes.crash },
     idle: { count: idleOf(events), of: IDLE },
     refused: refusals(supplyOf(events), askedOf(plan)).map(({ code }) => code),
-    words: pendingWords(events).map(({ word, why }) => (why === "" ? word : `${word} (${why})`)),
-    decided: decide(events, plan),
+    words: pendingSignals(events).map(({ word, why }) => (why === "" ? word : `${word} (${why})`)),
+    decided: nextAction(events, plan),
   };
 }
 

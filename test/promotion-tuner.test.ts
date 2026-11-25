@@ -143,7 +143,7 @@ it("credits a won task to the measure that carried it, the bill where a tree bef
   expect(totals.wonBy).toEqual({ validity: 6, objective: 0, bill: 1 });
 });
 
-it("uses a candidate tree's own stepOf without requiring a readsStep export", async () => {
+it("uses a candidate tree's own stepOf without requiring a isSignificant export", async () => {
   const home = mkdtempSync(join(tmpdir(), "ana-tuner-tree-"));
   try {
     const won = CHEAP.map((pair) => ({ ...pair, old: [false, false] }));

@@ -7,10 +7,10 @@
  * triggers, the rows and the overview.
  */
 import { resetOf } from "#src/agent/backends/claude.ts";
-import { comparisonsOf } from "#src/campaign/ground.ts";
+import { comparisonsOf } from "#src/campaign/state.ts";
 import { short } from "#src/campaign/move.ts";
-import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
-import { differenceOf, readsStep, scoresIn, testOf } from "#src/kernel/compare.ts";
+import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/summary.ts";
+import { differenceOf, isSignificant, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { billedAll, costLine, spendOf } from "#src/kernel/meter.ts";
@@ -375,7 +375,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(noise.wins)} won, ${String(noise.losses)} lost and ${String(noise.ties)} tied between two samples of the reference harness${readsStep(scoresIn(last.noise), level) ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(noise.wins)} won, ${String(noise.losses)} lost and ${String(noise.ties)} tied between two samples of the reference harness${isSignificant(scoresIn(last.noise), level) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];

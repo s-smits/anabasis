@@ -8,8 +8,8 @@
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { stopRule } from "../src/campaign/admission.ts";
 import { barLines, type Epoch, epochLine, epochsOf, riskLines } from "../src/campaign/climb.ts";
-import { decide } from "../src/campaign/decide.ts";
-import type { Plan } from "../src/campaign/ground.ts";
+import { nextAction } from "../src/campaign/scheduler.ts";
+import type { Plan } from "../src/campaign/state.ts";
 import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
@@ -44,7 +44,7 @@ const TASKS = fixtureTasks(7);
 const STARTER_STRENGTH = 3;
 const RAISE = 2;
 /** One past the reference's strength, which it answers on some solves and not all, so the task
- *  is informative (`informative`, `roomOf`); and harder ones, some past any harness so far. */
+ *  is informative (`informative`, `headroomOf`); and harder ones, some past any harness so far. */
 const ABOVE = [1, 1, 2, 2, 3, 4];
 const IDLE: readonly [string, JsonObject] = ["finish", { note: "Nothing further." }];
 const tried = new Map<string, number>();
@@ -697,18 +697,18 @@ describe("a campaign against its bars", () => {
       ...["y1", "y2", "y3", "y4", "y5", "y6"].flatMap(heldOut),
     ];
     const notScored = [...base, ...report("g-4", "h2", "S", "not-scored", [])];
-    expect(decide(notScored, plan).move).not.toBe("revert");
+    expect(nextAction(notScored, plan).move).not.toBe("revert");
     const underpowered = [...base, ...report("g-4", "h2", "S", "no-step", [-1, -1, -1, 0, 0, 0])];
     expect(epochsOf(underpowered).at(-1)).toMatchObject({ confirmed: false, starter_able: false });
-    expect(decide(underpowered, plan).move).not.toBe("revert");
+    expect(nextAction(underpowered, plan).move).not.toBe("revert");
     const allTied = [...base, ...report("g-4", "h2", "S", "no-step", [0, 0, 0, 0, 0, 0])];
-    expect(decide(allTied, plan)).toMatchObject({ move: "revert", harness: "h1" });
+    expect(nextAction(allTied, plan)).toMatchObject({ move: "revert", harness: "h1" });
     const failedStarter = [...base, ...report("g-4", "h2", "S", "no-step", [1, 1, -1, -1, 0, 0])];
-    expect(decide(failedStarter, plan)).toMatchObject({ move: "revert", harness: "h1" });
+    expect(nextAction(failedStarter, plan)).toMatchObject({ move: "revert", harness: "h1" });
     const reverted = [...failedStarter, event("harness.reverted", { harness: "h1", from: "h2" })];
     const epochs = epochsOf(reverted);
     expect(epochs.at(-1)).toMatchObject({ reference: "h1", confirmed: true, reverted: true });
-    expect(decide(reverted, plan).move).toBe("build");
+    expect(nextAction(reverted, plan).move).toBe("build");
     expect(stopRule(reverted)).toMatchObject({ sinceStep: 1, stop: false });
     expect(barLines(reverted)[0]).toContain("2 promotions, 1 confirmed");
     expect(barLines(reverted)[2]).toContain("2 post-setup epochs");

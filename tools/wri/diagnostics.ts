@@ -14,7 +14,7 @@
  * It prints counts, ratios, session ids and 8-character digests, never names, task text or values.
  */
 import { writtenFiles } from "#src/harness/files.ts";
-import { differenceOf, pointsOf, readsStep } from "#src/kernel/compare.ts";
+import { differenceOf, pointsOf, isSignificant } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { PATIENCE } from "#src/kernel/reports.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
@@ -126,7 +126,7 @@ function comparisonFindings(log: Index): Finding[] {
     satStreak = valUntied === 0 ? satStreak + 1 : 0;
     const { differences } = testedOf(comparison.last);
     const level = isNumber(comparison.last.level) ? comparison.last.level : DEFAULT_LEVEL;
-    if (readsStep(differences, level)) {
+    if (isSignificant(differences, level)) {
       const spare = spareOf(differences, level);
       const absSorted = differences.map((diff) => Math.abs(diff)).toSorted((a, b) => b - a);
       const [top = 0, ...rest] = absSorted;

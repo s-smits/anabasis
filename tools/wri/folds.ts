@@ -12,7 +12,7 @@ import { spendOf } from "#src/kernel/meter.ts";
 import { examinerSessions, type Judged, solvesIn, standsOf, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { blockingOf, OBJECTIVE } from "#src/kernel/verify.ts";
-import type { Handover } from "#src/campaign/handover.ts";
+import type { Handover } from "#src/campaign/summary.ts";
 import { short } from "#src/campaign/move.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { runtimeProcess } from "#src/meta/process.ts";

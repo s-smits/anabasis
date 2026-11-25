@@ -8,7 +8,7 @@ import {
   type Paired,
   pairsOf,
   scored,
-  readsStep,
+  isSignificant,
   type Tally,
   UNMEASURED,
   unsolved,
@@ -353,7 +353,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Labels)
   };
   const mirrored = fixed.solves % 2 === 0 ? mirroredOf(againstItself()) : null;
   const tested = scored(pairs);
-  const stepped = readsStep(tested.differences, fixed.level);
+  const stepped = isSignificant(tested.differences, fixed.level);
   const reading: Reading = pairs.length === 0 ? "not-scored" : stepped ? "step" : "no-step";
   const solves = pairs.length === 0 ? [] : solvesIn(events);
   return {

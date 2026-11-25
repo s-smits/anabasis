@@ -11,7 +11,7 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | E4 | Drafting rules (objective, families) | `src/examiner/draft.ts` | objective tying every pair; `INSTRUMENT AUTHORED`; `FAMILY CONCENTRATION` |
 | E5 | Draft gate (note honesty risk if relaxed) | `draftFaults`, `src/examiner/draft.ts` | `exam` ending with 0 comparisons |
 | E6 | Task admission gate | `refusalOf`, `src/examiner/write.ts` | `GATE REFUSED`; `EXAMINER ZERO YIELD`; thin frontier |
-| E7 | Examiner scheduling/duration (*operator* for limits) | `supplyRun`, `src/campaign/decide.ts` | `FIRST COMPARISON HELD OFF`; long hours to comparison 1 vs admitted count |
+| E7 | Examiner scheduling/duration (*operator* for limits) | `supplyRun`, `src/campaign/scheduler.ts` | `FIRST COMPARISON HELD OFF`; long hours to comparison 1 vs admitted count |
 | E8 | Comparison floor & retained share (*operator*) | `comparisonFloor`, `src/campaign/admission.ts` | `no-room` ending just below floor; `UNDERPOWERED NO-STEPS` |
 | E9 | Adversarial draft audit (keep, simplify or remove) | `reviewDraft`, `src/audit/draft-audit.ts` | `DRAFT AUDITED`; `DRAFT AUDIT DEFECTS`; `DRAFT AUDIT REFUSED` |
 | E10 | Verifier grounding & declared tool provenance | `src/examiner/draft.ts`, `src/kernel/verify.ts` | `VERIFIER TOOL PROVENANCE`; `VERIFIER FAULTS`; `PASSES AT A SMALL WALL SHARE` |
@@ -36,7 +36,7 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | R1 | Tally weights (*operator*) | `WEIGHTS`, `src/kernel/compare.ts` | `STEP CARRIERS` dominated by noise; `SAFEGUARD-9 PROMOTION BEYOND VALIDITY` |
 | R2 | Objective gap floor (*operator*) | `GAP_FLOOR`, `src/kernel/compare.ts` | `REFERENCE AGAINST ITSELF` splits >1%; `MARGINS INSIDE THE NOISE` |
 | R3 | Solves/side & alpha (*operator*) | `SIZE`, `src/kernel/size.ts` | underpowered untied counts; `UNDERPOWERED NO-STEPS` |
-| R4 | Starter confirmation timing (*operator*) | `heldSince`, `src/campaign/decide.ts` | `PROMOTION UNCONFIRMED`; excessive epoch hours confirming |
+| R4 | Starter confirmation timing (*operator*) | `heldSince`, `src/campaign/scheduler.ts` | `PROMOTION UNCONFIRMED`; excessive epoch hours confirming |
 | R5 | Improvement patience (*operator*) | `stopRule`, `src/campaign/admission.ts` | `stop` while frontier still grows |
 | V1 | Referee prompt & evidence | `src/audit/auditor.ts` | `RULED UNCLEAR`; `RULINGS REFUSED`; `EARNED WITHOUT A PROBE` |
 | V2 | Check-defect stop threshold (*operator*) | `src/campaign/admission.ts` | `check-defects` ending on few defects |
@@ -44,4 +44,4 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | H1 | Solve queue wait (*operator* for placement) | solve queue | `campaign.waited` >15m; `HOST LOADED` |
 | H2 | Cost allocation (*operator* for models) | `billOf`, `src/kernel/meter.ts` | `SPEND LED BY A ROLE`; `BILLING RESIDUAL` |
 | H3 | Dead prompt text | every seat prompt | prompt growth with zero measured effect |
-| H4 | Component yield & pause boundaries | `tools/d2/campaign-actions.ts`, `src/campaign/decide.ts` | `ROLE YIELD SKEW`; `SEAT BOUNDARY ANOMALY` |
+| H4 | Component yield & pause boundaries | `tools/d2/campaign-actions.ts`, `src/campaign/scheduler.ts` | `ROLE YIELD SKEW`; `SEAT BOUNDARY ANOMALY` |

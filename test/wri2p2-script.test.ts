@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { deferredBy, dueLines, nextOf, openingOf } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { pulse } from "#tools/runs/pulse.ts";
 import type { Run } from "#tools/runs/registry.ts";
-import { clockTurns, progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
+import { clockTurns, progressOf as rowOf, triggerOf } from "#tools/runs/summary.ts";
 import { carryOf, outcomesOf } from "#tools/wri/ledger.ts";
 import { checkedStepsOf } from "#tools/wri/record.ts";
 import type { LogEvent } from "../src/kernel/log.ts";

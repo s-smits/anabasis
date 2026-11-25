@@ -4,7 +4,7 @@ import { billedAll } from "../kernel/meter.ts";
 import { SIZE } from "../kernel/size.ts";
 import { unadmitted } from "../kernel/acceptance.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import type { Plan } from "./ground.ts";
+import type { Plan } from "./state.ts";
 
 export interface Seat {
   readonly model: string;

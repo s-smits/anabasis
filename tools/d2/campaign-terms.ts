@@ -5,11 +5,11 @@
  * a Referee before it opens, so no rejection it counts goes unruled.
  */
 import { STARTED, startOf } from "#src/campaign/comparison.ts";
-import { tasksToAskFor } from "#src/campaign/decide.ts";
-import { cutShort, type Plan } from "#src/campaign/ground.ts";
-import type { Decided } from "#src/campaign/move.ts";
+import { tasksToAskFor } from "#src/campaign/scheduler.ts";
+import { cutShort, type Plan } from "#src/campaign/state.ts";
+import type { ScheduledAction } from "#src/campaign/move.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, TERMS } from "#src/campaign/opening.ts";
-import { ANSWERED, type Word } from "#src/campaign/word.ts";
+import { ANSWERED, type ControlSignal } from "#src/campaign/signal.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
 import {
@@ -163,7 +163,7 @@ export const flag = (name: string, value: string | undefined): string[] =>
 
 export const moved = (
   log: string,
-  { move, code, why }: Pick<Decided, "move" | "code" | "why">,
+  { move, code, why }: Pick<ScheduledAction, "move" | "code" | "why">,
   named: JsonObject = {},
 ) => append(log, MOVED, { move, code, why, ...named });
 
@@ -180,13 +180,13 @@ export const prepared = (
 export async function promoteMade(
   log: string,
   name: string | undefined,
-  owed: Extract<Decided, { move: "promote" }>,
+  owed: Extract<ScheduledAction, { move: "promote" }>,
 ): Promise<void> {
   moved(log, owed, { harness: owed.harness });
   await promoteCommand([...flag("name", name), "--harness", owed.harness, "--yes"]);
 }
 
-export function revertMade(log: string, owed: Extract<Decided, { move: "revert" }>): void {
+export function revertMade(log: string, owed: Extract<ScheduledAction, { move: "revert" }>): void {
   const from = referenceOf(read(log, TRACE_KINDS)) ?? "starter";
   moved(log, owed, { harness: owed.harness });
   append(log, "harness.reverted", {
@@ -285,7 +285,7 @@ function resolveBudget(
   values: Values,
   was: Opening | null,
   seats: "paid" | "scripted",
-  heard: readonly Word[],
+  heard: readonly ControlSignal[],
 ): Opening["budget"] {
   const dollars = heard.at(-1)?.dollars ?? values.budget ?? was?.budget?.dollars;
   if (seats === "paid" && values.budget === undefined && was?.budget == null) {
@@ -310,7 +310,7 @@ function persistOpening(
   events: readonly LogEvent[],
   opening: Opening,
   mode: "write" | "dry-run",
-  heard: readonly Word[],
+  heard: readonly ControlSignal[],
 ): void {
   const record = openingRecord(opening);
   const { answers: _heard, led: _led, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
@@ -326,7 +326,7 @@ export function opened(
   log: string,
   values: Values,
   seats: "paid" | "scripted",
-  heard: readonly Word[] = [],
+  heard: readonly ControlSignal[] = [],
 ): Opening {
   const events = read(log, CALL_KINDS);
   const was = openingOf(events);
@@ -451,7 +451,7 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
   };
 }
 
-export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn) {
+export function comparisonOf(decided: Extract<ScheduledAction, { move: "compare" }>, turn: Turn) {
   const { events, values } = turn;
   const { cap, reviewer, pastStop } = sharedOf(turn);
   const session = decided.id ?? nextId(events, "g");

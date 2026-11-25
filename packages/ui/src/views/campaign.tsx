@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { Decided } from "../../../../src/campaign/move.ts";
+import type { ScheduledAction } from "../../../../src/campaign/move.ts";
 import { plural } from "../../../../src/meta/text.ts";
 import { ComparisonsChart } from "../components/charts/comparisons.tsx";
 import { CarriedChart, CarriedKey, SpendChart } from "../components/charts/small.tsx";
@@ -31,15 +31,21 @@ const MOVE_WORD = {
   promote: "Promotion",
   revert: "Revert reference",
   end: "End",
-} as const satisfies Record<Decided["move"], string>;
+} as const satisfies Record<ScheduledAction["move"], string>;
 
 /** The moves the host makes itself whoever leads: the exam's set-up and an ending. Any other the
  *  table names is advice to a Builder that leads. */
-const HOSTS_OWN: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare", "revert", "end"]);
+const HOSTS_OWN: ReadonlySet<ScheduledAction["move"]> = new Set([
+  "draft",
+  "accept",
+  "prepare",
+  "revert",
+  "end",
+]);
 
 /** What the campaign command does with a move the table names where the opening is attended, which
  *  the table does not read (`tools/d2/harness-builder.ts`). */
-const ATTENDED_WAITS = new Map<Decided["move"], string>([
+const ATTENDED_WAITS = new Map<ScheduledAction["move"], string>([
   ["accept", "; under --hitl the exam is read and its freeze waits for the operator's word"],
   ["promote", "; under --hitl the promotion waits for the operator's word (promote.ts)"],
 ]);

@@ -8,7 +8,7 @@
  */
 import { backends } from "#src/agent/backends/models.ts";
 import { epochsOf, ORIGINS, starterIn, starterReads } from "#src/campaign/climb.ts";
-import { comparisonsOf } from "#src/campaign/ground.ts";
+import { comparisonsOf } from "#src/campaign/state.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { CALL_KINDS, type EventKind, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";

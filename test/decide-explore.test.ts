@@ -6,9 +6,9 @@
 import { describe, expect, it } from "bun:test";
 import { stopRule } from "../src/campaign/admission.ts";
 import { epochsOf } from "../src/campaign/climb.ts";
-import { decide, practiceDue } from "../src/campaign/decide.ts";
-import { groundOf, type Plan } from "../src/campaign/ground.ts";
-import type { Decided } from "../src/campaign/move.ts";
+import { nextAction, practiceDue } from "../src/campaign/scheduler.ts";
+import { campaignState, type Plan } from "../src/campaign/state.ts";
+import type { ScheduledAction } from "../src/campaign/move.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
@@ -35,7 +35,7 @@ interface Reading {
 }
 interface State {
   readonly events: readonly LogEvent[];
-  readonly decided: Decided;
+  readonly decided: ScheduledAction;
 }
 
 const AT = "2026-11-21T00:00:00.000Z";
@@ -75,7 +75,7 @@ const BUILDER_COMPARES = {
   reference: "promoted",
   why: "",
   code: "build",
-} as const satisfies Extract<Decided, { move: "compare" }>;
+} as const satisfies Extract<ScheduledAction, { move: "compare" }>;
 
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at: AT, kind, data });
 const count = (events: readonly LogEvent[], kind: EventKind) =>
@@ -87,7 +87,7 @@ const heldOut = (version: string) => [
 const heldVersions = (events: readonly LogEvent[]) =>
   events.flatMap(({ kind, data }) => (kind === "task.gate" && isString(data.version) ? [data.version] : []));
 
-function sidesOf(events: readonly LogEvent[], move: Extract<Decided, { move: "compare" }>) {
+function sidesOf(events: readonly LogEvent[], move: Extract<ScheduledAction, { move: "compare" }>) {
   const reference = referenceOf(events) ?? STARTER;
   const resolve = (named: string) =>
     ({ starter: STARTER, latest: latestBuilt(events) ?? reference, promoted: reference })[named] ?? named;
@@ -96,7 +96,7 @@ function sidesOf(events: readonly LogEvent[], move: Extract<Decided, { move: "co
 
 function compared(
   events: readonly LogEvent[],
-  move: Extract<Decided, { move: "compare" }>,
+  move: Extract<ScheduledAction, { move: "compare" }>,
   readings: readonly Reading[] = READINGS,
   level = PLAN.wanted.level,
 ) {
@@ -125,7 +125,7 @@ function compared(
   ]);
 }
 
-function answers(events: readonly LogEvent[], move: Decided, plan: Plan): LogEvent[][] {
+function answers(events: readonly LogEvent[], move: ScheduledAction, plan: Plan): LogEvent[][] {
   const id = `s${String(events.length)}`;
   switch (move.move) {
     case "accept": {
@@ -159,7 +159,7 @@ function answers(events: readonly LogEvent[], move: Decided, plan: Plan): LogEve
       const examined = Array.from({ length: 6 }, (_, at) => `${id}t${String(at)}`).flatMap(heldOut);
       const asks = (written: readonly LogEvent[], readings: readonly Reading[]) => {
         const left = [...events, ...written];
-        if (groundOf(left, plan).refused.size > 0) {
+        if (campaignState(left, plan).refused.size > 0) {
           return [];
         }
         return compared(left, BUILDER_COMPARES, readings).map((more) => [...written, ...more]);
@@ -211,7 +211,7 @@ const roomFor = (data: JsonObject) => {
   return !isNumber(informative) || informative > 0;
 };
 
-function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): string | null {
+function broken(events: readonly LogEvent[], plan: Plan, decided: ScheduledAction): string | null {
   const reference = referenceOf(events) ?? STARTER;
   const reports = reportsOf(events);
   const promotedAt = events.findLastIndex(
@@ -318,7 +318,7 @@ function explore(start: readonly LogEvent[], plan: Plan, depth: number): State[]
   // The host opens every campaign with its terms, so the stop rule reads the plan's patience.
   let frontier: (readonly LogEvent[])[] = [[event("campaign.opened", { patience: plan.patience }), ...start]];
   for (let step = 0; step <= depth; step += 1) {
-    const layer = frontier.map((events) => ({ events, decided: decide(events, plan) }));
+    const layer = frontier.map((events) => ({ events, decided: nextAction(events, plan) }));
     seen.push(...layer);
     frontier = layer.flatMap(({ events, decided }) =>
       answers(events, decided, plan).map((written) => [...events, ...written]),
@@ -482,8 +482,8 @@ describe("the decision table, searched", () => {
     for (const { plan, events, decided } of SAMPLED) {
       const spent = { ...plan, left: { dollars: 1, reserve: 5 } };
       const stopped = [...events, stop];
-      expect(broken(stopped, plan, decide(stopped, plan))).toBeNull();
-      const tight = decide(events, spent);
+      expect(broken(stopped, plan, nextAction(stopped, plan))).toBeNull();
+      const tight = nextAction(events, spent);
       expect(broken(events, spent, tight)).toBeNull();
       if (decided.move === "accept") expect(tight.move).toBe("accept");
     }
@@ -693,7 +693,7 @@ describe("the decision table, searched", () => {
       ...held("t-old"),
       event(PROMOTED_EVENT, { harness: "h1", from: STARTER, rests: [] }),
     ];
-    const move = decide(inheritedOnly, { ...PLAN, practice: 0 });
+    const move = nextAction(inheritedOnly, { ...PLAN, practice: 0 });
     expect(move.why).not.toContain("the campaign holds no task");
 
     // 3. A second no-room report on the same (fresh, old) pair keeps counts:true from its earlier roomful report.

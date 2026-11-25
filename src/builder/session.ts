@@ -31,7 +31,7 @@ import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
 import { type AgentRun, type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
 import { claimRoot } from "../sandbox/sandbox-root.ts";
-import { campaignOf } from "../campaign/handover.ts";
+import { campaignOf } from "../campaign/summary.ts";
 import {
   copyHarness,
   harnessNow,

@@ -48,7 +48,7 @@ import {
   TRIGGER_AT,
   triggerOf,
   word,
-} from "./said.ts";
+} from "./summary.ts";
 import { launchedIn, runReason, type RunState, stateOf } from "./state.ts";
 import {
   alarmsMoved,
@@ -179,7 +179,7 @@ const ONCE_TRIGGERS: ReadonlySet<string> = new Set([
   "FAMILY CONCENTRATION",
   "BILLING RESIDUAL",
 ]);
-/** The triggers a look says in the line of the event that fires them (`said.ts`). */
+/** The triggers a look says in the line of the event that fires them (`summary.ts`). */
 const OWN = ["PROMOTION UNCONFIRMED", "CHECKER READ WITH FAULTS", "FROZEN DESPITE FAULTS"];
 const NAMED = /\b[bgx]-\d+(?![-\d])/g;
 const LOAD_WAIT_MS = 15 * 60_000;

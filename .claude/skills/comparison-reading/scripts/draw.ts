@@ -5,7 +5,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor, refusals, supplyOf } from "#src/campaign/admission.ts";
-import { askedOf } from "#src/campaign/ground.ts";
+import { askedOf } from "#src/campaign/state.ts";
 import { tasksByEpoch } from "#src/campaign/climb.ts";
 import { scoredSet } from "#src/campaign/round.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";

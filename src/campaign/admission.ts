@@ -8,7 +8,7 @@ import {
   lastReports,
   patienceOf,
   poolOf,
-  roomOf,
+  headroomOf,
 } from "../kernel/reports.ts";
 import { ended, practiceRan, rejectionAside, solvesIn, standsOf } from "../kernel/solves.ts";
 import { sizeLines } from "../kernel/size.ts";
@@ -125,7 +125,7 @@ export function stopRule(events: readonly LogEvent[]) {
     const pair = `${fresh} ${isString(old) ? old : ""}`;
     const earlier = pairs.get(pair);
     const step = (earlier?.step === true || data.reading === "step") && !revertedHarnesses.has(fresh);
-    const counts = earlier?.counts === true || data.reading === "step" || roomOf(data) === "room";
+    const counts = earlier?.counts === true || data.reading === "step" || headroomOf(data) === "room";
     pairs.set(pair, { index: earlier?.index ?? index, step, counts });
   }
   const moves = [...pairs.values().filter(({ counts }) => counts), ...declined].toSorted(

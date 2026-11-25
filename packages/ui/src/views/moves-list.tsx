@@ -22,7 +22,7 @@ const FILTER_LABELS = new Map([
   ["comparison", "Comparisons"],
 ]);
 /** Why a move was made, in words, by the code of the table's row that named it (`ROWS`,
- *  `src/campaign/decide.ts`) or of a leading Builder's ask or conversation; the code stays in the
+ *  `src/campaign/scheduler.ts`) or of a leading Builder's ask or conversation; the code stays in the
  *  row's title. */
 const ROW_WORD = new Map([
   ["stop", "the operator stopped it"],

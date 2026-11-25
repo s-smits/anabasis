@@ -9,7 +9,7 @@
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { dollars } from "#tools/runs/said.ts";
+import { dollars } from "#tools/runs/summary.ts";
 import { spansOf, unionMs } from "#tools/wri/time.ts";
 import type { Tree } from "./tree.ts";
 

@@ -5,7 +5,7 @@ description: "Use when inspecting kept harnesses, checking which harness is curr
 
 # Harness audit
 
-A campaign stores every frozen harness by content digest under `states/` alongside its log (`tools/d2/campaign.ts`), while the log records provenance (`harness.version`, `harness.imported`, `harness.promoted`) and evaluation history (`campaignOf`, `src/campaign/handover.ts`). Inspection commands below are read-only; commands that execute solves require operator authorisation. Component attribution requires an ablation against `programs-of:<digest>` framed via [attribution-and-proof](../attribution-and-proof/SKILL.md).
+A campaign stores every frozen harness by content digest under `states/` alongside its log (`tools/d2/campaign.ts`), while the log records provenance (`harness.version`, `harness.imported`, `harness.promoted`) and evaluation history (`campaignOf`, `src/campaign/summary.ts`). Inspection commands below are read-only; commands that execute solves require operator authorisation. Component attribution requires an ablation against `programs-of:<digest>` framed via [attribution-and-proof](../attribution-and-proof/SKILL.md).
 
 ## 1. Inventory and diff kept harnesses
 

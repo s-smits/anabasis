@@ -5,7 +5,7 @@
  * `contract.frozen`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { unaudited } from "#src/campaign/decide.ts";
+import { unaudited } from "#src/campaign/scheduler.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";

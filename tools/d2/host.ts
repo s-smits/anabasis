@@ -3,15 +3,15 @@
  * load before a solve (a solve's deadline is elapsed time, so it starts once the one-minute load is
  * at or under the cores, or after `LOOKS` looks; `--loaded` says the times will not be compared);
  * the reserve beside solves in flight (`affords`); the solve slots every seat shares; a pause's
- * word (`PAUSE`, `src/campaign/word.ts`), so `runs pause` lets open solves finish; a provider's
+ * word (`PAUSE`, `src/campaign/signal.ts`), so `runs pause` lets open solves finish; a provider's
  * named reset, slept out rather than read as a crash (`waitOut`, `src/solver/run.ts`); and a
  * network that failed a session, a minute after the first crash and five after the second
  * (`waitCrashed`). A refusal the provider's own API writes gets no wait.
  */
-import { CRASHES_IN_A_ROW } from "#src/campaign/decide.ts";
-import { crashedRun } from "#src/campaign/ground.ts";
+import { CRASHES_IN_A_ROW } from "#src/campaign/scheduler.ts";
+import { crashedRun } from "#src/campaign/state.ts";
 import { affords, flying, inFlight } from "#src/campaign/opening.ts";
-import { PAUSE, paused } from "#src/campaign/word.ts";
+import { PAUSE, paused } from "#src/campaign/signal.ts";
 import { append, eachEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
@@ -131,7 +131,7 @@ function queued(
 /**
  * The wait after the sessions in a row that crashed (`crashedRun`): to the provider's reset where
  * the last crash names one, and otherwise, for a network failure, one `for: "network"` wait per
- * crash. The third crash ends the campaign (`CRASHES_IN_A_ROW`, `decide.ts`) and is not waited for;
+ * crash. The third crash ends the campaign (`CRASHES_IN_A_ROW`, `scheduler.ts`) and is not waited for;
  * asked after every move, it sleeps once per crash.
  */
 export async function waitCrashed(log: string, host: Host = HOST): Promise<void> {

@@ -12,7 +12,7 @@ bare  = claude/claude-opus-5-5:medium   @ A (starter)
 built = openai-codex/gpt-6.1-terra:high @ <built harness digest>
 ```
 
-`scripts/systems.ts` composes production primitives (`openCampaign`, `solved`, `gated`, `scored`, `readsStep` excluding cost, `detectable`, `carriedBy`, `rejectionAside`), preserving campaign checks, limits and sandbox wall.
+`scripts/systems.ts` composes production primitives (`openCampaign`, `solved`, `gated`, `scored`, `isSignificant` excluding cost, `detectable`, `carriedBy`, `rejectionAside`), preserving campaign checks, limits and sandbox wall.
 
 ## Procedure
 

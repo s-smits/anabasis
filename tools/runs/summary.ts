@@ -5,7 +5,7 @@
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
-import { readsStep, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
+import { isSignificant, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
 import { type EventKind, eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
 import { smallestSteps, sizeLines } from "#src/kernel/size.ts";
@@ -67,7 +67,7 @@ function factorsOf(data: JsonObject): { text: string; flag: boolean } {
   const noise = asRecord(data.noise);
   const scores = Array.isArray(noise?.differences) ? scoresIn(noise) : undefined;
   const aa = scores === undefined ? null : testOf(scores);
-  const clears = scores !== undefined && readsStep(scores, level);
+  const clears = scores !== undefined && isSignificant(scores, level);
   const worth = asRecord(data.worth);
   const spent = asRecord(worth?.cost);
   const attempts = spent?.attempts;

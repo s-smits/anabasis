@@ -19,8 +19,8 @@ import {
   pointsOf,
   power,
   rawFlipP,
-  readsStep,
-  readsStepEitherWay,
+  isSignificant,
+  isSignificantTwoSided,
   scored,
   scoresIn,
   upperBound,
@@ -30,7 +30,7 @@ import {
   wholePoints,
 } from "../src/kernel/compare.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { PATIENCE, patienceOf, roomOf } from "../src/kernel/reports.ts";
+import { PATIENCE, patienceOf, headroomOf } from "../src/kernel/reports.ts";
 import { howOftenValid, SIZE, sizeLines, smallestSteps } from "../src/kernel/size.ts";
 
 const LEVELS = [0.02, 0.05, 0.1, 0.25];
@@ -160,12 +160,12 @@ describe("the sign-flip p", () => {
   it("reads a step at a level exactly where p is at or under it, and an A/A step the same either way", () => {
     let mixed = 0;
     for (const scores of upTo([-2, -1, 0, 1, 2], 8)) {
-      if (scores.some((one) => one < 0) && readsStep(scores, 0.05)) mixed += 1;
+      if (scores.some((one) => one < 0) && isSignificant(scores, 0.05)) mixed += 1;
       const negated = scores.map((one) => -one);
       for (const level of LEVELS) {
-        expect(readsStep(scores, level)).toBe(countedP(scores) <= level);
-        expect(readsStepEitherWay(scores, level)).toBe(readsStepEitherWay(negated, level));
-        expect(readsStepEitherWay(scores, level)).toBe(
+        expect(isSignificant(scores, level)).toBe(countedP(scores) <= level);
+        expect(isSignificantTwoSided(scores, level)).toBe(isSignificantTwoSided(negated, level));
+        expect(isSignificantTwoSided(scores, level)).toBe(
           countedP(scores) <= level || countedP(negated) <= level,
         );
       }
@@ -236,13 +236,13 @@ describe("the test's power", () => {
     for (const level of [...LEVELS, 0.01, 0.2, 0.5]) {
       const sweep = sweepOf(level);
       expect(
-        readsStep(
+        isSignificant(
           Array.from({ length: sweep }, () => 1),
           level,
         ),
       ).toBe(true);
       expect(
-        readsStep(
+        isSignificant(
           Array.from({ length: sweep - 1 }, () => 1),
           level,
         ),
@@ -465,7 +465,7 @@ describe("the room a task leaves a harness", () => {
       // A count's first place holds the tasks valid in no solve.
       const someValid = [...old.slice(1), ...fresh.slice(1)].some((n) => n > 0);
       const expected = count === undefined || count > 0 ? "room" : someValid ? "none" : "too-hard";
-      expect(roomOf({ valid: { informative: counts, old, fresh } }, side)).toBe(expected);
+      expect(headroomOf({ valid: { informative: counts, old, fresh } }, side)).toBe(expected);
     }
   });
 

@@ -25,7 +25,7 @@ import { type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
 import { lastLaunch } from "./receipt.ts";
-import { climbed, ENDED, type Promotion, promotionsOf, word } from "./said.ts";
+import { climbed, ENDED, type Promotion, promotionsOf, word } from "./summary.ts";
 import {
   archived,
   HERE,

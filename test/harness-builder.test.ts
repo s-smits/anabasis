@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
-import { pendingWords } from "../src/campaign/word.ts";
+import { pendingSignals } from "../src/campaign/signal.ts";
 import {
   cpSync,
   existsSync,
@@ -189,10 +189,10 @@ describe("the campaign's executing Bun and opening guards", () => {
     const budgetFlags = flagsOf(["--name", "terms", "--project", PROJECT, ...OPENED_FROM, "--budget", "300"]);
     expect(opened(budgetLog, budgetFlags, "scripted").budget?.dollars).toBe(300);
     append(budgetLog, "campaign.word", { word: "budget", dollars: 50 });
-    expect(opened(budgetLog, budgetFlags, "scripted", pendingWords(read(budgetLog))).budget?.dollars).toBe(
+    expect(opened(budgetLog, budgetFlags, "scripted", pendingSignals(read(budgetLog))).budget?.dollars).toBe(
       50,
     );
-    expect(pendingWords(read(budgetLog))).toEqual([]);
+    expect(pendingSignals(read(budgetLog))).toEqual([]);
 
     const refusedFirst = `${STEM}-refused-first`;
     names.push(refusedFirst);

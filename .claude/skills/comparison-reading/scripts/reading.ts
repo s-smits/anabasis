@@ -4,8 +4,8 @@
  * | campaign folder | name> [--comparison <id>] [--level <n>]`, or `reading.ts --zone <log |
  * name>...` for the zone table as TSV across logs. For each comparison's final report it prints the
  * reading, full and unbilled sign-flip tests, frontier and retained tallies, A/A control, room
- * verdict and omitted-task counts, and re-reads the step (`readsStep`) and the A/A
- * (`readsStep`, one-sided as `climb.ts` reads it), flagging any divergence. From `pairsReported` it reports the power zone
+ * verdict and omitted-task counts, and re-reads the step (`isSignificant`) and the A/A
+ * (`isSignificant`, one-sided as `climb.ts` reads it), flagging any divergence. From `pairsReported` it reports the power zone
  * (reference tasks with no, some or every solve valid; tasks untied on validity, on the objective
  * alone via `carriedBy`, or tied) and each arm's median ratio to the author's best recorded answer
  * (`sideGap`); since `sideGap` depends on hidden values, output stays on the exam side.
@@ -18,7 +18,7 @@ import {
   flipP,
   type Paired,
   pointsOf,
-  readsStep,
+  isSignificant,
   scoresIn,
   testedSet,
   testOf,
@@ -26,7 +26,7 @@ import {
   UNMEASURED,
 } from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { lastReports, pairsReported, poolOf, roomOf } from "#src/kernel/reports.ts";
+import { lastReports, pairsReported, poolOf, headroomOf } from "#src/kernel/reports.ts";
 import { ended, solvesIn } from "#src/kernel/solves.ts";
 import {
   asRecord,
@@ -140,7 +140,7 @@ function count(value: JsonValue | undefined): number {
 
 function rereadOf(data: JsonObject, level: number): "step" | "no-step" | null {
   if (!Array.isArray(asRecord(data.scored)?.differences)) return null;
-  return readsStep(scoresIn(data.scored), level) ? "step" : "no-step";
+  return isSignificant(scoresIn(data.scored), level) ? "step" : "no-step";
 }
 
 function aaOf(noise: JsonValue | undefined, level: number): Row["aa"] {
@@ -154,7 +154,7 @@ function aaOf(noise: JsonValue | undefined, level: number): Row["aa"] {
     losses,
     ties,
     flips: isNumber(set.flips) ? set.flips : null,
-    step: readsStep(numbers(set.unbilled) ?? differences, level),
+    step: isSignificant(numbers(set.unbilled) ?? differences, level),
   };
 }
 
@@ -185,7 +185,9 @@ function nearOf(scores: readonly number[], level: number): Pick<Row, "reverse" |
   const untied = scores.filter((one) => one !== 0).length;
   return {
     reverse: flipP(scores.map((one) => -one)),
-    margin: readsStep(scores, level) ? { spare: spareOf(scores, level) } : { short: shortOf(scores, level) },
+    margin: isSignificant(scores, level)
+      ? { spare: spareOf(scores, level) }
+      : { short: shortOf(scores, level) },
     need: { losses, wins: equalNeed(losses, level), untied, most: equalMost(untied, level) },
   };
 }
@@ -225,7 +227,7 @@ function rowOf(
     aa: aaOf(data.noise, at),
     ...nearOf(tested === null ? [] : scoresIn(data.scored), at),
     cap: capOf(start, data),
-    room: roomOf(data),
+    room: headroomOf(data),
     tallied: count(data.versions),
     apart: {
       aside: count(data.aside),

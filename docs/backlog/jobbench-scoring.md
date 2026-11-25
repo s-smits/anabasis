@@ -349,7 +349,7 @@ already answers the question; level with it is a strong reading and above it the
   (items 19 and 20).
 
   The note of item 14 was written and held back as a change to what the study's solver is told. The
-  operator handed the choice to their recorded design principles ("decide on my decision"). Decided
+  operator handed the choice to their recorded design principles ("decide on my decision"). ScheduledAction
   to add it, for every arm alike and as a pull request of its own: a guide that states limits which
   do not hold is a wrongly tuned restriction, the note names nothing of the benchmark, and one
   change a pull request keeps it ablatable (items 12 and 14).

@@ -12,7 +12,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
-import { crashedRun } from "../src/campaign/ground.ts";
+import { crashedRun } from "../src/campaign/state.ts";
 import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
 import { HOME_TOOL_TREE, snapshot } from "../src/builder/kept.ts";
 import { type Bench, practiceLeft, recordsOf } from "../src/builder/tools.ts";

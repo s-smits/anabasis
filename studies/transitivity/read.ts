@@ -5,14 +5,14 @@
  * the epoch each was held out in. Run `bun studies/transitivity/read.ts --log <campaign
  * folder>/log.jsonl --id <comparison> [--id ...]`. The study's predictions are read on the frontier
  * alone and without the bill, which no other reader gives. Every fact is a production owner's:
- * `pairsReported`, `differenceOf`, `flipP`, `readsStepEitherWay` and `tasksByEpoch`. The scores
+ * `pairsReported`, `differenceOf`, `flipP`, `isSignificantTwoSided` and `tasksByEpoch`. The scores
  * with the bill are the differences the report stored, since the tree no longer scores the bill. It
  * prints counts, digests and comparison ids, never a task's content, answer or measure: the log is
  * on the exam side (AGENTS.md, section 5).
  */
 import { tasksByEpoch } from "#src/campaign/climb.ts";
 import { fixedIn } from "#src/campaign/comparison.ts";
-import { differenceOf, flipP, type Paired, readsStepEitherWay, UNMEASURED } from "#src/kernel/compare.ts";
+import { differenceOf, flipP, type Paired, isSignificantTwoSided, UNMEASURED } from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
@@ -78,7 +78,7 @@ function readingOf(events: readonly LogEvent[], log: string, id: string): string
   const named = (value: JsonValue | undefined) => (isString(value) ? value : "?");
   // A report keeps no retained task it excluded.
   const fixed = fixedIn(events, id)?.tasks ?? [];
-  const aaStep = Array.isArray(noise) && readsStepEitherWay(noise.filter(isNumber), level);
+  const aaStep = Array.isArray(noise) && isSignificantTwoSided(noise.filter(isNumber), level);
   const control = Array.isArray(noise) ? `reads ${aaStep ? "a step" : "no step"} either way` : "none stored";
   const within = (set: readonly Scored[], epoch: number) =>
     set.filter((one) => one.epoch === epoch).map(({ bare }) => bare);

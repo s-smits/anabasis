@@ -25,7 +25,7 @@ const OWNERS = new Map<string, readonly string[]>([
   ["src/kernel/reports.ts", []],
   ["src/kernel/size.ts", []],
   ["src/kernel/solve.ts", []],
-  ["src/campaign/decide.ts", []],
+  ["src/campaign/scheduler.ts", []],
   ["src/campaign/admission.ts", []],
   ["src/campaign/climb.ts", []],
   ["src/builder/past.ts", []],

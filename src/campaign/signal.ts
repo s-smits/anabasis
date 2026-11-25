@@ -22,7 +22,7 @@ export const PAUSE_STOP_WINDOW_MS = 180_000;
 export const ANSWERED = ["stop", "tasks", "budget"] as const;
 export type Answered = (typeof ANSWERED)[number];
 
-export interface Word {
+export interface ControlSignal {
   readonly at: number;
   readonly word: Answered;
   readonly why: string;
@@ -127,7 +127,7 @@ export function paused(
   return now - found.reached < windowMs;
 }
 
-export function pendingWords(events: readonly LogEvent[]): Word[] {
+export function pendingSignals(events: readonly LogEvent[]): ControlSignal[] {
   const words = eventsOf(events, "campaign.word").flatMap(({ index: at, event: { data } }) => {
     const word = ANSWERED.find((each) => each === data.word);
     return word === undefined

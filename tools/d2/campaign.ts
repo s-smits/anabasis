@@ -58,7 +58,7 @@ import { writeStarter } from "#src/harness/starter.ts";
 import { stageExam } from "./exam.ts";
 import type { NamedSolver } from "./setting.ts";
 import { openHarness, treeContent } from "#src/harness/open.ts";
-import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/wall/base.ts";
+import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/sandbox/base.ts";
 import {
   contractOf,
   packageOf,

@@ -19,8 +19,8 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { type AgentTool, textsOf } from "../agent/session.ts";
-import { shellQuote } from "../wall/isolation.ts";
-import { toolchainPathDirs } from "../wall/policy.ts";
+import { shellQuote } from "../sandbox/isolation.ts";
+import { toolchainPathDirs } from "../sandbox/policy.ts";
 import CAPTURE from "./capture-answer.py" with { type: "text" };
 import type { WallExec } from "./coding.ts";
 

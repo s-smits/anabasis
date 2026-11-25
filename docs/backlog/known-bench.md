@@ -35,7 +35,7 @@ already practises and scores on one runtime (the README's "One runtime from prac
    4. this file, the study's README and `docs/plan.md` row X1.
    The resolver block in the README is applied on the runner before the first seat. Until it is,
    nothing in the host keeps a seat from fetching the test half, because every seat reaches the
-   network (`src/wall/base.ts:75`).
+   network (`src/sandbox/base.ts:75`).
 3. **Build K2 only on a measurement.** After U ends, score U's frozen reference and the starter on
    the train half with the benchmark's verifier (`run.ts score --half train`). Build K2 only if U's
    campaign read a confirmed step against the starter while the train half shows U's reference not

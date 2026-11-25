@@ -281,7 +281,7 @@ function apiKeysDetail(anthropic: BinaryStatus, openrouter: BinaryStatus): strin
   return set.length > 0 ? `set (${set.join(", ")})` : "unset (ANTHROPIC_API_KEY, OPENROUTER_API_KEY)";
 }
 
-function probeWall(platform: string, wallCheck: "untested" | "passed"): WallStatus {
+function probeSandbox(platform: string, wallCheck: "untested" | "passed"): WallStatus {
   if (wallCheck === "passed") return "passed";
   if (platform === "darwin") return "darwin";
   if (platform !== "linux") return "unsupported";
@@ -313,7 +313,7 @@ async function probeLocal(root: string, wallCheck: "untested" | "passed"): Promi
   return {
     bunVersion: Bun.version,
     bunPin: readBunPin(root),
-    wall: probeWall(runtimeProcess.platform, wallCheck),
+    wall: probeSandbox(runtimeProcess.platform, wallCheck),
     deps: await probeDeps(root),
     hooks: gitMaybe(root, "config", "core.hooksPath") === ".githooks" ? "enabled" : "unset",
     envFile: existsSync(join(root, ".env")) ? "ok" : "missing",

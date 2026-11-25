@@ -75,8 +75,8 @@ describe("source policy", () => {
     const graph = new Map<string, readonly string[]>([
       ["src/kernel/check-child.ts", ["src/meta/path.ts", "src/kernel/contract.ts", "src/builder/tools.ts"]],
       ["src/meta/path.ts", ["src/meta/os.ts", "src/kernel/log.ts"]],
-      ["src/kernel/log.ts", ["src/wall/policy.ts", "src/builder/tools.ts"]],
-      ["src/wall/policy.ts", ["src/meta/os.ts", "src/campaign/decide.ts"]],
+      ["src/kernel/log.ts", ["src/sandbox/policy.ts", "src/builder/tools.ts"]],
+      ["src/sandbox/policy.ts", ["src/meta/os.ts", "src/campaign/decide.ts"]],
       ["src/campaign/round.ts", ["src/builder/tools.ts"]],
     ]);
     expect(breaches([...graph.keys()], (file) => graph.get(file) ?? [])).toEqual([
@@ -84,7 +84,7 @@ describe("source policy", () => {
       { file: "src/kernel/check-child.ts", imported: "src/builder/tools.ts", root: "offline-cell" },
       { file: "src/meta/path.ts", imported: "src/kernel/log.ts", root: "src/meta/" },
       { file: "src/kernel/log.ts", imported: "src/builder/tools.ts", root: "src/builder/" },
-      { file: "src/wall/policy.ts", imported: "src/campaign/decide.ts", root: "src/campaign/" },
+      { file: "src/sandbox/policy.ts", imported: "src/campaign/decide.ts", root: "src/campaign/" },
     ]);
   });
 });

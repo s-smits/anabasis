@@ -3,7 +3,7 @@ import { readdirSync, readHeadSync, realpathSync, statSync } from "../meta/files
 import { containsPath } from "../meta/path-containment.ts";
 import { dirname, join } from "../meta/path.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { toolTreeSearchDirs } from "../wall/isolation.ts";
+import { toolTreeSearchDirs } from "../sandbox/isolation.ts";
 
 const HEAD_BYTES = 4096;
 const NUL = String.fromCodePoint(0);

@@ -34,7 +34,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { claimed } from "../src/wall/seat-root.ts";
+import { claimed } from "../src/sandbox/sandbox-root.ts";
 
 interface Launch {
   argv: string[];

@@ -21,7 +21,7 @@ import { homedir, tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join, normalize, relative } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { pinnedPythonDir } from "#src/wall/policy.ts";
+import { pinnedPythonDir } from "#src/sandbox/policy.ts";
 import { AARCH64, foreignFiles, foreignPrograms, type Place } from "#src/harness/place.ts";
 
 export interface PythonFor {

@@ -8,7 +8,7 @@ import { rmSync } from "../src/meta/filesystem.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 import { fixtureDraft, fixtureTasks, layOutDraft } from "./helpers/fixture-pack.ts";
 import { anyOf, matching, objectWith } from "./helpers/matchers.ts";
 

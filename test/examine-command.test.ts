@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { readdirSync, rmSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { inExaminerWall } from "../src/examiner/shell.ts";
+import { inExaminerSandbox } from "../src/examiner/shell.ts";
 import { examineCommand } from "../tools/d1b/examine.ts";
 import { REPO } from "../tools/d2/campaign.ts";
 import { fixtureTasks, layOutPack } from "./helpers/fixture-pack.ts";
@@ -26,7 +26,7 @@ describe("the Examiner command", () => {
   it("opens the session's home with nothing of the reference harness in it", async () => {
     let home: string[] = [];
     await examineCommand([...PACK, "--name", `${STEM}-home`, "--session", "x-1"], async (request, wall) => {
-      home = await inExaminerWall(request, present(wall, "the session's wall"), async ({ shell }) =>
+      home = await inExaminerSandbox(request, present(wall, "the session's wall"), async ({ shell }) =>
         readdirSync(shell.dirs.home),
       );
       return finished();

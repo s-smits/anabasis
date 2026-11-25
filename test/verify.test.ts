@@ -24,9 +24,9 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { killProcessGroupId } from "../src/meta/subprocess.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
-import { hostScratch } from "../src/wall/policy.ts";
-import { releaseRoot } from "../src/wall/seat-root.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
+import { hostScratch } from "../src/sandbox/policy.ts";
+import { releaseRoot } from "../src/sandbox/sandbox-root.ts";
 
 /** A word only the processes a test starts carry on their command line, so `ps` finds them. */
 const MARK = `ana-verify-${crypto.randomUUID().slice(0, 8)}`;

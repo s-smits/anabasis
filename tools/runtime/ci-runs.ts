@@ -44,7 +44,7 @@ const FULL = [
   `${UI_ROOT}/bunfig.toml`,
   `${UI_ROOT}/tsconfig.json`,
   TEST_SUITE,
-  "src/wall/",
+  "src/sandbox/",
 ];
 /** A test file's header in Bun's output, as `gh run view --log-failed` prints it after the job,
  *  step and timestamp; each `(fail)` belongs to the header before it in the same job. */

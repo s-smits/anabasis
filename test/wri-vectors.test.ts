@@ -19,10 +19,10 @@ import {
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
-import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
+import { type CommandSandbox, solveDirs, sandboxBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
-import { claimRoot } from "../src/wall/seat-root.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
+import { claimRoot } from "../src/sandbox/sandbox-root.ts";
 import { folderOf, resultOf } from "../tools/runs/pulse-readers.ts";
 import { importsOf, lines } from "../tools/runtime/gate.ts";
 import type { Reader } from "../tools/wri/derive.ts";
@@ -245,12 +245,12 @@ describe.skipIf(!osIsolationSupport().ok)("its vectors, through a seat's wall", 
     const release = await claimRoot(dirs.root);
     let env: ExecutionEnv | undefined;
     try {
-      const base = await walledBase(
+      const base = await sandboxBase(
         dirs,
         { repoRoot, otherTrees: [mainTree] },
         "the vector store's wall test",
       );
-      const wall: CommandWall = {
+      const wall: CommandSandbox = {
         base,
         dirs,
         toolTree: null,

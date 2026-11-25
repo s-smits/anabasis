@@ -16,7 +16,7 @@ import {
   bwrapTmpfsDenies,
   linuxBwrapSupport,
   nodeRuntimeReadRoots,
-} from "../src/wall/linux-bwrap.ts";
+} from "../src/sandbox/linux-bwrap.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-linux-bwrap-reuse-"));

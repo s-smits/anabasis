@@ -1,4 +1,4 @@
-// Each command runs as a seat's commands run (`runWalled`), and each refusal is paired with a read that
+// Each command runs as a seat's commands run (`runSandboxed`), and each refusal is paired with a read that
 // must succeed, since a wall refusing everything passes refusals alone.
 import { afterEach, describe, expect, it } from "bun:test";
 import {
@@ -16,23 +16,23 @@ import { containsPath } from "../src/meta/path-containment.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
-  type CommandWall,
+  type CommandSandbox,
   makeSeatDirs,
-  probeWall,
-  runWalled,
+  probeSandbox,
+  runSandboxed,
   solveDirs,
-  walledBase,
+  sandboxBase,
 } from "../src/tools/command.ts";
-import { claimRoot } from "../src/wall/seat-root.ts";
-import { LINUX_BWRAP_ID } from "../src/wall/linux-bwrap.ts";
-import { commandIsolationPolicy } from "../src/wall/isolation.ts";
-import { userTempRules } from "../src/wall/policy.ts";
+import { claimRoot } from "../src/sandbox/sandbox-root.ts";
+import { LINUX_BWRAP_ID } from "../src/sandbox/linux-bwrap.ts";
+import { commandIsolationPolicy } from "../src/sandbox/isolation.ts";
+import { userTempRules } from "../src/sandbox/policy.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import {
   HOST_SOLVE_ISOLATION_PROFILE_ID,
   type SolveIsolationPolicy,
   solveIsolationPolicy,
-} from "../src/wall/base.ts";
+} from "../src/sandbox/base.ts";
 import { CLOSED } from "./helpers/wall.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
@@ -53,7 +53,10 @@ let seats = 0;
 async function inSeat(
   repoRoot: string,
   otherTrees: readonly string[],
-  fn: (wall: CommandWall, run: (command: string, under?: CommandWall) => Promise<string>) => Promise<void>,
+  fn: (
+    wall: CommandSandbox,
+    run: (command: string, under?: CommandSandbox) => Promise<string>,
+  ) => Promise<void>,
 ) {
   const dirs = solveDirs(`sandbox-${String(runtimeProcess.pid)}-${String(Date.now())}-${String(seats++)}`);
   const release = await claimRoot(dirs.root);
@@ -61,7 +64,7 @@ async function inSeat(
     makeSeatDirs(dirs);
     const base = solveIsolationPolicy({ repoRoot, otherTrees });
     if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-    const wall: CommandWall = {
+    const wall: CommandSandbox = {
       base,
       dirs,
       toolTree: null,
@@ -69,7 +72,7 @@ async function inSeat(
     };
     const run = async (command: string, under = wall) => {
       let output = "";
-      await runWalled(under, command, {
+      await runSandboxed(under, command, {
         onData: (data) => {
           output += data.toString("utf8");
         },
@@ -267,9 +270,9 @@ describe("the wall's probe", () => {
     writeFileSync(join(sibling, "package.json"), '{\n  "name": "a-sibling"\n}\n');
     const bare = workRepo();
     await inSeat(repoRoot, [sibling, bare], async (wall) => {
-      expect(await probeWall(wall, repoRoot, sibling)).toBeNull();
-      expect(await probeWall(wall, repoRoot, bare)).toBeNull();
-      const base = await walledBase(wall.dirs, { repoRoot, otherTrees: [sibling, bare] }, "a test");
+      expect(await probeSandbox(wall, repoRoot, sibling)).toBeNull();
+      expect(await probeSandbox(wall, repoRoot, bare)).toBeNull();
+      const base = await sandboxBase(wall.dirs, { repoRoot, otherTrees: [sibling, bare] }, "a test");
       expect(base.policyHash).toBe(wall.base.policyHash);
       // The probe writes nothing in a sibling, which another user may own, nor in the repository or the
       // seat's own folders.
@@ -415,7 +418,7 @@ describe("explicit readAllowRoots inside tmpdir", () => {
     makeSeatDirs(dirs);
     try {
       const chunks: string[] = [];
-      const res = await runWalled(
+      const res = await runSandboxed(
         { base, dirs, toolTree: null, limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 } },
         `cat ${join(allowed, "ok.txt")}; cat ${join(sibling, "secret.txt")} 2>/dev/null || echo sibling-denied`,
         { timeout: 15, onData: (b) => chunks.push(b.toString()) },

@@ -31,7 +31,7 @@ import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { ending as endSession, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
-import type { CommandWall, NetworkReach } from "../tools/command.ts";
+import type { CommandSandbox, NetworkReach } from "../tools/command.ts";
 import { namedTasks, readHarnessFiles } from "../harness/files.ts";
 import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
@@ -633,7 +633,7 @@ function checkTool(bench: Bench): AgentTool {
   });
 }
 
-export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): AgentTool[] {
+export function walledTools(bench: Bench, wall: CommandSandbox, network: NetworkReach): AgentTool[] {
   return [
     ...codingTools(wall, CODING_TOOLS).map((each) =>
       each.name === "bash" ? { ...each, description: `${each.description}${shellWalls(network)}` } : each,

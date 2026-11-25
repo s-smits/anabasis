@@ -16,7 +16,13 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { AuditFinding } from "../audit/auditor.ts";
-import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../tools/command.ts";
+import {
+  type CommandSandbox,
+  networkReach,
+  type SolveDirs,
+  solveDirs,
+  sandboxBase,
+} from "../tools/command.ts";
 import type { PublicResource } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
 import { openHarness } from "../harness/open.ts";
@@ -24,7 +30,7 @@ import { type PublicTask, publicView } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
 import { type AgentRun, type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
-import { claimRoot } from "../wall/seat-root.ts";
+import { claimRoot } from "../sandbox/sandbox-root.ts";
 import { campaignOf } from "../campaign/handover.ts";
 import {
   copyHarness,
@@ -479,8 +485,8 @@ export async function build(request: BuildRequest): Promise<Built> {
   const dirs = sessionDirs(request.log, request.id);
   const release = await claimRoot(dirs.root);
   try {
-    const wall: CommandWall = {
-      base: await walledBase(
+    const wall: CommandSandbox = {
+      base: await sandboxBase(
         dirs,
         { repoRoot: request.repoRoot, otherTrees: request.otherTrees, packRoots: request.packRoots },
         "a Builder",

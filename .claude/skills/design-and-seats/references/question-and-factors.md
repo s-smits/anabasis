@@ -25,4 +25,4 @@ Beyond `AGENTS.md` §1:
 
 ## Older vocabulary
 
-`v1` = codebase before v2 (`git show 5bc9988:<path>`, `docs/transfer.md`). "AGENTS.md rule N" comments in v1-inherited modules (`src/meta`, `src/wall`, `tools/loc`, `tools/oxlint`) cite v1 numbering. **Epoch** = span under one reference harness; **cycle**, **sweep**, **bundle** = archived v1 pack origins.
+`v1` = codebase before v2 (`git show 5bc9988:<path>`, `docs/transfer.md`). "AGENTS.md rule N" comments in v1-inherited modules (`src/meta`, `src/sandbox`, `tools/loc`, `tools/oxlint`) cite v1 numbering. **Epoch** = span under one reference harness; **cycle**, **sweep**, **bundle** = archived v1 pack origins.

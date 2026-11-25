@@ -18,12 +18,12 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
-import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
+import { type CommandSandbox, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { EXAMPLE, HARNESS_ACCOUNT, HOST_ONLY, portableGuide, writeStarter } from "../src/harness/starter.ts";
-import { solveIsolationPolicy } from "../src/wall/base.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { solveIsolationPolicy } from "../src/sandbox/base.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
 const TASK = {
@@ -110,7 +110,7 @@ describe("the Starter and its worked harness", () => {
         }
         const base = solveIsolationPolicy({ repoRoot: example });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall: CommandWall = {
+        const wall: CommandSandbox = {
           base,
           dirs,
           toolTree: join(example, ".toolchain"),

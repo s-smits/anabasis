@@ -4,7 +4,7 @@
  * `analyze.ts [--top <n>] [--limit <n>]`. One lightweight `gh pr list` (`openPulls`, avoiding
  * GraphQL's node overflow on deep stacks) plus local `git diff --numstat` spans surface Mode B
  * churn hotspots (`gross/net >= 1.3x` or `>= 3` PR touches), Mode A zero-rewrite adjacent fold
- * blocks, `gate.ts` `checkerDigest` and `src/wall/linux-bwrap.ts` flags, `not-slop.tsv` ordering
+ * blocks, `gate.ts` `checkerDigest` and `src/sandbox/linux-bwrap.ts` flags, `not-slop.tsv` ordering
  * edges and tier inversions.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
@@ -18,7 +18,7 @@ const CHURN_RATIO = 1.3;
 const HOT_TOUCHES = 3;
 const DEFAULT_LIMIT = 15;
 const GATE_OWNERS = new Set(["tools/runtime/gate.ts", "tools/runtime/pulls.ts"]);
-const LINUX_WALL = "src/wall/linux-bwrap.ts";
+const LINUX_WALL = "src/sandbox/linux-bwrap.ts";
 const OXLINT_PREFIX = "tools/oxlint/";
 const TIER_ORDER = new Map<string, number>([
   ["I0", 0],

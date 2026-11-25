@@ -1,6 +1,6 @@
 ---
 name: repository-practice
-description: "Use before preparing commits or PRs, writing PR descriptions, comments, or prompts, choosing tests or checks, citing evidence rungs, or working near .ana/, .env, vendor/, or src/wall/. Explains evidence levels (present in source, proved without a model, exercised live), repository terminology, and directory ownership (AGENTS.md sections 9 to 14). preflight.ts reports required checks and labels; direction.ts detects forbidden production-to-helper imports. Procedures belong to stack-pr, run-management, and attribution-and-proof; coding habits live in tools/oxlint/HABITS.md."
+description: "Use before preparing commits or PRs, writing PR descriptions, comments, or prompts, choosing tests or checks, citing evidence rungs, or working near .ana/, .env, vendor/, or src/sandbox/. Explains evidence levels (present in source, proved without a model, exercised live), repository terminology, and directory ownership (AGENTS.md sections 9 to 14). preflight.ts reports required checks and labels; direction.ts detects forbidden production-to-helper imports. Procedures belong to stack-pr, run-management, and attribution-and-proof; coding habits live in tools/oxlint/HABITS.md."
 ---
 
 # Repository practice

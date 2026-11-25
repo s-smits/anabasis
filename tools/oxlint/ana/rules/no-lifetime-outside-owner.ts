@@ -3,7 +3,7 @@ import type { RuleExample } from "../../rule-examples.ts";
 import { isOneOf, isTestFile } from "../shared/file-role.ts";
 
 /**
- * Process lifetime has one launch owner (`stageCommandIsolation`, `src/wall/isolation.ts`) and one
+ * Process lifetime has one launch owner (`stageCommandIsolation`, `src/sandbox/isolation.ts`) and one
  * reader (`killProcessGroup` and `terminateAndReapProcessGroupId`, `src/meta/subprocess.ts`). A
  * module outside those two and test files that both spawns a child (`Bun.spawn`, `capturedSpawn`)
  * and calls `.kill(` on a held reference introduces a second lifetime owner that races the
@@ -15,7 +15,7 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  *  ends descendants it read out of `ps`, an identity someone else launched. */
 const BY_PID = /^(?:runtimeProcess|process)\.kill$/u;
 
-const LIFETIME_OWNERS = ["src/wall/isolation.ts", "src/meta/subprocess.ts"];
+const LIFETIME_OWNERS = ["src/sandbox/isolation.ts", "src/meta/subprocess.ts"];
 
 function zeroSignal(node: ESTree.CallExpression): boolean {
   const signal = node.arguments[1];
@@ -44,7 +44,7 @@ export const noLifetimeOutsideOwnerRule = defineRule({
     },
     messages: {
       secondOwner:
-        "This file spawns a child and kills it, which makes it a second owner of process lifetime beside `stageCommandIsolation` (src/wall/isolation.ts). Settle the teardown there, or signal the group through `killProcessGroup` or `terminateAndReapProcessGroupId` (src/meta/subprocess.ts): a kill here races the owner's own, signals one process rather than its group, and reads as proof the child is gone.",
+        "This file spawns a child and kills it, which makes it a second owner of process lifetime beside `stageCommandIsolation` (src/sandbox/isolation.ts). Settle the teardown there, or signal the group through `killProcessGroup` or `terminateAndReapProcessGroupId` (src/meta/subprocess.ts): a kill here races the owner's own, signals one process rather than its group, and reads as proof the child is gone.",
     },
   },
   createOnce(context) {

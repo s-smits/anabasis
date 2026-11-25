@@ -88,7 +88,7 @@ already answers the question; level with it is a strong reading and above it the
     A `pi:` arm is open too: `pi-solve.ts` runs its shell and file tools on durable's own host
     environment, written for a benchmark's container, and the sitting masks `claude` alone, so a
     `pi:` arm on a bare host sees the store; none has been rolled there (0 `pi-durable` records on
-    20 November). Walling it takes the campaign's seat folders and command wall (`runWalled`,
+    20 November). Walling it takes the campaign's seat folders and command wall (`runSandboxed`,
     `src/tools/command.ts`) behind both kinds of tool, not a switch, so it waits for the first such
     arm.
 11. **Price every build on one meter.** Harness²'s build is read from Claude Code's

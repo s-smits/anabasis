@@ -47,9 +47,9 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import type { AuditFinding } from "../src/audit/auditor.ts";
 import { publicResource, text, tool } from "../src/tools/answer.ts";
 import { openHarness } from "../src/harness/open.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
-import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/wall/policy.ts";
+import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/sandbox/policy.ts";
 import { keptAs } from "../tools/d2/campaign.ts";
 import { endCut } from "../tools/d2/harness-builder.ts";
 

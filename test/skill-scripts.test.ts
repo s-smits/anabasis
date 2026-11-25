@@ -690,10 +690,13 @@ describe("consolidate-stack overlap and cache analyzer", () => {
     const diffs = new Map<string, string>([
       [`${base}..${p1.headRefOid}`, "50\t0\tsrc/hot.ts\n5\t0\ttools/oxlint/rule.ts\n"],
       [`${p1.headRefOid}..${p2.headRefOid}`, "5\t45\tsrc/hot.ts\n1\t0\ttools/oxlint/not-slop.tsv\n"],
-      [`${p2.headRefOid}..${p3.headRefOid}`, "3\t1\tsrc/wall/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n"],
+      [
+        `${p2.headRefOid}..${p3.headRefOid}`,
+        "3\t1\tsrc/sandbox/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n",
+      ],
       [
         `${base}..${p3.headRefOid}`,
-        "10\t0\tsrc/hot.ts\n5\t0\ttools/oxlint/rule.ts\n1\t0\ttools/oxlint/not-slop.tsv\n3\t1\tsrc/wall/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n",
+        "10\t0\tsrc/hot.ts\n5\t0\ttools/oxlint/rule.ts\n1\t0\ttools/oxlint/not-slop.tsv\n3\t1\tsrc/sandbox/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n",
       ],
     ]);
     const report = analyzeStack([p1, p2, p3, side], "main", base, {

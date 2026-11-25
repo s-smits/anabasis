@@ -26,7 +26,7 @@ import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.
 import { openHarness } from "#src/harness/open.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { writeBare, writeStarter } from "#src/harness/starter.ts";
-import { toolTreeImports, toolTreeSearchDirs } from "#src/wall/isolation.ts";
+import { toolTreeImports, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { keptAs, PROMOTED } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";

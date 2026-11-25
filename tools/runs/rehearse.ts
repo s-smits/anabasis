@@ -35,7 +35,7 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { ANSWER_FILE } from "#src/tools/answer.ts";
 import { selectedCodingTools } from "#src/tools/coding.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { shellQuote } from "#src/wall/isolation.ts";
+import { shellQuote } from "#src/sandbox/isolation.ts";
 import { campaignLog, starter } from "../d2/campaign.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";

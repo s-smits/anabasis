@@ -20,18 +20,18 @@ import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { type AgentRun, type AgentTool, runAgent } from "../agent/session.ts";
-import { claimRoot, type ReleaseRoot } from "../wall/seat-root.ts";
+import { claimRoot, type ReleaseRoot } from "../sandbox/sandbox-root.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "../tools/answer.ts";
 import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
 import { walledEnv } from "../tools/env.ts";
 import {
-  type CommandWall,
+  type CommandSandbox,
   type NetworkReach,
   networkReach,
   type SolveClock,
   solveDirs,
   usedSeconds,
-  walledBase,
+  sandboxBase,
 } from "../tools/command.ts";
 import { type Harness, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
@@ -208,7 +208,7 @@ async function play(
   let prompts = 0;
   try {
     release = await claimRoot(dirs.root);
-    const base = await walledBase(
+    const base = await sandboxBase(
       dirs,
       { repoRoot: request.repoRoot, otherTrees: request.otherTrees, packRoots: request.packRoots },
       "a solve",
@@ -217,7 +217,7 @@ async function play(
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;
     const clock: SolveClock = { started: null, seconds: limits.wallSeconds };
-    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, clock };
+    const commandWall: CommandSandbox = { base, dirs, toolTree: harness.toolTree, limits, clock };
     const defined = await Promise.resolve()
       .then(() => solverTools(request, harness, commandWall, desk))
       .catch(brokenHarness);
@@ -367,7 +367,7 @@ export function timed(tool: AgentTool, { clock, turns, modelTurns }: Used): Agen
 function solverTools(
   request: { readonly contract: Contract },
   harness: Harness,
-  wall: CommandWall,
+  wall: CommandSandbox,
   desk: Desk,
 ): AgentTool[] {
   return [

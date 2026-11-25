@@ -15,7 +15,7 @@ import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
 import { drafting } from "./draft.ts";
-import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
+import { examinerShell, inExaminerSandbox, type Wall, type Walls } from "./shell.ts";
 import { writing } from "./write.ts";
 
 type Clock = ReturnType<typeof sessionClock>;
@@ -324,7 +324,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
     );
   if (wall === undefined) return await seated();
   const walled = request.mode === "draft" ? { ...wall, engines: undefined } : wall;
-  return await inExaminerWall(request, walled, seated);
+  return await inExaminerSandbox(request, walled, seated);
 }
 
 export function conversing(sitting: Session<"write">) {

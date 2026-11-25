@@ -142,10 +142,10 @@ const fixesWorkflow = workflow("  workflow_dispatch:\n    inputs:\n      tests:\
 const broken = initCommit(".github/workflows/ci.yml", fixesWorkflow, "a head ci.yml failed on");
 const fixed = initCommit("src/a.ts", "export const a = 2;\n", "the fix");
 initGit("checkout", "-q", "-b", "wallfix", "b");
-mkdirSync(join(templateWork, "src", "wall"), { recursive: true });
+mkdirSync(join(templateWork, "src", "sandbox"), { recursive: true });
 writeFileSync(join(templateWork, "test", "a.test.ts"), 'import { a } from "../src/a.ts";\nexport { a };\n');
 writeFileSync(
-  join(templateWork, "src", "wall", "policy.ts"),
+  join(templateWork, "src", "sandbox", "policy.ts"),
   'import { a } from "../a.ts";\nexport { a };\n',
 );
 const wallBroken = initCommit(

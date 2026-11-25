@@ -19,7 +19,7 @@ import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { shellQuote } from "#src/wall/isolation.ts";
+import { shellQuote } from "#src/sandbox/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
 import { formerHeadOnGitHub, leasedPush, restacked, Unreplayable } from "#tools/runtime/restack.ts";
 import {

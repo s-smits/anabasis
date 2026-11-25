@@ -18,10 +18,10 @@ import {
 import { hostname, tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
-import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
+import { type CommandSandbox, solveDirs, sandboxBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
-import { claimRoot } from "../src/wall/seat-root.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
+import { claimRoot } from "../src/sandbox/sandbox-root.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { pulse } from "../tools/runs/pulse.ts";
@@ -206,8 +206,8 @@ describe.skipIf(!osIsolationSupport().ok)("what a look wrote, through a seat's w
     const release = await claimRoot(dirs.root);
     let env: ExecutionEnv | undefined;
     try {
-      const base = await walledBase(dirs, { repoRoot }, "the pulse's wall test");
-      const wall: CommandWall = {
+      const base = await sandboxBase(dirs, { repoRoot }, "the pulse's wall test");
+      const wall: CommandSandbox = {
         base,
         dirs,
         toolTree: null,

@@ -229,7 +229,7 @@ const listed = (root: string, path: string, pattern: RegExp): string[] =>
  *  each platform's wall, so a change there proves nothing short of both. */
 export const reachingWall = (root: string, changed: ReadonlySet<string>): string | undefined => {
   const reached = new Set(
-    listed(root, "src/wall", /\.ts$/u).flatMap((file) => [...within(root, file, Infinity)]),
+    listed(root, "src/sandbox", /\.ts$/u).flatMap((file) => [...within(root, file, Infinity)]),
   );
   return [...changed].find((file) => reached.has(file));
 };

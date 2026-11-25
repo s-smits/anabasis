@@ -133,7 +133,7 @@ Test files = `test/` or `*.test.*`.
 Owner-citing `ana` rules:
 - `no-hand-read-argv` → `.claude/skills/main/cli.ts` (`runCommand` in skills; `tools/` uses `parseArgs` from `#src/meta/process.ts`).
 - `no-hand-spelled-git` → `src/meta/git.ts` (skills, `src`, `tools/runs`, `tools/d2`; `tools/runtime` and tests exempt).
-- `no-lifetime-outside-owner` → `stageCommandIsolation` (`src/wall/isolation.ts`), `killProcessGroup` / `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`).
+- `no-lifetime-outside-owner` → `stageCommandIsolation` (`src/sandbox/isolation.ts`), `killProcessGroup` / `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`).
 
 If a rule cites a moved owner, update the rule in the same change.
 
@@ -155,7 +155,7 @@ If a rule cites a moved owner, update the rule in the same change.
 
 ## 12.10 The size policy
 
-`tools/loc/source-policy.ts` enforces ≤800 nonblank lines/file, ≤115 lines/function across `src`, `tools`, `vendor` and `.claude/skills`, `AGENTS.md` ≤24,000 bytes, one-way production→helper dependencies, and security layer boundaries (`src/meta/` leaf-only; `check-child.ts` runtime imports restricted to `src/meta/*`; `src/kernel/` and `src/wall/` never import seats or `src/campaign/`). `source-policy.json` stays empty, and `bun run commit:check`, `bun run gate` and `ci.yml` all run it. Unused exports across authored roots are enforced by `tree/no-unused-export` (`bun run simplify -- --gate`; `commit:check` checks staged lines). No cyclomatic complexity gate exists in v2.
+`tools/loc/source-policy.ts` enforces ≤800 nonblank lines/file, ≤115 lines/function across `src`, `tools`, `vendor` and `.claude/skills`, `AGENTS.md` ≤24,000 bytes, one-way production→helper dependencies, and security layer boundaries (`src/meta/` leaf-only; `check-child.ts` runtime imports restricted to `src/meta/*`; `src/kernel/` and `src/sandbox/` never import seats or `src/campaign/`). `source-policy.json` stays empty, and `bun run commit:check`, `bun run gate` and `ci.yml` all run it. Unused exports across authored roots are enforced by `tree/no-unused-export` (`bun run simplify -- --gate`; `commit:check` checks staged lines). No cyclomatic complexity gate exists in v2.
 
 ## 12.11 Per-path overrides
 

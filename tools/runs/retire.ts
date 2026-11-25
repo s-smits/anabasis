@@ -19,8 +19,8 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { SCRATCH_ROOTS, SUITE_SCRATCH_ROOT } from "#src/wall/policy.ts";
-import { claimed, releaseLeft } from "#src/wall/seat-root.ts";
+import { SCRATCH_ROOTS, SUITE_SCRATCH_ROOT } from "#src/sandbox/policy.ts";
+import { claimed, releaseLeft } from "#src/sandbox/sandbox-root.ts";
 import { controllersOf } from "./code.ts";
 import { benchesOf, hostsOf, RUNNER_SLOTS } from "./host-config.ts";
 import { takeRetired, syncRuns } from "./snapshots.ts";
@@ -91,7 +91,7 @@ export async function archiveIdle(sweep: Sweep, open: Open): Promise<Set<string>
 
 /**
  * Collects every seat root and scratch folder on this machine that nobody will release
- * (`src/wall/seat-root.ts`), and what each run here left open, for `archiveIdle` to release as it
+ * (`src/sandbox/sandbox-root.ts`), and what each run here left open, for `archiveIdle` to release as it
  * takes the run. A root a run here still names as open is spared until then; the rest go by their
  * claims: a dead claimant's at once, an unclaimed one after `TREE_DAYS` without a write.
  */

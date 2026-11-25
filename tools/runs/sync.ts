@@ -23,7 +23,7 @@ import { asRecord, isBoolean, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runCaptured, runSync } from "#src/meta/subprocess.ts";
-import { pinnedPythonDir, TOOLCHAIN_HOME_ROOTS } from "#src/wall/policy.ts";
+import { pinnedPythonDir, TOOLCHAIN_HOME_ROOTS } from "#src/sandbox/policy.ts";
 import { RUNNER_SOURCE } from "../runtime/router/install.ts";
 import { scanText } from "../secrets/rules.ts";
 import { quoted, shellOn } from "./host-command.ts";

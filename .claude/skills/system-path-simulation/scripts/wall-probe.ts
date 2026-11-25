@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * What a seat's shell may do under a tree's command wall, without a model: each command of a
- * battery runs as a seat's commands run (`runWalled`, `src/tools/command.ts`) in a seat root of its
+ * battery runs as a seat's commands run (`runSandboxed`, `src/tools/command.ts`) in a seat root of its
  * own, and one tree's answers are set beside another's: `wall-probe.ts <tree>` or `wall-probe.ts
  * <before> <after> [--battery <file.ts>]`.
  */
@@ -145,8 +145,10 @@ async function answers(tree: string, battery: readonly Probe[]): Promise<Answer[
   // wall changed these signatures fails here, naming the call.
   const { command, base, seat } = {
     command: (await import(join(tree, "src/tools/command.ts"))) as typeof import("#src/tools/command.ts"),
-    base: (await import(join(tree, "src/wall/base.ts"))) as typeof import("#src/wall/base.ts"),
-    seat: (await import(join(tree, "src/wall/seat-root.ts"))) as typeof import("#src/wall/seat-root.ts"),
+    base: (await import(join(tree, "src/sandbox/base.ts"))) as typeof import("#src/sandbox/base.ts"),
+    seat: (await import(
+      join(tree, "src/sandbox/sandbox-root.ts")
+    )) as typeof import("#src/sandbox/sandbox-root.ts"),
   };
   const dirs = command.solveDirs(`wall-probe-${String(runtimeProcess.pid)}`);
   const release = await seat.claimRoot(dirs.root);
@@ -168,7 +170,7 @@ async function answers(tree: string, battery: readonly Probe[]): Promise<Answer[
       };
       let exit: string;
       try {
-        exit = String((await command.runWalled(wall, run, { onData })).exitCode);
+        exit = String((await command.runSandboxed(wall, run, { onData })).exitCode);
       } catch (error) {
         // A command past its limit throws `timeout:<seconds>`, which is its answer here.
         exit = `threw ${errorMessage(error).slice(0, 40)}`;

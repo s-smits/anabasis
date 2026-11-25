@@ -11,7 +11,7 @@ Expands `AGENTS.md` §14 (held-out task, practice task, valid answer, reference 
 | Control / Known valid answer | Ground-truth validation answer (minimal valid answer is one per task) / any logged valid answer incl. `task.feasible` |
 | Rejection / Task admission | Failed check(s): true fail vs check defect / host gate decision (`task.gate`) |
 | A/A / Starter / Programs ablation | Reference vs itself (mirrored halves) / Starter vs reference on new tasks (`unread`) / Starter + candidate programs (`programs-of:<digest>`) |
-| Answer probe / Wall & wall test | Referee check replay on perturbed answer / OS sandbox & startup `probeWall` |
+| Answer probe / Wall & wall test | Referee check replay on perturbed answer / OS sandbox & startup `probeSandbox` |
 | Deadline / Patience | Wall-clock limit (`wallSeconds`) / improvement (`stopRule`) & supply (`roomless`) patience |
 | Hand label | Human verdict: rejection (`earned`/`check-defect`/`unclear`) or pass (`sound`/`wrong`/`unclear`) |
 | Built Harness / Snapshot | Builder-edited directory (`harness/`); frozen copy logged as `build.checkpoint` |

@@ -24,7 +24,7 @@ export const PRODUCTION_ROOTS = ["src", "vendor", "packages", "tools"] as const;
 const HELPER_ROOTS = [".claude/", "tools/wri/", "studies/", "test/"] as const;
 const CHECK_CHILD = "src/kernel/check-child.ts";
 const META_LAYER = "src/meta/";
-const ISOLATED_LAYERS = ["src/kernel/", "src/wall/"] as const;
+const ISOLATED_LAYERS = ["src/kernel/", "src/sandbox/"] as const;
 const FORBIDDEN_FROM_ISOLATED = [
   "src/builder/",
   "src/examiner/",

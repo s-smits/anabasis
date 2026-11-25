@@ -22,7 +22,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
+import { toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
 import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
 
 interface Staged {

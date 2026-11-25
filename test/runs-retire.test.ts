@@ -21,7 +21,7 @@ import { hostname, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedSpawn } from "../src/meta/process.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
-import { claimRoot, releaseRoot } from "../src/wall/seat-root.ts";
+import { claimRoot, releaseRoot } from "../src/sandbox/sandbox-root.ts";
 
 import { RUNNER_SLOTS } from "../tools/runs/host-config.ts";
 import {

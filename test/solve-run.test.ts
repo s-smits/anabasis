@@ -45,7 +45,7 @@ import {
 } from "../src/solver/run.ts";
 import { text as toolText, tool as seatTool } from "../src/tools/answer.ts";
 import { writeStarter } from "../src/harness/starter.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const CANARY = "hidden-canary-7f3a";

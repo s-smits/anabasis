@@ -11,16 +11,16 @@ import {
 } from "../meta/filesystem.ts";
 import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { endHolders, hostFolder } from "../wall/seat-root.ts";
+import { endHolders, hostFolder } from "../sandbox/sandbox-root.ts";
 import {
   commandIsolationPolicy,
   shellQuote,
   stageCommandIsolation,
   toolTreeImports,
-} from "../wall/isolation.ts";
+} from "../sandbox/isolation.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { BUILT_COMMAND_SCRATCH_ROOT } from "../wall/policy.ts";
-import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
+import { BUILT_COMMAND_SCRATCH_ROOT } from "../sandbox/policy.ts";
+import { type SolveIsolationPolicy, solveIsolationPolicy } from "../sandbox/base.ts";
 
 export interface SolveDirs {
   readonly root: string;
@@ -32,7 +32,7 @@ export interface SolveDirs {
 
 type ShellLimits = Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds">;
 
-export interface CommandWall {
+export interface CommandSandbox {
   readonly base: SolveIsolationPolicy;
   readonly dirs: SolveDirs;
   readonly toolTree: string | null;
@@ -89,7 +89,7 @@ export function usedSeconds(clock: SolveClock | undefined, now = performance.now
 
 export function heldSeconds(
   timeout: number | undefined,
-  { limits, clock }: Pick<CommandWall, "limits" | "clock">,
+  { limits, clock }: Pick<CommandSandbox, "limits" | "clock">,
   now = performance.now(),
 ) {
   const asked = Math.max(1, Math.floor(timeout ?? limits.shellDefaultSeconds));
@@ -117,7 +117,7 @@ export function makeSeatDirs(dirs: SolveDirs): void {
   for (const dir of [dirs.home, dirs.temp, dirs.kept, dirs.host]) mkdirSync(dir, { recursive: true });
 }
 
-export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
+export async function sandboxBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   makeSeatDirs(dirs);
   const otherTrees = wall.otherTrees ?? [];
   const base = solveIsolationPolicy({
@@ -129,7 +129,7 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
   if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);
   const tested =
     WALL_TESTS.get(base.policyHash) ??
-    probeWall({ base, dirs, toolTree: null, limits: WALL_TEST_LIMITS }, wall.repoRoot, otherTrees[0]);
+    probeSandbox({ base, dirs, toolTree: null, limits: WALL_TEST_LIMITS }, wall.repoRoot, otherTrees[0]);
   WALL_TESTS.set(base.policyHash, tested);
   const said = await tested;
   if (said !== null) {
@@ -139,8 +139,8 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
   return base;
 }
 
-export async function probeWall(
-  wall: CommandWall,
+export async function probeSandbox(
+  wall: CommandSandbox,
   repoRoot: string,
   sibling?: string,
 ): Promise<string | null> {
@@ -164,7 +164,7 @@ export async function probeWall(
       "cat brought > own && cat own || echo 'own folder: not written and read back'",
     ].join("\n");
     let out = "";
-    const { exitCode } = await runWalled(wall, command, {
+    const { exitCode } = await runSandboxed(wall, command, {
       onData: (data) => {
         out += data.toString();
       },
@@ -183,9 +183,9 @@ export async function probeWall(
   }
 }
 
-async function probeReach(wall: CommandWall): Promise<NetworkReach> {
+async function probeReach(wall: CommandSandbox): Promise<NetworkReach> {
   let out = "";
-  await runWalled({ ...wall, toolTree: null }, REACH_COMMAND, {
+  await runSandboxed({ ...wall, toolTree: null }, REACH_COMMAND, {
     onData: (data) => {
       out += data.toString();
     },
@@ -196,7 +196,7 @@ async function probeReach(wall: CommandWall): Promise<NetworkReach> {
 }
 
 export async function networkReach(
-  wall: CommandWall,
+  wall: CommandSandbox,
   {
     now = Date.now(),
     probe = probeReach,
@@ -223,8 +223,8 @@ export async function networkReach(
   return fresh.probe;
 }
 
-export async function runWalled(
-  wall: CommandWall,
+export async function runSandboxed(
+  wall: CommandSandbox,
   command: string,
   options: WalledOptions,
 ): Promise<{ exitCode: number | null }> {

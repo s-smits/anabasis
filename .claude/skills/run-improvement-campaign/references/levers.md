@@ -27,8 +27,8 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | B6 | Harness portability & `HOST_ONLY` split | `portableGuide`, `src/harness/starter.ts`, `src/builder/prompt.ts` | `BUILT HARNESS FOR EXPORT`; `portability` reader `above-leaks` or hazards |
 | S1 | Starter Built Harness (*operator*) | `src/harness/starter.ts` | missing general-purpose tool |
 | S2 | Per-solve turn/time limits (*operator*) | `LIMITS`, `tools/d2/campaign.ts` | `MISSES AT A LIMIT` on both arms |
-| S3 | Shell/sandbox grants (no protected roots) | `src/tools/command.ts`, `src/wall/` | `sandbox-crash` on valid path; `HIGH TOOL ERROR RATE` |
-| S4 | Cross-seat wall & network condition parity | `src/wall/`, `src/tools/command.ts` | `NETWORK PARITY MISMATCH`; `WALL BOUNDARY SIGNAL` |
+| S3 | Shell/sandbox grants (no protected roots) | `src/tools/command.ts`, `src/sandbox/` | `sandbox-crash` on valid path; `HIGH TOOL ERROR RATE` |
+| S4 | Cross-seat wall & network condition parity | `src/sandbox/`, `src/tools/command.ts` | `NETWORK PARITY MISMATCH`; `WALL BOUNDARY SIGNAL` |
 
 ## Reading, Verdicts & Economy
 | # | Lever | Owner | Trigger (`wri.ts read`) |

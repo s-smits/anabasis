@@ -19,18 +19,18 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import {
-  type CommandWall,
+  type CommandSandbox,
   INSTALLER_TOLD,
   networkReach,
   type SolveDirs,
   solveDirs,
   type Walled,
-  walledBase,
+  sandboxBase,
 } from "../tools/command.ts";
 import { codingTools } from "../tools/coding.ts";
 import { installedPrograms } from "../harness/programs.ts";
-import { claimRoot } from "../wall/seat-root.ts";
-import { shellQuote } from "../wall/isolation.ts";
+import { claimRoot } from "../sandbox/sandbox-root.ts";
+import { shellQuote } from "../sandbox/isolation.ts";
 
 const FILE_BYTES = 4_000_000;
 
@@ -43,7 +43,7 @@ export interface Wall extends Walled {
 }
 
 export interface Walls {
-  readonly shell: CommandWall;
+  readonly shell: CommandSandbox;
   readonly pinned: readonly Engine[];
   readonly began: number;
   readonly keep: () => void;
@@ -52,7 +52,7 @@ export interface Walls {
 export const examinerDirs = (log: string, id: string): SolveDirs =>
   solveDirs(`exam-${basename(dirname(log))}-${id}`);
 
-export async function examinerShell(shell: CommandWall | undefined, enters: string): Promise<AgentTool[]> {
+export async function examinerShell(shell: CommandSandbox | undefined, enters: string): Promise<AgentTool[]> {
   if (shell === undefined) return [];
   const network = await networkReach(shell);
   const engines = installedPrograms(shell.toolTree);
@@ -62,7 +62,7 @@ export async function examinerShell(shell: CommandWall | undefined, enters: stri
   );
 }
 
-export async function inExaminerWall<T>(
+export async function inExaminerSandbox<T>(
   { log, id }: { readonly log: string; readonly id: string },
   wall: Wall,
   run: (walls: Walls) => Promise<T>,
@@ -84,7 +84,7 @@ export async function inExaminerWall<T>(
   const tree = join(dirs.kept, "engines");
   const release = await claimRoot(dirs.root);
   try {
-    const base = await walledBase(dirs, { ...wall, readAllowRoots: reopened }, "an Examiner");
+    const base = await sandboxBase(dirs, { ...wall, readAllowRoots: reopened }, "an Examiner");
     for (const { name, path } of pinned) {
       const runs = join(tree, "bin", name);
       await Bun.write(runs, `#!/bin/sh\nexec ${shellQuote(path)} "$@"\n`);

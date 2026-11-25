@@ -44,7 +44,7 @@ wants into the tree, does the solver reach it, and is storing built bytes the ri
 Two things the Builder cannot express today make the tree brittle.
 
 - **It cannot set the solver's environment.** The host rebuilds a walled shell's environment for
-  every command (`src/wall/isolation.ts:commandIsolationEnvironment`), so a harness reaches the solver
+  every command (`src/sandbox/isolation.ts:commandIsolationEnvironment`), so a harness reaches the solver
   only through files. Import paths for Python, R, Java or Node, and library paths for its own native
   code, can be set only by a launcher wrapping each program. A bare `python3 -c 'import m'` from
   the solver misses.
@@ -69,8 +69,8 @@ The plan gives the Builder two files and the host one rule for each.
    `pyscipopt`, `pulp`, `phreeqpython`, `tabulate`, `torch`, `pymc`) resolve from binary wheels alone
    for Python 3.14 on macOS arm64 and Linux x86-64, 34 of 34. A Python lock needs no source build.
 1. **Put `.toolchain/lib` on the seats' import path** (present in source, proved without a model).
-   - `toolTreeImports` (`src/wall/isolation.ts`) names the tree's `lib` when it exists. Three places
-     read it: the seats' walled shells (`src/tools/command.ts:runWalled`), the bench's shell
+   - `toolTreeImports` (`src/sandbox/isolation.ts`) names the tree's `lib` when it exists. Three places
+     read it: the seats' walled shells (`src/tools/command.ts:runSandboxed`), the bench's shell
      (`studies/shared/pi-solve.ts`) and the bundle's interpreter probe (`studies/shared/bundle.ts`).
    - The Verifier's environment is unchanged. The Examiner's tree holds only the host's
      pinned-engine shims (`src/examiner/shell.ts`), so no check sees the change.

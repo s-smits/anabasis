@@ -7,7 +7,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { homedir, tmpdir } from "../meta/os.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { claim } from "./seat-root.ts";
+import { claim } from "./sandbox-root.ts";
 
 export interface WallSupport {
   ok: boolean;

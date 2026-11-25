@@ -7,7 +7,7 @@ Hacky implementations, upstream private-API mirrors, and compatibility workaroun
 - **Location:** `src/agent/backends/scrub-env.ts` (former header comment lines 1–3)
 - **Former excuse:** *"Although this file retains its v1 name, no scrubbing occurs here because child environments are constructed from explicit allow-lists."*
 - **Issue:** The file exports only two type aliases (`EnvValues`, `OptionalEnvValues`) and performs no environment scrubbing. Keeping the v1 filename misleads readers about where environment isolation happens.
-- **Suggested fix:** Move `EnvValues` and `OptionalEnvValues` into `src/wall/policy.ts` (or a dedicated env-types module under `src/agent/backends/`) and update imports.
+- **Suggested fix:** Move `EnvValues` and `OptionalEnvValues` into `src/sandbox/policy.ts` (or a dedicated env-types module under `src/agent/backends/`) and update imports.
 
 ## 2. Remove duplicated private `pi-durable` retry predicate in `src/agent/session.ts`
 

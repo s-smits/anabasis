@@ -9,7 +9,7 @@ import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { Type } from "typebox";
 import type { AgentTool } from "../agent/session.ts";
 import { asError } from "../meta/runtime-values.ts";
-import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
+import { type CommandSandbox, heldSeconds, runSandboxed } from "./command.ts";
 
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
 type CodingTool = (typeof CODING_TOOLS)[number];
@@ -39,10 +39,13 @@ export function selectedCodingTools(presets: readonly string[]): CodingTool[] {
   return CODING_TOOLS.filter((name) => presets.includes(name));
 }
 
-export function wallExec(wall: CommandWall): WallExec {
+export function wallExec(wall: CommandSandbox): WallExec {
   return async (command, options = {}) => {
     const chunks: Buffer[] = [];
-    const { exitCode } = await runWalled(wall, command, { ...options, onData: (data) => chunks.push(data) });
+    const { exitCode } = await runSandboxed(wall, command, {
+      ...options,
+      onData: (data) => chunks.push(data),
+    });
     return { exitCode, output: Buffer.concat(chunks) };
   };
 }
@@ -55,7 +58,7 @@ function assembleCodingTools(bash: AgentTool, selected: readonly CodingTool[]): 
     .map((each) => ({ ...each, executionMode: "sequential" }));
 }
 
-export function codingTools(wall: CommandWall, selected: readonly CodingTool[]): AgentTool[] {
+export function codingTools(wall: CommandSandbox, selected: readonly CodingTool[]): AgentTool[] {
   return assembleCodingTools(bashTool(wall), selected);
 }
 
@@ -66,7 +69,7 @@ export function directCodingTools(selected: readonly CodingTool[], commandPrefix
 function timeoutClause(
   asked: number,
   seconds: number,
-  { shellDefaultSeconds, shellMaxSeconds }: CommandWall["limits"],
+  { shellDefaultSeconds, shellMaxSeconds }: CommandSandbox["limits"],
 ): string {
   if (seconds < shellMaxSeconds) {
     return `\n\nThe host allows ${String(shellMaxSeconds)} s for one command, and ${String(shellDefaultSeconds)} s when you pass none, so there is more time to ask for.`;
@@ -77,7 +80,7 @@ function timeoutClause(
   return `\n\nThat is the whole ${String(shellMaxSeconds)} s the host allows one command.`;
 }
 
-function bashTool(wall: CommandWall): AgentTool {
+function bashTool(wall: CommandSandbox): AgentTool {
   const pi = createBashTool();
   return {
     ...pi,

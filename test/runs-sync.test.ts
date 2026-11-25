@@ -13,7 +13,7 @@ import {
 import { gitText } from "../src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { join } from "../src/meta/path.ts";
-import { pinnedPythonDir } from "../src/wall/policy.ts";
+import { pinnedPythonDir } from "../src/sandbox/policy.ts";
 import type { Host } from "../tools/runs/host-config.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 

@@ -13,8 +13,8 @@ import { availableParallelism, loadavg } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
 import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
 import { compareCodeUnits } from "../../src/meta/stable-json.ts";
-import { SUITE_SCRATCH_ROOT } from "../../src/wall/policy.ts";
-import { claim, releaseRoot } from "../../src/wall/seat-root.ts";
+import { SUITE_SCRATCH_ROOT } from "../../src/sandbox/policy.ts";
+import { claim, releaseRoot } from "../../src/sandbox/sandbox-root.ts";
 import {
   decodeOutput,
   interruptAndReapProcessGroup,
@@ -306,7 +306,7 @@ function outputReader(cwd: string): OutputReader {
   return { run, scanLine };
 }
 
-async function runWalled(command: string[], temporaryRoot: string, cwd: string): Promise<WalledRun> {
+async function runSandboxed(command: string[], temporaryRoot: string, cwd: string): Promise<WalledRun> {
   // Its own process group, so the wall ends every descendant at once and no grandchild outlives the kill.
   const child = Bun.spawn(command, {
     cwd: REPO_ROOT,
@@ -398,7 +398,7 @@ async function main(): Promise<number> {
       : requestedFiles(requested);
   try {
     const { cwd } = scanRequest(requested);
-    const first = await runWalled(testCommand(requested, Bun.env.ANA_TEST_WORKERS), temporaryRoot, cwd);
+    const first = await runSandboxed(testCommand(requested, Bun.env.ANA_TEST_WORKERS), temporaryRoot, cwd);
     const asked = askedFor();
     const step = attribute(first, asked);
     if (step.because !== "stands") {
@@ -414,7 +414,7 @@ async function main(): Promise<number> {
     }
     if (step.rerun === null) return step.exitCode;
     const { fileIndexes } = scanRequest(requested);
-    const again = await runWalled(
+    const again = await runSandboxed(
       [
         runtimeProcess.execPath,
         "test",

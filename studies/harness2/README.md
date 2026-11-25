@@ -182,7 +182,7 @@ editor on Opus 5.5 too (`HARNESS2_IMPROVER_MODEL`), and both build sides use one
 that ends on its budget and one that ends on its patience are both read at their ending.
 
 **Network.** Every Anabasis seat can reach the network (`AGENTS.md`, section 10). A seat's wall can
-only open or close the network as a whole (`network`, `src/wall/base.ts`), so for D and U
+only open or close the network as a whole (`network`, `src/sandbox/base.ts`), so for D and U
 the host blocks `huggingface.co`, `hf.co`, `*.hf.co` and the benchmark's GitHub repositories by DNS
 or an egress rule, as Harness² advises for its own executor, and the container is blocked the same
 way in every arm. In Harness²'s own validation a Codex rollout on JobBench downloaded its task's

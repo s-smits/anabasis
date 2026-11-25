@@ -20,7 +20,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { type SolveDirs, solveDirs } from "#src/tools/command.ts";
-import { releaseRoot } from "#src/wall/seat-root.ts";
+import { releaseRoot } from "#src/sandbox/sandbox-root.ts";
 import {
   BUILDER,
   DRAFT,

@@ -33,8 +33,8 @@ import { Cancellation } from "../kernel/solve.ts";
 import { isString, type JsonObject } from "../meta/json-shape.ts";
 import { keysIf } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { hostScratch } from "../wall/policy.ts";
-import { releaseRoot } from "../wall/seat-root.ts";
+import { hostScratch } from "../sandbox/policy.ts";
+import { releaseRoot } from "../sandbox/sandbox-root.ts";
 
 export type AgentTool = ToolRegistration;
 

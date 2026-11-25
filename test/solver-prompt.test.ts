@@ -7,7 +7,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
 import { codingTools } from "../src/tools/coding.ts";
-import { type CommandWall, type NetworkReach, solveDirs } from "../src/tools/command.ts";
+import { type CommandSandbox, type NetworkReach, solveDirs } from "../src/tools/command.ts";
 import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solver/prompt.ts";
 
 const CONTRACT: Contract = {
@@ -18,7 +18,7 @@ const CONTRACT: Contract = {
 };
 const HOME = "/scratch/solve-s1/home";
 
-const wall: CommandWall = {
+const wall: CommandSandbox = {
   // SAFETY: no command runs in these tests, so the policy is never read.
   base: undefined as never,
   dirs: { ...solveDirs("s1"), home: HOME },

@@ -13,7 +13,7 @@ import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { draftOf } from "../src/examiner/draft.ts";
 import { heard } from "../src/examiner/record.ts";
 import { type Ask, examine } from "../src/examiner/session.ts";
-import { examinerDirs, inExaminerWall } from "../src/examiner/shell.ts";
+import { examinerDirs, inExaminerSandbox } from "../src/examiner/shell.ts";
 import { writing } from "../src/examiner/write.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
 import { append, read } from "../src/kernel/log.ts";
@@ -264,7 +264,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     const keep = join(dirname(s.log), "examiner-home");
     mkdirSync(keep);
     writeFileSync(join(keep, "kept.txt"), "kept\n");
-    const opened = await inExaminerWall(s.request, { ...WALL, keep }, async ({ shell }) => {
+    const opened = await inExaminerSandbox(s.request, { ...WALL, keep }, async ({ shell }) => {
       writeFileSync(join(shell.dirs.home, "wrote.txt"), "wrote\n");
       append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "crashed", running: 1 });
       return readdirSync(shell.dirs.home).toSorted();
@@ -281,7 +281,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     mkdirSync(keep);
     writeFileSync(join(keep, "python3.14"), "python\n");
     symlinkSync("python3.14", join(keep, "python"));
-    const seen = await inExaminerWall(s.request, { ...WALL, keep }, async ({ shell }) => {
+    const seen = await inExaminerSandbox(s.request, { ...WALL, keep }, async ({ shell }) => {
       symlinkSync("python3.14", join(shell.dirs.home, "python3"));
       append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "finished", running: 0 });
       return readlinkSync(join(shell.dirs.home, "python"));

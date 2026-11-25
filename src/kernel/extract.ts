@@ -2,7 +2,7 @@ import { asRecord, isString } from "../meta/json-shape.ts";
 import { capturedJsonParse, parseJsonAs } from "../meta/json-runtime.ts";
 import { delimiter } from "../meta/path.ts";
 import { decodeOutput, runSync } from "../meta/subprocess.ts";
-import { toolchainPathDirs } from "../wall/policy.ts";
+import { toolchainPathDirs } from "../sandbox/policy.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import EXTRACT_PY from "./extract.py" with { type: "text" };
 

@@ -38,7 +38,7 @@ reason about an unseen technical domain. The seven consequences and their justif
    B17) show that overly narrow grants repeatedly terminated valid solves while broad grants leaked
    no hidden values. Narrow a grant only where concurrent writes would collide, such as two solves
    writing the same path in a shared `/tmp`. Each sandbox policy is verified by a wall test once per
-   process (`walledBase`, `probeWall`).
+   process (`sandboxBase`, `probeSandbox`).
 7. **Prefer the simple mechanism.** Every added mechanism increases the cost of reading, verifying,
    and reversing future changes, so a simple design whose events can be audited directly outperforms
    a complex one that cannot be verified (rule 13). The sole exception is evaluation integrity

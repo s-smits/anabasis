@@ -14,25 +14,25 @@ import { tmpdir } from "../src/meta/os.ts";
 import { basename, dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
-  type CommandWall,
+  type CommandSandbox,
   makeSeatDirs,
   type NetworkReach,
   networkReach,
-  runWalled,
+  runSandboxed,
   solveDirs,
   UNREACHED_MS,
 } from "../src/tools/command.ts";
-import { claimRoot, releaseRoot } from "../src/wall/seat-root.ts";
+import { claimRoot, releaseRoot } from "../src/sandbox/sandbox-root.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
-import { solveIsolationPolicy } from "../src/wall/base.ts";
-import { hostScratch } from "../src/wall/policy.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { solveIsolationPolicy } from "../src/sandbox/base.ts";
+import { hostScratch } from "../src/sandbox/policy.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 
 async function inSeat(
   repoRoot: string,
-  use: (wall: CommandWall) => Promise<void>,
-  options: { otherTrees?: string[]; limits?: CommandWall["limits"] } = {},
+  use: (wall: CommandSandbox) => Promise<void>,
+  options: { otherTrees?: string[]; limits?: CommandSandbox["limits"] } = {},
 ) {
   const dirs = solveDirs(`command-${crypto.randomUUID()}`);
   const release = await claimRoot(dirs.root);
@@ -51,12 +51,12 @@ async function inSeat(
   }
 }
 
-async function run(wall: CommandWall, command: string, stage?: (into: string) => void, timeout?: number) {
+async function run(wall: CommandSandbox, command: string, stage?: (into: string) => void, timeout?: number) {
   let output = "";
   const onData = (data: Buffer) => {
     output += data.toString("utf8");
   };
-  const result = await runWalled(wall, command, { onData, timeout, stage });
+  const result = await runSandboxed(wall, command, { onData, timeout, stage });
   return { exitCode: result.exitCode, output };
 }
 
@@ -144,7 +144,7 @@ describe.concurrent("a solve's walled commands", () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-two-")));
       const cell = hostScratch("cell-");
       writeFileSync(join(cell, "hidden.json"), "cell-canary");
-      const tries = (theirs: CommandWall["dirs"]) =>
+      const tries = (theirs: CommandSandbox["dirs"]) =>
         [
           `cat ${JSON.stringify(join(theirs.home, "note"))} 2>/dev/null || echo home-refused`,
           `cat ${JSON.stringify(join(theirs.host, "config"))} 2>/dev/null || echo host-refused`,

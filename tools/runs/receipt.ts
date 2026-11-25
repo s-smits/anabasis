@@ -23,7 +23,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { compareCodeUnits, hashJsonValue } from "#src/meta/stable-json.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { toolchainPathDirs } from "#src/wall/policy.ts";
+import { toolchainPathDirs } from "#src/sandbox/policy.ts";
 import { isCampaign, Misused, type Run } from "./registry.ts";
 import { readAcross, readableAcross } from "./snapshots.ts";
 

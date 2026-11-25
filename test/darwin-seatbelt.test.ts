@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/fi
 import { sha256 } from "../src/meta/digest.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { darwinSeatbeltSupport } from "../src/wall/darwin-seatbelt.ts";
+import { darwinSeatbeltSupport } from "../src/sandbox/darwin-seatbelt.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-seatbelt-support-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));

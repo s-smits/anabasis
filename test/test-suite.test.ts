@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "..
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { SUITE_SCRATCH_ROOT } from "../src/wall/policy.ts";
+import { SUITE_SCRATCH_ROOT } from "../src/sandbox/policy.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
 
@@ -109,7 +109,7 @@ it("claims its root under the suites' parent while it runs, and removes the root
     `import { it } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from ${JSON.stringify(join(src, "meta", "os.ts"))};
-import { claimed } from ${JSON.stringify(join(src, "wall", "seat-root.ts"))};
+import { claimed } from ${JSON.stringify(join(src, "sandbox", "sandbox-root.ts"))};
 it("reads its root and whether a live process claims it", () => {
   writeFileSync(${JSON.stringify(seen)}, tmpdir() + "\\n" + String(claimed(tmpdir())));
 });

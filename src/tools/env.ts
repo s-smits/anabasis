@@ -21,8 +21,8 @@ import { isString } from "../meta/json-shape.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { asError } from "../meta/runtime-values.ts";
-import { shellQuote } from "../wall/isolation.ts";
-import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
+import { shellQuote } from "../sandbox/isolation.ts";
+import { type CommandSandbox, heldSeconds, runSandboxed } from "./command.ts";
 
 type Context = Parameters<ExecutionEnv["exists"]>[1];
 type Wire<T> = Result<T, { code: string; message: string; spillPath?: string }>;
@@ -49,7 +49,7 @@ const EXEC_CODES = [
   "spawn_error",
   "callback_error",
 ] as const satisfies readonly ExecutionErrorCode[];
-const QUEUES = new WeakMap<CommandWall, Promise<void>>();
+const QUEUES = new WeakMap<CommandSandbox, Promise<void>>();
 const ENV_FILES = ["decode.js", "index.js", "line-scan.js", "node-watch.js", "node.js"];
 let envSources: readonly (readonly [string, string])[] | undefined;
 
@@ -108,17 +108,17 @@ const { code, message, spillPath } = result.ok ? {} : result.error;
 send({ done: result.ok ? result : { ok: false, error: { code: code ?? "unknown", message: String(message), ...(spillPath ? { spillPath } : {}) } } });
 `;
 
-export function walledEnv(wall: CommandWall): ExecutionEnv {
+export function walledEnv(wall: CommandSandbox): ExecutionEnv {
   return new WalledEnv(wall);
 }
 
 class WalledEnv implements ExecutionEnv {
   readonly id: string;
   cwd: string;
-  private readonly wall: CommandWall;
+  private readonly wall: CommandSandbox;
   private readonly lifetime = new AbortController();
 
-  constructor(wall: CommandWall) {
+  constructor(wall: CommandSandbox) {
     this.wall = wall;
     this.cwd = wall.dirs.home;
     this.id = `wall:${wall.base.policyHash}:${wall.dirs.root}`;
@@ -181,7 +181,7 @@ class WalledEnv implements ExecutionEnv {
       let done: Wire<T> | undefined;
       let failure: Error | undefined;
       try {
-        await runWalled(
+        await runSandboxed(
           this.wall,
           `BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 ${shellQuote(capturedExecPath)} --no-env-file worker.mjs`,
           {

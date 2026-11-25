@@ -1,5 +1,5 @@
 // A seat's root: claimed once, refused a second claim, and released with its commands' leftovers ended;
-// a sweep never releases a root a live process holds (`src/wall/seat-root.ts`).
+// a sweep never releases a root a live process holds (`src/sandbox/sandbox-root.ts`).
 import { describe, expect, it } from "bun:test";
 import {
   chmodSync,
@@ -16,7 +16,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { processTable } from "../src/meta/process-table.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { hostScratch } from "../src/wall/policy.ts";
+import { hostScratch } from "../src/sandbox/policy.ts";
 import {
   claimed,
   claimRoot,
@@ -24,7 +24,7 @@ import {
   hostFolder,
   releaseLeft,
   releaseRoot,
-} from "../src/wall/seat-root.ts";
+} from "../src/sandbox/sandbox-root.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
 const DAY = 86_400_000;
@@ -34,7 +34,7 @@ const quoted = (...parts: string[]): string => JSON.stringify(join(...parts));
 
 function claimant(root: string) {
   const source = [
-    `const { claimRoot, hostFolder } = await import(${quoted(import.meta.dir, "..", "src", "wall", "seat-root.ts")});`,
+    `const { claimRoot, hostFolder } = await import(${quoted(import.meta.dir, "..", "src", "sandbox", "sandbox-root.ts")});`,
     `const { mkdirSync } = await import(${quoted(import.meta.dir, "..", "src", "meta", "filesystem.ts")});`,
     `await claimRoot(${quoted(root)});`,
     `mkdirSync(hostFolder(${quoted(root)}));`,

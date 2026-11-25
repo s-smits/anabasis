@@ -96,6 +96,7 @@ for arg in "$@"; do
     nostart) : >"$HOME/nostart" ;;
   esac
 done
+[[ ! -e "$HOME/fail" ]] || status=4
 times=""
 case "$*" in *.test.ts*)
   for file in test/*.test.ts; do
@@ -356,9 +357,12 @@ function makeCase(options: { readonly copySource?: boolean } = {}) {
     });
   const ran = (host: string): boolean =>
     calls(hostHome(host)).some((call) => call.args?.startsWith("run test") === true);
-  const loaded = (host: string, cores: number, load: number): void => {
+  const loaded = (host: string, cores: number, load: number, system = "Darwin"): void => {
     const each = load.toFixed(2);
-    writeFileSync(join(hostHome(host), "load"), `${String(cores)}\n${each} ${each} ${each}\n50\n---\n`);
+    writeFileSync(
+      join(hostHome(host), "load"),
+      `${String(cores)}\n${each} ${each} ${each}\n50\n${system}\n---\n`,
+    );
   };
   const spreadLoads = (): void => {
     loaded("fake-mac", 2, 0);
@@ -541,6 +545,53 @@ describe.concurrent("which host runs a task", () => {
         ).toBe(0);
         expect(sb.ran("fake-peer")).toBe(true);
       })(),
+    ]);
+  });
+
+  it("runs the Linux test files again under all on a Linux host under half load that no benchmark arm holds, and fails as that run fails", async () => {
+    const EVAL_RUNNER = JSON.stringify([
+      { name: "bench", host: "zbook", store: "store", sitting: "sitting.sh", packs: ["pack"] },
+    ]);
+    const PLAIN = ["test/a.test.ts", "test/b.test.ts"];
+    const WALLED = ["test/wall.test.ts", "test/bwrap.test.ts"];
+    const linuxRan = (sb: ReturnType<typeof makeCase>): string[] =>
+      calls(sb.hostHome("fake-linux"))
+        .flatMap((call) => call.args?.split(" ").filter((arg) => arg.endsWith(".test.ts")) ?? [])
+        .toSorted();
+    const setUp = (first: string, load: number, system: string) => {
+      const sb = makeCase({ copySource: true });
+      mkdirSync(join(sb.source, "test"), { recursive: true });
+      for (const file of PLAIN) writeFileSync(join(sb.source, file), "");
+      writeFileSync(join(sb.source, WALLED[0] ?? ""), "describe.skipIf(!osIsolationSupport().ok)");
+      writeFileSync(join(sb.source, WALLED[1] ?? ""), 'it.skipIf(runtimeProcess.platform !== "linux")');
+      script(join(sb.hostHome("fake-linux"), "sitting.sh"), `#!/bin/sh\necho '${first}'\n`);
+      sb.loaded("fake-mac", 2, 0);
+      sb.loaded("fake-linux", 4, load, system);
+      return sb;
+    };
+    await Promise.all([
+      (async () => {
+        const sb = setUp("idle", 0, "Linux");
+        const result = await sb.run(["test"], { ANA_CHECK_HOST: "all", EVAL_RUNNER });
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stderr).toContain("and 2 again on zbook");
+        expect(linuxRan(sb)).toEqual(WALLED.toSorted());
+        writeFileSync(join(sb.hostHome("fake-linux"), "fail"), "");
+        const failed = await sb.run(["test"], { ANA_CHECK_HOST: "all", EVAL_RUNNER });
+        expect(failed.status, failed.stderr).toBe(4);
+        expect(failed.stderr).toContain("all: 2 files on zbook exited 4");
+      })(),
+      ...[
+        ["an arm holds the lock: pid 1", 0, "Linux"],
+        ["idle", 2.4, "Linux"],
+        ["idle", 0, "Darwin"],
+      ].map(async ([first, load, system]) => {
+        const sb = setUp(String(first), Number(load), String(system));
+        const result = await sb.run(["test"], { ANA_CHECK_HOST: "all", EVAL_RUNNER });
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stderr).not.toContain("again on");
+        expect(linuxRan(sb)).toEqual([]);
+      }),
     ]);
   });
 

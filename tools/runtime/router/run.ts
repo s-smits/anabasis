@@ -12,8 +12,9 @@
  * runs measured (`learn`, from the timings a run rewrote, kept in the repository's common git
  * folder for every worktree; a file no place measured weighs the median), a chunk to a minute of
  * them or more and at most two a slot, each in the first free slot among the places that still
- * give verdicts, and exits as the first failing chunk, or as no verdict where a chunk found no
- * place (`sharded`); a test task with any other argument, such as a name pattern, runs whole, since
+ * give verdicts, with the files that gate on Linux or on the OS wall run again as one chunk on a
+ * free Linux host (`placesFor`), and exits as the first failing chunk, or as no verdict where a
+ * chunk found no place (`sharded`); a test task with any other argument, such as a name pattern, runs whole, since
  * a chunk the pattern misses fails; and where the gate leads on this machine, outside any slot, so
  * that its own test, typecheck and lint steps are routed in turn. Any other value is refused with
  * the names to write. Wherever it runs, the task is `task.sh` over the working tree as it stands,
@@ -230,14 +231,16 @@ function slotOccupied(path: string, mode: "read" | "clean"): boolean {
  * it: this machine alone, the one host it names, or for `auto` this machine and every unbenched host
  * listed, ranked by one-minute load a core plus the fraction of local runner slots already held
  * (`slotOccupied`), so burst launches fan across free machines before 1m load reacts. Hosts named by
- * `EVAL_RUNNER` are left out of `auto` unconditionally (never probed or picked); naming one explicitly
+ * `EVAL_RUNNER` are never picked, and `auto` never reads them; `all` reads them too, so that a Linux
+ * host under half load that no arm holds, benched or not, is `linux`, where the test files that gate
+ * on Linux or on the OS wall run once more; naming one explicitly
  * checks `armHolds` (warning on override, or refusing with `EXIT.unavailable` under
  * `ANA_RUNNER_SPARE_HELD`). A machine that does not answer within `ANA_RUNNER_PICK_WAIT` is omitted,
  * and where none answers the task runs here.
  */
-async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean }> {
+async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean; linux: Host | null }> {
   const choice = checkHost()?.trim() ?? "";
-  const here = { places: [undefined], picked: false };
+  const here = { places: [undefined], picked: false, linux: null };
   if (choice === "here") return here;
   const { hosts, benches } = listed(choice);
   if (choice === "" && hosts.length === 0) return here;
@@ -245,10 +248,20 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
   if (choice === "" || choice === "auto" || choice === "all") {
     const started = performance.now();
     const benched = new Set(benches.flatMap((bench) => (bench.host === undefined ? [] : [bench.host.name])));
-    const { order: sampled, silent } = await minuteLoads(
-      [undefined, ...hosts.filter((host) => !benched.has(host.name))],
+    const { order: read, silent } = await minuteLoads(
+      [undefined, ...hosts.filter((host) => choice === "all" || !benched.has(host.name))],
       waitMs,
     );
+    const linux =
+      choice === "all"
+        ? read.find(({ host, share, system }) => host !== undefined && system === "Linux" && share < 0.5)
+            ?.host
+        : undefined;
+    const spare =
+      linux === undefined ||
+      !benched.has(linux.name) ||
+      !(await armHolds(linux, benches, "its Linux test files run on no Linux host", waitMs));
+    const sampled = read.filter(({ host }) => host === undefined || !benched.has(host.name));
     const ranked = sampled
       .map(({ label, host, share }) => {
         const slots = slotCapacity(host);
@@ -258,19 +271,23 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
         return { label, host, share, busy, slots, score: share + busy / slots };
       })
       .toSorted((a, b) => a.score - b.score);
-    const read = ranked.map(
+    const loads = ranked.map(
       ({ label, share, busy, slots }) =>
         `${label} ${share.toFixed(2)}${busy > 0 ? ` [${String(busy)}/${String(slots)}]` : ""}`,
     );
     const took = ((performance.now() - started) / 1000).toFixed(1);
     say(
-      `auto: 1m load a core ${read.join(", ") || "from none"}${
+      `auto: 1m load a core ${loads.join(", ") || "from none"}${
         silent.length === 0 ? "" : `; no answer from ${silent.join(", ")}`
       } (read in ${took}s)`,
     );
     const cool = choice === "all" ? ranked.filter(({ share }) => share < 0.5) : ranked;
     const kept = cool.length === 0 ? ranked.slice(0, 1) : cool;
-    return { places: kept.length === 0 ? [undefined] : kept.map(({ host }) => host), picked: true };
+    return {
+      places: kept.length === 0 ? [undefined] : kept.map(({ host }) => host),
+      picked: true,
+      linux: linux !== undefined && spare ? linux : null,
+    };
   }
   const host = hosts.find((each) => each.name === choice || each.ssh === choice);
   if (host !== undefined) {
@@ -284,7 +301,7 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
     if (held && spare) {
       throw new Refusal(`no task started on ${host.name}; an arm holds it`, EXIT.unavailable);
     }
-    return { places: [host], picked: false };
+    return { places: [host], picked: false, linux: null };
   }
   const names = hosts.map((each) => each.name).join(", ");
   throw new Refusal(
@@ -568,6 +585,7 @@ async function inSlot(host: Place, slot: Slot, job: Job, commitOf: () => string)
 }
 
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/u;
+const LINUX_TESTS = /platform\s*[!=]==\s*"linux"|osIsolationSupport\(/u;
 const BUN_TIMES = "test/.test-timings.json";
 const NEWEST_SHARE = 0.3;
 const LEAST_CHUNK_MS = 60_000;
@@ -608,7 +626,12 @@ function learn(store: string, place: string, files: readonly string[], text: str
   renameSync(next, store);
 }
 
-async function sharded(job: Job, places: readonly Place[], commitOf: () => string): Promise<number> {
+async function sharded(
+  job: Job,
+  places: readonly Place[],
+  linux: Host | null,
+  commitOf: () => string,
+): Promise<number> {
   const [name = "test", ...named] = job.task;
   const files = (named.length > 0 ? named : ["test"]).flatMap((path) =>
     TEST_FILE.test(path)
@@ -644,43 +667,68 @@ async function sharded(job: Job, places: readonly Place[], commitOf: () => strin
     lightest.files.push(file);
     lightest.weight += weight(file);
   }
+  const onLinux =
+    linux === null
+      ? []
+      : files.filter((file) => LINUX_TESTS.test(readFileSync(join(job.root, file), "utf8")));
   const where = places.map((host) => `${host?.name ?? ownName()} (${String(slotCapacity(host))})`).join(", ");
-  say(`all: ${String(files.length)} test files in ${String(count)} chunks over ${where}`);
+  say(
+    `all: ${String(files.length)} test files in ${String(count)} chunks over ${where}${
+      linux === null || onLinux.length === 0 ? "" : `, and ${String(onLinux.length)} again on ${linux.name}`
+    }`,
+  );
   const exits: number[] = [];
-  let live = [...places];
-  const { unrun } = await spread([{ slots }], chunks, {
-    run: async (chunk) => {
-      const part = { ...job, task: [name, ...chunk.files] };
-      while (live.length > 0) {
-        const { place: host, slot } = await slotAmong(live);
-        const at = host?.name ?? ownName();
-        let status: number;
+  const once = async (
+    { place: host, slot }: { place: Place; slot: Slot },
+    chunk: string[],
+  ): Promise<number> => {
+    const at = host?.name ?? ownName();
+    let status: number;
+    try {
+      const ran = await inSlot(host, slot, { ...job, task: [name, ...chunk] }, commitOf);
+      status = ran.status;
+      if (!NO_VERDICT.has(status)) {
         try {
-          const ran = await inSlot(host, slot, part, commitOf);
-          status = ran.status;
-          if (!NO_VERDICT.has(status)) {
-            try {
-              learn(store, at, chunk.files, ran.times);
-            } catch (error) {
-              say(`all: the test times of ${at} went unrecorded: ${String(error)}`);
-            }
-          }
+          learn(store, at, chunk, ran.times);
         } catch (error) {
-          if (!(error instanceof Refusal) || !NO_VERDICT.has(error.code)) throw error;
-          say(error.message);
-          status = error.code;
+          say(`all: the test times of ${at} went unrecorded: ${String(error)}`);
         }
-        if (!NO_VERDICT.has(status)) {
-          say(`all: ${String(chunk.files.length)} files on ${at} exited ${String(status)}`);
-          exits.push(status);
-          return "done";
-        }
-        live = live.filter((each) => each !== host);
-        say(`all: no verdict from ${at} on ${String(chunk.files.length)} files; they go to another place`);
       }
-      return "elsewhere";
-    },
-  });
+    } catch (error) {
+      if (!(error instanceof Refusal) || !NO_VERDICT.has(error.code)) throw error;
+      say(error.message);
+      status = error.code;
+    }
+    if (NO_VERDICT.has(status)) {
+      say(`all: no verdict from ${at} on ${String(chunk.length)} files`);
+    } else {
+      say(`all: ${String(chunk.length)} files on ${at} exited ${String(status)}`);
+      exits.push(status);
+    }
+    return status;
+  };
+  let live = [...places];
+  const [{ unrun }] = await Promise.all([
+    spread([{ slots }], chunks, {
+      run: async (chunk) => {
+        while (live.length > 0) {
+          const seat = await slotAmong(live);
+          if (!NO_VERDICT.has(await once(seat, chunk.files))) return "done";
+          live = live.filter((each) => each !== seat.place);
+        }
+        return "elsewhere";
+      },
+    }),
+    linux === null || onLinux.length === 0
+      ? null
+      : slotAmong([linux]).then(
+          (seat) => once(seat, onLinux),
+          (error: unknown) => {
+            if (!(error instanceof Refusal)) throw error;
+            say(`${error.message}; the other chunks' verdicts stand`);
+          },
+        ),
+  ]);
   if (unrun.length > 0) {
     say(`all: ${String(unrun.length)} chunks found no place that gave a verdict`);
     return EXIT.noVerdict;
@@ -702,12 +750,14 @@ async function main(argv: readonly string[]): Promise<number> {
       () => {},
     );
   }
-  const { places, picked } = await placesFor();
+  const { places, picked, linux } = await placesFor();
   let commit: string | null = null;
   const commitOf = (): string => (commit ??= snapshot(root));
   const isPath = (arg: string): boolean =>
     TEST_FILE.test(arg) || statSync(join(root, arg), { throwIfNoEntry: false })?.isDirectory() === true;
-  if (all && task[0] === "test" && task.slice(1).every(isPath)) return await sharded(job, places, commitOf);
+  if (all && task[0] === "test" && task.slice(1).every(isPath)) {
+    return await sharded(job, places, linux, commitOf);
+  }
   let remaining = [...places];
   for (;;) {
     const { place: host, slot } = await slotAmong(remaining);

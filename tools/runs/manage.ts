@@ -29,8 +29,8 @@ import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
 import { lastLaunch, nextRun } from "./receipt.ts";
 import { payerOf } from "./live.ts";
-import { LIMITS } from "../d2/campaign.ts";
-import { recordedSetting } from "../d2/setting.ts";
+import { LIMITS } from "../campaign/campaign.ts";
+import { recordedSetting } from "../campaign/setting.ts";
 import { allowedLogins, type Env, NUMBERED, roomToStart, TOKEN, tokenOf } from "./logins.ts";
 import {
   BUILDER,

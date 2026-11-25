@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { gitMaybe, gitOutput, gitText } from "#src/meta/git.ts";
-import { treeFault } from "#tools/d2/campaign.ts";
+import { treeFault } from "#tools/campaign/campaign.ts";
 import { AUTHORED_ROOTS, sourceTextFindings } from "#tools/loc/source-policy.ts";
 import {
   changedSince,
@@ -77,24 +77,27 @@ const CATEGORY_OF: readonly (readonly [RegExp, string])[] = [
   [/^tools\/wri\/|^\.claude\/skills\/whole-run-investigation\//u, "investigation"],
   [/^(?:AGENTS\.md|README\.md|docs\/)|\.md$/u, "docs"],
   [/^src\/kernel\/(?:log|task|trace|reports)\.ts$|^packages\/ui\//u, "log"],
-  [/^tools\/d2\/(?:close|host)\.ts$|^src\/agent\/session\.ts$|^src\/kernel\/meter\.ts$/u, "economy"],
+  [/^tools\/campaign\/(?:close|host)\.ts$|^src\/agent\/session\.ts$|^src\/kernel\/meter\.ts$/u, "economy"],
   [
-    /^src\/kernel\/(?:compare|size|condition)\.ts$|^src\/campaign\/(?:comparison|round|admission)\.ts$|^tools\/d2\/checkpoint\.ts$|^\.claude\/skills\/(?:comparison-reading|compare-systems|promotion-tuner)\//u,
+    /^src\/kernel\/(?:compare|size|condition)\.ts$|^src\/campaign\/(?:comparison|round|admission)\.ts$|^tools\/campaign\/checkpoint\.ts$|^\.claude\/skills\/(?:comparison-reading|compare-systems|promotion-tuner)\//u,
     "comparison",
   ],
-  [/^src\/campaign\/(?:climb|decide|ground)\.ts$|^tools\/d2\/(?:promote|campaign-actions)\.ts$/u, "climb"],
+  [
+    /^src\/campaign\/(?:climb|scheduler|state)\.ts$|^tools\/campaign\/(?:promote|campaign-actions)\.ts$/u,
+    "climb",
+  ],
   [/^src\/(?:builder|harness)\/|^\.claude\/skills\/harness-audit\//u, "harness"],
   [
-    /^src\/examiner\/draft\.ts$|^src\/kernel\/(?:verify|acceptance|contract|check-child)\.ts$|^tools\/c\//u,
+    /^src\/examiner\/draft\.ts$|^src\/kernel\/(?:verify|acceptance|contract|check-child)\.ts$|^tools\/eval\/accept\.ts$/u,
     "exam",
   ],
   [
-    /^src\/examiner\/|^tools\/d1b\/|^tools\/d2\/(?:prepare|exam)\.ts$|^\.claude\/skills\/examiner-complexity\//u,
+    /^src\/examiner\/|^tools\/eval\/|^tools\/campaign\/(?:prepare|exam)\.ts$|^\.claude\/skills\/examiner-complexity\//u,
     "supply",
   ],
-  [/^src\/referee\/|^tools\/d2\/settle\.ts$/u, "verdicts"],
-  [/^src\/(?:solver|agent|wall|tools)\/|^src\/kernel\/solve\.ts$|^vendor\//u, "solve"],
-  [/^src\/campaign\/|^tools\/d2\//u, "climb"],
+  [/^src\/audit\/|^tools\/campaign\/settle\.ts$/u, "verdicts"],
+  [/^src\/(?:solver|agent|sandbox|tools)\/|^src\/kernel\/solve\.ts$|^vendor\//u, "solve"],
+  [/^src\/campaign\/|^tools\/campaign\//u, "climb"],
   [/^tools\/runs\/|^\.claude\/skills\/(?:run-management|system-path-simulation)\//u, "runs"],
   [/^tools\/runtime\/|^\.githooks\/|^\.github\/|^\.claude\/skills\/(?:stack-pr|local-checks)\//u, "landing"],
   [/^tools\/(?:oxlint|loc)\/|^biome\.json$|^\.oxlintrc\.json$/u, "quality"],

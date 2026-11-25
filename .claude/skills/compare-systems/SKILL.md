@@ -16,7 +16,7 @@ built = openai-codex/gpt-6.1-terra:high @ <built harness digest>
 
 ## Procedure
 
-1. **Seed**: `bun run runs seed --from <campaign> --name cmp-<what> [--events N]` (before first practice release or at `comparison.started`; requires `seed.json`). Import built harness via `bun tools/d2/import.ts --name cmp-<what> --harness <data/harnesses/<run>/harness>` (starter = `starter` or `A`).
+1. **Seed**: `bun run runs seed --from <campaign> --name cmp-<what> [--events N]` (before first practice release or at `comparison.started`; requires `seed.json`). Import built harness via `bun tools/campaign/import.ts --name cmp-<what> --harness <data/harnesses/<run>/harness>` (starter = `starter` or `A`).
 2. **Predict**: write predicted winner and settling count in `.ana/compare/cmp-<what>/prediction.md`.
 3. **Dry-run ($0)**:
    ```sh

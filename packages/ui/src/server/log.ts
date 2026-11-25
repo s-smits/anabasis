@@ -38,7 +38,7 @@ const SEAT_LABELS = new Map<string, string | null>(
 );
 /** The kinds a line leaves out: what a solve's ending or the exam side already says. */
 const UNSAID: ReadonlySet<string> = new Set(["verdict", "condition.recorded", "referee.finding"]);
-/** Why the campaign waited, by a wait's `for` (`tools/d2/host.ts`, `src/solver/run.ts`). */
+/** Why the campaign waited, by a wait's `for` (`tools/campaign/host.ts`, `src/solver/run.ts`). */
 const WAITS = new Map([
   ["provider", "for the provider's limit to reset"],
   ["network", "after the network failed a session"],

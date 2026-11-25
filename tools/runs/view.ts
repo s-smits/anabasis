@@ -2,7 +2,7 @@
  * `bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]`: a
  * campaign's setup, sessions, comparisons, climb summary, and the next action the decision table
  * selects (`decide`, `src/campaign/scheduler.ts`). Terms fall back from flags to `campaign.opened`
- * (`src/campaign/opening.ts`) to defaults, so it matches `tools/d2/harness-builder.ts` on the same
+ * (`src/campaign/opening.ts`) to defaults, so it matches `tools/campaign/harness-builder.ts` on the same
  * log.
  */
 import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
@@ -20,8 +20,8 @@ import { parseArgs } from "#src/meta/process.ts";
 import { gitText } from "#src/meta/git.ts";
 import { resolve } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
-import { PRACTICE } from "../d2/prepare.ts";
-import { COMPARISON_OPTIONS } from "../d2/round.ts";
+import { PRACTICE } from "../campaign/prepare.ts";
+import { COMPARISON_OPTIONS } from "../campaign/round.ts";
 import { Misused, processes } from "./registry.ts";
 import { readAcross } from "./snapshots.ts";
 import { dollars } from "./summary.ts";

@@ -44,7 +44,7 @@ const HOSTS_OWN: ReadonlySet<ScheduledAction["move"]> = new Set([
 ]);
 
 /** What the campaign command does with a move the table names where the opening is attended, which
- *  the table does not read (`tools/d2/harness-builder.ts`). */
+ *  the table does not read (`tools/campaign/harness-builder.ts`). */
 const ATTENDED_WAITS = new Map<ScheduledAction["move"], string>([
   ["accept", "; under --hitl the exam is read and its freeze waits for the operator's word"],
   ["promote", "; under --hitl the promotion waits for the operator's word (promote.ts)"],

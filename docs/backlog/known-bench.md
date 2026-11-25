@@ -18,7 +18,7 @@ already practises and scores on one runtime (the README's "One runtime from prac
 1. **A recipe of the study, not a flag of the host.** Level K1 needs no host branch. The operator's
    prompt already reaches the Examiner's drafting session and every writing session, and no other
    seat (`src/examiner/draft.ts:457`, `src/examiner/write.ts:436`, `src/examiner/prompt.ts:133-139`).
-   The opening records it once (`tools/d2/campaign-terms.ts:315`) and refuses a changed prompt
+   The opening records it once (`tools/campaign/campaign-terms.ts:315`) and refuses a changed prompt
    after the draft (`:257-260`). `--project harness2` labels the run wherever runs are listed. A
    host flag waits until a second benchmark needs the same recipe (rule 13).
 2. **K1: the train half's task inputs, shown to the Examiner** (the study's arm U). Four commits,
@@ -42,7 +42,7 @@ already practises and scores on one runtime (the README's "One runtime from prac
    above it: the checks and the grader then disagree.
 4. **K2: the train half as the exam.** Two commits:
    1. open a campaign over a bundle alone, in the layout `stageExam` writes, with `--solver`, by
-      rewriting the four-flag rule in `packNamed` and `packOpened` (`tools/d2/campaign.ts`; about 30
+      rewriting the four-flag rule in `packNamed` and `packOpened` (`tools/campaign/campaign.ts`; about 30
       production lines). The stored-pack path cannot take a benchmark's tasks, since it needs a v1
       sweep with graded solves;
    2. `run.ts exam`: each train task as a task whose hidden values are its tests, with one check that
@@ -63,7 +63,7 @@ already practises and scores on one runtime (the README's "One runtime from prac
   A cell cannot install, and each Code task brings its own image (the study's README, domain fit).
   Otherwise the Office subset comes next.
 - The filled prompt quotes the benchmark's instructions, and a handover's `REPORT.md` quotes the
-  prompt (`tools/d2/close.ts:172-173`). Both stay out of tracked files until the licence word.
+  prompt (`tools/campaign/close.ts:172-173`). Both stay out of tracked files until the licence word.
 
 ## How it came to be
 

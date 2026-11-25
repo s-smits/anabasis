@@ -6,7 +6,7 @@ import { type LogEvent, read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { LIMITS } from "../tools/d2/campaign.ts";
+import { LIMITS } from "../tools/campaign/campaign.ts";
 import {
   firstRecord,
   keepSetting,
@@ -15,7 +15,7 @@ import {
   SETTING_OPTIONS,
   settingAsked,
   settingNamed,
-} from "../tools/d2/setting.ts";
+} from "../tools/campaign/setting.ts";
 
 /** The setting of a campaign no command has named anything for: the one budget every solver is held
  *  to (`LIMITS`), and 24 tasks to score (`SIZE`). */

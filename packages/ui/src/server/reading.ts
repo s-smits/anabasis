@@ -19,7 +19,7 @@ import { endedOf, patienceOf } from "../../../../src/kernel/reports.ts";
 import { billedAll, billedParts } from "../../../../src/kernel/meter.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
-import { recordedSetting } from "../../../../tools/d2/setting.ts";
+import { recordedSetting } from "../../../../tools/campaign/setting.ts";
 import { decidedOn } from "../../../../tools/runs/view.ts";
 import {
   type CampaignReading,

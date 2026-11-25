@@ -33,9 +33,8 @@ src/harness/    starter harness, open, shim
 src/builder/    Builder session, tools, checkpoint `store.ts`
 src/examiner/   draft, `difficulty.ts`, `record.ts` (`taskHistory`), shell (sandboxed Examiner home)
 src/campaign/   `scheduler.ts` (`nextAction`), `state.ts`, `summary.ts`, `signal.ts`, `climb.ts`, names
-tools/c/        accept, rejections
-tools/d1b/      examine, draft
-tools/d2/       campaign commands, solve queue (host)
+tools/eval/     accept, examine, draft
+tools/campaign/ campaign commands, solve queue (host)
 tools/runs/     registry, `summary.ts`, receipts, logins, hosts
 tools/runtime/  test, lint, commit check, gate, pre-push, land, moments
 packages/ui/    loopback fold server (src/server), four panes (src/views); DESIGN.md

@@ -9,7 +9,7 @@ import {
   type RubricItem,
 } from "../src/kernel/contract.ts";
 import { authoredFaults, JUDGE } from "../src/kernel/acceptance.ts";
-import { crossFamilyVendors, modelVendor } from "../tools/d2/round.ts";
+import { crossFamilyVendors, modelVendor } from "../tools/campaign/round.ts";
 
 const LINE = "Names each figure's source table and the year it covers.";
 const unit = (items: readonly RubricItem[]): Objective => ({

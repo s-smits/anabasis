@@ -26,16 +26,16 @@ export interface Running {
   readonly args: readonly string[];
 }
 
-export const BUILDER = "tools/d2/harness-builder.ts";
+export const BUILDER = "tools/campaign/harness-builder.ts";
 /** The draft holds a root as an Examiner session does, so run by itself it must not read as closed, or a
  *  stop would release its root and leave it running. */
-export const DRAFT = "tools/d1b/draft.ts";
+export const DRAFT = "tools/eval/draft.ts";
 export const SEED_FILE = "seed.json";
-export const ROUND = "tools/d2/round.ts";
+export const ROUND = "tools/campaign/round.ts";
 /** The commands that write a campaign's log by hand, each naming it with `--name`: an Examiner
  *  session (which would otherwise read as closed while it ran), a standalone comparison and a
  *  Builder session alone. */
-const BY_HAND = [EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
+const BY_HAND = [EXAMINE, "tools/campaign/checkpoint.ts", "tools/campaign/session.ts", DRAFT];
 export const CLI = "tools/runs/cli.ts";
 export const SEAT = "system-path-simulation/scripts/live-seat.ts";
 export const KEEPING = "--here";
@@ -81,7 +81,9 @@ export function domainOf(name: string): string {
 }
 /**
  * Bun's first non-option argument after `nice` and `run`, so a shell whose command line merely
- * names the campaign command does not read as its writer.
+ * names the campaign command does not read as its writer. `runsAs` also maps pre-rename d2 and
+ * d1b tool directories to `tools/campaign/` and `tools/eval/` while campaigns launched before the
+ * rename are live; drop the mapping once none remain.
  */
 function scriptOf(args: readonly string[]): string | undefined {
   const [bun, ...rest] = args[0] === "nice" ? args.slice(3) : args;
@@ -89,9 +91,15 @@ function scriptOf(args: readonly string[]): string | undefined {
   const named = rest.filter((arg) => !arg.startsWith("-"));
   return named[0] === "run" ? named[1] : named[0];
 }
+const LEGACY_TOOL_DIR = /(^|\/)tools\/(d2|d1b)\//u;
 export const runsAs = (args: readonly string[], tools: readonly string[]) => {
   const script = scriptOf(args);
-  return script !== undefined && tools.some((tool) => script.endsWith(tool));
+  if (script === undefined) return false;
+  const normalized = script.replace(
+    LEGACY_TOOL_DIR,
+    (_match, prefix: string, legacy: string) => `${prefix}tools/${legacy === "d2" ? "campaign" : "eval"}/`,
+  );
+  return tools.some((tool) => normalized.endsWith(tool));
 };
 
 function writesCampaign(args: readonly string[]): boolean {

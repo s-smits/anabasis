@@ -31,7 +31,7 @@ import { plural } from "#src/meta/text.ts";
 import { text, tool } from "#src/tools/answer.ts";
 import { publicView } from "#src/solver/prompt.ts";
 import { waitOut } from "#src/solver/run.ts";
-import { examineCommand } from "../d1b/examine.ts";
+import { examineCommand } from "../eval/examine.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { resolveCheckpoint, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import {
@@ -102,7 +102,7 @@ const EXAMINED = new Map(
 );
 
 export const awaitsOperator = (name: string, harness: string): string =>
-  `under --hitl a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${harness} --yes, or run this command with --no-hitl`;
+  `under --hitl a promotion is the operator's word: bun tools/campaign/promote.ts --name ${name} --harness ${harness} --yes, or run this command with --no-hitl`;
 
 function refreshPractice(bench: Bench, campaign: Campaign): void {
   const packages = campaign.packages();

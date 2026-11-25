@@ -7,10 +7,10 @@
  * starter (default `none`). `--supply N` adds copies of the source's answered tasks, so a climb of
  * more than one epoch can be rehearsed.
  *
- *   bun run runs rehearse --name <seed> <the flags of tools/d2/harness-builder.ts> [--supply N]
+ *   bun run runs rehearse --name <seed> <the flags of tools/campaign/harness-builder.ts> [--supply N]
  *     [--held none:pass] [--starter none]
- *   bun run runs rehearse --name <seed> --id <comparison> <the flags of tools/d2/checkpoint.ts> ...
- *   bun run runs rehearse --name <seed> --no-comparison <the flags of tools/d2/session.ts> ...
+ *   bun run runs rehearse --name <seed> --id <comparison> <the flags of tools/campaign/checkpoint.ts> ...
+ *   bun run runs rehearse --name <seed> --no-comparison <the flags of tools/campaign/session.ts> ...
  */
 import {
   createModels,
@@ -36,13 +36,13 @@ import { ANSWER_FILE } from "#src/tools/answer.ts";
 import { selectedCodingTools } from "#src/tools/coding.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { shellQuote } from "#src/sandbox/isolation.ts";
-import { campaignLog, starter } from "../d2/campaign.ts";
-import { stagedExamOf } from "../d2/exam.ts";
-import { checkpointCommand } from "../d2/checkpoint.ts";
-import { harnessBuilder } from "../d2/harness-builder.ts";
-import type { Seated } from "../d2/round.ts";
+import { campaignLog, starter } from "../campaign/campaign.ts";
+import { stagedExamOf } from "../campaign/exam.ts";
+import { checkpointCommand } from "../campaign/checkpoint.ts";
+import { harnessBuilder } from "../campaign/harness-builder.ts";
+import type { Seated } from "../campaign/round.ts";
 import type { Reader } from "#src/audit/auditor.ts";
-import { sessionCommand } from "../d2/session.ts";
+import { sessionCommand } from "../campaign/session.ts";
 import { packControls } from "../m0/stored-sweep.ts";
 import { Misused, SEED_FILE } from "./registry.ts";
 import { codeLine } from "./seed.ts";

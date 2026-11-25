@@ -48,7 +48,7 @@ bun run setup --token      # run in your terminal to save CLAUDE_CODE_OAUTH_TOKE
 git worktree add --detach ../anabasis-trusses && cd ../anabasis-trusses
 bun install --frozen-lockfile
 
-bun --env-file=../anabasis/.env tools/d2/harness-builder.ts \
+bun --env-file=../anabasis/.env tools/campaign/harness-builder.ts \
   --name trusses --project steel \
   --prompt "Design lightweight steel roof trusses to Eurocode 3 within strict mass limits." \
   --budget 400 \
@@ -67,8 +67,8 @@ bun --env-file=../anabasis/.env tools/d2/harness-builder.ts \
 Campaigns opened with `bun run runs fresh` export their reference Harness automatically to `data/harnesses/<name>/` (`harness/`, `RULES.md`, `REPORT.md`) on termination. Export manually or run isolated sandboxed solves against it:
 
 ```sh
-bun tools/d2/close.ts --name your-campaign --to data/harnesses/your-campaign
-bun tools/d2/close.ts --name your-campaign --to data/harnesses/your-campaign \
+bun tools/campaign/close.ts --name your-campaign --to data/harnesses/your-campaign
+bun tools/campaign/close.ts --name your-campaign --to data/harnesses/your-campaign \
   --solve task-id[,task-id...] [--solver openai-codex/gpt-6.1-terra --solver-effort high]
 ```
 

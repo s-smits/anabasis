@@ -1,5 +1,5 @@
 /**
- * One Examiner drafting session (`bun tools/d1b/draft.ts`): each draft is read offline
+ * One Examiner drafting session (`bun tools/eval/draft.ts`): each draft is read offline
  * (`draftReading`), a mechanically clean one gets up to `MAX_DRAFT_AUDITS` Adversarial Judge audits
  * (`reviewDraft`) when a reviewer is named, and an accepted draft records `checker.read` /
  * `contract.frozen`.
@@ -21,10 +21,10 @@ import type { Reader } from "#src/audit/auditor.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, examinerSession, REPO, stayAwake, worktreesOf } from "../d2/campaign.ts";
-import { keepReading } from "../c/accept.ts";
-import { draftReading } from "../d2/exam.ts";
-import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../d2/setting.ts";
+import { campaignLog, examinerSession, REPO, stayAwake, worktreesOf } from "../campaign/campaign.ts";
+import { keepReading } from "../eval/accept.ts";
+import { draftReading } from "../campaign/exam.ts";
+import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 type DraftAuditor = (reader: Reader, target: DraftAuditCase) => Promise<DraftAuditFinding>;
@@ -120,7 +120,7 @@ export async function draftCommand(
   const prompt = opening?.prompt;
   if (!isString(prompt)) {
     throw new Error(
-      `campaign ${name} did not open from a prompt, so there is nothing to draft its exam from: open it with tools/d2/harness-builder.ts --prompt`,
+      `campaign ${name} did not open from a prompt, so there is nothing to draft its exam from: open it with tools/campaign/harness-builder.ts --prompt`,
     );
   }
   const reviewer = opening?.seats.reviewer ?? null;

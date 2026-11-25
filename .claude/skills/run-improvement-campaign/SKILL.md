@@ -114,7 +114,7 @@ Report Supply + the four factors (`AGENTS.md` §1) at pass open and close:
 | 1 | Climb | `runs status`, `runs view`, `close.ts` "Promotions" | `AGENTS.md` factor 1 |
 | 2 | Honesty | Report `noise`; `close.ts` "The chance of a false promotion" | A/A controls & cumulative risk |
 | 3 | Supply | `--dry-run`, `runs view`, `task.gate` | `comparisonFloor(level)` frontier tasks |
-| 4 | Verdicts | `tools/d2/settle.ts` | `AGENTS.md` factor 3 |
+| 4 | Verdicts | `tools/campaign/settle.ts` | `AGENTS.md` factor 3 |
 | 5 | Economy | `close.ts` "Work and spend", `promotionsWorth`, `worthLine` | ≤3 attempts/epoch after setup |
 
 ## The outside aim: Harness² on JobBench
@@ -141,7 +141,7 @@ On stalls (spend without milestone progress; exclude rule-15 limit waits), walk 
 | 1 | supply | 3 | `tasks`/`short` rows, refused drafts (`< comparisonFloor`) | `src/examiner/prompt.ts`, `taskHistory` (`record.ts`), `propose_tasks` (`write.ts`), `supplyRun`/`tasksToAskFor` (`scheduler.ts`), `comparisonFloor` (`admission.ts`) |
 | 2 | instrument | 4 | `exam` ending, checker faults, tasks set aside, audit ceremony | `planOf` (`opening.ts`), `readChecker` (`acceptance.ts`), `reviewDraft` (`src/audit/draft-audit.ts`), check author |
 | 3 | room | 1 | `no-room`, zero `valid.informative.old` | Link 1; `evalHeadroom` (`reports.ts`) |
-| 4 | session | 1 | Unchanged `build.finished`, idle sessions, practice all passing | `src/builder/prompt.ts`, `tools/d2/campaign-actions.ts`, `idleOf` (`campaign-terms.ts`) |
+| 4 | session | 1 | Unchanged `build.finished`, idle sessions, practice all passing | `src/builder/prompt.ts`, `tools/campaign/campaign-actions.ts`, `idleOf` (`campaign-terms.ts`) |
 | 5 | size | 2 | Excess ties, near miss, high `scored.detectable` | `--target` for next run; link 1 |
 | 6 | host | 2 | `HOST LOADED`, `LOAD MOVED`, long `campaign.waited` | Concurrent campaigns/host |
 | 7 | promotion | 2 | `no-step` near alpha, retained loss, A/A step | Links 1 & 5; `isSignificant` (`compare.ts`) |

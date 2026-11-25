@@ -44,7 +44,7 @@ logs. These five differ from their owner on some log, so replacing them changes 
 7. **An unruled rejection in compare-systems.** `systems.ts` treats any `referee.finding` as
    ruled, where a round puts a finding with a null ruling to the Referee again (`unruledOf`,
    `src/campaign/round.ts`). A rejection whose Referee call was cut stays unruled for good.
-8. **A pending budget word on a dry run.** `tools/d2/harness-builder.ts` skips applying it, so the
+8. **A pending budget word on a dry run.** `tools/campaign/harness-builder.ts` skips applying it, so the
    printed next move is decided on the old total; `campaign-actions.ts` has no such guard.
 9. **The starter's digest on a log from before 9 October.** `climb.ts`, `tools/wri/packets.ts` and
    `trajectory.ts` take the first `comparison.started`; the page falls back to the first report's
@@ -74,7 +74,7 @@ A scan for rows 11 to 15 starts as a report in `tree-findings.ts` and gates only
 ### Found after the release
 
 Two readers went over what v0.10.3 landed on 10 November 2026, one over `src/` and one over
-`tools/d2` and `tools/runs`. `--after next|<word>` was mended in the change that added these rows;
+`tools/campaign` and `tools/runs`. `--after next|<word>` was mended in the change that added these rows;
 the rest wait. "Read" means the row was checked against the source again before it was written
 here; "reported" means only its reader has seen it.
 

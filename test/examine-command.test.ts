@@ -1,11 +1,11 @@
-// The Examiner command, `tools/d1b/examine.ts`, with a scripted session. No paid model runs here.
+// The Examiner command, `tools/eval/examine.ts`, with a scripted session. No paid model runs here.
 import { afterAll, describe, expect, it } from "bun:test";
 import { readdirSync, rmSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { inExaminerSandbox } from "../src/examiner/shell.ts";
-import { examineCommand } from "../tools/d1b/examine.ts";
-import { REPO } from "../tools/d2/campaign.ts";
+import { examineCommand } from "../tools/eval/examine.ts";
+import { REPO } from "../tools/campaign/campaign.ts";
 import { fixtureTasks, layOutPack } from "./helpers/fixture-pack.ts";
 import { present } from "./helpers/matchers.ts";
 

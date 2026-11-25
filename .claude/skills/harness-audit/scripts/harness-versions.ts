@@ -35,7 +35,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openHarness, pathsUnder, treeContent } from "#src/harness/open.ts";
 import { writeStarter } from "#src/harness/starter.ts";
-import { resolveCheckpoint } from "#tools/d2/campaign.ts";
+import { resolveCheckpoint } from "#tools/campaign/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { diffOf as lineDiff, madeOf, writtenIn } from "#tools/wri/trajectory.ts";
 
@@ -466,7 +466,9 @@ async function main(args: CommandArgs): Promise<number> {
   // campaign that does not keep it.
   const named = async (flag: string, harness: string) => {
     if (harness.startsWith("programs-of:")) {
-      args.die(`${flag} takes no control: the command that compares one makes it (tools/d2/checkpoint.ts)`);
+      args.die(
+        `${flag} takes no control: the command that compares one makes it (tools/campaign/checkpoint.ts)`,
+      );
     }
     const role = harness === "promoted" ? "reference" : harness;
     const digest = versions.find((version) => version.roles.includes(role))?.digest;

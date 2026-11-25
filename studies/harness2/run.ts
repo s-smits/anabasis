@@ -30,7 +30,7 @@ import { join, relative, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
-import { LIMITS } from "#tools/d2/campaign.ts";
+import { LIMITS } from "#tools/campaign/campaign.ts";
 import { bundleArm, MOUNT_RECORD, sourceNamed } from "../shared/bundle.ts";
 import { halves, readArms, shortfall, streamOf, trialsOf } from "../shared/scores.ts";
 

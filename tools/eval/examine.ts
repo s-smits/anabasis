@@ -7,7 +7,7 @@
  * limit, or `finish`. The home holds no copy of the reference harness, so tasks do not target its
  * programs.
  *
- *   bun tools/d1b/examine.ts --name truss --session x-1 --examiner claude/claude-opus-5-5
+ *   bun tools/eval/examine.ts --name truss --session x-1 --examiner claude/claude-opus-5-5
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { examine, type Session } from "#src/examiner/session.ts";
@@ -17,8 +17,8 @@ import { readBrief } from "#src/kernel/verify.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, openCampaign, PACK_OPTIONS, packNamed, REPO, stayAwake } from "../d2/campaign.ts";
-import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../d2/setting.ts";
+import { campaignLog, openCampaign, PACK_OPTIONS, packNamed, REPO, stayAwake } from "../campaign/campaign.ts";
+import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 const EXAMINE_OPTIONS = {

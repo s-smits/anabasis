@@ -1,4 +1,4 @@
-// A campaign ended with SIGKILL and run again by the same command (`tools/d2/harness-builder.ts`), as a
+// A campaign ended with SIGKILL and run again by the same command (`tools/campaign/harness-builder.ts`), as a
 // killed process or an evicted host leaves a run's keeper to do; the command runs in a process of its
 // own (`helpers/killed-campaign.ts`), so the kill is real. Each case holds the run after the kill to
 // what no kill may change, and names a stretch wide enough for a kill that lands some time after its

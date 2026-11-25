@@ -80,7 +80,7 @@ the release cycle stays aimed at them?
    reports that count. New, proposed: the pass side. The row calibrated only rejections, so it
    catches a check that refuses right answers and misses one that passes wrong ones, which is how a
    gamed or vacuous check shows. The mechanism is in source: each packet draws three passes beside
-   its rejections (`tools/d2/settle.ts`), a person labels each `sound`, `wrong` or `unclear`
+   its rejections (`tools/campaign/settle.ts`), a person labels each `sound`, `wrong` or `unclear`
    (`PASS_LABELS`), and a settled pass labelled wrong is its side's fail; no bar counts those labels
    and `agreement` reads none. Proposed: at least 20 labelled passes from the measured campaigns'
    references, at most 1 in 10 wrong, the same rate as the earned side until labels give one of

@@ -46,7 +46,11 @@ describe("whether a campaign may still write its log", () => {
     expect(stillRunning(copy("wri-test-local", { open: true, stderr: null }), [])).toBe(false);
     expect(stillRunning(copy("wri-test-here", { open: true, stderr: null }, "here"), [])).toBe(false);
     const run = copy("wri-test-written", null);
-    const writer = { pid: 1, cwd: dir, args: ["bun", "/x/tools/d2/harness-builder.ts", "--name", run.name] };
+    const writer = {
+      pid: 1,
+      cwd: dir,
+      args: ["bun", "/x/tools/campaign/harness-builder.ts", "--name", run.name],
+    };
     expect(stillRunning({ ...run, tree: "/x" }, [writer])).toBe(true);
   });
 

@@ -24,7 +24,7 @@ import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime
 import { asRecord, isBoolean, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { exampleId } from "#tools/d2/exam.ts";
+import { exampleId } from "#tools/campaign/exam.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { callPrograms } from "#src/kernel/call-programs.ts";

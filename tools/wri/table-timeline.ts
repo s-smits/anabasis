@@ -13,7 +13,7 @@ import type { Call } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { resolve } from "#src/meta/path.ts";
-import { codeOf } from "#tools/d2/campaign.ts";
+import { codeOf } from "#tools/campaign/campaign.ts";
 import { logEvents } from "#tools/runs/registry.ts";
 import { builderWaits, firstComparisonDelay, planOn, poolOn, waitedIn } from "#tools/runs/view.ts";
 import { printRows } from "./folds.ts";

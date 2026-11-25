@@ -1,6 +1,6 @@
 /**
  * Shared campaign state: opens `.ana/d2/<name>` for every campaign command. `CODE_TREES` puts
- * `tools/d2`, `tools/c` and `tools/d1b` in the code digest, so a comparison refuses to go on if
+ * `tools/campaign` and `tools/eval` in the code digest, so a comparison refuses to go on if
  * campaign code changes mid-round.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
@@ -116,7 +116,7 @@ export const FOLLOWED = "ana-followed";
 
 export const PACK_OPTIONS = { name: { type: "string" } } as const;
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-ai", "@earendil-works/pi-durable"];
-export const CODE_TREES = ["src", "vendor", "tools/d2", "tools/c", "tools/d1b"] as const;
+export const CODE_TREES = ["src", "vendor", "tools/campaign", "tools/eval"] as const;
 
 /**
  * A campaign's log and hidden values lie under `.ana` in its own worktree, which a shell in a
@@ -170,7 +170,7 @@ export function packNamed(flags: { readonly name?: string | undefined }, also = 
   if (name === undefined) throw new Error(`name --name${also}`);
   if (draftOf(read(campaignLog(name), TRACE_KINDS)) === null) {
     throw new Error(
-      `campaign ${name} holds no exam of its own, which only a campaign that opened from a prompt drafts (tools/d2/harness-builder.ts --prompt)`,
+      `campaign ${name} holds no exam of its own, which only a campaign that opened from a prompt drafts (tools/campaign/harness-builder.ts --prompt)`,
     );
   }
   return { name };
@@ -297,7 +297,7 @@ export async function openCampaign(args: CampaignArgs) {
   const { bundle, checks, events, format, solver } = packOpened(dir, log, args);
   const { brief, tasks } = readPack(bundle);
   const contract = contractOf(brief, format);
-  // Once the operator has frozen a checker (`tools/c/accept.ts --freeze`), a campaign whose own is
+  // Once the operator has frozen a checker (`tools/eval/accept.ts --freeze`), a campaign whose own is
   // another does not open, since what the log counted was counted under the frozen one.
   const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
   const moved = departure(events, checker);
@@ -467,7 +467,7 @@ export function awaitingLines(campaign: {
   const named = awaiting.map((version) => packages.get(version)?.taskId ?? version.slice(0, 8));
   const [has, is, it] = awaiting.length === 1 ? ["has", "is", "it"] : ["have", "are", "them"];
   return [
-    `${plural(awaiting.length, "held-out task")} ${has} no valid answer on record after two comparisons that cut no solve of ${it} at a limit, and ${is} left out of the scored set until a person has read ${it}: ${named.join(", ")}. A task may be hard, wrongly checked, or have no valid answer at all. Label each with tools/d2/prepare.ts: --keep <task id> returns it to the set, --infeasible <task id> refuses it`,
+    `${plural(awaiting.length, "held-out task")} ${has} no valid answer on record after two comparisons that cut no solve of ${it} at a limit, and ${is} left out of the scored set until a person has read ${it}: ${named.join(", ")}. A task may be hard, wrongly checked, or have no valid answer at all. Label each with tools/campaign/prepare.ts: --keep <task id> returns it to the set, --infeasible <task id> refuses it`,
   ];
 }
 

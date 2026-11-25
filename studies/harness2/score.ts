@@ -32,7 +32,7 @@ import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { LIMITS } from "#tools/d2/campaign.ts";
+import { LIMITS } from "#tools/campaign/campaign.ts";
 import {
   criteriaFromRubrics,
   criteriaOfDetails,

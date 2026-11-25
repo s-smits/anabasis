@@ -3,7 +3,7 @@
  * word, so a session may start from it (`--parent`), a comparison may name it, and `promote.ts
  * --despite "<why>"` may promote it.
  *
- *   bun tools/d2/import.ts --name r-1 --harness ~/handover/t-4/harness [--note "<why>"]
+ *   bun tools/campaign/import.ts --name r-1 --harness ~/handover/t-4/harness [--note "<why>"]
  */
 import { append } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "#src/meta/filesystem.ts";

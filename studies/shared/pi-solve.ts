@@ -38,7 +38,7 @@ import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
 import { type AgentSpec, type AgentTool, runAgent } from "#src/agent/session.ts";
 import { trajectoryOf } from "./atif.ts";
 import { shellQuote, toolTreeImports, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
-import { seatBackends } from "#tools/d2/campaign.ts";
+import { seatBackends } from "#tools/campaign/campaign.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 
 export const TRACE_FILE = "pi-log.jsonl";

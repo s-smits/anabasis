@@ -46,7 +46,7 @@ const ROUTES: readonly Route[] = [
   {
     id: "run",
     command:
-      /\bbun run runs (fresh|launch|continue|keep|move|pause|stop|copy|retire|bench)\b|tools\/d2\/(harness-builder|round|session|checkpoint|promote|import|word|close)\.ts|live-seat/u,
+      /\bbun run runs (fresh|launch|continue|keep|move|pause|stop|copy|retire|bench)\b|tools\/campaign\/(harness-builder|round|session|checkpoint|promote|import|signal|close)\.ts|tools\/eval\/(accept|examine|draft)\.ts|live-seat/u,
     said: "Paid runs (AGENTS.md §10): obtain authorisation for the named run, launch in a dedicated clean worktree (never main), prove the path model-free and record one falsifiable prediction before solving. Never print `--env-file`; account limits follow rule 15.",
     skill: "run-management",
     also: [
@@ -96,7 +96,7 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "seats",
-    path: /(^|\/)src\/(builder|examiner|solver|audit|harness)\/|(^|\/)tools\/d2\/(campaign-actions|harness-builder)\.ts$/u,
+    path: /(^|\/)src\/(builder|examiner|solver|audit|harness)\/|(^|\/)tools\/campaign\/(campaign-actions|harness-builder)\.ts$/u,
     said: "Seat wall (rule 3; AGENTS.md §2–3): perturbing hidden values, checks or held-out winners must leave Builder and solver messages byte-identical (`test/builder.test.ts`, `test/builder-led.test.ts`). Verify with `bun .claude/skills/design-and-seats/scripts/seat-view.ts` (`builder-view.ts <name>` inspects Builder openings). Give models facts, not directives.",
     skill: "design-and-seats",
     also: [
@@ -118,7 +118,7 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "campaign",
-    path: /(^|\/)src\/campaign\/|(^|\/)tools\/d2\//u,
+    path: /(^|\/)src\/campaign\/|(^|\/)tools\/(campaign|eval)\//u,
     said: "Campaign control (AGENTS.md §6): endings, admissions, settings and practice release. Rehearse changed round or campaign paths with `bun run runs rehearse` (`ending.ts <name>` shows endings and stop state).",
     skill: "campaign-mechanics",
     also: [
@@ -129,7 +129,7 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "wall",
-    path: /(^|\/)src\/wall\/|(^|\/)src\/tools\/command\.ts$/u,
+    path: /(^|\/)src\/sandbox\/|(^|\/)src\/tools\/command\.ts$/u,
     said: "OS isolation (AGENTS.md §10): Seatbelt on macOS, Bubblewrap on Linux (`src/sandbox/`). One platform's suite proves nothing on the other; grant whole folders; an unavailable sandbox yields a typed non-result.",
     skill: "repository-practice",
   },

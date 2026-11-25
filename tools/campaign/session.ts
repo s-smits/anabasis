@@ -3,7 +3,7 @@
  * unread checker or after the stop rule stopped the campaign, unless `--past-stop "<why>"`. A
  * rehearsal runs the same command with scripted seats (`bun run runs rehearse --no-comparison`).
  *
- *   bun tools/d2/session.ts --name truss --session b-2 --builder claude/claude-opus-5-5 --cap 150
+ *   bun tools/campaign/session.ts --name truss --session b-2 --builder claude/claude-opus-5-5 --cap 150
  */
 import { admitSession } from "#src/campaign/admission.ts";
 import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";
@@ -22,7 +22,7 @@ import {
 } from "./round.ts";
 import { keepSetting } from "./setting.ts";
 
-/** `bun tools/d2/session.ts`, and under a simulation's `seated` the same session with scripted
+/** `bun tools/campaign/session.ts`, and under a simulation's `seated` the same session with scripted
  *  seats. Returns the harness it froze, or null where it left its parent. */
 export async function sessionCommand(
   args: readonly string[],
@@ -67,7 +67,7 @@ export async function sessionCommand(
   console.log(
     kept === null
       ? `session ${session} left the harness it started from: there is nothing of it to compare`
-      : `session ${session} left harness ${kept.digest}: tools/d2/checkpoint.ts --new latest compares it`,
+      : `session ${session} left harness ${kept.digest}: tools/campaign/checkpoint.ts --new latest compares it`,
   );
   return kept;
 }

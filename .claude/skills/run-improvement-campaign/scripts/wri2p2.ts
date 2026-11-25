@@ -25,7 +25,7 @@ import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
-import { CODE_TREES } from "#tools/d2/campaign.ts";
+import { CODE_TREES } from "#tools/campaign/campaign.ts";
 import { stillRunning } from "#tools/runs/diagnosis.ts";
 import { envRunsFile } from "#tools/runs/host-config.ts";
 import { lastLaunch } from "#tools/runs/receipt.ts";

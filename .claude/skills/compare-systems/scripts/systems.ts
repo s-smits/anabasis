@@ -1,7 +1,7 @@
 /**
  * Two or more solving systems, each a solver inside a harness, read against each other on one
  * campaign's held-out tasks. A campaign cannot make this reading: its setting fixes the solver
- * (`tools/d2/setting.ts`). The question is whether a built system with a cheap solver reaches what
+ * (`tools/campaign/setting.ts`). The question is whether a built system with a cheap solver reaches what
  * a bare system with a dear solver reaches. A reading is one solve per task and system unless
  * `--solves` names more; `--login N` puts `CLAUDE_CODE_OAUTH_TOKEN<N>` in the plain token's place
  * for a Claude solver (`loginEnv`). This file only joins production primitives: each system opens a
@@ -34,8 +34,8 @@ import { join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { mean } from "#src/meta/tally.ts";
-import { type Kept, resolveCheckpoint, openCampaign, packNamed } from "#tools/d2/campaign.ts";
-import { gated } from "#tools/d2/host.ts";
+import { type Kept, resolveCheckpoint, openCampaign, packNamed } from "#tools/campaign/campaign.ts";
+import { gated } from "#tools/campaign/host.ts";
 import {
   type Campaign,
   objectiveNamed,
@@ -43,8 +43,8 @@ import {
   reviewersNamed,
   type Seats,
   solved,
-} from "#tools/d2/round.ts";
-import { recordedSetting, settingNamed } from "#tools/d2/setting.ts";
+} from "#tools/campaign/round.ts";
+import { recordedSetting, settingNamed } from "#tools/campaign/setting.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
 import { dollars } from "#tools/runs/summary.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
@@ -58,7 +58,7 @@ const USAGE = `compare-systems: solve a campaign's held-out tasks under two or m
 
 <seed> is a seed of a campaign that opened from a prompt (bun run runs seed), never the campaign
 itself; a seed of a campaign over a stored pack names that pack by its four flags. <harness> is starter, promoted, or a whole digest or a letter the seed keeps; import a harness
-from elsewhere into the seed first (tools/d2/import.ts).
+from elsewhere into the seed first (tools/campaign/import.ts).
 Each candidate is read against the baseline, by default on every held-out task, one solve a task.
 --login N solves on the login CLAUDE_CODE_OAUTH_TOKEN<N> instead of the plain one. Without --read it solves what each system is short
 of, up to --cap dollars over every system, has the Referee --reviewer names rule every rejection

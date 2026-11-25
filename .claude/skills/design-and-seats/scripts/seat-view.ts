@@ -46,8 +46,8 @@ export const SEATS = {
       "src/builder/prompt.ts",
       "src/builder/tools.ts",
       "src/builder/session.ts",
-      "tools/d2/campaign-actions.ts",
-      "tools/d2/harness-builder.ts",
+      "tools/campaign/campaign-actions.ts",
+      "tools/campaign/harness-builder.ts",
     ],
     tests: [
       { file: "test/builder.test.ts", name: "what crosses to the Builder" },

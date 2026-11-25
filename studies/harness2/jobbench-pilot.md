@@ -46,7 +46,7 @@ not.
   event, which the runner prints on each attempt line and Harness²'s proposer writes into each
   task's summary. A session killed before its `result` event reports none; such sessions are
   counted apart and priced from their messages' token counts at list price, marked as estimates.
-- **The Anabasis build:** the campaign log's bill at list price (`tools/d2/close.ts`).
+- **The Anabasis build:** the campaign log's bill at list price (`tools/campaign/close.ts`).
 - **The judge:** each call's `total_cost_usd`.
 - **Time:** wall clock from an arm's first event to its last, an arm and a task.
 

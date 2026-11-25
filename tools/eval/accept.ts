@@ -5,7 +5,7 @@
  * judged objective items until `--admit-judge`. The reading lands as `checker.read`, and the
  * command exits 1 while a fault remains.
  *
- *   bun tools/c/accept.ts --name <campaign> [--admit a,b | --admit-authored] [--admit-judge] [--freeze [--despite <why>]]
+ *   bun tools/eval/accept.ts --name <campaign> [--admit a,b | --admit-authored] [--admit-judge] [--freeze [--despite <why>]]
  */
 import {
   AUTHOR,
@@ -22,7 +22,7 @@ import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { openCampaign, PACK_OPTIONS, packNamed } from "../d2/campaign.ts";
+import { openCampaign, PACK_OPTIONS, packNamed } from "../campaign/campaign.ts";
 import { packControls, toolOnPath } from "../m0/stored-sweep.ts";
 
 const OPTIONS = {
@@ -39,7 +39,7 @@ type Reading = Awaited<ReturnType<typeof readChecker>>;
 
 /**
  * Appends `checker.read` and, when `freeze` holds and no fault remains or `despite` says why,
- * `contract.frozen`. This command and accepted drafts (`tools/d1b/draft.ts`) share it, so every
+ * `contract.frozen`. This command and accepted drafts (`tools/eval/draft.ts`) share it, so every
  * reading has one schema.
  */
 export function keepReading(

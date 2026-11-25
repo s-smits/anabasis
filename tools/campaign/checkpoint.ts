@@ -1,7 +1,7 @@
 /**
  * One comparison of two harnesses a campaign keeps, on its held-out tasks, with no Builder session.
  *
- *   bun tools/d2/checkpoint.ts --name truss --id g-2 --target 8 --cap 437
+ *   bun tools/campaign/checkpoint.ts --name truss --id g-2 --target 8 --cap 437
  */
 import { admitComparison } from "#src/campaign/admission.ts";
 import type { Report } from "#src/campaign/comparison.ts";
@@ -29,7 +29,7 @@ const STANDALONE_OPTIONS = {
   ...COMPARISON_OPTIONS,
 } as const;
 
-/** `bun tools/d2/checkpoint.ts`, and under a simulation's `seated` the same comparison with its
+/** `bun tools/campaign/checkpoint.ts`, and under a simulation's `seated` the same comparison with its
  *  solver scripted. */
 export async function checkpointCommand(
   args: readonly string[],

@@ -4,7 +4,7 @@
  * conversations in a row without a campaign move) or `--moves`. The executing Bun must match
  * `packageManager` and `engines.bun`.
  *
- *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
+ *   bun tools/campaign/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
  *     --solver claude/claude-sonnet-5-5 --budget 60 --builder claude/claude-opus-5-5 \
  *     --examiner claude/claude-opus-5-5 --reviewer claude/claude-opus-5-5 [--moves 1] [--dry-run] [--hitl]
  */
@@ -31,9 +31,9 @@ import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { waitOut } from "#src/solver/run.ts";
-import { acceptCommand } from "../c/accept.ts";
+import { acceptCommand } from "../eval/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
-import { draftCommand } from "../d1b/draft.ts";
+import { draftCommand } from "../eval/draft.ts";
 import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/registry.ts";
 import { campaignLog, LIMITS, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
@@ -152,12 +152,12 @@ function examLines(
     ...(authored.length === 0
       ? []
       : [
-          `to admit the checks their author's own computation decides, which is the operator's word for each: bun tools/d2/harness-builder.ts ${packOf(values).join(" ")} --admit ${authored.join(",")}`,
+          `to admit the checks their author's own computation decides, which is the operator's word for each: bun tools/campaign/harness-builder.ts ${packOf(values).join(" ")} --admit ${authored.join(",")}`,
         ]),
     ...(judged.length === 0
       ? []
       : [
-          `to admit the judged rubric items (${judged.join(", ")}), pass --admit-judge with a cross-family --reviewer: bun tools/d2/harness-builder.ts ${packOf(values).join(" ")} --admit-judge`,
+          `to admit the judged rubric items (${judged.join(", ")}), pass --admit-judge with a cross-family --reviewer: bun tools/campaign/harness-builder.ts ${packOf(values).join(" ")} --admit-judge`,
         ]),
   ];
 }
@@ -453,7 +453,7 @@ export async function harnessBuilder(
 
 if (import.meta.main) {
   if (Bun.argv.includes("--help")) {
-    console.log(`bun tools/d2/harness-builder.ts --name <name> ...\n${flagsHelp()}`);
+    console.log(`bun tools/campaign/harness-builder.ts --name <name> ...\n${flagsHelp()}`);
   } else {
     await harnessBuilder(Bun.argv.slice(2));
   }

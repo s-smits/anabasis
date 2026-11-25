@@ -50,8 +50,8 @@ import { openHarness } from "../src/harness/open.ts";
 import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/sandbox/policy.ts";
-import { resolveCheckpoint } from "../tools/d2/campaign.ts";
-import { endCut } from "../tools/d2/harness-builder.ts";
+import { resolveCheckpoint } from "../tools/campaign/campaign.ts";
+import { endCut } from "../tools/campaign/harness-builder.ts";
 
 const BUILD_CALL = "build.call";
 const BUILD_FINISHED = "build.finished";

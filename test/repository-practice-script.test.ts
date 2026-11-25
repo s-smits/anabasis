@@ -56,15 +56,15 @@ describe("the direction check", () => {
   it("reports production-to-helper and test imports while allowing helpers to import production", () => {
     const edges = new Map<string, readonly string[]>([
       ["src/a.ts", ["src/b.ts", ".claude/skills/x/scripts/y.ts"]],
-      ["tools/d2/c.ts", ["tools/wri/folds.ts", "test/helpers/matchers.ts", "src/a.ts"]],
+      ["tools/campaign/c.ts", ["tools/wri/folds.ts", "test/helpers/matchers.ts", "src/a.ts"]],
       [".claude/skills/x/scripts/y.ts", ["src/a.ts"]],
       ["studies/s/run.ts", ["src/a.ts"]],
     ]);
     const found = breaches([...edges.keys()], (file) => edges.get(file) ?? []);
     expect(found).toStrictEqual([
       { file: "src/a.ts", imported: ".claude/skills/x/scripts/y.ts", root: ".claude/" },
-      { file: "tools/d2/c.ts", imported: "tools/wri/folds.ts", root: "tools/wri/" },
-      { file: "tools/d2/c.ts", imported: "test/helpers/matchers.ts", root: "test/" },
+      { file: "tools/campaign/c.ts", imported: "tools/wri/folds.ts", root: "tools/wri/" },
+      { file: "tools/campaign/c.ts", imported: "test/helpers/matchers.ts", root: "test/" },
     ]);
   });
 });

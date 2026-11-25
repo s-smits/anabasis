@@ -1,5 +1,5 @@
 /**
- * What a campaign waits for (`tools/d2/host.ts`): the host's load, the reserve and shared slots
+ * What a campaign waits for (`tools/campaign/host.ts`): the host's load, the reserve and shared slots
  * beside the solves in flight, a provider's named reset and a failed network. Queued solves leave
  * on cancellation while the host's sleep is unresolved; only load waits record their time. Tests
  * inject the host's sleeps and clock.
@@ -14,10 +14,10 @@ import { mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
-import type { Kept } from "../tools/d2/campaign.ts";
+import type { Kept } from "../tools/campaign/campaign.ts";
 import { waitOut } from "../src/solver/run.ts";
-import { gated, type Host, waitCrashed } from "../tools/d2/host.ts";
-import type { Campaign, Seats } from "../tools/d2/round.ts";
+import { gated, type Host, waitCrashed } from "../tools/campaign/host.ts";
+import type { Campaign, Seats } from "../tools/campaign/round.ts";
 import { EXAMPLE, seat as examinerSeat, sweep } from "./helpers/examiner-seat.ts";
 import { anyOf, present } from "./helpers/matchers.ts";
 
@@ -364,7 +364,7 @@ describe("cancelling queued solves", () => {
 
   it("holds no process past a cancelled load wait on this host's own sleep", () => {
     const script = `
-      const { gated, HOST } = await import(${JSON.stringify(join(REPO, "tools/d2/host.ts"))});
+      const { gated, HOST } = await import(${JSON.stringify(join(REPO, "tools/campaign/host.ts"))});
       const seat = { builder: null, setting: "s", solve: async () => ({ solve: "s-1", ending: { outcome: "pass" } }) };
       const host = { ...HOST, load: () => 99, cores: 1, waitMs: 20_000 };
       const seats = gated({ seated: () => seat, loaded: false, host }, ${JSON.stringify(logIn("exit"))})({ limits: { concurrency: 4 } }, {});

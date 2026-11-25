@@ -282,12 +282,12 @@ describe.concurrent("going on with a live run after a pause", () => {
     fixtures.push(made.root);
     const folder = join(made.main, ".ana", "d2", "sample");
     mkdirSync(folder, { recursive: true });
-    mkdirSync(join(made.main, "tools", "d2"), { recursive: true });
+    mkdirSync(join(made.main, "tools", "campaign"), { recursive: true });
     writeFileSync(join(made.main, "package.json"), '{ "name": "fixture" }\n');
     const log = join(folder, "log.jsonl");
-    const terms = join(import.meta.dir, "..", "tools", "d2", "campaign-terms.ts");
+    const terms = join(import.meta.dir, "..", "tools", "campaign", "campaign-terms.ts");
     writeFileSync(
-      join(made.main, "tools", "d2", "harness-builder.ts"),
+      join(made.main, "tools", "campaign", "harness-builder.ts"),
       `import { appendFileSync, readFileSync } from "node:fs";
 import { flagsOf, opened } from ${JSON.stringify(terms)};
 const log = ${JSON.stringify(log)};
@@ -304,14 +304,14 @@ else {
       log,
       `${JSON.stringify(event("comparison.started", { comparison: "c-1", level: 0.02 }))}\n`,
     );
-    const live = capturedSpawn([capturedExecPath, "tools/d2/harness-builder.ts", "--name", "sample"], {
+    const live = capturedSpawn([capturedExecPath, "tools/campaign/harness-builder.ts", "--name", "sample"], {
       cwd: made.main,
       detached: true,
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",
     });
-    const row = `${String(live.pid)} ${capturedExecPath} tools/d2/harness-builder.ts --name sample`;
+    const row = `${String(live.pid)} ${capturedExecPath} tools/campaign/harness-builder.ts --name sample`;
     writeFileSync(
       join(made.root, "bin", "ps"),
       `#!${capturedExecPath}

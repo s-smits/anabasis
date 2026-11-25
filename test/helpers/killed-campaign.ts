@@ -8,9 +8,9 @@ import { examine } from "../../src/examiner/session.ts";
 import { existsSync } from "../../src/meta/filesystem.ts";
 import { dirname, join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
-import { campaignLog } from "../../tools/d2/campaign.ts";
-import type { Seats } from "../../tools/d2/campaign-terms.ts";
-import { harnessBuilder } from "../../tools/d2/harness-builder.ts";
+import { campaignLog } from "../../tools/campaign/campaign.ts";
+import type { Seats } from "../../tools/campaign/campaign-terms.ts";
+import { harnessBuilder } from "../../tools/campaign/harness-builder.ts";
 import { scriptedSeats } from "../../tools/runs/rehearse.ts";
 import { fixtureTasks, gradedOf, layOutPack, OPENED_FROM, scriptedModel } from "./fixture-pack.ts";
 

@@ -18,7 +18,7 @@ import {
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
-import type { Campaign } from "../tools/d2/round.ts";
+import type { Campaign } from "../tools/campaign/round.ts";
 import { scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
 import { sweep } from "./helpers/examiner-seat.ts";
 import { seedCampaign, snapshotCampaign } from "../tools/runs/seed.ts";

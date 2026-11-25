@@ -21,14 +21,14 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CampaignContext, releasePendingPractice } from "../tools/d2/campaign-actions.ts";
-import { openCampaign, packNamed } from "../tools/d2/campaign.ts";
-import { flagsOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
-import { harnessBuilder } from "../tools/d2/harness-builder.ts";
-import { HOST } from "../tools/d2/host.ts";
-import type { Seated } from "../tools/d2/round.ts";
-import { settleCommand } from "../tools/d2/settle.ts";
-import { wordCommand } from "../tools/d2/word.ts";
+import { type CampaignContext, releasePendingPractice } from "../tools/campaign/campaign-actions.ts";
+import { openCampaign, packNamed } from "../tools/campaign/campaign.ts";
+import { flagsOf, opened, type Seats } from "../tools/campaign/campaign-terms.ts";
+import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
+import { HOST } from "../tools/campaign/host.ts";
+import type { Seated } from "../tools/campaign/round.ts";
+import { settleCommand } from "../tools/campaign/settle.ts";
+import { wordCommand } from "../tools/campaign/signal.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import {
   type FixtureTask,

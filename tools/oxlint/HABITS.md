@@ -132,7 +132,7 @@ Test files = `test/` or `*.test.*`.
 
 Owner-citing `ana` rules:
 - `no-hand-read-argv` → `.claude/skills/main/cli.ts` (`runCommand` in skills; `tools/` uses `parseArgs` from `#src/meta/process.ts`).
-- `no-hand-spelled-git` → `src/meta/git.ts` (skills, `src`, `tools/runs`, `tools/d2`; `tools/runtime` and tests exempt).
+- `no-hand-spelled-git` → `src/meta/git.ts` (skills, `src`, `tools/runs`, `tools/campaign`; `tools/runtime` and tests exempt).
 - `no-lifetime-outside-owner` → `stageCommandIsolation` (`src/sandbox/isolation.ts`), `killProcessGroup` / `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`).
 
 If a rule cites a moved owner, update the rule in the same change.

@@ -7,7 +7,7 @@
  * solver. Without `--host`, placement picks the machine (`leastOccupied`, `placement.ts`); a peer's own `fresh` is told `--placed` so it does not place
  * the run again over itself alone. Several packs are planned as one (`plan`), and nothing launches
  * while a login it takes is missing from its host. A solve's limits are the campaign's (`LIMITS`,
- * `tools/d2/campaign.ts`) unless flags after `--` name others.
+ * `tools/campaign/campaign.ts`) unless flags after `--` name others.
  *
  *   bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>[,<b>,<c>,<d>]] [--effort hhmm] [--login N] [--budget 800]
  *     [--at <commit>] [--as <suffix>] [--host <host> | --placed] [--yes] [-- <more of the campaign command's flags>]

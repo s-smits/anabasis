@@ -16,7 +16,7 @@ import { existsSync } from "#src/meta/filesystem.ts";
 import { isAbsolute, resolve } from "#src/meta/path.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { IDLE, idleOf, MOVED } from "#tools/d2/campaign-terms.ts";
+import { IDLE, idleOf, MOVED } from "#tools/campaign/campaign-terms.ts";
 import { logEvents, readNamed } from "#tools/runs/registry.ts";
 import { planOn } from "#tools/runs/view.ts";
 

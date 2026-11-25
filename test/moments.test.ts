@@ -43,6 +43,14 @@ describe("the areas a call enters", () => {
     ).toEqual(["measurement", "code"]);
     expect(ids({ command: ["bash", "-lc", "bun run test -- test/x.test.ts"] })).toEqual(["suite"]);
     expect(ids({ command: "bun -e 'read(\"data/runs/h/r/log.jsonl\")'" })).toEqual(["reading"]);
+    expect(ids({ command: "bun tools/campaign/signal.ts --stop r1" })).toEqual(["run"]);
+    expect(ids({ command: "bun tools/eval/examine.ts --name r1" })).toEqual(["run"]);
+    expect(ids({ file_path: "/w/anabasis/tools/campaign/harness-builder.ts" })).toEqual([
+      "seats",
+      "campaign",
+      "code",
+    ]);
+    expect(ids({ file_path: "/w/anabasis/src/sandbox/base.ts" })).toEqual(["wall", "code"]);
   });
 
   it("omits unrelated calls and routes already delivered", () => {

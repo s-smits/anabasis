@@ -151,7 +151,7 @@ function readersIn(store: string): readonly Listed[] {
   }));
 }
 
-/** The host stays a core under the line where a solve waits (`tools/d2/host.ts`), since a reader
+/** The host stays a core under the line where a solve waits (`tools/campaign/host.ts`), since a reader
  *  may take one. */
 export const room = (load = loadNow(), cores = availableParallelism()): boolean => load + 1 <= cores;
 

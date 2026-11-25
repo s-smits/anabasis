@@ -12,7 +12,7 @@ import { proposalsOf } from "#src/kernel/history.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { latestBuilt } from "#src/kernel/reports.ts";
 import { taskStates } from "#src/kernel/task.ts";
-import { nextId } from "#tools/d2/campaign-terms.ts";
+import { nextId } from "#tools/campaign/campaign-terms.ts";
 import { logEvents } from "#tools/runs/registry.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 

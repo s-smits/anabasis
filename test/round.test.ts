@@ -1850,7 +1850,7 @@ describe("the scored set", () => {
     // Named for a comparison all the same, it is refused: a name would otherwise be the one way past
     // the draw.
     await expect(checkpoint(s.paired("g-3"))).rejects.toThrow(
-      "task s1 waits for a person's label, and is not scored until it has one: tools/d2/prepare.ts --keep or --infeasible",
+      "task s1 waits for a person's label, and is not scored until it has one: tools/campaign/prepare.ts --keep or --infeasible",
     );
     append(s.log, TASK_STATE, {
       version: "s1",

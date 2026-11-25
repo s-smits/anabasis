@@ -2,7 +2,7 @@
  * Promote a harness the campaign keeps to be its reference: the operator's word, with a record.
  * Without a step on record it needs `--despite "<why>"`.
  *
- *   bun tools/d2/promote.ts --name buffer --harness latest [--yes] [--despite "<why>"]
+ *   bun tools/campaign/promote.ts --name buffer --harness latest [--yes] [--despite "<why>"]
  */
 import { unpromoted } from "#src/campaign/scheduler.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";

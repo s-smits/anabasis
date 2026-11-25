@@ -1,6 +1,6 @@
 /**
  * Per-campaign summary fold shared across archive readers (`table.ts`, `trend.ts`, `outside.ts`,
- * `tools/d2/close.ts`, `tools/wri/backtrack.ts`): the release before the first launch; elapsed,
+ * `tools/campaign/close.ts`, `tools/wri/backtrack.ts`): the release before the first launch; elapsed,
  * active (less recorded waits) and unloaded hours (less estimated overload, `overloadOf`); a cut at
  * `until` or `age` so snapshots and equal-age cohorts compare on identical terms; room on validity,
  * steps won by validity (`validityOf`) and confirmed promotions; and dollars as billed at the run's
@@ -22,8 +22,8 @@ import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { relative, sep } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
-import { validityOf } from "#tools/d2/close.ts";
-import { recordedSetting } from "#tools/d2/setting.ts";
+import { validityOf } from "#tools/campaign/close.ts";
+import { recordedSetting } from "#tools/campaign/setting.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { packOf } from "#tools/runs/registry.ts";

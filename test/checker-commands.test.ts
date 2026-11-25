@@ -72,7 +72,7 @@ async function command(file: string, flags: Record<string, string>, ...bare: str
 }
 
 const accept = (name: string, flags: Record<string, string> = ADMIT, ...bare: string[]) =>
-  command("tools/c/accept.ts", { name, ...flags }, ...bare);
+  command("tools/eval/accept.ts", { name, ...flags }, ...bare);
 const held = (name: string, kind: string) =>
   read(join(folder(name), LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
 
@@ -148,7 +148,7 @@ suite("rehearsal over a drafted exam", () => {
   // script sits in every seat.
   it.concurrent("rehearses two sessions and then one checkpoint over a seed", async () => {
     const seeded = folder(SEED);
-    const taken = await command("tools/d2/prepare.ts", { name: SOURCE, practice: "1" });
+    const taken = await command("tools/campaign/prepare.ts", { name: SOURCE, practice: "1" });
     expect(taken.code).toBe(0);
     expect(taskSets(read(join(folder(SOURCE), LOG)))).toMatchObject({
       held: [anyOf(String)],

@@ -20,7 +20,7 @@ import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { agreement, clears, settledLabels } from "../src/audit/agreement.ts";
 import type { Ruling } from "../src/audit/auditor.ts";
-import { labelLines, settleCommand } from "../tools/d2/settle.ts";
+import { labelLines, settleCommand } from "../tools/campaign/settle.ts";
 import { safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf } from "../tools/wri/folds.ts";
 import { conditionOf } from "./helpers/logged-round.ts";

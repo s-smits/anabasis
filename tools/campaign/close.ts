@@ -7,7 +7,7 @@
  * the bars (`barLines`), false-promotion risk (`riskLines`), unadmitted checks (`unadmitted`),
  * rulings, labels and spend.
  *
- *   bun tools/d2/close.ts --name queues --to ~/handover/queues [--harness <letter|digest>]
+ *   bun tools/campaign/close.ts --name queues --to ~/handover/queues [--harness <letter|digest>]
  *     [--solve <task id>[,<task id>...] [--solver <model> --solver-effort <level> ...]]
  */
 import { barLines, promotionsWorth, riskLines, starterIn, worthLine } from "#src/campaign/climb.ts";
@@ -241,7 +241,7 @@ function promotionLines(
   comparisons: readonly Compared[],
   called: Called,
 ): string[] {
-  /** Where an imported harness came from, by its digest (`tools/d2/import.ts`). */
+  /** Where an imported harness came from, by its digest (`tools/campaign/import.ts`). */
   const imported = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "harness.imported" && isString(data.harness) && isString(data.from)

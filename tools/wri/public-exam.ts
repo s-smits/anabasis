@@ -14,7 +14,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
-import { stagedExamOf } from "#tools/d2/exam.ts";
+import { stagedExamOf } from "#tools/campaign/exam.ts";
 import { contractOf, readPack } from "#tools/m0/stored-sweep.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { proposedTasks } from "./tasks.ts";

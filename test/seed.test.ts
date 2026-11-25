@@ -16,7 +16,7 @@ import { capturedExecPath } from "../src/meta/process.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
-import { codeOf } from "../tools/d2/campaign.ts";
+import { codeOf } from "../tools/campaign/campaign.ts";
 import { atCommit } from "../tools/runs/code.ts";
 import { codeLine, treeAsRan } from "../tools/runs/seed.ts";
 

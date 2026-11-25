@@ -5,7 +5,7 @@
  * until labelled (`poolOf`, `src/kernel/reports.ts`). `--keep <task id>` returns it to the set,
  * `--infeasible <task id>` refuses it for good; each repeats and is logged with `--note`.
  *
- *   bun tools/d2/prepare.ts --name <campaign> --practice 6
+ *   bun tools/campaign/prepare.ts --name <campaign> --practice 6
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { feasibleOf } from "#src/examiner/write.ts";

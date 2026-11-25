@@ -12,7 +12,7 @@ import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { runCommand } from "#skills/main/cli.ts";
 import { ownedBy } from "#src/kernel/trace.ts";
-import { validityOf } from "#tools/d2/close.ts";
+import { validityOf } from "#tools/campaign/close.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { firstComparisonDelay } from "#tools/runs/view.ts";
 import { waitedMs, waitsOf } from "#tools/wri/time.ts";

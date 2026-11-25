@@ -31,10 +31,10 @@ const OWNERS = new Map<string, readonly string[]>([
   ["src/builder/past.ts", []],
   ["src/audit/agreement.ts", []],
   [
-    "tools/d2/campaign-actions.ts",
+    "tools/campaign/campaign-actions.ts",
     ["test/harness-builder.test.ts", "test/campaign-kill.test.ts", "test/climb.test.ts"],
   ],
-  ["tools/d2/harness-builder.ts", []],
+  ["tools/campaign/harness-builder.ts", []],
 ]);
 
 interface Row {

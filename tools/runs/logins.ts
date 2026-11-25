@@ -17,7 +17,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
 import { hasText, textOr } from "#src/meta/text.ts";
-import { recordedSetting } from "../d2/setting.ts";
+import { recordedSetting } from "../campaign/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf, isLocalOnly } from "./host-config.ts";
 import { CODEX, countedAgainst, type Live, liveHere, liveOf, seatFlagsOf } from "./live.ts";

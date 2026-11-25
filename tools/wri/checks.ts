@@ -17,7 +17,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { passAgreement, settledPassLabels } from "#src/audit/agreement.ts";
-import { stagedExamOf } from "#tools/d2/exam.ts";
+import { stagedExamOf } from "#tools/campaign/exam.ts";
 import { count, indexOf, items, refusals, refusalsByCheck, type Solve, strings, text } from "./folds.ts";
 import { askedOf, sideOf } from "./rejections.ts";
 

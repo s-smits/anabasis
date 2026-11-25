@@ -14,7 +14,7 @@ import { type LogEvent, read } from "#src/kernel/log.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
-import { exampleId } from "#tools/d2/exam.ts";
+import { exampleId } from "#tools/campaign/exam.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 interface Place {

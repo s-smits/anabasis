@@ -141,8 +141,8 @@ describe("going on with a campaign", () => {
     mkdirSync(folder, { recursive: true });
     const log = join(folder, LOG_FILE);
     append(log, "build.started", { session: "b-1" });
-    mkdirSync(join(made.main, "tools", "d2"), { recursive: true });
-    writeFileSync(join(made.main, "tools", "d2", "harness-builder.ts"), "process.exit(0);\n");
+    mkdirSync(join(made.main, "tools", "campaign"), { recursive: true });
+    writeFileSync(join(made.main, "tools", "campaign", "harness-builder.ts"), "process.exit(0);\n");
     const keeper = sleeper();
     const set = (name: string, text: string) =>
       `writeFileSync(${JSON.stringify(join(made.root, "now", name))}, ${JSON.stringify(text)});`;
@@ -235,7 +235,7 @@ describe.concurrent("starting a campaign", () => {
       'import { launch } from "REPOSITORY/tools/runs/manage.ts"; await launch(["refused", "--yes"]);',
     );
     expect(result.code).toBe(1);
-    expect(result.err).toContain("tools/d2/harness-builder.ts");
+    expect(result.err).toContain("tools/campaign/harness-builder.ts");
     expect(made.recorded().filter(({ tool, args }) => tool === "nice" && args.includes("19"))).toEqual([]);
   });
 });

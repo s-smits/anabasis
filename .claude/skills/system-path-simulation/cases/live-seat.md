@@ -12,7 +12,7 @@ solves.
 ```text
 bun --env-file=<file> .claude/skills/system-path-simulation/scripts/live-seat.ts start \
   --tree <worktree> --name sim-<what> --out <scratch>/arm-a --cap 30 --minutes 90 \
-  -- tools/d1b/examine.ts --session x-9 --examiner <model> ...
+  -- tools/eval/examine.ts --session x-9 --examiner <model> ...
 bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scratch>/arm-a
 ```
 
@@ -46,7 +46,7 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   prefixes closed so waiting launch scripts do not start them. On remote hosts, use
   `stop --host <name>` rather than `pkill -f` over SSH, which can match the SSH session's own
   command line.
-- `prompt --tree <worktree> --name sim-<what> -- tools/d1b/examine.ts <its flags>` renders the exact
+- `prompt --tree <worktree> --name sim-<what> -- tools/eval/examine.ts <its flags>` renders the exact
   prompt that the Examiner session would receive under that tree's code without launching a model;
   it currently supports only Examiner sessions.
 - `compare <prefix>... [--gates N]`, `pairs <control>,<arm>...`, and `calls <log or folder>...`

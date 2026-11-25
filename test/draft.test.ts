@@ -1,5 +1,5 @@
 // Behavioural and boundary tests for drafted exams (`src/examiner/draft.ts`), staging and offline
-// acceptance (`tools/d2/exam.ts`), and campaign drafting lifecycle (`tools/d1b/draft.ts`).
+// acceptance (`tools/campaign/exam.ts`), and campaign drafting lifecycle (`tools/eval/draft.ts`).
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { nextAction } from "../src/campaign/scheduler.ts";
 import { type Draft, draftFaults, drafting, draftOf } from "../src/examiner/draft.ts";
@@ -27,10 +27,10 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { draftCommand } from "../tools/d1b/draft.ts";
+import { draftCommand } from "../tools/eval/draft.ts";
 import { taskContentDigest } from "../src/audit/probe.ts";
-import { campaignLog, openCampaign, packNamed } from "../tools/d2/campaign.ts";
-import { draftReading, stagedExamOf, stageExam } from "../tools/d2/exam.ts";
+import { campaignLog, openCampaign, packNamed } from "../tools/campaign/campaign.ts";
+import { draftReading, stagedExamOf, stageExam } from "../tools/campaign/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
 import {
   call,

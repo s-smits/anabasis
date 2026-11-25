@@ -342,7 +342,7 @@ In order: each rests on the one before, except item 7, which comes before item 3
     owed. #625 moves the guard into `practiceDue` and bounds it instead of removing it: a reading
     with nothing held out since the last release is owed one task, a promotion with nothing held
     none, and the admission floor and the release's cap still bound it. The cap is half of what is
-    held (`tools/d2/prepare.ts`), as the campaign-mechanics reference and the `--practice` help
+    held (`tools/campaign/prepare.ts`), as the campaign-mechanics reference and the `--practice` help
     say; `AGENTS.md` sections 1 and 6 said half the tasks with room, and #625 (`c40f92b73`) corrects
     them to the three bounds the code holds: half of what is held, half of the tasks a reading left
     room on (`releaseOrder`), and after the first release the comparison floor of frontier tasks.
@@ -424,7 +424,7 @@ In order: each rests on the one before, except item 7, which comes before item 3
       while it rested lost every ask's files. Confirmed and fixed on #626: each ask's rest keeps
       the home, with a test that fails without it;
     - the wait for a writing ask before a promotion (`context.examining?.done`,
-      `tools/d2/campaign-actions.ts`) is load-bearing: it stays;
+      `tools/campaign/campaign-actions.ts`) is load-bearing: it stays;
     - #628's worker count in `tools/runtime/gate.ts`: #628 is another session's, and the stack's
       top still spreads the caller's environment first, so the claim is that session's to read.
 

@@ -198,7 +198,7 @@ describe.concurrent("fleet workflows", () => {
     const keeper = role("keeper");
     await Bun.sleep(200);
     const table = {
-      "-axo pid=,args=": `${String(writer.pid)} bun tools/d2/harness-builder.ts --name local\n${String(keeper.pid)} bun ${made.main}/tools/runs/cli.ts keep local --here`,
+      "-axo pid=,args=": `${String(writer.pid)} bun tools/campaign/harness-builder.ts --name local\n${String(keeper.pid)} bun ${made.main}/tools/runs/cli.ts keep local --here`,
       "-axo pid=,ppid=": `${String(writer.pid)} 1\n${String(keeper.pid)} 1`,
     };
     const result = await made.runScriptAsync(CLI, ["stop", "local", "--yes"], {

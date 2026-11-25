@@ -15,7 +15,7 @@ import { containsPath } from "#src/meta/path-containment.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { taskSets } from "#src/kernel/task.ts";
-import { codeOf } from "../d2/campaign.ts";
+import { codeOf } from "../campaign/campaign.ts";
 import { treeAt } from "./code.ts";
 import { receipts } from "./receipt.ts";
 import { CAMPAIGNS, logEvents, Misused, SEED_FILE, wholeLines } from "./registry.ts";
@@ -149,7 +149,7 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
         cpSync(join(from, part), join(to, part), { recursive: true, verbatimSymlinks: true });
       }
     };
-    // A campaign stages the exam it drafted under `exams/<digest>/` (`tools/d2/exam.ts`), which a
+    // A campaign stages the exam it drafted under `exams/<digest>/` (`tools/campaign/exam.ts`), which a
     // seed of it needs too.
     for (const part of ["exams", "states"]) copy(part);
     // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
@@ -232,5 +232,7 @@ export async function seed(args: readonly string[]): Promise<void> {
   }
   if (tree !== repo) console.log(`  in ${tree}, which holds the code the run ran at the cut`);
   console.log(`  scripted  bun run runs rehearse ... --name ${name} --session <id>`);
-  console.log(`  live      bun tools/d2/harness-builder.ts ... --name ${name}, or a move's own command`);
+  console.log(
+    `  live      bun tools/campaign/harness-builder.ts ... --name ${name}, or a move's own command`,
+  );
 }

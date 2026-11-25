@@ -2,7 +2,7 @@
  * The harnesses of a campaign as the page lays them out: the promotions between the bars, every
  * version from the starter on, and the dollars billed as moves ended. A promotion is where an epoch
  * begins (`epochsOf`); what the operator saw before it is `comparedAs` up to its place, as
- * `tools/d2/promote.ts` showed, and its confirmation is its epoch's (`confirmed`). Its divider
+ * `tools/campaign/promote.ts` showed, and its confirmation is its epoch's (`confirmed`). Its divider
  * stands after the last comparison begun before it (`barsIn`), so a cut comparison stands on the
  * side it ran on. A version is one a Builder session left, one its conversation froze
  * (`build.checkpoint`), or one the operator imported; frozen ones are kept, or a harness compared

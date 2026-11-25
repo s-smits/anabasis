@@ -14,7 +14,7 @@ import {
 } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
-import { validityOf } from "#tools/d2/close.ts";
+import { validityOf } from "#tools/campaign/close.ts";
 import { count, emitIf, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,

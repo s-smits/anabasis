@@ -207,7 +207,7 @@ function exam(ground: Ground): Move | null {
   const undecided = unadmitted(events);
   return end(
     "exam",
-    `the checker's last reading holds ${plural(faults, "fault")} and nobody froze it: the exam is not accepted until its author repairs it, or the operator admits each check by name and freezes (tools/c/accept.ts)${undecided.length === 0 ? "" : `. No engine the host installed decides ${undecided.join(", ")}, so each stands on the operator's word alone: --admit ${undecided.join(",")}`}`,
+    `the checker's last reading holds ${plural(faults, "fault")} and nobody froze it: the exam is not accepted until its author repairs it, or the operator admits each check by name and freezes (tools/eval/accept.ts)${undecided.length === 0 ? "" : `. No engine the host installed decides ${undecided.join(", ")}, so each stands on the operator's word alone: --admit ${undecided.join(",")}`}`,
   );
 }
 

@@ -24,7 +24,7 @@ Use [before-after](cases/before-after.md) for cross-commit/pre-landing verificat
 5. Codify cleared conditions in an owning `test/` case running real writer against real reader; trash seeds after use (`/usr/bin/trash .ana/d2/sim-<what>`).
 
 ```sh
-bun tools/d2/harness-builder.ts --name <name> --dry-run
+bun tools/campaign/harness-builder.ts --name <name> --dry-run
 bun run runs replay [<name> ...]
 bun run runs seed --from <campaign> --name sim-<what> [--points | --events <n>]
 bun run runs rehearse sim-<what>
@@ -36,8 +36,8 @@ Requires operator approval naming seats, model, effort, login and USD/time cap; 
 
 | Seat | Seed cut | Command | Reader |
 | --- | --- | --- | --- |
-| Examiner | Before session | `tools/d1b/examine.ts --session x-<n> --examiner <m> --examiner-effort <e>...` | `live-seat.ts read`, `pairs` |
-| Comparison | After `build.finished` | `tools/d2/checkpoint.ts --id g-<n> --new latest` | Comparison report |
+| Examiner | Before session | `tools/eval/examine.ts --session x-<n> --examiner <m> --examiner-effort <e>...` | `live-seat.ts read`, `pairs` |
+| Comparison | After `build.finished` | `tools/campaign/checkpoint.ts --id g-<n> --new latest` | Comparison report |
 | Stretch | Before `build.started`/rest | `harness-builder.ts`, its four seats named by `live-seat.ts start --model` (one or four, as `runs fresh`) | Log readers |
 
 Report: question & tier; seed/source/cut & live diff; pre-registered intent, rivals & outcome; what did not run; conditions (`blocking`\|`cleared`\|`accepted-risk`) with owner verdict; spend/minutes (tier 3); seed cleanup.

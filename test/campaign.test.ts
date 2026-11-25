@@ -36,14 +36,20 @@ import {
   resolveCheckpoint,
   openCampaign,
   treeFault,
-} from "../tools/d2/campaign.ts";
+} from "../tools/campaign/campaign.ts";
 import { gitText } from "../src/meta/git.ts";
-import { checkpointCommand } from "../tools/d2/checkpoint.ts";
-import { importCommand } from "../tools/d2/import.ts";
-import { prepareCommand, ungated } from "../tools/d2/prepare.ts";
-import { promoteCommand } from "../tools/d2/promote.ts";
-import { COMPARISON_OPTIONS, capNamed, packaged, refereeNamed, SESSION_OPTIONS } from "../tools/d2/round.ts";
-import { sessionCommand } from "../tools/d2/session.ts";
+import { checkpointCommand } from "../tools/campaign/checkpoint.ts";
+import { importCommand } from "../tools/campaign/import.ts";
+import { prepareCommand, ungated } from "../tools/campaign/prepare.ts";
+import { promoteCommand } from "../tools/campaign/promote.ts";
+import {
+  COMPARISON_OPTIONS,
+  capNamed,
+  packaged,
+  refereeNamed,
+  SESSION_OPTIONS,
+} from "../tools/campaign/round.ts";
+import { sessionCommand } from "../tools/campaign/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -135,9 +141,8 @@ describe("the code a solve's condition records", () => {
 
   it("moves when command code that executes a campaign changes, and not for a reader's or a development tool's", () => {
     for (const [part, moves] of [
-      ["tools/d2", true],
-      ["tools/c", true],
-      ["tools/d1b", true],
+      ["tools/campaign", true],
+      ["tools/eval", true],
       ["tools/runs", false],
       ["tools/wri", false],
       ["tools/oxlint", false],
@@ -428,7 +433,7 @@ describe("a campaign", () => {
   it("refuses a paid comparison started by hand where a launch of it would be refused", async () => {
     const campaign = await openCampaign(ARGS);
     const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter"];
-    const unread = "the campaign's checker has never been read: run tools/c/accept.ts";
+    const unread = "the campaign's checker has never been read: run tools/eval/accept.ts";
     await expect(
       checkpointCommand(["--id", "z-5", "--new", "starter", ...flags.slice(0, -2)]),
     ).rejects.toThrow(unread);
@@ -455,7 +460,7 @@ describe("a campaign", () => {
     ).rejects.toThrow("--level");
     await expect(
       sessionCommand([...flags, "--cap", "100", "--reviewer", SERVED, "--builder", SERVED]),
-    ).rejects.toThrow("the campaign's checker has never been read: run tools/c/accept.ts");
+    ).rejects.toThrow("the campaign's checker has never been read: run tools/eval/accept.ts");
     const against: string[] = [];
     const seats = rehearsal((opened, given) => {
       expect(opened.log).toBe(campaign.log);

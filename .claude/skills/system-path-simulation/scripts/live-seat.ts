@@ -19,8 +19,8 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { gateAnswers, measuredGate } from "#tools/wri/gate-era.ts";
 import type { writing as Writing } from "#src/examiner/write.ts";
-import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
-import type { solved as Solved } from "#tools/d2/round.ts";
+import type { examineCommand as ExamineCommand } from "#tools/eval/examine.ts";
+import type { solved as Solved } from "#tools/campaign/round.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { GAP_FLOOR } from "#src/kernel/compare.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
@@ -52,7 +52,7 @@ const USAGE = `usage:
   live-seat.ts compare <prefix>... [--gates N]
   live-seat.ts pairs <control>,<arm>... [--gates N]
   live-seat.ts calls <log or campaign folder>...
-  live-seat.ts prompt --tree <worktree> --name sim-<what> -- tools/d1b/examine.ts <its flags>
+  live-seat.ts prompt --tree <worktree> --name sim-<what> -- tools/eval/examine.ts <its flags>
 
 start runs <command> with --name in <tree>, on a seed only, and prints the reading when it ends.
 watch prints one line for each event worth reading as it lands, until the seat's process is gone.

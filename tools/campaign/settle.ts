@@ -1,7 +1,7 @@
 /**
  * Settle a comparison's reading by hand: a person in the loop, with a record.
  *
- *   bun tools/d2/settle.ts --name truss --session g-1
+ *   bun tools/campaign/settle.ts --name truss --session g-1
  */
 import { passesIn, reported, swapped, toLabel, UNSETTLED } from "#src/campaign/comparison.ts";
 import { settleReading } from "#src/campaign/settle.ts";

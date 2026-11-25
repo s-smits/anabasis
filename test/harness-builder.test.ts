@@ -23,12 +23,12 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { flagsOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
-import { closeCommand } from "../tools/d2/close.ts";
-import { harnessBuilder } from "../tools/d2/harness-builder.ts";
-import { importCommand } from "../tools/d2/import.ts";
-import { packetOf, settleCommand } from "../tools/d2/settle.ts";
-import { wordCommand } from "../tools/d2/word.ts";
+import { flagsOf, opened, type Seats } from "../tools/campaign/campaign-terms.ts";
+import { closeCommand } from "../tools/campaign/close.ts";
+import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
+import { importCommand } from "../tools/campaign/import.ts";
+import { packetOf, settleCommand } from "../tools/campaign/settle.ts";
+import { wordCommand } from "../tools/campaign/signal.ts";
 import { harnessesOf } from "../tools/runs/registry.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import {
@@ -134,7 +134,7 @@ describe("the campaign's executing Bun and opening guards", () => {
     const result = runSync(
       [
         capturedExecPath,
-        join(tree, "tools/d2/harness-builder.ts"),
+        join(tree, "tools/campaign/harness-builder.ts"),
         "--name",
         "pinned",
         ...opening,

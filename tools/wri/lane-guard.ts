@@ -38,7 +38,7 @@ const JOB_SCRATCH = /\/\.claude[^/]*\/jobs\/[^/]+\/tmp\//u;
 const CAMPAIGN = new Set([
   "harness-builder.ts",
   "live-seat.ts",
-  "word.ts",
+  "signal.ts",
   "promote.ts",
   "settle.ts",
   "accept.ts",

@@ -58,12 +58,12 @@ interface Admission {
   readonly notes: readonly string[];
 }
 
-export const EXAMINE = "tools/d1b/examine.ts";
+export const EXAMINE = "tools/eval/examine.ts";
 const MARGIN = 2;
 const STARTED = "comparison.started";
 const REFERENCE_KINDS: readonly EventKind[] = ["harness.promoted", "harness.reverted"];
 const UNREAD =
-  "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do";
+  "the campaign's checker has never been read: run tools/eval/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do";
 const UNRELEASED = "no task is released: the Builder has nothing to practise on";
 const holding = (rows: readonly (readonly [boolean, string])[]) =>
   rows.flatMap(([holds, text]) => (holds ? [text] : []));
@@ -173,7 +173,7 @@ export function refusals(supply: Supply, wanted: SizedWant) {
     [
       "no-held",
       supply.held === 0,
-      "the log holds no held-out task to score: an Examiner session writes them (examine), or tools/d2/prepare.ts takes a pack's tasks in",
+      "the log holds no held-out task to score: an Examiner session writes them (examine), or tools/campaign/prepare.ts takes a pack's tasks in",
     ],
     [
       "held-short",
@@ -198,7 +198,7 @@ export function refusals(supply: Supply, wanted: SizedWant) {
 function faultNote(supply: Supply): readonly [boolean, string] {
   return [
     (supply.faults ?? 0) > 0 && !supply.frozen,
-    `the checker's last reading holds ${String(supply.faults)} fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/c/accept.ts)`,
+    `the checker's last reading holds ${String(supply.faults)} fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/eval/accept.ts)`,
   ];
 }
 
@@ -222,7 +222,7 @@ function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
       ...holding([
         [
           supply.awaiting > 0,
-          `${String(supply.awaiting)} held-out task(s) wait for a person's label and are not scored (tools/d2/prepare.ts)`,
+          `${String(supply.awaiting)} held-out task(s) wait for a person's label and are not scored (tools/campaign/prepare.ts)`,
         ],
         [
           supply.exhausted > 0,
@@ -257,7 +257,7 @@ function sessionAdmission(supply: Supply, wanted: WantedSession): Admission {
       [stop.refuses, stop.why],
     ]),
     notes: [
-      `${String(supply.released)} released for practice · no comparison follows this session: tools/d2/checkpoint.ts compares what the campaign's sessions leave`,
+      `${String(supply.released)} released for practice · no comparison follows this session: tools/campaign/checkpoint.ts compares what the campaign's sessions leave`,
       ...holding([
         [supply.released === 0, UNRELEASED],
         faultNote(supply),

@@ -28,7 +28,7 @@ import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { writeBare, writeStarter } from "#src/harness/starter.ts";
 import { toolTreeImports, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { resolveCheckpoint, PROMOTED } from "#tools/d2/campaign.ts";
+import { resolveCheckpoint, PROMOTED } from "#tools/campaign/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { packageFolders } from "./foreign-python.ts";
 

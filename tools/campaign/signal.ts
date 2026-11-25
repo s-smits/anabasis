@@ -6,9 +6,9 @@
  * the total from there on. No seat reads a word or its reason. This command and the campaign both
  * append to one log; each append is one whole-line write.
  *
- *   bun tools/d2/word.ts --name buffer --stop "the host is needed for something else"
- *   bun tools/d2/word.ts --name buffer --tasks "the last three batches all tied"
- *   bun tools/d2/word.ts --name buffer --budget 250
+ *   bun tools/campaign/signal.ts --name buffer --stop "the host is needed for something else"
+ *   bun tools/campaign/signal.ts --name buffer --tasks "the last three batches all tied"
+ *   bun tools/campaign/signal.ts --name buffer --budget 250
  */
 import { openingOf } from "#src/campaign/opening.ts";
 import { ANSWERED, type Answered } from "#src/campaign/signal.ts";
@@ -36,7 +36,7 @@ export function wordCommand(args: readonly string[]): Answered {
   const log = campaignLog(name);
   if (!existsSync(log) || openingOf(read(log)) === null) {
     throw new Error(
-      `campaign ${name} has no opening on record, so no command of its own reads a word left for it: tools/d2/harness-builder.ts opens one`,
+      `campaign ${name} has no opening on record, so no command of its own reads a word left for it: tools/campaign/harness-builder.ts opens one`,
     );
   }
   const dollars = budget === undefined ? undefined : Number(budget);

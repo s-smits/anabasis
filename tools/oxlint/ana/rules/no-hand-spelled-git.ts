@@ -50,7 +50,7 @@ function isCommandPosition(array: ESTree.ArrayExpression): boolean {
 }
 
 /**
- * Requires `.claude/skills`, `src`, `tools/runs`, and `tools/d2` modules (outside `src/meta/git.ts`
+ * Requires `.claude/skills`, `src`, `tools/runs`, and `tools/campaign` modules (outside `src/meta/git.ts`
  * and tests) to run git subprocesses through `gitOutput`, `gitText`, or `gitMaybe` in
  * `src/meta/git.ts`, which resolves the binary via `hostTool("git")` and bounds output capture.
  * There is no fix.

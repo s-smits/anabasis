@@ -16,7 +16,7 @@ import { poolOf } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { exampleId } from "#tools/d2/exam.ts";
+import { exampleId } from "#tools/campaign/exam.ts";
 import { logEvents } from "#tools/runs/registry.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 

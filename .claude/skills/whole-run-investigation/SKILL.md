@@ -13,8 +13,8 @@ Examines one or more campaigns as equals from their append-only logs, producing 
 | --- | --- |
 | Active status & last event | `bun run runs pulse` |
 | Supply & next move | `bun run runs view <name>` |
-| Fresh control check validation (authorised; writes `checker.read`) | `bun tools/c/accept.ts <campaign flags>` |
-| Human labels for rejections or passes (authorised) | `bun tools/d2/settle.ts <campaign flags> --session <id>` |
+| Fresh control check validation (authorised; writes `checker.read`) | `bun tools/eval/accept.ts <campaign flags>` |
+| Human labels for rejections or passes (authorised) | `bun tools/campaign/settle.ts <campaign flags> --session <id>` |
 | Served-model degradations | `bun tools/runs/degradations.ts <name>` |
 | Sessions, parent harnesses & readings | `bun tools/wri/wri.ts read --log <log>` (row F, `CHAIN`) |
 | Side-by-side climb & `/tmp` crossings | `bun tools/wri/wri.ts climb --log <log>,<log>` |

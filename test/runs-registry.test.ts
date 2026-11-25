@@ -20,28 +20,31 @@ const round = campaign("r1", "/wt");
 describe("a run's writers", () => {
   it("knows a campaign's log is written by its campaign command, a standalone comparison, an Examiner session or a drafting session of its name, in its worktree", () => {
     const rows: [string, string[]][] = [
-      ["/wt", ["bun", "tools/d2/checkpoint.ts", "--name", "r1", "--session", "b-1"]],
-      ["/wt", ["bun", "tools/d1b/examine.ts", "--name", "r1", "--session", "x-1"]],
-      ["/wt", ["bun", "tools/d2/checkpoint.ts", "--name", "r10"]],
-      ["/other", ["bun", "tools/d2/checkpoint.ts", "--name", "r1"]],
+      ["/wt", ["bun", "tools/campaign/checkpoint.ts", "--name", "r1", "--session", "b-1"]],
+      ["/wt", ["bun", "tools/eval/examine.ts", "--name", "r1", "--session", "x-1"]],
+      ["/wt", ["bun", "tools/campaign/checkpoint.ts", "--name", "r10"]],
+      ["/other", ["bun", "tools/campaign/checkpoint.ts", "--name", "r1"]],
       ["/wt", ["bun", "tools/runs/cli.ts", "rehearse", "--name", "r1"]],
       ["/wt", ["bun", "run", "runs", "rehearse", "--name", "r1"]],
       ["/wt", ["bun", "tools/runs/cli.ts", "pulse", "--name", "r1"]],
       ["/wt", ["bun", "tools/runs/cli.ts", "launch", "r1", "--", "--project", "p"]],
       ["/wt", ["bun", "run", "runs", "continue", "r1", "--login", "4"]],
       ["/wt", ["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported"]],
-      ["/wt", ["bun", "tools/d2/harness-builder.ts", "--name", "r1", "--unattended"]],
-      ["/wt", ["bun", "tools/d2/harness-builder.ts", "--name", "r10"]],
-      ["/wt", ["bun", "tools/d1b/draft.ts", "--name", "r1", "--session", "d-1"]],
-      ["/wt", ["nice", "-n", "19", "bun", "tools/d2/harness-builder.ts", "--name", "r1"]],
-      ["/wt", ["bun", "tools/d2/harness-builder.ts", "--name=r1"]],
-      ["/wt", ["bun", "tools/d2/harness-builder.ts", "--name=r10"]],
-      ["/wt", ["zsh", "-c", "bun tools/d2/harness-builder.ts --name r1"]],
-      ["/elsewhere", ["/bin/bun", "/wt/tools/d2/harness-builder.ts", "--name", "r1"]],
-      ["/wt", ["bun", "/other/tools/d2/harness-builder.ts", "--name", "r1"]],
+      ["/wt", ["bun", "tools/campaign/harness-builder.ts", "--name", "r1", "--unattended"]],
+      ["/wt", ["bun", "tools/campaign/harness-builder.ts", "--name", "r10"]],
+      ["/wt", ["bun", "tools/eval/draft.ts", "--name", "r1", "--session", "d-1"]],
+      ["/wt", ["nice", "-n", "19", "bun", "tools/campaign/harness-builder.ts", "--name", "r1"]],
+      ["/wt", ["bun", "tools/campaign/harness-builder.ts", "--name=r1"]],
+      ["/wt", ["bun", "tools/campaign/harness-builder.ts", "--name=r10"]],
+      ["/wt", ["zsh", "-c", "bun tools/campaign/harness-builder.ts --name r1"]],
+      ["/elsewhere", ["/bin/bun", "/wt/tools/campaign/harness-builder.ts", "--name", "r1"]],
+      ["/wt", ["bun", "/other/tools/campaign/harness-builder.ts", "--name", "r1"]],
+      ["/wt", ["bun", "tools/d2/harness-builder.ts", "--name", "r1"]],
+      ["/wt", ["bun", "tools/d1b/examine.ts", "--name", "r1", "--session", "x-1"]],
+      ["/wt", ["bun", "not-tools/d2/harness-builder.ts", "--name", "r1"]],
     ];
     const running = rows.map(([cwd, args], index) => ({ pid: index + 1, cwd, args }));
-    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 5, 11, 13, 14, 15, 18]);
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 5, 11, 13, 14, 15, 18, 20, 21]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
     expect(writers(solve, running)).toEqual([]);
   });
@@ -50,8 +53,8 @@ describe("a run's writers", () => {
 describe("the processes that may write a log", () => {
   it("finds a campaign command with the worktree it runs in, and leaves another process out", async () => {
     const tree = mkdtempSync(join(root, "tree-"));
-    mkdirSync(join(tree, "tools", "d2"), { recursive: true });
-    for (const script of [BUILDER, "tools/d2/unrelated.ts"]) {
+    mkdirSync(join(tree, "tools", "campaign"), { recursive: true });
+    for (const script of [BUILDER, "tools/campaign/unrelated.ts"]) {
       writeFileSync(join(tree, script), "await Bun.sleep(30_000);\n");
     }
     const writer = capturedSpawn([runtimeProcess.execPath, BUILDER, "--name", "r1"], {
@@ -59,7 +62,7 @@ describe("the processes that may write a log", () => {
       stdout: "ignore",
       stderr: "ignore",
     });
-    const other = capturedSpawn([runtimeProcess.execPath, "tools/d2/unrelated.ts"], {
+    const other = capturedSpawn([runtimeProcess.execPath, "tools/campaign/unrelated.ts"], {
       cwd: tree,
       stdout: "ignore",
       stderr: "ignore",

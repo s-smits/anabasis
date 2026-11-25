@@ -58,7 +58,7 @@ interface Solving {
   readonly limits: Limits;
 }
 
-const DOCUMENTED = "tools/d2/setting.ts";
+const DOCUMENTED = "tools/campaign/setting.ts";
 const KIND = "campaign.setting";
 
 export const SETTING_OPTIONS = {

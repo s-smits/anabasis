@@ -3,7 +3,7 @@
  * whether the tree was dirty, load, Bun, login and Python. The log names the host's code by
  * content, not commit, so this is where a run's commit is on record, and its flags are what
  * `bun run runs continue` runs again on. The campaign command keeps one a run as `launch-run-<n>.json`
- * (`keepReceipt`, `tools/d2/harness-builder.ts`); an older campaign may hold one per round or
+ * (`keepReceipt`, `tools/campaign/harness-builder.ts`); an older campaign may hold one per round or
  * session. `nextRun` numbers the next run.
  *
  *   bun run runs source <name> [--holds <commit>]... [--has <text>]...

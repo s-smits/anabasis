@@ -4,7 +4,7 @@ Expands `AGENTS.md` §11. Publication procedures live in `stack-pr`; remote chec
 
 ## Runtime & commands
 
-Use the Bun pinned in `package.json` (`pinFault` in `tools/d2/harness-builder.ts` refuses unpinned Bun); `src/meta` wraps needed Node APIs.
+Use the Bun pinned in `package.json` (`pinFault` in `tools/campaign/harness-builder.ts` refuses unpinned Bun); `src/meta` wraps needed Node APIs.
 
 | Command | Purpose |
 | --- | --- |

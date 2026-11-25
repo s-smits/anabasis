@@ -27,7 +27,7 @@ describe("the lane guard", () => {
     expect(refusalOf("Edit", { file_path: "/Users/x/anabasis/.ana/d2/run/log.jsonl" })).not.toBeNull();
     // A path that climbs out of the lanes folder is read where it lands.
     expect(
-      refusalOf("Write", { file_path: `${WRI}/lanes/../../../d2/run/lanes/01-report.md` }),
+      refusalOf("Write", { file_path: `${WRI}/lanes/../../../campaign/run/lanes/01-report.md` }),
     ).not.toBeNull();
   });
 
@@ -42,7 +42,7 @@ describe("the lane guard", () => {
       expect(bash(ok)).toBeNull();
     }
     for (const refused of [
-      "bun tools/d2/harness-builder.ts --dry-run",
+      "bun tools/campaign/harness-builder.ts --dry-run",
       "bun run runs fresh jobstat --yes",
       "bun run runs continue jobstat",
       "bun tools/wri/wri.ts lanes --out /a --agents 4",
@@ -57,11 +57,11 @@ describe("the lane guard", () => {
   it("reads what a command runs and where it writes, never what it only names", () => {
     // Each of these was refused by an earlier guard in a lane session, replayed.
     for (const ok of [
-      "cd /a/anabasis && sed -n 360,395p tools/d2/harness-builder.ts; grep -n parent tools/d2/session.ts",
+      "cd /a/anabasis && sed -n 360,395p tools/campaign/harness-builder.ts; grep -n parent tools/campaign/session.ts",
       String.raw`grep -rn "runs copy\|seedFrom" tools/wri/*.ts | head`,
       "git merge-base --is-ancestor abc HEAD && echo yes || echo no",
       "git stash list | head -1; git worktree list",
-      `cat >> ${WRI}/lanes/02-report.md <<'EOF'\nbun run runs stop x; bun tools/d2/word.ts; echo > /a/.ana/d2/run/log.jsonl; cat .env\nEOF`,
+      `cat >> ${WRI}/lanes/02-report.md <<'EOF'\nbun run runs stop x; bun tools/campaign/signal.ts; echo > /a/.ana/d2/run/log.jsonl; cat .env\nEOF`,
       "S=/tmp/lane; mkdir -p $S/eng; cp /a/.ana/d2/run/exams/x/checks/evaluator.ts $S/eng/",
       "jq -r .data /a/data/runs/h/run/log.jsonl > /tmp/lane/out.txt 2>&1",
       String.raw`grep -n '\.env' src/meta/env.ts`,
@@ -70,9 +70,9 @@ describe("the lane guard", () => {
       expect(bash(ok)).toBeNull();
     }
     for (const [refused, why] of [
-      ["cd /a && bun tools/d2/word.ts --stop x", "a campaign command"],
+      ["cd /a && bun tools/campaign/signal.ts --stop x", "a campaign command"],
       [
-        "nohup bun --env-file=x tools/d2/harness-builder.ts --name x > /tmp/l.log 2>&1 &",
+        "nohup bun --env-file=x tools/campaign/harness-builder.ts --name x > /tmp/l.log 2>&1 &",
         "a campaign command",
       ],
       ["ANA_CHECK_HOST=1 bun run runs move foo --host h", "a run's life"],
@@ -115,17 +115,17 @@ describe("the lane guard", () => {
   });
 
   it("reads the command a wrapper, a flag or a find runs, and the line after a here-string", () => {
-    for (const ok of ["timeout 30 grep -rn solve src", "sed -n 1,40p tools/d2/word.ts"]) {
+    for (const ok of ["timeout 30 grep -rn solve src", "sed -n 1,40p tools/campaign/signal.ts"]) {
       expect(bash(ok)).toBeNull();
     }
     for (const [refused, why] of [
-      ["timeout 600 bun tools/d2/harness-builder.ts", "a campaign command"],
-      ["caffeinate -i bun tools/d2/round.ts", "a campaign command"],
-      ["bun --cwd /a tools/d2/harness-builder.ts", "a campaign command"],
-      ["find . -name x -exec bun tools/d2/word.ts --stop x ;", "a campaign command"],
+      ["timeout 600 bun tools/campaign/harness-builder.ts", "a campaign command"],
+      ["caffeinate -i bun tools/campaign/round.ts", "a campaign command"],
+      ["bun --cwd /a tools/campaign/harness-builder.ts", "a campaign command"],
+      ["find . -name x -exec bun tools/campaign/signal.ts --stop x ;", "a campaign command"],
       ["bun run runs --host h stop x", "a run's life"],
       ["bun run runs seed a b", "a run's life"],
-      ['grep x <<< "y"\nbun tools/d2/word.ts --stop x\ny', "a campaign command"],
+      ['grep x <<< "y"\nbun tools/campaign/signal.ts --stop x\ny', "a campaign command"],
       ["export L=/a/.ana/d2/run/log.jsonl; echo x >> $L", "a write under a campaign"],
       ["find /a/.ana/d2/run -delete", "a write under a campaign"],
       [`echo x > ${WRI}/snapshot/run/log.jsonl`, "a write under a campaign"],

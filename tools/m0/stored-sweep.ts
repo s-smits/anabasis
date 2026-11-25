@@ -1,5 +1,5 @@
 /**
- * A check program's pack as a campaign stages it (`tools/d2/exam.ts`): its brief, tasks and
+ * A check program's pack as a campaign stages it (`tools/campaign/exam.ts`): its brief, tasks and
  * controls, the contract and public resources it supplies to a solve, and the backends a seat runs on.
  */
 import type { Api, Model } from "@earendil-works/pi-ai";
@@ -21,7 +21,7 @@ import { type PublicResource, publicResource } from "#src/tools/answer.ts";
 
 interface PackBrief {
   readonly domain: string;
-  /** Present in prompt-drafted exams (`tools/d2/exam.ts`), absent in v1 bundle briefs. */
+  /** Present in prompt-drafted exams (`tools/campaign/exam.ts`), absent in v1 bundle briefs. */
   readonly scope?: string;
   readonly conventions?: string;
   readonly ruleDecisions: readonly (JsonObject & { id: string; statement: string; visibility: string })[];
@@ -60,7 +60,7 @@ export function checkProgram(bundle: string, to: string): string {
 }
 
 /** Backend options as the default Claude configuration, with state in `home` (`--solver-window` in
- *  `tools/d2/setting.ts` overrides the compaction window). The cache TTL is 5 minutes because
+ *  `tools/campaign/setting.ts` overrides the compaction window). The cache TTL is 5 minutes because
  *  nearly every solver turn follows the previous one within five minutes, and the 1-hour cache
  *  writes bill more. */
 export function sweepOptions(

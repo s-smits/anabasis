@@ -3,7 +3,7 @@
  * campaign's log and every process that one started, and nothing else, since a round started by
  * hand can share its process group with a sibling. A name is one campaign's whole name
  * (`runNamed`). Without `--yes` it prints what it would end. The campaign goes on from its log when
- * run again under the same name (`bun run runs continue`); a word (`tools/d2/word.ts`) or `bun run
+ * run again under the same name (`bun run runs continue`); a word (`tools/campaign/signal.ts`) or `bun run
  * runs pause` stops one at a boundary instead.
  *
  *   bun run runs stop <name> ... [--yes]

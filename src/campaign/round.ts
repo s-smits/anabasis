@@ -195,7 +195,7 @@ function counts(value: number, least: number): boolean {
 function refuseUnscorable({ tasks, retained }: Terms, log: string): void {
   if (tasks.length === 0) {
     throw new Error(
-      "no task to score: a comparison is asked for with at least one held-out task that waits for no label (tools/d2/prepare.ts)",
+      "no task to score: a comparison is asked for with at least one held-out task that waits for no label (tools/campaign/prepare.ts)",
     );
   }
   const twice = tasks.find((version, index) => tasks.indexOf(version) !== index);
@@ -206,7 +206,7 @@ function refuseUnscorable({ tasks, retained }: Terms, log: string): void {
   const waiting = poolOf(events).awaiting.find((version) => tasks.includes(version));
   if (waiting !== undefined) {
     throw new Error(
-      `task ${waiting} waits for a person's label, and is not scored until it has one: tools/d2/prepare.ts --keep or --infeasible`,
+      `task ${waiting} waits for a person's label, and is not scored until it has one: tools/campaign/prepare.ts --keep or --infeasible`,
     );
   }
   const sets = taskSets(events);

@@ -8,7 +8,7 @@ import { mkdirSync } from "../../src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../../src/meta/json-runtime.ts";
 import type { JsonObject } from "../../src/meta/json-shape.ts";
 import { join } from "../../src/meta/path.ts";
-import { exampleId } from "../../tools/d2/exam.ts";
+import { exampleId } from "../../tools/campaign/exam.ts";
 
 export const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const TOOL_USE = { stopReason: "toolUse" } as const;

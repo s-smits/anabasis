@@ -33,12 +33,12 @@ describe("each login's live runs, on every host", () => {
 
   it("counts a simulation seat by its own flags, once a seat", () => {
     const seat =
-      "bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree /t --name sim-a --login 3 -- tools/d1b/examine.ts --login 9";
+      "bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree /t --name sim-a --login 3 -- tools/eval/examine.ts --login 9";
     const table = [
       seat,
       `zsh -c ${seat}`,
       "bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat x",
-      "bun tools/d1b/examine.ts --name sim-b",
+      "bun tools/eval/examine.ts --name sim-b",
     ].map((row) => ({ args: row.split(" ") }));
     expect(seatsIn(table, "here")).toEqual([{ name: "sim-a", login: "3", host: "here" }]);
   });

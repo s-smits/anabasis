@@ -41,7 +41,7 @@ import { stagedExamOf } from "../d2/exam.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";
 import { harnessBuilder } from "../d2/harness-builder.ts";
 import type { Seated } from "../d2/round.ts";
-import type { Reader } from "#src/referee/referee.ts";
+import type { Reader } from "#src/audit/auditor.ts";
 import { sessionCommand } from "../d2/session.ts";
 import { packControls } from "../m0/stored-sweep.ts";
 import { Misused, SEED_FILE } from "./registry.ts";

@@ -19,7 +19,7 @@ import type { Ending as SolveEnding } from "../../../src/kernel/solve.ts";
 import type { taskStates } from "../../../src/kernel/task.ts";
 import type { Call as TracedCall, Turn as TracedTurn } from "../../../src/kernel/trace.ts";
 import type { JsonObject, JsonValue } from "../../../src/meta/json-shape.ts";
-import type { Ruling } from "../../../src/referee/referee.ts";
+import type { Ruling } from "../../../src/audit/auditor.ts";
 import { hasText } from "../../../src/meta/text.ts";
 
 export type Tone = "good" | "bad" | "warn" | "info" | "neutral";

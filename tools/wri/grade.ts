@@ -32,7 +32,7 @@ import { resolveJsonPath } from "#src/meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
-import { withReplacedField } from "#src/referee/probe.ts";
+import { withReplacedField } from "#src/audit/probe.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { WRI } from "./index.ts";

@@ -18,7 +18,7 @@ import { isSafePathSegment } from "../meta/path-segment.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
-import { type SeatTool, textsOf } from "../agent/session.ts";
+import { type AgentTool, textsOf } from "../agent/session.ts";
 import { shellQuote } from "../wall/isolation.ts";
 import { toolchainPathDirs } from "../wall/policy.ts";
 import CAPTURE from "./capture-answer.py" with { type: "text" };
@@ -74,7 +74,7 @@ function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { 
 
 const CAPTURER = Bun.which("python3", { PATH: toolchainPathDirs().join(":") });
 
-export function submitTool(desk: Desk, contract: Contract, home: string, exec: WallExec): SeatTool {
+export function submitTool(desk: Desk, contract: Contract, home: string, exec: WallExec): AgentTool {
   return tool({
     name: "submit",
     description: `Send ${ANSWER_FILE} from your working directory as your answer. It holds the answer as JSON, in the format ${ANSWER_FORMAT_FILE} gives. A file that does not is refused with the reason, and you may submit again. Submit also captures regular files under ${DELIVERABLES.folder}/, at most ${String(DELIVERABLES.count)} files and ${String(DELIVERABLES.bytes)} bytes in total, refusing symlinks, special files and excess files or bytes with a reason; an absent folder supplies no files. An accepted submit ends the task and returns no verdict. If you judge the task malformed, so that no answer could meet it as posed, give malformed instead, saying why: that ends the task with no answer read.`,
@@ -115,7 +115,7 @@ export function submitTool(desk: Desk, contract: Contract, home: string, exec: W
   });
 }
 
-export function tool<Parameters extends TSchema>(definition: ToolRegistration<Parameters>): SeatTool {
+export function tool<Parameters extends TSchema>(definition: ToolRegistration<Parameters>): AgentTool {
   return defineTool({
     ...definition,
     executionMode: "sequential",

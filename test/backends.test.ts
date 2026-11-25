@@ -3,7 +3,7 @@ import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { claudeExecutable } from "../src/agent/backends/claude.ts";
 import { codexAuthStatus } from "../src/agent/backends/codex-auth.ts";
 import { type BackendOptions, backends, compactionMode, retryPolicy } from "../src/agent/backends/models.ts";
-import { sit } from "../src/agent/session.ts";
+import { runAgent } from "../src/agent/session.ts";
 import { read } from "../src/kernel/log.ts";
 import { traceOf } from "../src/kernel/trace.ts";
 import { asRecord, type JsonValue } from "../src/meta/json-shape.ts";
@@ -192,7 +192,7 @@ describe("the three backends", () => {
     });
     const log = join(home, "codex.jsonl");
     for (const id of ["served", "absent"]) {
-      const sat = await sit({
+      const sat = await runAgent({
         models: () => models,
         id,
         model,

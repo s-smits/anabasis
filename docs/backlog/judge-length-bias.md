@@ -2,7 +2,7 @@
 
 ## Intended change
 
-Read whether the Referee's pairwise votes favour the longer answer. The judge prompt already tells it that length is not substance (`PAIR_SYSTEM`, `HOLISTIC_LINE` in `src/referee/judge.ts`) and `fairCap` gives both answers the same byte budget, but nothing measures what the votes do. Position bias has a structural control (every criterion is voted in both orders) and self-preference has one (the Referee is cross-family); length has only the instruction.
+Read whether the Referee's pairwise votes favour the longer answer. The judge prompt already tells it that length is not substance (`PAIR_SYSTEM`, `HOLISTIC_LINE` in `src/audit/judge.ts`) and `fairCap` gives both answers the same byte budget, but nothing measures what the votes do. Position bias has a structural control (every criterion is voted in both orders) and self-preference has one (the Referee is cross-family); length has only the instruction.
 
 The read: over `referee.pair` events, the share of decisive votes that went to the longer of the two answers, with its exact 95% interval (Clopper–Pearson, as `upperBound` in `src/kernel/compare.ts` gives one side). Under no bias that share sits near one half, though longer answers can also be better ones, so the read is report-only (rule 13) until a replay shows it would change a decision.
 

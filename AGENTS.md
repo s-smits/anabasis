@@ -72,7 +72,7 @@ Close gaming channels structurally in code, never with bans:
 - **Builder** (`src/builder/`): edits `harness/`, reads practice traces and paged extracts (`read_trace`), picks moves and freezes candidates, seeing only §1's five items, `MEMORY.md` and kept harnesses.
 - **Solver** (`src/solver/`): solves a task via `read`, `bash`, `edit`, `write`, `submit` and installed programs.
 - **Verifier** (`src/kernel/verify.ts`): runs offline checks and `[0, 1]` code items in a fresh offline sandbox.
-- **Referee** (`src/referee/referee.ts`, `judge.ts`): rules on reproducible rejections (`earned`, `check-defect`, `unclear`) and, under `--admit-judge`, runs cross-family `referee.pair` (exam side only).
+- **Referee** (`src/audit/auditor.ts`, `judge.ts`): rules on reproducible rejections (`earned`, `check-defect`, `unclear`) and, under `--admit-judge`, runs cross-family `referee.pair` (exam side only).
 
 A content-addressed **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) has three tiers: **`bareSolver`** (`pi-durable` + 4 tools, no guide/programs; external baseline), **`baseStarter`** (`starter.ts`: + minimal `BUILT_AGENTS.md`; + Builder-only `HARNESS.md` = **Starter Pack**), **`builtSolver`** (Builder harness; promotions beat `baseStarter`). Never say "with or without a harness".
 

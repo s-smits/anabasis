@@ -52,8 +52,8 @@ import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { gitMaybe, worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { type Reader, referee } from "#src/referee/referee.ts";
-import { type Asked, judgePair } from "#src/referee/judge.ts";
+import { type Reader, auditRejection } from "#src/audit/auditor.ts";
+import { type Asked, judgePair } from "#src/audit/judge.ts";
 import { writeStarter } from "#src/harness/starter.ts";
 import { stageExam } from "./exam.ts";
 import type { NamedSolver } from "./setting.ts";
@@ -280,7 +280,7 @@ function reviewersOf(
   const prompt = openingOf(read(log, TRACE_KINDS))?.prompt ?? undefined;
   return {
     referee: (solve: string, task: TaskPackage, kill: AbortSignal) =>
-      referee({ ...reader, kill }, { solve, task, contract, checks, verify, log }),
+      auditRejection({ ...reader, kill }, { solve, task, contract, checks, verify, log }),
     reviewer: priceKey(reader.model),
     pair: (task: TaskPackage, asked: Asked, kill: AbortSignal) =>
       judgePair({ ...reader, kill }, { log, task, contract, prompt, ...asked }),

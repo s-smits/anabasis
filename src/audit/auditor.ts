@@ -1,6 +1,6 @@
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
-import { type SeatTool, sit } from "../agent/session.ts";
+import { type AgentTool, runAgent } from "../agent/session.ts";
 import { waitOut } from "../solver/run.ts";
 import { type AnswerFile, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
 import type { Contract } from "../kernel/contract.ts";
@@ -47,7 +47,7 @@ interface RefereeCase {
   readonly log: string;
 }
 
-export interface RefereeFinding {
+export interface AuditFinding {
   readonly ruling: Ruling | null;
   readonly check: string | null;
   readonly rule: string | null;
@@ -118,8 +118,8 @@ export function loggedVerdict(events: readonly LogEvent[], solve: string, log: s
   };
 }
 
-function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFinding | null {
-  const ruled = (ruling: Ruling | null, check: string | null, reason: string): RefereeFinding => ({
+function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): AuditFinding | null {
+  const ruled = (ruling: Ruling | null, check: string | null, reason: string): AuditFinding => ({
     ruling,
     check,
     rule: null,
@@ -190,7 +190,7 @@ function reusedRuling(
   solve: string,
   taskId: string,
   blocking: readonly string[],
-): { readonly finding: RefereeFinding; readonly from: string } | null {
+): { readonly finding: AuditFinding; readonly from: string } | null {
   const solves = new Map(solvesIn(events).map((each) => [each.id, each] as const));
   const comp = solves.get(solve)?.start.comparison;
   if (!isString(comp)) return null;
@@ -392,7 +392,7 @@ function rulingTool(
   refusing: ReadonlyMap<string, Refusing>,
   answered: Pick<LoggedVerdict, "answer" | "files">,
   rows: readonly ProbeRow[],
-  found: RefereeFinding[],
+  found: AuditFinding[],
   onRefused: (asked: Static<typeof RULING_PARAMETERS>, why: string) => void,
 ) {
   return tool({
@@ -419,12 +419,12 @@ function rulingTool(
   });
 }
 
-export async function runRefereeSession(given: {
+export async function runAuditSession(given: {
   readonly id: string;
   readonly reader: Reader;
   readonly system: string;
   readonly opening: string;
-  readonly tools: readonly SeatTool[];
+  readonly tools: readonly AgentTool[];
   readonly log: string;
   readonly over: () => boolean;
   readonly most: number;
@@ -435,7 +435,7 @@ export async function runRefereeSession(given: {
   for (;;) {
     const deadline = AbortSignal.timeout((reader.wallSeconds ?? defaultSeconds) * 1000);
     const turns: AssistantMessage[] = [];
-    const { spent } = await sit({
+    const { spent } = await runAgent({
       models: reader.models,
       id,
       model: reader.model,
@@ -462,7 +462,7 @@ export async function runRefereeSession(given: {
   }
 }
 
-export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
+export async function auditRejection(reader: Reader, fail: RefereeCase): Promise<AuditFinding> {
   const events = read(fail.log, TRACE_KINDS);
   const verdict = loggedVerdict(events, fail.solve, fail.log);
   if (verdict === null) {
@@ -475,7 +475,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
     directHost === null ? reusedRuling(events, fail.solve, fail.task.taskId, verdict.blocking) : null;
   const host = directHost ?? reused?.finding ?? null;
   const rows: ProbeRow[] = [];
-  const found: RefereeFinding[] = [];
+  const found: AuditFinding[] = [];
   const version = proposalsOf(events).findLast(({ taskId }) => taskId === fail.task.taskId)?.version;
   const accepted = acceptedAnswers(events, version).at(-1);
   const refusing = new Map(
@@ -490,7 +490,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   const opening = host === null ? packet(fail, verdict, accepted, refusing, caseFiles) : "";
   const meter =
     host === null
-      ? await runRefereeSession({
+      ? await runAuditSession({
           id: `reader-${crypto.randomUUID()}`,
           reader,
           system: SYSTEM_PROMPT,

@@ -7,7 +7,7 @@ import {
 import type { BashToolInput, ImageProcessor } from "@earendil-works/pi-durable/tools";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { Type } from "typebox";
-import type { SeatTool } from "../agent/session.ts";
+import type { AgentTool } from "../agent/session.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
 
@@ -47,19 +47,19 @@ export function wallExec(wall: CommandWall): WallExec {
   };
 }
 
-function assembleCodingTools(bash: SeatTool, selected: readonly CodingTool[]): SeatTool[] {
+function assembleCodingTools(bash: AgentTool, selected: readonly CodingTool[]): AgentTool[] {
   const wanted = new Set<string>(selected);
-  const tools: SeatTool[] = [createReadTool({ images }), bash, createEditTool(), createWriteTool()];
+  const tools: AgentTool[] = [createReadTool({ images }), bash, createEditTool(), createWriteTool()];
   return tools
     .filter((each) => wanted.has(each.name))
     .map((each) => ({ ...each, executionMode: "sequential" }));
 }
 
-export function codingTools(wall: CommandWall, selected: readonly CodingTool[]): SeatTool[] {
+export function codingTools(wall: CommandWall, selected: readonly CodingTool[]): AgentTool[] {
   return assembleCodingTools(bashTool(wall), selected);
 }
 
-export function directCodingTools(selected: readonly CodingTool[], commandPrefix?: string): SeatTool[] {
+export function directCodingTools(selected: readonly CodingTool[], commandPrefix?: string): AgentTool[] {
   return assembleCodingTools(createBashTool(commandPrefix === undefined ? {} : { commandPrefix }), selected);
 }
 
@@ -77,7 +77,7 @@ function timeoutClause(
   return `\n\nThat is the whole ${String(shellMaxSeconds)} s the host allows one command.`;
 }
 
-function bashTool(wall: CommandWall): SeatTool {
+function bashTool(wall: CommandWall): AgentTool {
   const pi = createBashTool();
   return {
     ...pi,

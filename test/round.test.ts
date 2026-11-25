@@ -19,7 +19,7 @@ import {
   swapped,
   toLabel,
 } from "../src/campaign/comparison.ts";
-import type { PassLabel } from "../src/referee/agreement.ts";
+import type { PassLabel } from "../src/audit/agreement.ts";
 import {
   type CheckpointRequest,
   checkpoint,
@@ -61,7 +61,7 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
-import type { RefereeFinding, Ruling } from "../src/referee/referee.ts";
+import type { AuditFinding, Ruling } from "../src/audit/auditor.ts";
 import { text, tool } from "../src/tools/answer.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
@@ -339,7 +339,7 @@ const stoppedAtFirst = (asked: readonly { readonly version: string }[]) => {
 
 const referee =
   (log: string, ruled: Readonly<Record<string, Ruling>> = {}) =>
-  async (solve: string, version: string): Promise<RefereeFinding> => {
+  async (solve: string, version: string): Promise<AuditFinding> => {
     const ruling = ruled[version] ?? "earned";
     append(log, "referee.finding", { solve, ruling });
     return {
@@ -939,7 +939,7 @@ describe("a round", () => {
     const refereed: string[] = [];
     const ruled = referee(s.log, { s1: "check-defect" });
     const failedOnce = new Set<string>();
-    const reading = async (solve: string, version: string): Promise<RefereeFinding> => {
+    const reading = async (solve: string, version: string): Promise<AuditFinding> => {
       refereed.push(version);
       if (version === "s3" && !failedOnce.has(solve)) {
         failedOnce.add(solve);
@@ -998,13 +998,13 @@ describe("a round", () => {
     // aside with no later run putting it again.
     const silent =
       (log: string) =>
-      async (solve: string): Promise<RefereeFinding> => {
+      async (solve: string): Promise<AuditFinding> => {
         append(log, "referee.finding", { solve, ruling: null, error: "the session limit is reached" });
         return { ruling: null, check: null, rule: null, field: null, reason: "r", probes: [] };
       };
     const s = await setup([], rejecting);
     const asked = new Set<string>();
-    const once = async (solve: string, version: string): Promise<RefereeFinding> => {
+    const once = async (solve: string, version: string): Promise<AuditFinding> => {
       if (asked.has(solve)) return await referee(s.log)(solve, version);
       asked.add(solve);
       return await silent(s.log)(solve);

@@ -1,4 +1,4 @@
-import type { SeatTool } from "../agent/session.ts";
+import type { AgentTool } from "../agent/session.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { GUIDE_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
@@ -17,7 +17,7 @@ export interface PublicTask {
 }
 
 interface PromptEnvelope {
-  readonly tools: readonly SeatTool[];
+  readonly tools: readonly AgentTool[];
   readonly home: string;
   readonly guide: string | null;
   readonly addendum: string;
@@ -25,7 +25,7 @@ interface PromptEnvelope {
 }
 
 export interface Told {
-  readonly tools: readonly SeatTool[];
+  readonly tools: readonly AgentTool[];
   readonly home: string;
   readonly guide: string | null;
   readonly wallSeconds: number;

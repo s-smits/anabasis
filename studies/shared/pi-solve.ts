@@ -35,7 +35,7 @@ import { installedPrograms } from "#src/harness/programs.ts";
 import { portableGuide } from "#src/harness/starter.ts";
 import { listedPrograms, NUDGE, promptEnvelope } from "#src/solver/prompt.ts";
 import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
-import { type Seat, type SeatTool, sit } from "#src/agent/session.ts";
+import { type AgentSpec, type AgentTool, runAgent } from "#src/agent/session.ts";
 import { trajectoryOf } from "./atif.ts";
 import { shellQuote, toolTreeImports, toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { seatBackends } from "#tools/d2/campaign.ts";
@@ -66,7 +66,7 @@ type Ending = "submitted" | "crash" | "budget" | ReturnType<typeof unanswered>["
 
 type Route = Readonly<{ model: string; baseUrl: string; key: string }> | Readonly<{ solver: string }>;
 
-type Served = Pick<Seat, "model" | "models">;
+type Served = Pick<AgentSpec, "model" | "models">;
 
 interface Asked {
   readonly harness: string;
@@ -136,7 +136,7 @@ function duty(ask: Asked, guide: string | null): string {
   ].join(" ");
 }
 
-function submitTool(said: { submitted: boolean }): SeatTool {
+function submitTool(said: { submitted: boolean }): AgentTool {
   return tool({
     name: "submit",
     description: "End the task: the working directory and the files the task names are graded as they stand.",
@@ -238,7 +238,7 @@ async function solve(ask: Asked) {
   // The dollar bound, as Claude Code's `--max-budget-usd`, on the turns' own dollars at list price.
   const budget = new AbortController();
   const bound = ask.budgetUsd ?? Infinity;
-  const { thrown: crash, spent } = await sit({
+  const { thrown: crash, spent } = await runAgent({
     ...served,
     id: "pi-solve",
     effort: ask.effort,

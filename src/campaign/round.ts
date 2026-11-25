@@ -11,8 +11,8 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
-import type { Asked } from "../referee/judge.ts";
-import type { RefereeFinding } from "../referee/referee.ts";
+import type { Asked } from "../audit/judge.ts";
+import type { AuditFinding } from "../audit/auditor.ts";
 import { JUDGED_TASK_DOLLARS } from "./admission.ts";
 import { tasksByEpoch } from "./climb.ts";
 import { budgetLeft } from "./opening.ts";
@@ -60,7 +60,7 @@ interface Terms {
   readonly cap?: Cap | undefined;
   readonly prediction?: string | undefined;
   readonly referee?:
-    | ((solve: string, version: string, kill: AbortSignal) => Promise<RefereeFinding>)
+    | ((solve: string, version: string, kill: AbortSignal) => Promise<AuditFinding>)
     | undefined;
   readonly judge?: Judging | undefined;
 }

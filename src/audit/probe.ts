@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import type { SeatTool } from "../agent/session.ts";
+import type { AgentTool } from "../agent/session.ts";
 import { type AnswerFile, textFiles } from "../kernel/answer-files.ts";
 import {
   blockingOf,
@@ -392,7 +392,7 @@ export function probeTool(
     readonly accepted?: JsonValue | undefined;
     readonly files?: readonly AnswerFile[];
   } = {},
-): SeatTool {
+): AgentTool {
   const { readTogether = [], accepted, files = [] } = around;
   let original: Promise<Verdict> | null = null;
   return tool({
@@ -431,7 +431,7 @@ export function probeExamplesTool(
   }[],
   rows: DraftProbeRow[],
   budget = PROBE_BUDGET,
-): SeatTool {
+): AgentTool {
   const byId = new Map(examples.map((example) => [example.task.taskId, example]));
   const originals = new Map<string, Promise<Verdict>>();
   return tool({

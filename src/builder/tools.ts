@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import type { SeatTool } from "../agent/session.ts";
+import type { AgentTool } from "../agent/session.ts";
 import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import { callPrograms } from "../kernel/call-programs.ts";
 import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
@@ -323,7 +323,7 @@ function choosePracticeTasks(bench: Bench, requested: readonly string[]) {
   return chosen;
 }
 
-export function practiceTool(bench: Bench): SeatTool {
+export function practiceTool(bench: Bench): AgentTool {
   const { request } = bench;
   return tool({
     name: "practice",
@@ -428,7 +428,7 @@ function pageOf(extracted: Extracted, from: number): string {
   ].join("\n");
 }
 
-export function traceTool(bench: Bench): SeatTool {
+export function traceTool(bench: Bench): AgentTool {
   return tool({
     name: "read_trace",
     description:
@@ -513,7 +513,7 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
   return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
 }
 
-export function openingTool(opening: string | (() => string), description: string): SeatTool {
+export function openingTool(opening: string | (() => string), description: string): AgentTool {
   return tool({
     name: "read_opening",
     description,
@@ -522,7 +522,7 @@ export function openingTool(opening: string | (() => string), description: strin
   });
 }
 
-export function waitTool(description: string, next: () => Promise<string>): SeatTool {
+export function waitTool(description: string, next: () => Promise<string>): AgentTool {
   return tool({
     name: "wait",
     description,
@@ -531,7 +531,7 @@ export function waitTool(description: string, next: () => Promise<string>): Seat
   });
 }
 
-export function endingWith(each: SeatTool, line: (id: string) => string): SeatTool {
+export function endingWith(each: AgentTool, line: (id: string) => string): AgentTool {
   return {
     ...each,
     execute: async (args, api, context) => {
@@ -551,7 +551,7 @@ export function endingWith(each: SeatTool, line: (id: string) => string): SeatTo
   };
 }
 
-export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
+export function finishTool(bench: Bench, unmeasured?: Unmeasured): AgentTool {
   return tool({
     name: "finish",
     description: bench.modePrompts.finish,
@@ -620,7 +620,7 @@ function opens(harness: Harness, dir: string, contract: Contract, tasks: readonl
   ].join("\n");
 }
 
-function checkTool(bench: Bench): SeatTool {
+function checkTool(bench: Bench): AgentTool {
   return tool({
     name: "check_harness",
     description:
@@ -633,7 +633,7 @@ function checkTool(bench: Bench): SeatTool {
   });
 }
 
-export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): SeatTool[] {
+export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): AgentTool[] {
   return [
     ...codingTools(wall, CODING_TOOLS).map((each) =>
       each.name === "bash" ? { ...each, description: `${each.description}${shellWalls(network)}` } : each,

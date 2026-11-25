@@ -26,9 +26,9 @@ import {
   type Reader,
   readTool,
   REASON_DISPLAY_BYTES,
-  runRefereeSession,
+  runAuditSession,
   taskFileTexts,
-} from "./referee.ts";
+} from "./auditor.ts";
 
 export interface DraftAuditCase {
   readonly session: string;
@@ -296,7 +296,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
   const pass = target.pass ?? 1;
   const caseFiles = new Map<string, string>();
   const opening = packet(target, examples, caseFiles);
-  const meter = await runRefereeSession({
+  const meter = await runAuditSession({
     id: `draft-${target.session}-${String(pass)}`,
     reader,
     system: SYSTEM_PROMPT,

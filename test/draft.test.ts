@@ -28,7 +28,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { draftCommand } from "../tools/d1b/draft.ts";
-import { taskContentDigest } from "../src/referee/probe.ts";
+import { taskContentDigest } from "../src/audit/probe.ts";
 import { campaignLog, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { draftReading, stagedExamOf, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";

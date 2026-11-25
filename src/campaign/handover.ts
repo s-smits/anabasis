@@ -17,7 +17,7 @@ import {
 import { admissionsOf, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
-import type { Ruling } from "../referee/referee.ts";
+import type { Ruling } from "../audit/auditor.ts";
 import { fixedIn, overlapOf, reported, STARTED } from "./comparison.ts";
 
 export interface PracticeFail {

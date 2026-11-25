@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { sit, type Seat } from "../src/agent/session.ts";
+import { runAgent, type AgentSpec } from "../src/agent/session.ts";
 import { read } from "../src/kernel/log.ts";
 import { tracesIn } from "../src/kernel/trace.ts";
 import { text, tool } from "../src/tools/answer.ts";
@@ -41,7 +41,7 @@ function session(name: string, options: { failure?: boolean } = {}) {
       return fauxAssistantMessage(fauxToolCall("look", {}), { stopReason: "toolUse" });
     }),
   );
-  const seat: Seat = {
+  const seat: AgentSpec = {
     models: () => models,
     id: name,
     model: faux.getModel(),
@@ -67,7 +67,7 @@ function session(name: string, options: { failure?: boolean } = {}) {
 describe("durable compaction", () => {
   it("summarises through durable, prices each summary on its event and bills it once with the turns", async () => {
     const s = session("summarised");
-    const sat = await sit(s.seat);
+    const sat = await runAgent(s.seat);
     expect(sat.crash).toBeNull();
     expect(s.summaries.length).toBeGreaterThan(0);
     expect(s.after.some((prompt) => prompt.includes("The earlier steps were completed."))).toBe(true);
@@ -84,7 +84,7 @@ describe("durable compaction", () => {
 
   it("keeps the usage of a failed summary and ends the session as a crash", async () => {
     const s = session("failed", { failure: true });
-    const sat = await sit(s.seat);
+    const sat = await runAgent(s.seat);
     expect(s.summaries).toHaveLength(1);
     expect(sat.crash).toContain("summary refused");
     const event = read(s.log).find(({ kind }) => kind === "solve.compacted");
@@ -102,7 +102,7 @@ describe("durable compaction", () => {
         if (++checked === 15) throw new Error("bound");
       },
     });
-    const sat = await sit(s.seat);
+    const sat = await runAgent(s.seat);
     expect(sat.thrown).toBe("bound");
     expect(s.summaries).toHaveLength(0);
     expect(s.faux.state.callCount).toBeLessThan(24);

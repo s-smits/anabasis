@@ -101,7 +101,7 @@ export const SEATS = {
     ],
   },
   Referee: {
-    owners: ["src/referee/referee.ts", "src/referee/draft-audit.ts"],
+    owners: ["src/audit/auditor.ts", "src/audit/draft-audit.ts"],
     tests: [
       {
         file: "test/review.test.ts",

@@ -1,6 +1,6 @@
-// Behavioural and boundary tests for Referee probes (`src/referee/probe.ts`), rejection
-// adjudication (`src/referee/referee.ts`), adversarial draft audits (`src/referee/draft-audit.ts`),
-// and hand-label agreement (`src/referee/agreement.ts`).
+// Behavioural and boundary tests for Referee probes (`src/audit/probe.ts`), rejection
+// adjudication (`src/audit/auditor.ts`), adversarial draft audits (`src/audit/draft-audit.ts`),
+// and hand-label agreement (`src/audit/agreement.ts`).
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -10,7 +10,7 @@ import {
   fauxToolCall,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import type { SeatTool } from "../src/agent/session.ts";
+import type { AgentTool } from "../src/agent/session.ts";
 import { type AnswerFile, keepAnswerFiles, shownFiles } from "../src/kernel/answer-files.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -23,10 +23,10 @@ import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { agreement, clears, passAgreement, settledPassLabels } from "../src/referee/agreement.ts";
-import { replayDraftProbes, reviewDraft } from "../src/referee/draft-audit.ts";
-import { type DraftProbeRow, type ProbeRow, probeExamplesTool, probeTool } from "../src/referee/probe.ts";
-import { type Reader, referee } from "../src/referee/referee.ts";
+import { agreement, clears, passAgreement, settledPassLabels } from "../src/audit/agreement.ts";
+import { replayDraftProbes, reviewDraft } from "../src/audit/draft-audit.ts";
+import { type DraftProbeRow, type ProbeRow, probeExamplesTool, probeTool } from "../src/audit/probe.ts";
+import { type Reader, auditRejection } from "../src/audit/auditor.ts";
 import { containing, copies, matching, objectWith } from "./helpers/matchers.ts";
 import { zipOf } from "./helpers/zip.ts";
 
@@ -63,7 +63,7 @@ const verify: Verifier = async (_task, answer) => {
 const callTool = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), TOOL_USE);
 const ruling = (args: JsonObject) => callTool("record_ruling", args);
 const reviewCall = (args: JsonObject) => callTool("record_draft_review", args);
-const invoke = (tool: SeatTool, args: JsonObject) => tool.execute(args, UNUSED_API, BACKGROUND_CONTEXT);
+const invoke = (tool: AgentTool, args: JsonObject) => tool.execute(args, UNUSED_API, BACKGROUND_CONTEXT);
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -141,7 +141,7 @@ function setup(
     sent,
     record,
     calls: () => sent.length,
-    fail: (over: Partial<Parameters<typeof referee>[1]> = {}) => ({
+    fail: (over: Partial<Parameters<typeof auditRejection>[1]> = {}) => ({
       solve: "s-1",
       task: TASK,
       contract: CONTRACT,
@@ -309,7 +309,7 @@ describe("answer and file probes", () => {
 describe("host replay shortcuts", () => {
   it("refuses missing answers, rules format faults earned unread, and settles non-reproducing replays without calling the model", async () => {
     const empty = setup([], JSON.stringify([SPAN]), "empty");
-    await expect(referee(empty.reader, empty.fail())).rejects.toThrow(
+    await expect(auditRejection(empty.reader, empty.fail())).rejects.toThrow(
       "solve s-1 has no answer on record: the Referee rules a rejected answer alone",
     );
     expect(empty.calls()).toBe(0);
@@ -322,7 +322,7 @@ describe("host replay shortcuts", () => {
       kind: "fail",
       fault: "span is not a number",
     });
-    expect(await referee(empty.reader, empty.fail())).toMatchObject({
+    expect(await auditRejection(empty.reader, empty.fail())).toMatchObject({
       ruling: "earned",
       reason: containing("span is not a number"),
     });
@@ -340,7 +340,7 @@ describe("host replay shortcuts", () => {
       ],
     ] satisfies [Verdict, JsonObject][]) {
       const s = setup([]);
-      expect(await referee(s.reader, s.fail({ verify: async () => replay }))).toMatchObject(expected);
+      expect(await auditRejection(s.reader, s.fail({ verify: async () => replay }))).toMatchObject(expected);
       expect(s.calls()).toBe(0);
       expect(read(s.log).at(-1)?.data).toMatchObject({ ...expected, replay });
     }
@@ -359,7 +359,7 @@ describe("rejection adjudication and evidence gates", () => {
         probes: [1],
       }),
     ]);
-    const finding = await referee(s.reader, s.fail());
+    const finding = await auditRejection(s.reader, s.fail());
     expect(finding).toEqual({
       ruling: "check-defect",
       check: "span",
@@ -393,7 +393,7 @@ describe("rejection adjudication and evidence gates", () => {
       ],
       JSON.stringify([]),
     );
-    expect(await referee(noFields.reader, noFields.fail())).toMatchObject({
+    expect(await auditRejection(noFields.reader, noFields.fail())).toMatchObject({
       ruling: "check-defect",
       check: "span",
       probes: [],
@@ -401,11 +401,11 @@ describe("rejection adjudication and evidence gates", () => {
 
     // Accepted answer shown only for the same task, never another task.
     const peer = setup([ruling(UNSETTLED), ruling(UNSETTLED)]);
-    await referee(peer.reader, peer.fail());
+    await auditRejection(peer.reader, peer.fail());
     expect(peer.sent[0]).not.toContain(String.raw`\"span\":9`);
     peer.record("verdict", { solve: "s-0", task: "t-1", answer: { span: 9, members: [] }, kind: "pass" });
     peer.record("verdict", { solve: "s-9", task: "t-2", answer: { span: 1, members: [] }, kind: "pass" });
-    await referee(peer.reader, peer.fail());
+    await auditRejection(peer.reader, peer.fail());
     expect(peer.sent[1]).toContain(String.raw`{\"span\":9,\"members\":[]}`);
     expect(peer.sent[1]).not.toContain(String.raw`{\"span\":1,\"members\":[]}`);
   });
@@ -425,7 +425,7 @@ describe("rejection adjudication and evidence gates", () => {
       callTool(PROBE, { changes: [{ path: SPAN, value: "9" }] }),
       earned({ rule: "R1", field: SPAN, probes: [1] }),
     ]);
-    expect(await referee(s.reader, s.fail())).toMatchObject({
+    expect(await auditRejection(s.reader, s.fail())).toMatchObject({
       ruling: "earned",
       rule: "R1",
       field: SPAN,
@@ -452,7 +452,7 @@ describe("rejection adjudication and evidence gates", () => {
       fauxAssistantMessage("Thinking aloud."),
       ruling({ ruling: "check-defect", check: "span", reason: "R1 allows 12.", probes: [3] }),
     ]);
-    expect(await referee(gate.reader, gate.fail({ verify: threw }))).toMatchObject({
+    expect(await auditRejection(gate.reader, gate.fail({ verify: threw }))).toMatchObject({
       ruling: "check-defect",
       check: "span",
       probes: [3],
@@ -486,7 +486,7 @@ describe("rejection adjudication and evidence gates", () => {
       kind: "fail",
       blocking: ["span"],
     });
-    const coupledFinding = await referee(
+    const coupledFinding = await auditRejection(
       coupled.reader,
       coupled.fail({
         verify: async (_task, given) => {
@@ -529,7 +529,7 @@ describe("rejection adjudication and evidence gates", () => {
       blocking: ["span"],
     });
     const seen: (readonly AnswerFile[] | undefined)[] = [];
-    const fileFinding = await referee(
+    const fileFinding = await auditRejection(
       s.reader,
       s.fail({
         verify: async (_t, _a, _sig, files) => {
@@ -576,7 +576,7 @@ describe("rejection adjudication and evidence gates", () => {
       });
       const given: (readonly AnswerFile[] | undefined)[] = [];
       expect(
-        await referee(
+        await auditRejection(
           z.reader,
           z.fail({
             verify: async (_t, _a, _sig, files) => {
@@ -618,15 +618,15 @@ describe("rejection adjudication and evidence gates", () => {
       if (signal?.aborted === true) stop();
       return stopped.promise;
     };
-    expect((await referee({ ...wall.reader, wallSeconds: 0.05 }, wall.fail({ verify: slow }))).ruling).toBe(
-      "unclear",
-    );
+    expect(
+      (await auditRejection({ ...wall.reader, wallSeconds: 0.05 }, wall.fail({ verify: slow }))).ruling,
+    ).toBe("unclear");
     expect(read(wall.log).at(-1)?.data).toMatchObject({ walled: true, ruling: "unclear" });
     expect(signals.at(-1)?.aborted).toBe(true);
 
     const limit = "the account's session limit is reached";
     const errored = setup([fauxAssistantMessage("", { stopReason: "error", errorMessage: limit })]);
-    expect((await referee(errored.reader, errored.fail())).ruling).toBeNull();
+    expect((await auditRejection(errored.reader, errored.fail())).ruling).toBeNull();
     expect(read(errored.log).findLast((e) => e.kind === FINDING)?.data).toMatchObject({
       ruling: null,
       error: limit,
@@ -638,7 +638,7 @@ describe("rejection adjudication and evidence gates", () => {
     let killRuns = 0;
     expect(
       (
-        await referee(
+        await auditRejection(
           { ...killed.reader, kill: kill.signal },
           killed.fail({
             verify: async (task, answer) => {

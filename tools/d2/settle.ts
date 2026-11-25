@@ -31,7 +31,7 @@ import {
   settledPassLabels,
   unclearReport,
   VERDICT_BAR,
-} from "#src/referee/agreement.ts";
+} from "#src/audit/agreement.ts";
 import { openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
 import { type Campaign, reportLines } from "./round.ts";
 

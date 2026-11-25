@@ -10,7 +10,7 @@ Rejection adjudication, solver answer submission, and shared runtime utilities (
 
 ## Decisions
 
-1. **Referee agreement bars and pass-soundness denominator (`src/referee/agreement.ts`)**
+1. **Referee agreement bars and pass-soundness denominator (`src/audit/agreement.ts`)**
    - A rejection is counted as voided by any Referee ruling other than `earned` (both `check-defect` and `unclear`), because `unclear` sets its task aside identically to `check-defect`. Counting `unclear` as voided prevents a Referee from gaming the voided-earned rate by ruling earned rejections `unclear`.
    - `clears` requires at least `LEAST_LABELS = 30` labelled failures and non-null `caught` and `voided` rates (a set with zero hand-labelled check defects cannot prove defect detection). `unclearReport` emits a non-gating advisory when more than 1/4 (`UNCLEAR_EARNED`) of `unclear` rulings are hand-labelled `earned`.
    - `passAgreement` computes the wrong-pass rate over decided passes (`sound + wrong`), requiring at least `LEAST_PASS_LABELS = 20` decided passes and at most 1/10 wrong so `unclear` passes neither inflate sample size nor dilute the wrong-pass rate.

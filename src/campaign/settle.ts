@@ -2,8 +2,8 @@ import { append, eventsOf, type LogEvent, read } from "../kernel/log.ts";
 import { ranUnder } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { asRecord } from "../meta/json-shape.ts";
-import type { PassLabel } from "../referee/agreement.ts";
-import type { Ruling } from "../referee/referee.ts";
+import type { PassLabel } from "../audit/agreement.ts";
+import type { Ruling } from "../audit/auditor.ts";
 import {
   compared,
   coverageOf,

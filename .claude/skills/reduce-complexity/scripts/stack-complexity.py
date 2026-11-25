@@ -131,9 +131,9 @@ PROMPT_FILES = (
     "src/tools/coding.ts",
     "src/tools/answer.ts",
     "src/solver/run.ts",
-    "src/referee/referee.ts",
-    "src/referee/draft-audit.ts",
-    "src/referee/probe.ts",
+    "src/audit/auditor.ts",
+    "src/audit/draft-audit.ts",
+    "src/audit/probe.ts",
     "tools/d2/campaign-actions.ts",
 )
 WAIVER_FILE = "tools/oxlint/not-slop.tsv"

@@ -1,7 +1,7 @@
 import { eventsOf, type LogEvent } from "../kernel/log.ts";
 import { labelsIn } from "../kernel/solves.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
-import type { Ruling } from "./referee.ts";
+import type { Ruling } from "./auditor.ts";
 
 export const RULINGS = ["earned", "check-defect", "unclear"] as const;
 export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;

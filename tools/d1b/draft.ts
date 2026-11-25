@@ -16,8 +16,8 @@ import {
   formatDraftFinding,
   replayDraftProbes,
   reviewDraft,
-} from "#src/referee/draft-audit.ts";
-import type { Reader } from "#src/referee/referee.ts";
+} from "#src/audit/draft-audit.ts";
+import type { Reader } from "#src/audit/auditor.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";

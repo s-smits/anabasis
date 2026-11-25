@@ -35,8 +35,8 @@ import { taskSets, taskStates } from "../kernel/task.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { median } from "../meta/tally.ts";
-import type { PassLabel } from "../referee/agreement.ts";
-import type { Ruling } from "../referee/referee.ts";
+import type { PassLabel } from "../audit/agreement.ts";
+import type { Ruling } from "../audit/auditor.ts";
 import { type Worth, worthOf } from "./climb.ts";
 
 type Reading = "step" | "no-step" | "not-scored" | "check-defects" | "no-change";

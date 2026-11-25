@@ -9,7 +9,7 @@ the seat overview in `AGENTS.md` section 3.
 | Builder | The closed list in `AGENTS.md` section 1, its own notes, and other kept harnesses (`kept/`) | Any other exam-side data | `src/builder/` |
 | Solver | The public task specification, public rules, active harness, and solve limits | Check programs and hidden values | `src/solver/`, `src/harness/`, `src/tools/` |
 | Verifier | The submitted answer, full task, check program, and verification engines | n/a | `src/kernel/verify.ts`, `src/wall/` |
-| Referee | The full task with hidden values, rules, submitted answer and its files in full, refusing checks, and check program | The harness, solver trace, or Builder state | `src/referee/referee.ts` |
+| Referee | The full task with hidden values, rules, submitted answer and its files in full, refusing checks, and check program | The harness, solver trace, or Builder state | `src/audit/auditor.ts` |
 | Host | The campaign log | n/a | `src/kernel/`, `tools/` |
 
 ### What the Examiner reads

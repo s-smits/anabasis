@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
-import type { SeatTool } from "../src/agent/session.ts";
+import type { AgentTool } from "../src/agent/session.ts";
 import {
   existsSync,
   mkdirSync,
@@ -116,7 +116,7 @@ describe("the Starter and its worked harness", () => {
           toolTree: join(example, ".toolchain"),
           limits: { shellDefaultSeconds: 60, shellMaxSeconds: 60 },
         };
-        const said = (result: Awaited<ReturnType<SeatTool["execute"]>>) =>
+        const said = (result: Awaited<ReturnType<AgentTool["execute"]>>) =>
           [
             (result.output ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""),
             ...(result.diagnostics ?? []).map(({ message }) => message),

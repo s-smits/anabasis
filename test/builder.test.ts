@@ -44,7 +44,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { keysIf } from "../src/meta/optional-key.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import type { RefereeFinding } from "../src/referee/referee.ts";
+import type { AuditFinding } from "../src/audit/auditor.ts";
 import { publicResource, text, tool } from "../src/tools/answer.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
@@ -382,7 +382,7 @@ describe.concurrent("a Builder session", () => {
   });
 
   it("is given the parent's record, practises, reads a trace, and leaves a frozen version", async () => {
-    const earned: RefereeFinding = {
+    const earned: AuditFinding = {
       ruling: "earned",
       check: null,
       rule: "R1",
@@ -657,9 +657,9 @@ describe.concurrent("a Builder session", () => {
         ],
         [{ outcome: "fail", kind: "rejected" }],
       );
-      const referee = async (solve: string): Promise<RefereeFinding> => {
+      const referee = async (solve: string): Promise<AuditFinding> => {
         if (ruling === "crashed") throw new Error(REASON);
-        const finding: RefereeFinding = {
+        const finding: AuditFinding = {
           ruling: ruling === "absent" ? null : ruling,
           check: CHECK,
           rule: null,

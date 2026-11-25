@@ -1,7 +1,7 @@
 import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { TSchema } from "typebox";
-import type { SeatTool } from "../agent/session.ts";
+import type { AgentTool } from "../agent/session.ts";
 import { type Engine, engineReadRoots, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
 import { read } from "../kernel/log.ts";
 import {
@@ -52,7 +52,7 @@ export interface Walls {
 export const examinerDirs = (log: string, id: string): SolveDirs =>
   solveDirs(`exam-${basename(dirname(log))}-${id}`);
 
-export async function examinerShell(shell: CommandWall | undefined, enters: string): Promise<SeatTool[]> {
+export async function examinerShell(shell: CommandWall | undefined, enters: string): Promise<AgentTool[]> {
   if (shell === undefined) return [];
   const network = await networkReach(shell);
   const engines = installedPrograms(shell.toolTree);

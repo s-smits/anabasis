@@ -18,7 +18,7 @@ import {
   claudeSpendNow,
   SWEEP_COMPACT_WINDOW,
 } from "../src/agent/backends/claude.ts";
-import { sit } from "../src/agent/session.ts";
+import { runAgent } from "../src/agent/session.ts";
 import type { Spent } from "../src/kernel/meter.ts";
 import {
   lstatSync,
@@ -496,7 +496,7 @@ describe("the Claude backend", () => {
     models.setProvider(sweep);
     let now: (() => Promise<Spent>) | undefined;
     let soFar: Spent | undefined;
-    const sat = await sit({
+    const sat = await runAgent({
       models: () => models,
       id: solveOptions().sessionId,
       model: recorded,
@@ -521,7 +521,7 @@ describe("the Claude backend", () => {
   async function seated(outlive: boolean): Promise<{ made: string; held: boolean }> {
     let made = "";
     let held = false;
-    const sat = await sit({
+    const sat = await runAgent({
       models: (own, closing) => {
         made = own;
         writeFileSync(join(own, "replay.jsonl"), readFileSync(join(FIXTURES, TEXT), "utf8"));

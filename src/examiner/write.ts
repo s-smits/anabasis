@@ -1,4 +1,4 @@
-import type { SeatTool } from "../agent/session.ts";
+import type { AgentTool } from "../agent/session.ts";
 import { Type } from "typebox";
 import { openingOf } from "../campaign/opening.ts";
 import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-files.ts";
@@ -183,7 +183,7 @@ function spent(desk: Desk): boolean {
   return desk.proposed >= desk.request.limits.puts;
 }
 
-function proposeTool(desk: Desk): SeatTool {
+function proposeTool(desk: Desk): AgentTool {
   const taken = (instance: Omit<Task, "taskId">, stop: AbortSignal): string | Task => {
     const content = contentOf(instance);
     const before = desk.seen.get(content);
@@ -227,7 +227,7 @@ function proposeTool(desk: Desk): SeatTool {
   );
 }
 
-function exampleTool(tasks: () => readonly Task[]): SeatTool {
+function exampleTool(tasks: () => readonly Task[]): AgentTool {
   return tool({
     name: "read_example",
     description:
@@ -247,7 +247,7 @@ function exampleTool(tasks: () => readonly Task[]): SeatTool {
   });
 }
 
-function tryTool(desk: Desk, verify: Verifier): SeatTool {
+function tryTool(desk: Desk, verify: Verifier): AgentTool {
   const { log, contract } = desk.request;
   const recordValidAnswer = (
     events: readonly LogEvent[],

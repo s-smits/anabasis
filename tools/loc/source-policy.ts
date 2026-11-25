@@ -28,7 +28,7 @@ const ISOLATED_LAYERS = ["src/kernel/", "src/wall/"] as const;
 const FORBIDDEN_FROM_ISOLATED = [
   "src/builder/",
   "src/examiner/",
-  "src/referee/",
+  "src/audit/",
   "src/solver/",
   "src/campaign/",
 ] as const;

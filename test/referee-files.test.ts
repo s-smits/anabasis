@@ -18,9 +18,9 @@ import { keyIfDefined, keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { agreement } from "../src/referee/agreement.ts";
-import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
-import { referee } from "../src/referee/referee.ts";
+import { agreement } from "../src/audit/agreement.ts";
+import { type ProbeRow, probeTool } from "../src/audit/probe.ts";
+import { auditRejection } from "../src/audit/auditor.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 import { containing, objectWith } from "./helpers/matchers.ts";
 
@@ -142,7 +142,7 @@ async function reading(
     blocking: [...blocking],
   });
   const given: string[][] = [];
-  const finding = await referee(
+  const finding = await auditRejection(
     { model: faux.getModel(), effort: "medium", models: () => models },
     {
       solve: "s-1",
@@ -427,7 +427,7 @@ describe("publicInput.files bounding in Referee", () => {
     models.setProvider(faux.provider);
     let sawHiddenLen = 0;
     let sawAnswerLen = 0;
-    const finding = await referee(
+    const finding = await auditRejection(
       { model: faux.getModel(), effort: "medium", models: () => models },
       {
         solve: "s-bad",
@@ -572,7 +572,7 @@ describe("publicInput.files bounding in Referee", () => {
     models.setProvider(faux.provider);
     const reader = { model: faux.getModel(), effort: "medium" as const, models: () => models };
     const run = (solve: string, blocking: readonly string[]) =>
-      referee(reader, {
+      auditRejection(reader, {
         solve,
         task,
         contract: CONTRACT,

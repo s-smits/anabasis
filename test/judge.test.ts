@@ -15,8 +15,8 @@ import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { judgePair } from "../src/referee/judge.ts";
-import type { Reader } from "../src/referee/referee.ts";
+import { judgePair } from "../src/audit/judge.ts";
+import type { Reader } from "../src/audit/auditor.ts";
 
 const CANARY = "hidden-canary-j4";
 const TASK: Task = {

@@ -1,6 +1,6 @@
 # Rubric items and the pairwise judge
 
-A contract's objective may carry rubric items of two kinds: `code` items, which the verifier scores in the offline sandbox, and `judge` items, which the stateless pairwise judge (`src/referee/judge.ts`) votes on between two valid answers. Judging runs only when the contract has a judge item and the opening admitted it (`--admit-judge`); every other exam calls no judge and spends nothing on one. This guide names the cheapest tier that settles each question about that path.
+A contract's objective may carry rubric items of two kinds: `code` items, which the verifier scores in the offline sandbox, and `judge` items, which the stateless pairwise judge (`src/audit/judge.ts`) votes on between two valid answers. Judging runs only when the contract has a judge item and the opening admitted it (`--admit-judge`); every other exam calls no judge and spends nothing on one. This guide names the cheapest tier that settles each question about that path.
 
 ## What each tier can settle
 

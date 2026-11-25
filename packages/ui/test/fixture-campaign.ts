@@ -24,7 +24,7 @@ import { mkdirSync, writeFileSync } from "../../../src/meta/filesystem.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../src/meta/optional-key.ts";
 import { join, resolve } from "../../../src/meta/path.ts";
-import type { Ruling } from "../../../src/referee/referee.ts";
+import type { Ruling } from "../../../src/audit/auditor.ts";
 import type { Query, Tier } from "../src/models.ts";
 import { campaignAnswer } from "../src/server/campaign.ts";
 import { campaignsAnswer } from "../src/server/campaigns.ts";

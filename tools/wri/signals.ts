@@ -10,7 +10,7 @@ import { costLine } from "#src/kernel/meter.ts";
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { passAgreement, settledPassLabels } from "#src/referee/agreement.ts";
+import { passAgreement, settledPassLabels } from "#src/audit/agreement.ts";
 import { draftDeliverableInfo } from "./deliverables.ts";
 import { unpricedCompactions } from "./epoch-spend.ts";
 import {

@@ -19,7 +19,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { type Sat, type SeatTool, sit } from "../agent/session.ts";
+import { type AgentRun, type AgentTool, runAgent } from "../agent/session.ts";
 import { claimRoot, type ReleaseRoot } from "../wall/seat-root.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "../tools/answer.ts";
 import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
@@ -190,14 +190,14 @@ const brokenHarness = (error: unknown): never => {
 async function play(
   request: SolveRequest,
   id: string,
-): Promise<Played & { readonly spent: Sat["spent"]; readonly released: Promise<void> }> {
+): Promise<Played & { readonly spent: AgentRun["spent"]; readonly released: Promise<void> }> {
   const { limits } = request;
   const dirs = solveDirs(id);
   let deadline: Wall | null = null;
   const desk = openDesk();
   const before = treeStamp(request.harness);
   const turns: AssistantMessage[] = [];
-  let spentOn: Sat["spent"] | null = null;
+  let spentOn: AgentRun["spent"] | null = null;
   let release: ReleaseRoot | null = null;
   let homeBytes: number | null;
   let released: Promise<void> = Promise.resolve();
@@ -240,7 +240,7 @@ async function play(
     deadline = raised;
     const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
     const tools = defined.map((tool) => timed(tool, used));
-    const sat = await sit({
+    const sat = await runAgent({
       models: request.models,
       home: join(dirs.host, "model"),
       id,
@@ -341,7 +341,7 @@ export function clockText(seconds: number): string {
   return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}`;
 }
 
-export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatTool {
+export function timed(tool: AgentTool, { clock, turns, modelTurns }: Used): AgentTool {
   const line = () =>
     `[Solve time used: ${clockText(usedSeconds(clock) ?? 0)} of ${clockText(clock.seconds)}${
       modelTurns === undefined ? "" : `. Turn ${String(turns())} of ${String(modelTurns)}`
@@ -369,7 +369,7 @@ function solverTools(
   harness: Harness,
   wall: CommandWall,
   desk: Desk,
-): SeatTool[] {
+): AgentTool[] {
   return [
     ...codingTools(wall, selectedCodingTools(harness.presets)),
     submitTool(desk, request.contract, wall.dirs.home, wallExec(wall)),

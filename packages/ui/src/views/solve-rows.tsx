@@ -12,7 +12,7 @@ import {
 } from "../models.ts";
 import { EndingBadge, endingOf, harnessLabel, sideLabel } from "./drill.tsx";
 import { money, seconds } from "./format.ts";
-import type { Ruling } from "../../../../src/referee/referee.ts";
+import type { Ruling } from "../../../../src/audit/auditor.ts";
 import { plural } from "../../../../src/meta/text.ts";
 
 // Solves as rows, each opening its detail. A rejection's ruling cell says what the tier lets it: the

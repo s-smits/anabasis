@@ -10,7 +10,7 @@ import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
 import { type CheckpointRequest, type Judging, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import type { Reader } from "#src/referee/referee.ts";
+import type { Reader } from "#src/audit/auditor.ts";
 import {
   JUDGE_STEP,
   type ObjectiveRule,

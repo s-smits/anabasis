@@ -36,9 +36,9 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hostScratch } from "../wall/policy.ts";
 import { releaseRoot } from "../wall/seat-root.ts";
 
-export type SeatTool = ToolRegistration;
+export type AgentTool = ToolRegistration;
 
-export interface Seat {
+export interface AgentSpec {
   readonly models: (home: string, shutdown: AbortSignal) => Models;
   readonly home?: string;
   readonly id: string;
@@ -46,7 +46,7 @@ export interface Seat {
   readonly effort: ThinkingLevel;
   readonly system: string;
   readonly opening: string;
-  readonly tools: readonly SeatTool[];
+  readonly tools: readonly AgentTool[];
   readonly env?: ExecutionEnv;
   readonly trace?: { readonly log: string; readonly of: SeatKind; readonly as?: () => string };
   readonly before?: () => void | Promise<void>;
@@ -61,7 +61,7 @@ export interface Seat {
   readonly spending?: (now: () => Promise<Spent>) => void;
 }
 
-export interface Sat {
+export interface AgentRun {
   readonly cut: boolean;
   readonly thrown: string | null;
   readonly crash: string | null;
@@ -131,7 +131,7 @@ export function traceSink(log: string, of: SeatKind, id: string | (() => string)
   };
 }
 
-export async function sit(seat: Seat): Promise<Sat> {
+export async function runAgent(seat: AgentSpec): Promise<AgentRun> {
   const home = seat.home ?? hostScratch("claude-cli-seat-");
   const meter = seatMeter(seat.model);
   const stops = seat.stops.filter((stop) => stop !== undefined);
@@ -153,7 +153,7 @@ export async function sit(seat: Seat): Promise<Sat> {
   const wakeOnStop = () => halt.resolve();
   shutdown.addEventListener("abort", wakeOnStop, { once: true });
   try {
-    const registry = createRegistry<SeatTool>();
+    const registry = createRegistry<AgentTool>();
     registry.install(
       defineExtension({
         name: "seat",
@@ -241,7 +241,7 @@ export async function sit(seat: Seat): Promise<Sat> {
   };
 }
 
-function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof seatMeter>) {
+function sessionHooks(seat: AgentSpec, halt: () => void, meter: ReturnType<typeof seatMeter>) {
   const sink =
     seat.trace === undefined
       ? undefined
@@ -341,7 +341,7 @@ function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof sea
   });
 }
 
-function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
+function toolHooks(seat: AgentSpec, sink: ReturnType<typeof traceSink> | undefined) {
   const recorded = new Set<string>();
   const ended = (call: ToolHookCall, result: ToolExecutionResult) => {
     recorded.add(call.id);

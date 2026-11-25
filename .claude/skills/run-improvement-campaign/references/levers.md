@@ -13,7 +13,7 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | E6 | Task admission gate | `refusalOf`, `src/examiner/write.ts` | `GATE REFUSED`; `EXAMINER ZERO YIELD`; thin frontier |
 | E7 | Examiner scheduling/duration (*operator* for limits) | `supplyRun`, `src/campaign/decide.ts` | `FIRST COMPARISON HELD OFF`; long hours to comparison 1 vs admitted count |
 | E8 | Comparison floor & retained share (*operator*) | `comparisonFloor`, `src/campaign/admission.ts` | `no-room` ending just below floor; `UNDERPOWERED NO-STEPS` |
-| E9 | Adversarial draft audit (keep, simplify or remove) | `reviewDraft`, `src/referee/draft-audit.ts` | `DRAFT AUDITED`; `DRAFT AUDIT DEFECTS`; `DRAFT AUDIT REFUSED` |
+| E9 | Adversarial draft audit (keep, simplify or remove) | `reviewDraft`, `src/audit/draft-audit.ts` | `DRAFT AUDITED`; `DRAFT AUDIT DEFECTS`; `DRAFT AUDIT REFUSED` |
 | E10 | Verifier grounding & declared tool provenance | `src/examiner/draft.ts`, `src/kernel/verify.ts` | `VERIFIER TOOL PROVENANCE`; `VERIFIER FAULTS`; `PASSES AT A SMALL WALL SHARE` |
 
 ## Climb, Harness & Solve
@@ -38,7 +38,7 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | R3 | Solves/side & alpha (*operator*) | `SIZE`, `src/kernel/size.ts` | underpowered untied counts; `UNDERPOWERED NO-STEPS` |
 | R4 | Starter confirmation timing (*operator*) | `heldSince`, `src/campaign/decide.ts` | `PROMOTION UNCONFIRMED`; excessive epoch hours confirming |
 | R5 | Improvement patience (*operator*) | `stopRule`, `src/campaign/admission.ts` | `stop` while frontier still grows |
-| V1 | Referee prompt & evidence | `src/referee/referee.ts` | `RULED UNCLEAR`; `RULINGS REFUSED`; `EARNED WITHOUT A PROBE` |
+| V1 | Referee prompt & evidence | `src/audit/auditor.ts` | `RULED UNCLEAR`; `RULINGS REFUSED`; `EARNED WITHOUT A PROBE` |
 | V2 | Check-defect stop threshold (*operator*) | `src/campaign/admission.ts` | `check-defects` ending on few defects |
 | V3 | Admitting authored checks (*operator*) | `tools/c/accept.ts --admit` | authored checks with `0` refusals (`REFUSALS BY CHECK`) |
 | H1 | Solve queue wait (*operator* for placement) | solve queue | `campaign.waited` >15m; `HOST LOADED` |

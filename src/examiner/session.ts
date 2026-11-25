@@ -1,6 +1,6 @@
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { type SeatTool, sessionClock, sit } from "../agent/session.ts";
+import { type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { append, CALL_KINDS, read, TRACE_KINDS } from "../kernel/log.ts";
@@ -62,7 +62,7 @@ interface Mode {
   readonly system: string;
   readonly opening: string;
   readonly started: JsonObject;
-  readonly tools: readonly SeatTool[];
+  readonly tools: readonly AgentTool[];
   readonly enters: string;
   readonly nudge: string;
   readonly finish: string;
@@ -89,7 +89,7 @@ function withinBudget(log: string, spent: AbortController): boolean {
   return false;
 }
 
-function guardAsk(each: SeatTool, stopped: () => string | null): SeatTool {
+function guardAsk(each: AgentTool, stopped: () => string | null): AgentTool {
   return {
     ...each,
     execute: async (args, api, context) => {
@@ -99,7 +99,7 @@ function guardAsk(each: SeatTool, stopped: () => string | null): SeatTool {
   };
 }
 
-function finishTool(mode: Mode, said: Said, rest: Rest): SeatTool {
+function finishTool(mode: Mode, said: Said, rest: Rest): AgentTool {
   return tool({
     name: "finish",
     description: mode.finish,
@@ -246,7 +246,7 @@ async function examining(
       }),
     );
     let running = 0;
-    const sat = await sit({
+    const sat = await runAgent({
       models: request.models,
       id: request.id,
       model,

@@ -15,7 +15,7 @@ import { isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import type { RefereeFinding } from "../referee/referee.ts";
+import type { AuditFinding } from "../audit/auditor.ts";
 import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../tools/command.ts";
 import type { PublicResource } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
@@ -23,7 +23,7 @@ import { openHarness } from "../harness/open.ts";
 import { type PublicTask, publicView } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
-import { type Sat, type SeatTool, sessionClock, sit } from "../agent/session.ts";
+import { type AgentRun, type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { campaignOf } from "../campaign/handover.ts";
 import {
@@ -104,12 +104,12 @@ export interface BuildRequest {
     kill: AbortSignal,
   ) => Promise<Practised>;
   readonly referee?:
-    | ((solve: string, task: PracticeTask, kill: AbortSignal) => Promise<RefereeFinding>)
+    | ((solve: string, task: PracticeTask, kill: AbortSignal) => Promise<AuditFinding>)
     | undefined;
   readonly cap?: Cap | undefined;
   readonly kill?: AbortSignal;
   readonly campaign?: (bench: Bench) => {
-    readonly tools: SeatTool[];
+    readonly tools: AgentTool[];
     readonly hook: () => string;
     readonly halts?: () => void;
     readonly closing?: () => Promise<void>;
@@ -189,7 +189,7 @@ export function layPractice(home: string, tasks: readonly PracticeTask[]): void 
 export async function session(
   request: BuildRequest,
   dirs: Pick<SolveDirs, "home" | "host">,
-  walled: (bench: Bench) => SeatTool[],
+  walled: (bench: Bench) => AgentTool[],
   env?: ExecutionEnv,
 ): Promise<Built> {
   const { log, limits, model } = request;
@@ -288,7 +288,7 @@ async function converse(
   bench: Bench,
   host: string,
   clock: BuildClock,
-  walled: (bench: Bench) => SeatTool[],
+  walled: (bench: Bench) => AgentTool[],
   env: ExecutionEnv | undefined,
 ): Promise<Built> {
   const { request } = bench;
@@ -337,7 +337,7 @@ async function converse(
     if (bench.halt.signal.aborted) throw new Error("The session has ended at a bound.");
   };
   const started = (await campaign?.start?.()) ?? "";
-  const sat = await sit({
+  const sat = await runAgent({
     models: request.models,
     home: join(host, "model"),
     id: request.id,
@@ -374,7 +374,7 @@ async function converse(
   return await finishSession(bench, sat, clock, turns.length);
 }
 
-async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: number): Promise<Built> {
+async function finishSession(bench: Bench, sat: AgentRun, clock: BuildClock, turns: number): Promise<Built> {
   const { request } = bench;
   const { log, limits } = request;
   const crash = (sat.cut ? null : sat.thrown) ?? bench.fatal?.message ?? sat.crash;

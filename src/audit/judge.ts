@@ -10,7 +10,7 @@ import { isNumber, type JsonValue } from "../meta/json-shape.ts";
 import { pooled } from "../meta/pool.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { ending, text, tool } from "../tools/answer.ts";
-import { boundPublicInput, loggedVerdict, type Reader, runRefereeSession } from "./referee.ts";
+import { boundPublicInput, loggedVerdict, type Reader, runAuditSession } from "./auditor.ts";
 
 const PAIRED = "referee.pair";
 const HOLISTIC = "holistic";
@@ -133,7 +133,7 @@ async function voted(
 ) {
   const kept: Static<typeof VOTE_PARAMETERS>[] = [];
   const fenced = (answer: string) => `${given.fence}\n${answer}\n${given.fence}`;
-  const meter = await runRefereeSession({
+  const meter = await runAuditSession({
     id: given.id,
     reader: { ...reader, effort: "low" },
     system: PAIR_SYSTEM,

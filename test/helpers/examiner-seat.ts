@@ -10,7 +10,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
-import type { SeatTool } from "../../src/agent/session.ts";
+import type { AgentTool } from "../../src/agent/session.ts";
 import type { Draft } from "../../src/examiner/draft.ts";
 import type { ExamRequest } from "../../src/examiner/session.ts";
 import type { Wall } from "../../src/examiner/shell.ts";
@@ -137,7 +137,7 @@ export const condition = (task: string, harness: string): Condition => ({
   side: "test",
 });
 
-export function toolOf(opened: { readonly tools: readonly SeatTool[] }, named?: string): SeatTool {
+export function toolOf(opened: { readonly tools: readonly AgentTool[] }, named?: string): AgentTool {
   return present(
     named === undefined ? opened.tools[0] : opened.tools.find(({ name }) => name === named),
     `the seat's ${named ?? "first"} tool`,
@@ -148,7 +148,7 @@ export function toolOf(opened: { readonly tools: readonly SeatTool[] }, named?: 
  * Invokes an Examiner host tool directly, its arguments prepared as pi prepares them (`fromHome`);
  * an asynchronous gate may outlive the call.
  */
-export function invoke(tool: SeatTool, callId: string, spelled: JsonObject) {
+export function invoke(tool: AgentTool, callId: string, spelled: JsonObject) {
   const args = tool.prepareArguments?.(spelled) ?? spelled;
   // SAFETY: these host tools use no API operations. Refuse any accidental access beyond `callId`.
   const api = new Proxy(

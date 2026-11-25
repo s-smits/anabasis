@@ -13,8 +13,8 @@ import { type Seat, traceOf } from "../../../../src/kernel/trace.ts";
 import { isNumber, isString, type JsonObject } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { countBy } from "../../../../src/meta/tally.ts";
-import { settledLabels } from "../../../../src/referee/agreement.ts";
-import type { Ruling } from "../../../../src/referee/referee.ts";
+import { settledLabels } from "../../../../src/audit/agreement.ts";
+import type { Ruling } from "../../../../src/audit/auditor.ts";
 import type { SolveRow, Tier, ToolCall, Turn } from "../models.ts";
 import { conditionsIn, type Log, once, practiceIn } from "./folds.ts";
 import { movesIn } from "./moves.ts";
@@ -76,7 +76,7 @@ export function rulingOf(
   const ruling = RULINGS.find((each) => each === finding?.ruling);
   if (finding === undefined || ruling === undefined) return null;
   // The host rules what needs no reading and meters nothing; a reader's finding carries its probes'
-  // rows and what it billed (`referee`, `src/referee/referee.ts`).
+  // rows and what it billed (`referee`, `src/audit/auditor.ts`).
   return {
     ruling,
     by: Object.hasOwn(finding, "probeRows") ? "referee" : "host",

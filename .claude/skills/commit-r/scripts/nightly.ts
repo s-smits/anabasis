@@ -29,7 +29,7 @@ const OWNERS = new Map<string, readonly string[]>([
   ["src/campaign/admission.ts", []],
   ["src/campaign/climb.ts", []],
   ["src/builder/past.ts", []],
-  ["src/referee/agreement.ts", []],
+  ["src/audit/agreement.ts", []],
   [
     "tools/d2/campaign-actions.ts",
     ["test/harness-builder.test.ts", "test/campaign-kill.test.ts", "test/climb.test.ts"],

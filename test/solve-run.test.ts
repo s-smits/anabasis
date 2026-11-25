@@ -12,7 +12,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { type SeatTool, sit } from "../src/agent/session.ts";
+import { type AgentTool, runAgent } from "../src/agent/session.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
 import { Cancellation, type Ending, SILENT_SECONDS } from "../src/kernel/solve.ts";
@@ -187,7 +187,7 @@ function virtualClock() {
 
 const virtual = virtualClock();
 
-async function atWall(responses: FauxResponseStep[], tools: SeatTool[] = []) {
+async function atWall(responses: FauxResponseStep[], tools: AgentTool[] = []) {
   const wall = raiseWall(30 * 60, virtual.clock);
   try {
     const { request, events } = setup(responses);
@@ -197,7 +197,7 @@ async function atWall(responses: FauxResponseStep[], tools: SeatTool[] = []) {
       turns: () => turns.length,
       modelTurns: undefined,
     };
-    const sat = await sit({
+    const sat = await runAgent({
       onTurn: wall.onTurn,
       onTool: wall.onTool,
       models: request.models,

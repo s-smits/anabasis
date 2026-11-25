@@ -3,7 +3,7 @@
  * `wait`), and the host's own practice release and promotion.
  */
 import { Type } from "typebox";
-import { type SeatTool, textsOf } from "#src/agent/session.ts";
+import { type AgentTool, textsOf } from "#src/agent/session.ts";
 import { comparisonFloor, Refused, stopRule } from "#src/campaign/admission.ts";
 import { CRASHES_IN_A_ROW, decide, practiceDue, supplyRun } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
@@ -137,7 +137,7 @@ function actionTurn(context: CampaignContext) {
  * A lack of room ends the campaign before anything runs, else a Builder could start another empty
  * Examiner session past its supply patience.
  */
-function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, run: ActionRun): SeatTool {
+function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, run: ActionRun): AgentTool {
   return tool({
     name: move,
     description: {
@@ -402,7 +402,7 @@ async function comparedOf(
 const readAgainst = (events: readonly LogEvent[], fresh: string, reference: string): boolean =>
   comparisonsOf(events).some((each) => each.fresh === fresh && each.old === reference);
 
-const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
+const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
   actionTool(context, bench, "compare", async (turn, decided, begin, signal, unlock) => {
     const named = await comparedOf(context, bench, turn, decided);
     if ("refused" in named) return named;
@@ -589,7 +589,7 @@ export function campaignTools(
     const examining = actionTool(context, bench, "examine", examineRun);
     // After a promotion the host starts the Examiner session the table names, since a Builder left to it
     // can compare minutes after its promotion on almost no task informative for the new reference.
-    const promoting = (made: SeatTool): SeatTool => ({
+    const promoting = (made: AgentTool): AgentTool => ({
       ...made,
       execute: async (args, api, execution) => {
         const before = lastPromoted(read(context.log, TRACE_KINDS));

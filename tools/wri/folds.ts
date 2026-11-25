@@ -228,7 +228,7 @@ export const TRIGGERS = {
   WINS: 15,
   "WIN AT A SMALL WALL SHARE": 15,
   "ANSWER FROM A PROGRAM": 15,
-  // Lane 17: Rejection rulings and Referee calibration
+  // Lane 17: Rejection rulings and Auditor calibration
   "REFUSED UNREAD": 17,
   "CHECK DEFECT RULED": 17,
   "RULED UNCLEAR": 17,

@@ -1,6 +1,6 @@
 # Rehearsal
 
-A rehearsal runs a campaign, Builder session, or standalone comparison on a seed with every seat scripted on pi's faux provider and without a Referee. Below the seat layer, it executes the exact production path, verifying command joins and what a campaign state of a given size can statistically read. Because a scripted solver executes only a single `printf` (or `write`) inside the sandbox wall and scripted seats never throw, domain toolchains under the wall are verified by wall tests and crashes/rate limits by `test/host.test.ts`.
+A rehearsal runs a campaign, Builder session, or standalone comparison on a seed with every seat scripted on pi's faux provider and without a Auditor. Below the seat layer, it executes the exact production path, verifying command joins and what a campaign state of a given size can statistically read. Because a scripted solver executes only a single `printf` (or `write`) inside the sandbox wall and scripted seats never throw, domain toolchains under the wall are verified by wall tests and crashes/rate limits by `test/host.test.ts`.
 
 ## Seed and forms
 

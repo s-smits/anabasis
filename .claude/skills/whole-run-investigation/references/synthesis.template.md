@@ -58,10 +58,10 @@ Recurring issues observed across repeated investigations and left unresolved, in
 
 ## Hard rules
 
-- Quote nothing protected by the evaluation boundary: no task text, submitted answer, hidden value, check failure message, prompt text, trace excerpt, or Referee prose, whether from a log or a report. Cite counts, ids, digests, file paths, and line numbers only.
+- Quote nothing protected by the evaluation boundary: no task text, submitted answer, hidden value, check failure message, prompt text, trace excerpt, or Auditor prose, whether from a log or a report. Cite counts, ids, digests, file paths, and line numbers only.
 - Separate every observation from its proposed cause in two distinct sentences.
 - Recount every "N of M" figure carried from rows A to F before citing it.
-- Treat every Referee ruling as a single reviewer's reading: state whose count it is before relying on it.
+- Treat every Auditor ruling as a single reviewer's reading: state whose count it is before relying on it.
 - Never write inside a campaign directory, and start no solve, session, round, or check run.
 
 Once the synthesis note is complete, reply with its file path and one summary line per table row giving the finding and its outcome.

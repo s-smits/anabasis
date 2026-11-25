@@ -6,7 +6,7 @@
  * parts with the command wall taken out: the harness's coding tools (`selectedCodingTools`) with
  * its `.toolchain` first on PATH; `broken-harness` for a harness that does not open; the study's
  * system prompt with the guide as project context; the solve wall, turn cap, nudge, compaction and
- * retries; the trace as `solve.*` events written by `sit` and read by `src/kernel/trace.ts`, plus
+ * retries; the trace as `solve.*` events written by `runAgent` and read by `src/kernel/trace.ts`, plus
  * Harbor's ATIF trajectory (`trajectoryOf`). The model is reached through the benchmark's proxy on
  * the host (`harbor/pi_agent.py`), so the provider's key stays there, or with `--solver` through a
  * model of the campaign's own backends. `--dry-run` does everything but call the model and writes

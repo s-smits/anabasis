@@ -1,13 +1,13 @@
 ---
 name: harness-audit
-description: "Use when inspecting kept harnesses, checking which harness is current, diffing Builder changes against a parent, preparing pre-promotion or handover reviews, assessing whether components earn their keep, or testing a kept harness on a released task. Inventories versions and provenance and locates harness contract owners. Full-run analysis belongs to `whole-run-investigation`; claim wording belongs to `attribution-and-proof`."
+description: "Use when inspecting saved checkpoints, checking which harness is current, diffing Builder changes against a parent, preparing pre-promotion or handover reviews, assessing whether components earn their keep, or testing a saved checkpoint on a released task. Inventories versions and provenance and locates harness contract owners. Full-run analysis belongs to `whole-run-investigation`; claim wording belongs to `attribution-and-proof`."
 ---
 
 # Harness audit
 
 A campaign stores every frozen harness by content digest under `states/` alongside its log (`tools/d2/campaign.ts`), while the log records provenance (`harness.version`, `harness.imported`, `harness.promoted`) and evaluation history (`campaignOf`, `src/campaign/summary.ts`). Inspection commands below are read-only; commands that execute solves require operator authorisation. Component attribution requires an ablation against `programs-of:<digest>` framed via [attribution-and-proof](../attribution-and-proof/SKILL.md).
 
-## 1. Inventory and diff kept harnesses
+## 1. Inventory and diff saved checkpoints
 
 ```sh
 bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> [--blind] [--json]
@@ -23,7 +23,7 @@ git diff --no-index <parent> <child> -- ':!.toolchain'
 git diff --no-index <parent>/.toolchain/ <child>/.toolchain/ -- ':!*__pycache__*'
 ```
 
-## 2. Try, promote, or hand over a kept harness
+## 2. Try, promote, or hand over a saved checkpoint
 
 - **Single practice solve from a handover** (runs a solve): `bun tools/d2/close.ts --name <campaign> --to <folder outside repo> --solve <task id>` logs to `handover/log.jsonl` outside campaign statistics.
 - **Paired comparison** (runs solves): `bun tools/d2/checkpoint.ts --reference <a> --new <b>` ([run-management](../run-management/SKILL.md)); use `programs-of:<harness>` to isolate installed programs.
@@ -39,4 +39,4 @@ git diff --no-index <parent>/.toolchain/ <child>/.toolchain/ -- ':!*__pycache__*
 | Starter Built Harness and `HARNESS.md` | `writeStarter`, `HARNESS_ACCOUNT`, `src/harness/starter.ts`; `src/builder/session.ts` | `test/starter.test.ts` |
 | Installed programs | `installedPrograms`, `programsOf`, `src/harness/programs.ts` | `test/programs.test.ts` |
 | Cross-OS portability and export | `foreignPrograms`, `src/harness/place.ts`; `studies/shared/{bundle,foreign-python,pi-solve}.ts` | `test/studies-foreign-python.test.ts`, `test/studies-harness2.test.ts`, `test/runs-bench.test.ts` |
-| Builder, Solver, Examiner, Referee prompts | `src/builder/prompt.ts`, `src/solver/prompt.ts`, `src/examiner/prompt.ts`, `src/audit/auditor.ts` | `test/builder.test.ts`, `test/solver-prompt.test.ts`, `test/examiner.test.ts`, `test/review.test.ts` |
+| Builder, Solver, Examiner, Auditor prompts | `src/builder/prompt.ts`, `src/solver/prompt.ts`, `src/examiner/prompt.ts`, `src/audit/auditor.ts` | `test/builder.test.ts`, `test/solver-prompt.test.ts`, `test/examiner.test.ts`, `test/review.test.ts` |

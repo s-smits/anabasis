@@ -74,7 +74,7 @@ const ROUTES: readonly Route[] = [
   {
     id: "rehearsal",
     command: /\bbun run runs (rehearse|seed)\b|--dry-run\b/u,
-    said: "Rehearsals prove code paths and log events, not model behaviour (Referee is empty, so scripted rejections remain unruled).",
+    said: "Rehearsals prove code paths and log events, not model behaviour (Auditor is empty, so scripted rejections remain unruled).",
     skill: "system-path-simulation",
     also: [
       ["archive scoring or decision replay", "promotion-tuner"],
@@ -130,7 +130,7 @@ const ROUTES: readonly Route[] = [
   {
     id: "wall",
     path: /(^|\/)src\/wall\/|(^|\/)src\/tools\/command\.ts$/u,
-    said: "OS isolation (AGENTS.md §10): Seatbelt on macOS, Bubblewrap on Linux. One platform's suite proves nothing on the other; grant whole folders; an unavailable wall yields a typed non-result.",
+    said: "OS isolation (AGENTS.md §10): Seatbelt on macOS, Bubblewrap on Linux (`src/sandbox/`). One platform's suite proves nothing on the other; grant whole folders; an unavailable sandbox yields a typed non-result.",
     skill: "repository-practice",
   },
   {

@@ -6,10 +6,10 @@ the seat overview in `AGENTS.md` section 3.
 | Seat | Reads | Never reads | Source |
 | --- | --- | --- | --- |
 | Examiner | The view detailed below | Any target count, harness name, candidate measures, or the reference harness's guide and programs | `src/examiner/` |
-| Builder | The closed list in `AGENTS.md` section 1, its own notes, and other kept harnesses (`kept/`) | Any other exam-side data | `src/builder/` |
+| Builder | The closed list in `AGENTS.md` section 1, its own notes, and other saved checkpoints (`kept/`) | Any other exam-side data | `src/builder/` |
 | Solver | The public task specification, public rules, active harness, and solve limits | Check programs and hidden values | `src/solver/`, `src/harness/`, `src/tools/` |
 | Verifier | The submitted answer, full task, check program, and verification engines | n/a | `src/kernel/verify.ts`, `src/sandbox/` |
-| Referee | The full task with hidden values, rules, submitted answer and its files in full, refusing checks, and check program | The harness, solver trace, or Builder state | `src/audit/auditor.ts` |
+| Auditor | The full task with hidden values, rules, submitted answer and its files in full, refusing checks, and check program | The harness, solver trace, or Builder state | `src/audit/auditor.ts` |
 | Host | The campaign log | n/a | `src/kernel/`, `tools/` |
 
 ### What the Examiner reads
@@ -45,6 +45,6 @@ each draft, and an empty home directory.
   running under the campaign command.
 - **Solver**: the five tools listed in `AGENTS.md` section 3. The solver writes its answer to
   `answer.json`, and calling `submit` with `malformed` flags the task instead.
-- **Referee**: `probe_check`, `read_answer_file`, `read_check_program`, and `record_ruling`.
+- **Auditor**: `probe_check`, `read_answer_file`, `read_check_program`, and `record_ruling`.
 
 Older campaign logs may still contain `diagnosis.*` events from a retired Diagnoser seat.

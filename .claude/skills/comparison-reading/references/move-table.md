@@ -5,7 +5,7 @@ determined (`AGENTS.md` section 7).
 
 ## What follows a reading
 
-`decide` (`src/campaign/scheduler.ts`) evaluates its nine ordered `ROWS` and returns the first rule
+`nextAction` (`src/campaign/scheduler.ts`) evaluates its nine ordered `ROWS` and returns the first rule
 that matches, together with a rule code printed on the last line of `runs view`:
 
 1. `stop`: an operator stop word is pending.

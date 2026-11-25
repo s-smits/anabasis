@@ -4,9 +4,9 @@ Repository invariants and map; read the owning skill before editing or answering
 
 | Scope | Read first | Related skills | Verify with |
 | --- | --- | --- | --- |
-| Seats, prompts, wall, starter | `design-and-seats` (§1–3) | `examiner-complexity`, `harness-audit`, `system-path-simulation` | `seat-view.ts`, wall tests |
+| Agents, prompts, sandbox, starter | `design-and-seats` (§1–3) | `examiner-complexity`, `harness-audit`, `system-path-simulation` | `seat-view.ts`, sandbox tests |
 | Campaign loop, admission, practice, endings | `campaign-mechanics` (§4–6) | `run-management`, `decision-points`, `run-improvement-campaign`, `whole-run-investigation`, `zip-run`, `oracle-handover` | `runs replay`, `runs rehearse` |
-| Readings, scoring, sampling, A/A, `decide` | `comparison-reading` (§7–8) | `promotion-tuner`, `attribution-and-proof`, `comparison-review`, `compare-systems` | `promotion-tuner` replay |
+| Comparisons, scoring, sampling, A/A, `scheduler` | `comparison-reading` (§7–8) | `promotion-tuner`, `attribution-and-proof`, `comparison-review`, `compare-systems` | `promotion-tuner` replay |
 | Commits, PRs, checks, claims, writing | `repository-practice` (§9–14), `tools/oxlint/HABITS.md` | `stack-pr`, `consolidate-stack`, `simplify`, `reduce-complexity`, `commit-r`, `local-checks`, `system-audit`, `codex-gpt-swarm` | `bun run gate`, `preflight.ts` |
 
 Scripts: `bun .claude/skills/<skill>/scripts/<name>.ts`. Metrics: `docs/plan.md`; v1: `docs/v1.md`, `docs/transfer.md`, `studies/`; nudges: `tools/runtime/moments.ts`.
@@ -29,10 +29,10 @@ Paired comparisons (§7) solve held-out tasks afresh on both arms, verify validi
 ### The four reported factors
 
 Name target factor and empirical count (`docs/plan.md`):
-- **Supply** (precondition): informative gradient (`informative`, `compare.ts`); admission tracks unclosed frontier tasks (`comparisonFloor`).
-- **1. Climb**: promotions/campaign (`climb.ts`), confirmed when an epoch's first starter read beats starter (`confirmed`). Never expose the 6-promotion / 2-domain bar to seats.
-- **2. Honesty**: A/A control per comparison; bar is a 95% exact bound ≤2× level on false steps of powered A/As pooled over a release (`table.ts --rows releases`).
-- **3. Verdicts**: evidence-backed Referee rulings; against ≥30 blind labels (≥8 defects), bar is ≥3/4 defect detection and ≤1/10 voided earned rejections (`clears`, `agreement.ts`).
+- **Task supply** (precondition): informative gradient (`informative`, `compare.ts`); admission tracks unclosed frontier tasks (`comparisonFloor`).
+- **1. Climb**: promotions/campaign (`climb.ts`), confirmed when an epoch's first starter comparison beats starter (`confirmed`). Never expose the 6-promotion / 2-domain bar to agents.
+- **2. False-positive rate**: A/A control per comparison; bar is a 95% exact bound ≤2× level on false positives of powered A/As pooled over a release (`table.ts --rows releases`).
+- **3. Audit accuracy**: evidence-backed Auditor rulings (`src/audit/`); against ≥30 blind labels (≥8 defects), bar is ≥3/4 defect detection and ≤1/10 voided solver-fail (`earned`) rejections (`clears`, `agreement.ts`).
 - **4. Economy**: list-price dollars and wall-clock hours/promotion (`close.ts`, `meter.ts:billOf`, observational epoch attempts `climb.ts:BARS`).
 
 ### Trade-offs to keep in view
@@ -44,9 +44,9 @@ Name target factor and empirical count (`docs/plan.md`):
 - **Lenient seats, strict engineering**: refuse only measurement-breaking or wasted-compute actions; keep structural notes advisory, favour lenient sandboxing and Builder freedom, and keep static checks strict.
 - **External benchmarks**: verify cross-OS portability, copyability and transfer—keep queries natural (never fit to benchmarks), separating OS/runtime porting from workspace coupling.
 
-### Two sides and one wall
+### Two sides and the isolation boundary
 
-Examiner sees reference outcomes and winning harnesses; five items cross to build: (1) public rules, scope, conventions, answer format, objective (quantity, direction, item IDs/weights—never `judge` criteria); (2) released practice specs; (3) practice outcome, kind, trajectory, paged extracts (`read_trace`) and coarse band vs author's best (no raw values); (4) aggregate tally/reading (no task names); (5) host limits, budget, task counts. Nothing else crosses: no held-out text/trajectory, check source, `judge` criteria, hidden values, refusing checks, Referee rationale or move advice (rule 3).
+Examiner sees reference harness outcomes and winning harnesses; five items cross to build: (1) public rules, scope, conventions, answer format, objective (quantity, direction, item IDs/weights—never `judge` criteria); (2) released practice specs; (3) practice outcome, kind, trajectory, paged extracts (`read_trace`) and coarse band vs author's best (no raw values); (4) aggregate tally/result (no task names); (5) host limits, budget, task counts. Nothing else crosses: no held-out text/trajectory, check source, `judge` criteria, hidden values, refusing checks, Auditor rationale or action advice (rule 3).
 
 ## 2. The stance: code owns the conditions, models own the content
 
@@ -66,13 +66,13 @@ Close gaming channels structurally in code, never with bans:
 - **Measurement softening & fishing** (dropped checks, `vacuous-pass` like `Number("") === 0`, hedgable metrics, noisy re-compares): prevented by mechanical probes (`referee.draft`, `doNothing`, hidden-swap), host-gated fresh comparisons (`decide`, `written-after`) and WRI `gaming.ts`.
 - **Rubric & judge gaming** (bloat, cosmetic fluff, checklist farming): reduced by cross-family seats (self-preference), one criterion per vote, swapped pairwise mean (position) and equal-weight `holistic`; length is only prompted and capped (`fairCap`), unmeasured.
 
-## 3. The seats
+## 3. The agents
 
-- **Examiner** (`src/examiner/`): drafts exam specs (picking the lane when judged) and tasks; host validates structure and rejects planted answers (`propose_tasks`); reads `src/examiner/record.ts` (item scores) without targets or harness names.
-- **Builder** (`src/builder/`): edits `harness/`, reads practice traces and paged extracts (`read_trace`), picks moves and freezes candidates, seeing only §1's five items, `MEMORY.md` and kept harnesses.
+- **Examiner** (`src/examiner/`): drafts exam specs (picking the lane when judged) and tasks; host validates structure and rejects planted answers (`propose_tasks`); reads `src/examiner/record.ts:taskHistory` (item scores) without targets or harness names.
+- **Builder** (`src/builder/`): edits `harness/`, reads practice traces and paged extracts (`read_trace`), chooses actions and snapshots candidates (`store.ts`), seeing only §1's five items, `MEMORY.md` and saved checkpoints.
 - **Solver** (`src/solver/`): solves a task via `read`, `bash`, `edit`, `write`, `submit` and installed programs.
 - **Verifier** (`src/kernel/verify.ts`): runs offline checks and `[0, 1]` code items in a fresh offline sandbox.
-- **Referee** (`src/audit/auditor.ts`, `judge.ts`): rules on reproducible rejections (`earned`, `check-defect`, `unclear`) and, under `--admit-judge`, runs cross-family `referee.pair` (exam side only).
+- **Auditor** (`src/audit/auditor.ts`, `judge.ts`): rules on reproducible rejections (`earned` solver-fail, `check-defect`, `unclear`) and, under `--admit-judge`, runs cross-family `referee.pair` (exam side only).
 
 A content-addressed **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) has three tiers: **`bareSolver`** (`pi-durable` + 4 tools, no guide/programs; external baseline), **`baseStarter`** (`starter.ts`: + minimal `BUILT_AGENTS.md`; + Builder-only `HARNESS.md` = **Starter Pack**), **`builtSolver`** (Builder harness; promotions beat `baseStarter`). Never say "with or without a harness".
 
@@ -84,7 +84,7 @@ Recommend with evidence while continuing other work. Approval covers only what i
 
 ## 4. The Harness Builder
 
-One Builder (`harness-builder.ts`) drives the campaign (`examine`, `compare`, `campaign_status`, `wait`); one Examiner sleeps between `examine` calls and closes with it (`campaign-actions.ts`). Host owns stops, practice release and promotions; Builder never sees `decide` (`decide.ts`). Comparisons test frozen digests (step promotes that digest); unchanged harnesses re-compare only when `decide` asks; refused actions are not moves; embed standing facts in tool results (out-of-band messages never reach Builder).
+One Builder (`harness-builder.ts`) drives the campaign (`examine`, `compare`, `campaign_status`, `wait`); one Examiner sleeps between `examine` calls and closes with it (`campaign-actions.ts`). Host owns stops, practice release and promotions; Builder never sees `nextAction` (`scheduler.ts`). Comparisons test frozen digests (`isSignificant` promotes that digest); unchanged harnesses re-compare only when `scheduler.ts` asks; refused actions are not moves; embed standing facts in tool results (out-of-band messages never reach Builder).
 
 ## 5. The log
 
@@ -101,7 +101,7 @@ Logs hold hidden exam values—keep out of prompts, PRs and transcripts; copied 
 
 ## 7. How a comparison is read
 
-Comparisons pre-register terms, solve both arms afresh on sampled tasks (newest epoch first, 1 retained per 3 frontier tasks) and pair rollouts. **Outcomes** (`solve.ts`): pass = valid; failure = earned rejection, limit expiry, `no-answer`, `broken-harness`, `malformed`; set aside = unruled, `check-defect`, `unclear`; non-result (retried, excluded) = `provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier`. **Scoring** (`pointsOf`, `WEIGHTS`): validity first, then unified objective (`[0, 1]` code items, plus swapped `judge` criteria and equal-weight `holistic` via `JUDGE_STEP` when `hasJudge`); cost never enters scores. Exact one-sided paired sign-flip test registers `step`, `no-step`, `not-scored`, `check-defects` or `no-change`. `decide` (`decide.ts`) picks moves; 6 eligible moves without gain trigger `stopRule`.
+Comparisons pre-register terms, solve both arms afresh on sampled tasks (newest epoch first, 1 retained per 3 frontier tasks) and pair rollouts. **Outcomes** (`solve.ts`): pass = valid; failure = solver-fail (`earned`) rejection, limit expiry, `no-answer`, `broken-harness`, `malformed`; excluded/quarantined = unruled, `check-defect`, `unclear`; non-result (retried, excluded) = `provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier`. **Scoring** (`pointsOf`, `WEIGHTS`): validity first, then unified objective (`[0, 1]` code items, plus swapped `judge` criteria and equal-weight `holistic` via `JUDGE_STEP` when `hasJudge`); cost never enters scores. Exact one-sided paired sign-flip test (`isSignificant`) registers `step` (significant), `no-step` (inconclusive), `not-scored` (unscorable), `check-defects` or `no-change`. `nextAction` (`scheduler.ts`) picks actions; 6 eligible actions without gain trigger `stopRule`.
 
 ## 8. Rules
 
@@ -191,13 +191,13 @@ Plain English: state principles, current behaviour and rationale rather than chr
 
 ## 14. Terms and map
 
-**Held-out**: scored, hidden from Builder. **Practice**: released, unscored. **Valid**: passes checks in limits. **Reference**: starter until promoted. **Round**: Builder + comparison. Glossary: `terms-and-map.md`.
+**Held-out**: scored, hidden from Builder. **Practice**: released, unscored. **Valid**: passes checks in limits. **Reference harness**: `baseStarter` until promoted. **Round**: Builder + comparison. Glossary: `terms-and-map.md`.
 
 ```text
 src/meta runtime owners  src/kernel log, conditions, verifier, comparison, reports
-src/wall OS wall  src/agent one model session  src/tools shared tools
-src/harness Built Harness  src/solver one solve  src/builder, examiner, referee
-src/campaign round, admission, decide, opening, words
+src/sandbox OS sandbox  src/agent agent session runtime  src/tools shared tools
+src/harness Built Harness  src/solver one solve  src/builder, examiner, audit
+src/campaign round, admission, scheduler, state, summary, opening, signal
 tools/d2 campaign commands  tools/runs run registry  tools/wri run investigation
 tools/runtime lint, test, gate, land, moments  packages/ui read-only log page  vendor copied
 .claude/skills procedures & scripts  .claude/skills/main shared script library

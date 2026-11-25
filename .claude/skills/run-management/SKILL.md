@@ -37,7 +37,7 @@ bun --env-file=<file> run runs fresh <pack> [--model sonnet] [--login N] [--as <
 
 `fresh` reads `<pack>-prompt.txt` from `ANA_PROMPTS` (default `anabasis-prompts`), names `<pack>-fresh-<model>[-<suffix>]-<host>[-r<n>]` in `<pack>-fresh`, defaults to Opus in every seat (`--effort hhmm` Opus, `xxhh` Sonnet, `hhhh` else; `gpt` = `openai-codex/gpt-6.1-sol`), \$800 budget and 20-turn / 30-minute solve limits (`LIMITS`, `tools/d2/campaign.ts`), in detached worktree `anabasis-<name>` at `--at` (`HEAD`).
 
-- **Seats**: `--model a,b,c,d` names one model a seat in `--effort` order (Builder, Examiner, Referee, solver), each at its own default letter unless `--effort` is given. The Referee is also the judge, so a judged pack names one from another family than the solver: `--model opus,opus,gpt,opus`.
+- **Seats**: `--model a,b,c,d` names one model a seat in `--effort` order (Builder, Examiner, Auditor, solver), each at its own default letter unless `--effort` is given. The Auditor is also the judge, so a judged pack names one from another family than the solver: `--model opus,opus,gpt,opus`.
 - **Placement**: check `runs loadwatch --once` before `fresh`, `continue` or `move`; pass `--host` if least-loaded under cap (`ANA_RUN_CAP` / `capacity`, default 2) differs from dry-run pick. Launch sequentially (dry runs do not reserve slots).
 - **Env & logins**: pass `--env-file=<file>` (+ `--env-file=.env.runs` for `ANA_LOGINS`, `ANA_LOGIN_RUNS`, `ANA_LOGIN_SUBS`, `ANA_HOSTS`, `ANA_KEEP`); never print or copy env files. Without `--login`, picks an open login under `ANA_LOGIN_RUNS` resetting soonest.
 - **Provenance**: after launch, run `git tag -f run/<first-9-sha> <commit> && git push origin run/<first-9-sha>`.

@@ -24,15 +24,15 @@ built = openai-codex/gpt-6.1-terra:high @ <built harness digest>
      --baseline bare-opus=claude/claude-opus-5-5:medium@A \
      --candidate built-terra=openai-codex/gpt-6.1-terra:high@<digest> --read
    ```
-4. **Solve (operator authorisation required)**: drop `--read`, pass `--cap <usd>`, `--reviewer <model>`, and `--login N` for Claude solvers (account for concurrency cap manually) under `bun --env-file=<file>` on a quiet host matching the harness's host class. Re-running fills missing solves and retries unruled Referee calls; run only one process per seed. `--solves 2` adds an A/A control at 2× cost (needs explicit approval). Estimate cost beforehand from prior `solve.finished.billed` events.
+4. **Solve (operator authorisation required)**: drop `--read`, pass `--cap <usd>`, `--reviewer <model>`, and `--login N` for Claude solvers (account for concurrency cap manually) under `bun --env-file=<file>` on a quiet host matching the harness's host class. Re-running fills missing solves and retries unruled Auditor calls; run only one process per seed. `--solves 2` adds an A/A control at 2× cost (needs explicit approval). Estimate cost beforehand from prior `solve.finished.billed` events.
 5. **Clean up**: `/usr/bin/trash .ana/d2/cmp-<what> .ana/compare/cmp-<what>`.
 
 ## Reporting & limits
 
-Report: evaluation set and authoring solver; per-system standalone validity (valid/total, all/some/none valid, non-earned failures); per-solve table (valid share, total cost including Referee, wall-clock, slowest solve, turns—no cost-per-valid-answer); A/A control if `--solves >= 2`; per-candidate wins/losses/ties, carrying measure, two-sided p-values, and verdict (`X is better` or `no step either way` with MDE). Split slow wall-clock into model turns vs tool `ms` (`solve.call`).
+Report: evaluation set and authoring solver; per-system standalone validity (valid/total, all/some/none valid, non-earned failures); per-solve table (valid share, total cost including Auditor, wall-clock, slowest solve, turns—no cost-per-valid-answer); A/A control if `--solves >= 2`; per-candidate wins/losses/ties, carrying measure, two-sided p-values, and verdict (`X is better` or `no step either way` with MDE). Split slow wall-clock into model turns vs tool `ms` (`solve.call`).
 
 - Single solve/arm is weak evidence (rule 6); `no step either way` never proves equivalence.
-- Tasks were admitted against the source solver/reference; Referee rulings stay model outputs until human-labelled; imported harnesses must match the contract's answer format and host Python class; keep `.ana/compare/` trial logs exam-side.
+- Tasks were admitted against the source solver/reference; Auditor rulings stay model outputs until human-labelled; imported harnesses must match the contract's answer format and host Python class; keep `.ana/compare/` trial logs exam-side.
 
 ## Related skills
 

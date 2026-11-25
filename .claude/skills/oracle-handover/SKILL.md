@@ -1,13 +1,13 @@
 ---
 name: oracle-handover
-description: "Use when preparing an Oracle question, second opinion, log slice (`slice.ts`), open-PR bundle (`open-pulls.ts`, use `--diffs` for pasting), or external handover document (`document.ts`, `bundle.ts`, `bun run runs zip`). Packages source excerpts at a published commit, PR summaries, and campaign logs or kept harnesses locally; uploading remains the operator's task."
+description: "Use when preparing an Oracle question, second opinion, log slice (`slice.ts`), open-PR bundle (`open-pulls.ts`, use `--diffs` for pasting), or external handover document (`document.ts`, `bundle.ts`, `bun run runs zip`). Packages source excerpts at a published commit, PR summaries, and campaign logs or saved checkpoints locally; uploading remains the operator's task."
 ---
 
 # Oracle handover
 
 Packages a design or diagnostic question for an external Oracle model as either **one pasteable Markdown document** (`document.ts`, typically 100k–250k `o200k` tokens, most of it PR diffs) or **a task document (`REVIEW.md`) plus a zip archive** (`bundle.ts`).
 
-**Information boundary**: the Oracle acts as the operator's analyst and may receive exam-side logs, but the boundary is strictly one-way—**no Oracle output may ever reach a Builder, Examiner, Solver, or Referee**, and every Oracle claim must be verified at the source before acting on it (`AGENTS.md` section 11; [attribution-and-proof](../attribution-and-proof/SKILL.md), [whole-run-investigation](../whole-run-investigation/SKILL.md)).
+**Information boundary**: the Oracle acts as the operator's analyst and may receive exam-side logs, but the boundary is strictly one-way—**no Oracle output may ever reach a Builder, Examiner, Solver, or Auditor**, and every Oracle claim must be verified at the source before acting on it (`AGENTS.md` section 11; [attribution-and-proof](../attribution-and-proof/SKILL.md), [whole-run-investigation](../whole-run-investigation/SKILL.md)).
 
 ## 1. Self-contained document (`document.ts` and `slice.ts`)
 

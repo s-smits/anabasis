@@ -20,8 +20,8 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | # | Lever | Owner | Trigger (`wri.ts read`) |
 | --- | --- | --- | --- |
 | B1 | Builder practice feedback & telemetry | `src/builder/tools.ts`, `past.ts` | `PRACTICE FAILS`; `PRACTICE CONCENTRATION`; unread traces; unused `.toolchain/bin` |
-| B2 | Builder opening prompt & move advice | `src/builder/prompt.ts`, `decide.ts` | non-table moves; idle sessions; `FINAL BYTES NEVER PRACTISED` |
-| B3 | Cross-session memory | `src/builder/memory.ts`, `kept.ts` | session reverting prior session's edits; `BUILDER COMPACTED` |
+| B2 | Builder opening prompt & move advice | `src/builder/prompt.ts`, `scheduler.ts` | non-table moves; idle sessions; `FINAL BYTES NEVER PRACTISED` |
+| B3 | Cross-session memory | `src/builder/memory.ts`, `store.ts` | session reverting prior session's edits; `BUILDER COMPACTED` |
 | B4 | Practice release order (*operator* for half-cap) | `releaseOrder`, `src/kernel/reports.ts` | `PRE-PROMOTION PRACTICE RELEASED`; Builder starved of practice failures |
 | B5 | Builder turn/time limits (*operator*) | `tools/d2/harness-builder.ts` | sessions ending mid-edit |
 | B6 | Harness portability & `HOST_ONLY` split | `portableGuide`, `src/harness/starter.ts`, `src/builder/prompt.ts` | `BUILT HARNESS FOR EXPORT`; `portability` reader `above-leaks` or hazards |
@@ -38,7 +38,7 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | R3 | Solves/side & alpha (*operator*) | `SIZE`, `src/kernel/size.ts` | underpowered untied counts; `UNDERPOWERED NO-STEPS` |
 | R4 | Starter confirmation timing (*operator*) | `heldSince`, `src/campaign/scheduler.ts` | `PROMOTION UNCONFIRMED`; excessive epoch hours confirming |
 | R5 | Improvement patience (*operator*) | `stopRule`, `src/campaign/admission.ts` | `stop` while frontier still grows |
-| V1 | Referee prompt & evidence | `src/audit/auditor.ts` | `RULED UNCLEAR`; `RULINGS REFUSED`; `EARNED WITHOUT A PROBE` |
+| V1 | Auditor prompt & evidence | `src/audit/auditor.ts` | `RULED UNCLEAR`; `RULINGS REFUSED`; `EARNED WITHOUT A PROBE` |
 | V2 | Check-defect stop threshold (*operator*) | `src/campaign/admission.ts` | `check-defects` ending on few defects |
 | V3 | Admitting authored checks (*operator*) | `tools/c/accept.ts --admit` | authored checks with `0` refusals (`REFUSALS BY CHECK`) |
 | H1 | Solve queue wait (*operator* for placement) | solve queue | `campaign.waited` >15m; `HOST LOADED` |

@@ -26,7 +26,7 @@ reason about an unseen technical domain. The seven consequences and their justif
    model decision.
 5. **Code owns all execution conditions.** The Builder may request a campaign move, and code decides
    whether admission conditions allow it to start. Whenever a model's output informs a host decision
-   (such as a Referee ruling), code specifies the required evidence structure and refuses outputs
+   (such as a Auditor ruling), code specifies the required evidence structure and refuses outputs
    that omit it.
 6. **Permissive defaults within strict boundaries.** When in doubt about strictness, err toward more
    lenient sandboxing (hiding only hidden values, credentials, and other seats' private files) and

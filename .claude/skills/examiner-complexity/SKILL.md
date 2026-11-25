@@ -1,6 +1,6 @@
 ---
 name: examiner-complexity
-description: "Use before editing src/examiner/{ladder,draft,prompt}.ts or when calibrating Examiner task difficulty, supply, draft admission, or time to first comparison. Edits the reach scale and worked examples (`ladder.ts`), drafting prompt (`draft.ts`), and writing prompt's \"How hard\" section (`prompt.ts`) to leave informative headroom above the reference harness. Scripts: `grades.ts`, `grades.ts rungs`, `exams.ts`, and `ambition.ts`; validated through paired live seats and fresh campaigns."
+description: "Use before editing src/examiner/{difficulty,draft,prompt}.ts or when calibrating Examiner task difficulty, supply, draft admission, or time to first comparison. Edits the reach scale and worked examples (`difficulty.ts`), drafting prompt (`draft.ts`), and writing prompt's \"How hard\" section (`prompt.ts`) to leave informative headroom above the reference harness. Scripts: `grades.ts`, `grades.ts rungs`, `exams.ts`, and `ambition.ts`; validated through paired live seats and fresh campaigns."
 ---
 
 # Examiner complexity

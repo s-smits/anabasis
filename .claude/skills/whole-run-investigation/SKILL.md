@@ -43,7 +43,7 @@ Other verbs: `derive (--log <log>... | --all) [--verbose] [--force] [--no-embed]
 
 ## Hard rules
 
-- **Wall (no quotes)**: never quote task text, answers, hidden values, check messages, prompt text (except lane 16), traces or Referee prose (`test/wri-walls.test.ts`). Cite event kinds, ids, 8-char digests, counts, paths and lines. Never show WRI outputs to any seat.
+- **Wall (no quotes)**: never quote task text, answers, hidden values, check messages, prompt text (except lane 16), traces or Auditor prose (`test/wri-walls.test.ts`). Cite event kinds, ids, 8-char digests, counts, paths and lines. Never show WRI outputs to any seat.
 - **Read-only**: never edit campaign folders, logs or verdicts, or launch solves/checks (except `wri.ts grade` where permitted).
 - **Isolation**: open every lane report with `# Lane <N>: <title>` and `Verdict: pending` before reading; never read another lane's prompt/report. Blind lane 1 runs first with no orientation/triggers; isolated lane 20 runs alone and freezes answer digests before reading checks or rulings.
 

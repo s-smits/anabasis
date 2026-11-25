@@ -36,9 +36,9 @@ export interface Wanted {
   readonly judged?: boolean;
 }
 
-const JUDGED_TASK_DOLLARS = 0.6;
+export const JUDGED_TASK_DOLLARS = 1.5;
 
-type SizedWant = Pick<Wanted, "target" | "level" | "solves" | "cap" | "pastStop">;
+type SizedWant = Pick<Wanted, "target" | "level" | "solves" | "cap" | "pastStop" | "judged">;
 
 interface WantedSession extends Pick<Wanted, "cap" | "pastStop"> {
   readonly practiceSolves?: number | undefined;
@@ -165,7 +165,8 @@ export function refusals(supply: Supply, wanted: SizedWant) {
   const { scored, floor, test } = sizeOf(supply, wanted);
   const { cap } = wanted;
   const [size = ""] = sizeLines(scored, wanted.level);
-  const price = supply.billed === null ? null : test * supply.billed;
+  const judging = wanted.judged === true ? JUDGED_TASK_DOLLARS * scored * Math.max(1, wanted.solves / 2) : 0;
+  const price = supply.billed === null ? null : test * supply.billed + judging;
   const askForMore = `An Examiner session writes more held-out tasks (examine, or ${EXAMINE} by hand)`;
   const stop = stopVerdict(supply, wanted.pastStop);
   const rows = [
@@ -204,7 +205,7 @@ function faultNote(supply: Supply): readonly [boolean, string] {
 function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
   const { scored, floor, test } = sizeOf(supply, wanted);
   const { cap, pastStop } = wanted;
-  const judging = wanted.judged === true ? JUDGED_TASK_DOLLARS * scored : 0;
+  const judging = wanted.judged === true ? JUDGED_TASK_DOLLARS * scored * Math.max(1, wanted.solves / 2) : 0;
   const afforded = cap === null ? test : Math.max(0, Math.floor((cap.dollars - judging) / cap.reserve));
   return {
     refusals: [

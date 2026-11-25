@@ -6,6 +6,7 @@ import {
   fauxToolCall,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
+import { keepAnswerFiles, textFiles } from "../src/kernel/answer-files.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { unfinished } from "../src/kernel/trace.ts";
@@ -145,5 +146,58 @@ describe("the pairwise judge", () => {
     expect(pairs.filter((shown) => shown.includes("What a strong answer shows"))).toHaveLength(4);
     expect(pair?.billed).toBeGreaterThan(0);
     expect(unfinished(read(log))).toEqual([]);
+  });
+
+  it("uses distinct session ids per vote, anchors to operator prompt/rules, and preserves middle deliverable files", async () => {
+    const at = seated(onSubstance);
+    const pad = "Z".repeat(15_000);
+    const mid = "CRITICAL_MIDDLE_FILE_MARKER";
+    const files = keepAnswerFiles(
+      at.log,
+      textFiles([
+        { path: "a-first.txt", text: pad },
+        { path: "b-middle.txt", text: mid },
+        { path: "c-last.txt", text: pad },
+      ]),
+    );
+    append(at.log, "verdict", {
+      solve: "s-multi-a",
+      task: TASK.taskId,
+      kind: "pass",
+      answer: { note: "ok" },
+      files: files.map((file) => ({ ...file })),
+    });
+    append(at.log, "verdict", {
+      solve: "s-multi-b",
+      task: TASK.taskId,
+      kind: "pass",
+      answer: { note: "ok" },
+    });
+    const contract: Contract = {
+      ...CONTRACT,
+      conventions: "Report all totals in EUR.",
+      rules: [{ id: "r1", statement: "Include every reconciliation table." }],
+    };
+    const given = {
+      log: at.log,
+      comparison: "g-2",
+      task: TASK,
+      contract,
+      prompt: "Deliver an executive reconciliation memo.",
+    };
+    await judgeBrief(at.reader, given);
+    await judgePair(at.reader, { ...given, first: "s-multi-a", second: "s-multi-b" });
+    const events = read(at.log);
+    const pair = events.find(({ kind }) => kind === "referee.pair")?.data;
+    expect(Array.isArray(pair?.readers) ? pair.readers.length : 0).toBe(6);
+    expect(new Set(Array.isArray(pair?.readers) ? pair.readers : []).size).toBe(6);
+    expect(unfinished(events)).toEqual([]);
+    const pairPrompts = at.sent.slice(1);
+    expect(pairPrompts.every((shown) => shown.includes("Deliver an executive reconciliation memo."))).toBe(
+      true,
+    );
+    expect(pairPrompts.every((shown) => shown.includes("Include every reconciliation table."))).toBe(true);
+    expect(pairPrompts.every((shown) => shown.includes(mid))).toBe(true);
+    expect(Math.max(...pairPrompts.map((shown) => Buffer.byteLength(answerA(shown))))).toBeLessThan(24_500);
   });
 });

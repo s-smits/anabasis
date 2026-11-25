@@ -107,6 +107,8 @@ export function planOf(
   const recorded = eventsOf(events, SETTING).at(-1)?.event.data;
   const named = recorded?.target;
   const cap = Number(opening?.terms.promotions);
+  const autoAuthor = opening?.attended === true ? [] : unadmitted(events, undefined, "author");
+  const autoJudge = opening?.judged === true ? unadmitted(events, undefined, "judge") : [];
   return {
     patience: patienceOf(events),
     unprepared: beside.unprepared,
@@ -118,9 +120,7 @@ export function planOf(
     left: budgetLeft(events, opening),
     prompted: opening?.prompt != null,
     pastStop: beside.pastStop ?? null,
-    admits: [
-      ...new Set([...(beside.admits ?? []), ...(opening?.attended === true ? [] : unadmitted(events))]),
-    ],
+    admits: [...new Set([...(beside.admits ?? []), ...autoAuthor, ...autoJudge])],
     practice: beside.practice ?? null,
     promotions: Number.isInteger(cap) && cap > 0 ? cap : null,
   };

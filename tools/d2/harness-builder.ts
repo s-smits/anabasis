@@ -164,13 +164,19 @@ function examLines(
   if (ending !== "exam") return [];
   const faulted = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
   const found = Array.isArray(faulted) ? faulted.filter(isString) : [];
-  const authored = unadmitted(events);
+  const authored = unadmitted(events, undefined, "author");
+  const judged = unadmitted(events, undefined, "judge");
   return [
     ...(faults === "printed" ? [] : found.map((fault) => `fault: ${fault}`)),
     ...(authored.length === 0
       ? []
       : [
           `to admit the checks their author's own computation decides, which is the operator's word for each: bun tools/d2/harness-builder.ts ${packOf(values).join(" ")} --admit ${authored.join(",")}`,
+        ]),
+    ...(judged.length === 0
+      ? []
+      : [
+          `to admit the judged rubric items (${judged.join(", ")}), pass --admit-judge with a cross-family --reviewer: bun tools/d2/harness-builder.ts ${packOf(values).join(" ")} --admit-judge`,
         ]),
   ];
 }

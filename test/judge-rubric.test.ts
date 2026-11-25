@@ -11,6 +11,7 @@ import {
   taskRubricFaults,
 } from "../src/kernel/contract.ts";
 import { authoredFaults, JUDGE } from "../src/kernel/acceptance.ts";
+import { crossFamilyVendors, modelVendor } from "../tools/d2/round.ts";
 
 const LINE = "Names each figure's source table and the year it covers.";
 const unit = (items: readonly RubricItem[]): Objective => ({
@@ -91,9 +92,13 @@ describe("the unified rubric", () => {
         count >= 1 && count <= CRITERION.perTask,
       );
     }
-    for (const taken of ["span", "a", "j"]) {
+    for (const taken of ["span", "a", "j", "holistic", "constructor"]) {
       expect(taskRubricFaults(judged, [one(taken)], ["span"])).toHaveLength(1);
     }
+    expect(rubricFaults(unit([judge("holistic")]))).toHaveLength(1);
+    expect(
+      rubricFaults(unit(Array.from({ length: CRITERION.perTask + 1 }, (_, i) => judge(`j${String(i)}`)))),
+    ).toEqual([`objective.items holds at most ${String(CRITERION.perTask)} judged items`]);
     expect(taskRubricFaults(judged, [one("r"), one("r")], [])).toHaveLength(1);
     expect(taskRubricFaults(judged, [one("r", "short")], [])).toEqual([
       `rubric criterion r states its criterion in ${String(CRITERION.least)} to ${String(CRITERION.most)} characters`,
@@ -117,5 +122,29 @@ describe("the unified rubric", () => {
       "is scored by a judging model and not by code: a campaign scores it only on the operator's word (--admit-judge)";
     expect(authoredFaults(checks, new Set(["span"]))).toEqual([`j ${why}`, `k ${why}`]);
     expect(authoredFaults(checks, new Set(["span", "j", "k"]))).toEqual([]);
+  });
+
+  it("normalises first-party model vendors and fails closed on resellers and unknown router routes", () => {
+    expect(modelVendor("claude/claude-opus-5-5")).toBe("anthropic");
+    expect(modelVendor("openrouter/~anthropic/claude-fable-latest")).toBe("anthropic");
+    expect(modelVendor("openai-codex/gpt-6.1-sol")).toBe("openai");
+    expect(modelVendor("deepinfra/deepseek-ai/DeepSeek-R1")).toBe("deepseek");
+    expect(modelVendor("openrouter/deepseek/deepseek-r1")).toBe("deepseek");
+    expect(modelVendor("moonshotai-cn/kimi-k2")).toBe("moonshot");
+    expect(modelVendor("kimi-coding/k2p5")).toBe("moonshot");
+    expect(modelVendor("openrouter/auto")).toBeNull();
+    expect(crossFamilyVendors("openrouter/auto", "claude/claude-opus-5-5")).toBe(false);
+    expect(crossFamilyVendors("github-copilot/claude-sonnet-4.5", "anthropic/claude-sonnet-4-5")).toBe(false);
+    expect(crossFamilyVendors("google-vertex/gemini-2.5-pro", "google/gemini-2.5-pro")).toBe(false);
+    expect(
+      crossFamilyVendors("amazon-bedrock/anthropic.claude-sonnet-4-5", "anthropic/claude-sonnet-4-5"),
+    ).toBe(false);
+    expect(crossFamilyVendors("azure-openai-responses/gpt-5", "openai/gpt-5")).toBe(false);
+    expect(crossFamilyVendors("cerebras/gpt-oss-120b", "openai/gpt-5")).toBe(false);
+    expect(crossFamilyVendors("moonshotai-cn/kimi-k2", "kimi-coding/k2p5")).toBe(false);
+    expect(crossFamilyVendors("openai-codex/gpt-6.1-sol", "claude/claude-opus-5-5")).toBe(true);
+    expect(crossFamilyVendors("deepinfra/deepseek-ai/DeepSeek-R1", "openrouter/deepseek/deepseek-r1")).toBe(
+      false,
+    );
   });
 });

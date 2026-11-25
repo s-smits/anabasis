@@ -59,12 +59,14 @@ describe("the offline file extractor", () => {
         .map(([name]) => name);
       expect(nonzero.filter((name) => name !== "zeroRefFormulaCount")).toEqual([counted]);
     }
-    const constant = extract(workbook([[cell("A1", "<f>ROUND(42.17, 2)</f><v>42.17</v>")]]));
+    const constant = extract(
+      workbook([[cell("A1", "<f>ROUND(42.17, 2)</f><v>42.17</v>"), cell("B1", "<f>LOG10(100)</f><v>2</v>")]]),
+    );
     expect(constant.formulas).toEqual({
-      cachedEvaluated: 1,
+      cachedEvaluated: 2,
       uncachedFormula: 0,
       formulaError: 0,
-      zeroRefFormulaCount: 1,
+      zeroRefFormulaCount: 2,
     });
   });
 
@@ -101,11 +103,15 @@ describe("the offline file extractor", () => {
     const notebook = {
       cells: [
         { cell_type: "markdown", source: ["# Title"] },
-        { cell_type: "code", source: "print(1)", outputs: [{ text: ["1\n"] }] },
+        {
+          cell_type: "code",
+          source: "print(1)",
+          outputs: [{ text: ["1\n"] }, { data: { "text/plain": ["42"] } }],
+        },
       ],
     };
     expect(extract(plain("work.ipynb", JSON.stringify(notebook))).text).toBe(
-      "## markdown\n# Title\n\n## code\nprint(1)\n# output\n1\n",
+      "## markdown\n# Title\n\n## code\nprint(1)\n# output\n1\n42",
     );
     expect(extract(plain("notes.md", "words"))).toMatchObject({ kind: "text", text: "words" });
   });

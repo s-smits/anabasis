@@ -274,8 +274,14 @@ function exampleTool(tasks: () => readonly Task[]): SeatTool {
       if (example === undefined) {
         throw new Error(`${args.task} is not one of the tasks: ${[...examples.keys()].join(", ")}`);
       }
-      const { taskId, family, publicInput, hidden } = example;
-      return text(capturedJsonStringify({ taskId, family, publicInput, hidden }));
+      const { taskId, family, publicInput, hidden, rubric } = example;
+      return text(
+        capturedJsonStringify(
+          rubric === undefined
+            ? { taskId, family, publicInput, hidden }
+            : { taskId, family, publicInput, hidden, rubric },
+        ),
+      );
     },
   });
 }

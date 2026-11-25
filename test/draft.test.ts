@@ -933,6 +933,25 @@ describe.concurrent("campaign draft lifecycle", () => {
         objective: { ...rubricObjective, items: [{ id: "constructor", weight: 1 }] },
       })[0],
     ).toContain("invalid item constructor");
+    const judgedDraft: Draft = {
+      ...rubricDraft,
+      objective: {
+        ...rubricObjective,
+        items: [
+          ...rubricObjective.items,
+          { id: "clarity", weight: 1, kind: "judge", criterion: "The rationale explains each step plainly." },
+        ],
+      },
+    };
+    expect(draftFaults(judgedDraft, "code-only")[0]).toContain("no cross-family judging reviewer admitted");
+    expect(
+      draftFaults({
+        ...judgedDraft,
+        tasks: judgedDraft.tasks.map((task, idx) =>
+          idx === 0 ? { ...task, rubric: [{ id: "clarity", criterion: "Short." }] } : task,
+        ),
+      })[0],
+    ).toContain("example 0:");
 
     const staged = stageExam(join(root, "rubric-stage"), rubricDraft);
     const brief = readPack(staged.bundle).brief;

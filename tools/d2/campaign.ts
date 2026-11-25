@@ -332,14 +332,15 @@ function reviewersOf(
   at: { log: string; contract: Contract; checks: string; verify: Verifier },
 ) {
   const { log, contract, checks, verify } = at;
+  const prompt = openingOf(read(log, TRACE_KINDS))?.prompt ?? undefined;
   return {
     referee: (solve: string, task: TaskPackage, kill: AbortSignal) =>
       referee({ ...reader, kill }, { solve, task, contract, checks, verify, log }),
     reviewer: priceKey(reader.model),
     brief: (task: TaskPackage, comparison: string, kill: AbortSignal) =>
-      judgeBrief({ ...reader, kill }, { log, comparison, task, contract }),
+      judgeBrief({ ...reader, kill }, { log, comparison, task, contract, prompt }),
     pair: (task: TaskPackage, asked: Asked, kill: AbortSignal) =>
-      judgePair({ ...reader, kill }, { log, task, contract, ...asked }),
+      judgePair({ ...reader, kill }, { log, task, contract, prompt, ...asked }),
   };
 }
 

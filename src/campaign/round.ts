@@ -13,6 +13,7 @@ import { sameJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import type { Asked } from "../referee/judge.ts";
 import type { RefereeFinding } from "../referee/referee.ts";
+import { JUDGED_TASK_DOLLARS } from "./admission.ts";
 import { tasksByEpoch } from "./climb.ts";
 import { budgetLeft } from "./opening.ts";
 import {
@@ -321,10 +322,18 @@ function knownDefects(before: readonly LogEvent[], id: string, fixed: Fixed): Se
   ]);
 }
 
-function capReached(events: readonly LogEvent[], id: string, cap: Cap | undefined, running: number): boolean {
-  const overCap = cap !== undefined && billedFor(events, id) + (running + 1) * cap.reserve > cap.dollars;
+function capReached(
+  events: readonly LogEvent[],
+  id: string,
+  cap: Cap | undefined,
+  running: number,
+  reserveCap?: number,
+): boolean {
+  const unit = (reserve: number) => (reserveCap === undefined ? reserve : Math.min(reserve, reserveCap));
+  const overCap =
+    cap !== undefined && billedFor(events, id) + (running + 1) * unit(cap.reserve) > cap.dollars;
   const left = budgetLeft(events);
-  return overCap || (left !== null && left.dollars < (running + 1) * left.reserve);
+  return overCap || (left !== null && left.dollars < (running + 1) * unit(left.reserve));
 }
 
 async function judgeAll(
@@ -333,28 +342,46 @@ async function judgeAll(
   within: {
     readonly kill: AbortSignal;
     readonly faults: string[];
-    readonly open: () => boolean;
+    readonly open: (laneSize: number) => boolean;
     readonly going: () => boolean;
   },
 ): Promise<void> {
   const { judge, log, id, concurrency } = request;
   if (judge === undefined) return;
   const { kill, faults, open, going } = within;
-  const ask = async (what: string, asked: () => Promise<void>) => {
+  const width = Math.max(1, Math.min(concurrency, 2));
+  let silent = 0;
+  let fatal: string | null = null;
+  const failedBriefs = new Set<string>();
+  const ask = async (what: string, asked: () => Promise<void>): Promise<boolean> => {
     try {
       await asked();
+      silent = 0;
+      return true;
     } catch (error) {
-      faults.push(`${what}: ${errorMessage(error)}`);
+      const message = errorMessage(error);
+      faults.push(`${what}: ${message}`);
+      silent += 1;
+      if (nonRetryableProvider(message)) fatal ??= message;
+      return false;
     }
   };
+  const active = (laneSize: number) => open(laneSize) && fatal === null && silent < SILENT;
   const left = judgingLeft(read(log), fixed);
   const tasks = [...new Set(left.map(({ task }) => task))];
-  for (let at = 0; at < tasks.length && open(); at += concurrency) {
-    const lane = tasks.slice(at, at + concurrency);
-    await Promise.all(lane.map((task) => ask(`brief ${task}`, () => judge.brief(task, id, kill))));
+  for (let at = 0; at < tasks.length; at += width) {
+    const lane = tasks.slice(at, at + width);
+    if (!active(lane.length)) break;
+    await Promise.all(
+      lane.map(async (task) => {
+        if (!(await ask(`brief ${task}`, () => judge.brief(task, id, kill)))) failedBriefs.add(task);
+      }),
+    );
   }
-  for (let at = 0; at < left.length && open(); at += concurrency) {
-    const lane = left.slice(at, at + concurrency);
+  const runnable = left.filter(({ task }) => !failedBriefs.has(task));
+  for (let at = 0; at < runnable.length; at += width) {
+    const lane = runnable.slice(at, at + width);
+    if (!active(lane.length)) break;
     await Promise.all(
       lane.map(({ task, first, second }) =>
         ask(`${first} against ${second}`, () => judge.pair(task, { comparison: id, first, second }, kill)),
@@ -451,8 +478,8 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     judgeAll(request, fixed, {
       kill,
       faults,
-      open: () => {
-        capped ||= going() && capReached(read(log), id, cap, 0);
+      open: (laneSize) => {
+        capped ||= going() && capReached(read(log), id, cap, Math.max(0, laneSize - 1), JUDGED_TASK_DOLLARS);
         return going();
       },
       going,

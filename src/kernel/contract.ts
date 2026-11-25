@@ -32,6 +32,7 @@ export interface Contract {
 
 const WEIGHT_RATIO = 1e12;
 export const CRITERION = { least: 20, most: 220, perTask: 4 };
+const RESERVED_RUBRIC_IDS = new Set(["holistic"]);
 
 export interface TaskCriterion {
   readonly id: string;
@@ -74,6 +75,8 @@ export function taskRubricFaults(
     const named =
       isString(id) &&
       RUBRIC_ITEM_ID.test(id) &&
+      !Object.hasOwn(Object.prototype, id) &&
+      !RESERVED_RUBRIC_IDS.has(id) &&
       !taken.has(id) &&
       rubric.findIndex((one) => one.id === id) === index;
     const fault = criterionFault(criterion);
@@ -104,7 +107,12 @@ export function rubricFaults(objective: Objective | undefined, checkIds: readonl
   if (objective?.scale !== "unit") faults.push('objective.items requires scale "unit"');
   const seen = new Set<string>();
   for (const item of items) {
-    if (!isString(item.id) || !RUBRIC_ITEM_ID.test(item.id) || Object.hasOwn(Object.prototype, item.id)) {
+    if (
+      !isString(item.id) ||
+      !RUBRIC_ITEM_ID.test(item.id) ||
+      Object.hasOwn(Object.prototype, item.id) ||
+      RESERVED_RUBRIC_IDS.has(item.id)
+    ) {
       faults.push(`objective.items names an invalid item ${isString(item.id) ? item.id : ""}`);
       continue;
     }
@@ -120,6 +128,9 @@ export function rubricFaults(objective: Objective | undefined, checkIds: readonl
     }
     const criterion = item.kind === "judge" ? criterionFault(item.criterion) : null;
     if (criterion !== null) faults.push(`objective.items.${item.id} ${criterion}`);
+  }
+  if (items.filter(({ kind }) => kind === "judge").length > CRITERION.perTask) {
+    faults.push(`objective.items holds at most ${String(CRITERION.perTask)} judged items`);
   }
   const weights = items.map(({ weight }) => weight).filter((weight) => isNumber(weight) && weight > 0);
   if (weights.length > 1 && Math.max(...weights) / Math.min(...weights) > WEIGHT_RATIO) {

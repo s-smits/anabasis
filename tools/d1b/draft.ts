@@ -146,6 +146,7 @@ export async function draftCommand(
       id,
       mode: "draft",
       prompt,
+      judged: opening?.judged === true,
       budget: { modelTurns: modelTurns ?? null, minutes: wallSeconds / 60, solves: setting.solves },
       reading: async (draft, home) => {
         const { faults, read: seen } = await draftReading(dirname(log), draft, Number(values.jobs), home);

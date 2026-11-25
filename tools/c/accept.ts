@@ -12,8 +12,9 @@
  * path; tasks on which the minimal do-nothing answer allowed by the schema is not rejected; and
  * author-computed checks, which remain faults until admitted by the operator individually
  * (`--admit a,b`) or collectively (`--admit-authored`, implied when a campaign launches without
- * `--hitl`). Objective items a judging model scores remain faults unless the operator passes
- * `--admit-judge`, which unattended launches never imply. The reading is recorded in the campaign log as `checker.read` under the contract hash
+ * `--hitl`). Objective items a judging model scores remain faults unless `--admit-judge` is passed
+ * (default false here; `harness-builder` passes it automatically on unattended cross-family
+ * launches unless `--no-admit-judge` is given). The reading is recorded in the campaign log as `checker.read` under the contract hash
  * and check program digest, and the command exits 1 if any fault remains. If the minimal value
  * produced by the schema is itself rejected by the format, that outcome is printed as a note rather
  * than a fault because the format rejects it before any check runs.

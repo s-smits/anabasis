@@ -1,15 +1,11 @@
 /**
- * Set a campaign's tasks apart for its next comparison: hold the pack's tasks out, release the
- * practice tasks, and report the size of the scored draw.
+ * Set a campaign's tasks apart for its next comparison: hold the pack's tasks out, release practice
+ * and report the scored draw's size. A person also labels a task awaiting review here: one with no
+ * valid answer after two comparisons that cut no solve of it at a limit, left out of the scored set
+ * until labelled (`poolOf`, `src/kernel/reports.ts`). `--keep <task id>` returns it to the set,
+ * `--infeasible <task id>` refuses it for good; each repeats and is logged with `--note`.
  *
  *   bun tools/d2/prepare.ts --name <campaign> --practice 6
- *
- * It is also where a person labels a task awaiting task review as possibly infeasible: one with no
- * valid answer on record after two comparisons that cut no solve of it at a limit, which is left
- * out of the scored set until it is labelled (`src/kernel/reports.ts`, `poolOf`). `--keep <task id>` returns it to the set,
- * and it is read again after two more comparisons without a valid answer. `--infeasible <task id>`
- * refuses it for good. Each may be given more than once, and each label is logged with the person's
- * `--note`.
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { feasibleOf } from "#src/examiner/write.ts";
@@ -30,7 +26,6 @@ type Recorder = (kind: EventKind, data: Parameters<typeof append>[2]) => void;
 type Packages = ReadonlyMap<string, ReturnType<Campaign["pack"]>>;
 type LabelEntry = readonly [string, "held" | "refused", string, string];
 
-/** The practice tasks a campaign is brought to where no command names a count. */
 export const PRACTICE = 6;
 const OPTIONS = {
   ...PACK_OPTIONS,
@@ -42,8 +37,7 @@ const OPTIONS = {
   note: { type: "string" },
 } as const;
 
-/** The pack's tasks no gate has read: those the log does not hold, and one a killed command proposed
- *  and left before its gate, which the task states hold from its proposal on. */
+/** Tasks no gate has read, including one a killed command proposed and left before its gate. */
 export function ungated(campaign: Pick<Campaign, "tasks" | "pack">, events: readonly LogEvent[]) {
   const gated = admissionsOf(events);
   return campaign.tasks.map(campaign.pack).filter((task) => !gated.has(taskVersion(task)));
@@ -146,10 +140,9 @@ function applyLabels(
 }
 
 /**
- * `bun tools/d2/prepare.ts`. `heldBack`, the host's own release (`releaseOwed`), is read on the events
- * the release takes its tasks from, with no wait between that read and its appends: read before
- * this awaited the campaign's opening, a comparison that started meanwhile could lose a task it had
- * just drawn, after its terms were fixed (rule 4).
+ * `heldBack`, from the host's own release (`releasePendingPractice`), is read on the events the
+ * release takes its tasks from, with no wait before its appends, so a comparison started meanwhile
+ * cannot lose a task it drew after its terms were fixed (rule 4).
  */
 export async function prepareCommand(
   args: readonly string[],

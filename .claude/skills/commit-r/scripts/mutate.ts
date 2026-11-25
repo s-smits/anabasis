@@ -1,25 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Mutation oracle for a commit-r pass (step 8): generates syntactic mutants of high-importance
- * owner files, verifies every named suite passes on the unmutated copy first, executes each mutant
- * against the suites, and records which suites kill it.
- *
- * `list` counts the mutants of each file. `run` appends one JSON line per mutant to `--out` and
- * skips mutants already recorded, allowing an interrupted run to resume. Mutants spread over the
- * check places a landing's proofs use (`checkPlaces`, tools/runs/host-config.ts): one worker a slot,
- * each mutating its own copy of the tree (`<out>.clone-<k>`) and running `bun test --bail` there
- * through the check runner, whose deadline `--timeout` sets, or on this machine where
- * `ANA_CHECK_HOST` is `here` or no host is listed. `--jobs N` is the most at once (default: every
- * slot the hosts give, or one here). Every place first passes the suites unmutated, or takes no
- * mutants; a place that gives no verdict puts its mutant back for another and takes no more. Copies
- * are refreshed from the tree on every run and live at `--clones <prefix>` when given, so passes over
- * one tree can share them. `--until` stops taking mutants at that time, leaving the rest unrun. A run
- * that outputs no pass, fail, or bail count, or that `--timeout` ends, records `null` rather than a
- * kill: a slow suite can reach the timeout unmutated, and a mutant that hangs fails on the suite's
- * own per-test timeout. `report` tabulates per-file kills across `--old` and the remaining suites (or
- * solo `killed / survived / unread` counts when `--old` is omitted), with `unread` for rows a
- * missing verdict leaves undecided, and `--survivors` prints `O-` IDs (comparative) or surviving
- * mutant IDs (solo), then unread IDs, which a rerun must bring to a verdict.
+ * Mutation oracle for a commit-r pass (step 8): syntactic mutants of high-importance owner files,
+ * run against named suites that must first pass unmutated, recording which suites kill each. `list`
+ * counts mutants per file. `run` appends one JSON line per mutant to `--out`, skipping recorded
+ * ones so an interrupted run resumes; mutants spread over the check places (`checkPlaces`,
+ * `tools/runs/host-config.ts`), one worker a slot on its own copy of the tree (`<out>.clone-<k>`,
+ * or `--clones <prefix>`), running `bun test --bail` under `--timeout`, or on this machine where
+ * `ANA_CHECK_HOST` is `here` or no host is listed. `--jobs N` caps workers; a place that gives no
+ * verdict hands its mutant back and takes no more; `--until` stops taking mutants at that time. A
+ * run with no pass, fail or bail count, or one `--timeout` ends, records `null` rather than a kill.
+ * `report` tabulates per-file kills across `--old` and the other suites (or solo `killed / survived
+ * / unread` counts), and `--survivors` prints surviving IDs, then the unread ones a rerun must
+ * bring to a verdict.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { appendFileSync, cpSync, existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";

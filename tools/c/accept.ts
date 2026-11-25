@@ -1,23 +1,11 @@
 /**
- * Evaluates a campaign's check program offline (Phase C) and records its observed behaviour against
- * the contract and check versions under inspection.
+ * Reads a campaign's check program offline (Phase C). Every control of the drafted exam runs
+ * through the checks twice, printing one row per check and the faults `src/kernel/acceptance.ts`
+ * finds; author-computed checks stay faults until admitted (`--admit`, `--admit-authored`) and
+ * judged objective items until `--admit-judge`. The reading lands as `checker.read`, and the
+ * command exits 1 while a fault remains.
  *
- *   bun tools/c/accept.ts --name <campaign> [--admit a,b | --admit-authored] [--admit-judge] [--freeze]
- *
- * Every control of the drafted exam is run through the campaign's checks twice. The command prints
- * one row per check: its instrument, the counts of accepted and refused answers, and how many of
- * the reject controls naming it were refused. It then lists any faults (`src/kernel/acceptance.ts`):
- * controls whose verdict disagrees with their label or varies across runs; checks never observed to
- * refuse or to accept an answer; tools named by a check that are absent from the verifier's tool
- * path; tasks on which the minimal do-nothing answer allowed by the schema is not rejected; and
- * author-computed checks, which remain faults until admitted by the operator individually
- * (`--admit a,b`) or collectively (`--admit-authored`, implied when a campaign launches without
- * `--hitl`). Objective items a judging model scores remain faults unless `--admit-judge` is passed
- * (default false here; `harness-builder` passes it automatically on unattended cross-family
- * launches unless `--no-admit-judge` is given). The reading is recorded in the campaign log as `checker.read` under the contract hash
- * and check program digest, and the command exits 1 if any fault remains. If the minimal value
- * produced by the schema is itself rejected by the format, that outcome is printed as a note rather
- * than a fault because the format rejects it before any check runs.
+ *   bun tools/c/accept.ts --name <campaign> [--admit a,b | --admit-authored] [--admit-judge] [--freeze [--despite <why>]]
  */
 import {
   AUTHOR,
@@ -47,15 +35,12 @@ const OPTIONS = {
   despite: { type: "string" },
 } as const;
 
-/** Checker acceptance reading produced by `readChecker`. */
 type Reading = Awaited<ReturnType<typeof readChecker>>;
 
 /**
- * Records a checker acceptance reading (`checker.read`) in the campaign log, including operator-admitted
- * checks (plus all author-computed checks when `authored` is true) and any remaining faults. When
- * `freeze` is set and either no faults remain or `despite` explains why they are accepted, writes
- * `contract.frozen`. Both this command and accepted drafts (`tools/d1b/draft.ts`) share this helper
- * so all readings follow one schema.
+ * Appends `checker.read` and, when `freeze` holds and no fault remains or `despite` says why,
+ * `contract.frozen`. This command and accepted drafts (`tools/d1b/draft.ts`) share it, so every
+ * reading has one schema.
  */
 export function keepReading(
   log: string,
@@ -70,8 +55,8 @@ export function keepReading(
   },
 ): { readonly faults: readonly string[]; readonly frozen: boolean } {
   const { runs, checks, idle, unformed, rejected } = reading;
-  // Unattended campaigns (without `--hitl`) implicitly admit every author-computed check, including
-  // the objective, regardless of what the reading finds.
+  // The caller sets `authored` for unattended campaigns (without `--hitl`) and `judge` once judging is
+  // admitted, so those checks are admitted whatever the reading finds.
   const admitted = new Set([
     ...word.admitted,
     ...checks.flatMap(({ id, instrument }) =>
@@ -96,9 +81,8 @@ export function keepReading(
     ...keyIfDefined("notes", reading.notes.length > 0 ? [...reading.notes] : undefined),
   });
   const frozen = word.freeze && (faults.length === 0 || word.despite !== "");
-  // `openCampaign` rejects any checker that conflicts with an existing freeze, so freezing here
-  // always pins the current checker. When freezing over faults, `despite` preserves the rationale
-  // so stale pack controls do not prevent pinning a sound checker.
+  // `openCampaign` refuses a checker that departs from an earlier freeze, so a freeze here pins the
+  // current checker; `despite` keeps the reason when it freezes over faults.
   if (frozen && frozenChecker(read(log)) === null) {
     append(log, "contract.frozen", {
       ...checker,
@@ -109,8 +93,6 @@ export function keepReading(
   return { faults, frozen };
 }
 
-/** Runs `bun tools/c/accept.ts` to evaluate and optionally freeze a checker. Returns exit code 1 if
- *  faults remain or a requested freeze is refused. */
 export async function acceptCommand(args: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const campaign = await openCampaign(packNamed(values));

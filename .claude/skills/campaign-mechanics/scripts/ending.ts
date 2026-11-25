@@ -27,7 +27,7 @@ const USAGE = `usage: ending.ts <name | path/to/log.jsonl> [--at <line | ISO tim
 Each ending on record with the moves before it, and the counts the table's endings are read on.
 --at  read the log up to this line (1 is the first), or up to the last event at or before this time`;
 
-/** Tallies `campaign.move` events by `move·code` in order of first appearance (`led` for Builder moves, or `asked` in older logs). */
+/** Tallies `campaign.move` events by `move·code` in order of first appearance. */
 function movesOf(events: readonly LogEvent[]) {
   const moves = events.flatMap(({ kind, data }) => (kind === MOVED ? [data] : []));
   const counts = countBy(
@@ -37,7 +37,7 @@ function movesOf(events: readonly LogEvent[]) {
   return { total: moves.length, counts };
 }
 
-/** Evaluates all current stopping-rule counters against their bounds and computes the table's next move (`planOn`, `decide`). */
+/** Every stopping-rule counter against its bound, and the table's next move (`planOn`, `decide`). */
 function standingOf(events: readonly LogEvent[]) {
   const plan = planOn(events);
   const stop = stopRule(events);
@@ -54,7 +54,6 @@ function standingOf(events: readonly LogEvent[]) {
   };
 }
 
-/** Summarises each recorded ending with its preceding moves, activity since the last ending, and current standing. */
 export function campaignEnding(events: readonly LogEvent[]) {
   const ends = events.flatMap((event, at) => (event.kind === "campaign.ended" ? [{ at, event }] : []));
   const endings = ends.map(({ at, event: { data, at: when } }, index) => ({
@@ -80,7 +79,6 @@ function movesLine({ total, counts }: ReturnType<typeof movesOf>): string {
   return `${plural(total, "move")} (${listed})`;
 }
 
-/** The standing counts, a line each. */
 function standingLines({
   left,
   patience,
@@ -103,7 +101,7 @@ function standingLines({
   ];
 }
 
-/** The events the table reads `--at` a line (1 is the first) or a time: those up to it. */
+/** The events up to `--at` a line (1 is the first) or a time. */
 export function eventsAt(events: readonly LogEvent[], at: string): readonly LogEvent[] {
   if (/^\d+$/.test(at)) return events.slice(0, Number(at));
   if (Number.isNaN(Date.parse(at))) throw new Error(`--at takes a line or an ISO time; got ${at}`);
@@ -111,8 +109,6 @@ export function eventsAt(events: readonly LogEvent[], at: string): readonly LogE
   return after === -1 ? events : events.slice(0, after);
 }
 
-/** What is said of a campaign's endings and standing, a line each; `reads` says where the log is
- *  read to. */
 export function endingLines({ events, endings, since, standing }: Ending, reads = "now"): string[] {
   const last = since.last;
   return [

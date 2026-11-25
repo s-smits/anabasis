@@ -8,7 +8,6 @@ afterAll(() => {
   for (const root of folders) rmSync(root, { recursive: true, force: true });
 });
 
-/** A row, whose endings are by default the one its state stands on. */
 const row = (more: Partial<Row> = {}): Row => {
   const state = more.state ?? { kind: "live", kept: true };
   const ending = "ending" in state ? state.ending : undefined;
@@ -39,7 +38,6 @@ const read = (digest: string, session: string, confirmed = true) => ({
     confirmed,
   },
 });
-/** What a look at `rows` remembers, whatever it printed. */
 const lookedAt = (...rows: Row[]): AlertState => alertsOf(null, here(...rows)).next;
 
 describe("the fold of one look", () => {

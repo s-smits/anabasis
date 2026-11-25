@@ -7,7 +7,7 @@ Expands `AGENTS.md` §6 (recorded terms, practice release, refusals, defaults). 
 
 ## Practice release
 
-Triggered after comparisons/promotions (`practiceDue`, `src/campaign/decide.ts`) and executed by host (`releaseOwed`, `tools/d2/campaign-actions.ts`) on task admission, Examiner finish, Builder opening with fresh admissions, and non-promoting readings (releasing 1 task if none were newly admitted). Never releases while a comparison is unreported; excludes tasks doubted by a reference rejection (`practicePool`, `poolOf`). Priority order (`releaseOrder`, `src/kernel/reports.ts`):
+Triggered after comparisons/promotions (`practiceDue`, `src/campaign/decide.ts`) and executed by host (`releasePendingPractice`, `tools/d2/campaign-actions.ts`) on task admission, Examiner finish, Builder opening with fresh admissions, and non-promoting readings (releasing 1 task if none were newly admitted). Never releases while a comparison is unreported; excludes tasks doubted by a reference rejection (`practicePool`, `poolOf`). Priority order (`releaseOrder`, `src/kernel/reports.ts`):
 1. Tasks the reference failed across two comparisons;
 2. Half (rounded down, counting already released) of tasks leaving headroom on the reference's last reading;
 3. Remaining tasks in deterministic hash order (passing tasks still expose the objective).

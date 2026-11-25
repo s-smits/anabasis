@@ -9,7 +9,6 @@ import type { RuleExample } from "../../rule-examples.ts";
  * There is no fix.
  */
 
-/** Levels of nesting a function body may hold before the innermost line has too many reasons. */
 const DEPTH_LIMIT = 4;
 
 /** Statements that leave, so an `if` ending in one of them encloses nothing below it. */
@@ -30,7 +29,6 @@ const BRANCHES = new Set([
 /** How much a guard may do beside leaving before it is a branch that happens to end in a jump. */
 const GUARD_STATEMENTS = 3;
 
-/** Whether this `if` opens a level: it is not an `else if`, and it is not a guard. */
 function counts(node: ESTree.IfStatement): boolean {
   // `else if` is an alternative to the branch above it, not a level inside it.
   if (node.parent.type === "IfStatement" && node.parent.alternate === node) return false;
@@ -66,11 +64,8 @@ export const noDeepNestingRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Nesting levels open at this point, innermost last. Reset at every function boundary. */
+    /** Nesting levels open at this point, innermost last; each function counts from its frame's `base`. */
     const open: ESTree.Node[] = [];
-    /**
-     * One frame per function being read, the file itself first.
-     */
     const frames: { base: number; reported: boolean }[] = [{ base: 0, reported: false }];
 
     function enterFunction(): void {

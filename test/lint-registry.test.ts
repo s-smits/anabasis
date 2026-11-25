@@ -1,8 +1,8 @@
 /**
- * The records lint keeps beside its rules: the plugin map every list of rules reads
- * (`tools/oxlint/plugins.ts`), `.oxlintrc.json`, the fixer declarations, the ledger of core rules
- * left off and the not-slop ledger. A drifted entry in any of them configures, exempts or answers
- * nothing, and lint stays green, so each case names what drifted.
+ * The records lint keeps beside its rules: the plugin map (`tools/oxlint/plugins.ts`),
+ * `.oxlintrc.json`, the fixer declarations, the core rules left off and the not-slop ledger. A
+ * drifted entry configures, exempts or answers nothing while lint stays green, so each case names
+ * what drifted.
  */
 import { describe, expect, it } from "bun:test";
 import config from "../.oxlintrc.json" with { type: "json" };
@@ -34,7 +34,6 @@ import { present } from "./helpers/matchers.ts";
 
 /** How every rule and scan kind is named, and what its prefix makes it (HABITS 12.13). */
 const RULE_NAME = /^(?:no|prefer|require|max)-[a-z]+(?:-[a-z]+)*$/u;
-/** The documents that list rules by name, prefixed or in a table. */
 const DOCUMENTS = [
   "tools/oxlint/HABITS.md",
   "tools/oxlint/FIXER-DECISIONS.md",
@@ -61,7 +60,6 @@ const KINDS = Object.keys(TREE_FINDING_ARGUMENTS).map((kind) => `${TREE_RULE_PRE
 const KNOWN = new Set([...RULES, ...KINDS]);
 const nameOf = (id: string): string => id.slice(id.indexOf("/") + 1);
 
-/** Every rule's source, by its plugin and name. */
 const SOURCES = [...PLUGINS.keys()].flatMap((plugin) =>
   readdirSync(join(OXLINT, plugin, "rules"))
     .filter((file) => file.endsWith(".ts"))
@@ -196,7 +194,6 @@ const row = (overrides: Partial<Answer>): Answer => ({
   ...overrides,
 });
 
-/** A finding at `line`, spanning `head` from its first character, over `source`. */
 function finding(source: string, line: number, head: string): Diagnostic {
   const lines = source.split("\n");
   const offset =

@@ -62,8 +62,8 @@ describe("the Starter and its worked harness", () => {
     expect(starter.presets).toEqual([...CODING_TOOLS]);
     expect(selectedCodingTools(starter.presets)).toEqual(["read", "bash", "edit", "write"]);
     expect(starter.toolTree).toBeNull();
-    // Its guide keeps the outline the account asks of every guide, and the account prints it whole
-    // as the starter instructions, so a Builder reads what it starts from.
+    // The account prints the guide whole as the starter instructions, so a Builder reads what it starts
+    // from.
     const headings = (guide: string | null) => guide?.split("\n").filter((line) => line.startsWith("#"));
     expect(headings(starter.guide)).toEqual(headings(EXAMPLE.guide));
     expect(HARNESS_ACCOUNT).toContain(`\`\`\`markdown\n${starter.guide?.trimEnd()}\n\`\`\``);
@@ -71,8 +71,8 @@ describe("the Starter and its worked harness", () => {
     const again = join(dir, "again");
     writeStarter(again);
     expect((await openHarness(again)).digest).toBe(starter.digest);
-    // It is the harness it was while a harness held a tool module, which the Starter's only
-    // commented on: the baseline of every campaign on record keeps its name.
+    // It is the harness it was while a harness held a tool module, so the baseline of every campaign on
+    // record keeps its name.
     expect(starter.digest).toBe("26cefa2d376237cb521a8a312989495ed972ebc1fba098bc906a8a13ff14fc7f");
     expect(existsSync(join(dir, "agent", "tools.ts"))).toBe(false);
     // The worked example models the portable boundary: no campaign-specific path above HOST_ONLY.
@@ -121,7 +121,6 @@ describe("the Starter and its worked harness", () => {
             (result.output ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""),
             ...(result.diagnostics ?? []).map(({ message }) => message),
           ].join("\n\n");
-        // The program by its name, from the solver's working directory, on the solver's own file.
         const [shell] = codingTools(wall, ["bash"]);
         if (shell === undefined) throw new Error("the coding tools serve bash");
         const run = async (command: string) => {
@@ -149,7 +148,6 @@ describe("the Starter and its worked harness", () => {
         expect(said(await run("check-rota rota.json limits.json"))).toContain(within);
         // It opens no file it was not named: without the limits it does not run.
         expect(said(await run("check-rota rota.json"))).toEndWith("Command exited with code 2");
-        // What it printed and its exit both reach the solver, as the shell reports any command.
         const over = await run("check-rota over.json public/task.json");
         expect(said(over)).toContain("ann: 14 of 12 hours, over by 2\nbo: 6 of 8 hours, ok");
         expect(over.isError).toBe(true);

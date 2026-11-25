@@ -1,6 +1,6 @@
-// A campaign's setting is the campaign's: who solves, what a solve is held to and how many tasks are
-// drawn. It is recorded once in the log, a command that names nothing runs under the record, and
-// a command that names another is refused until the operator says the campaign's setting changes.
+// A campaign's setting (who solves, what a solve is held to, how many tasks are drawn) is recorded once
+// in the log; a command naming nothing runs under the record, and one naming another is refused until
+// the operator changes it.
 import { afterAll, describe, expect, it } from "bun:test";
 import { type LogEvent, read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
@@ -17,8 +17,8 @@ import {
   settingNamed,
 } from "../tools/d2/setting.ts";
 
-/** The setting of a campaign no command has named anything for: the one budget every solver is
- *  held to (`LIMITS`), and 24 tasks to score (`SIZE`). */
+/** The setting of a campaign no command has named anything for: the one budget every solver is held
+ *  to (`LIMITS`), and 24 tasks to score (`SIZE`). */
 const UNNAMED: Recorded = {
   solver: null,
   minutes: 30,
@@ -28,7 +28,6 @@ const UNNAMED: Recorded = {
 };
 /** The same, as an older campaign recorded it: 120 minutes, the model's turns unlimited. */
 const UNLIMITED: Recorded = { ...UNNAMED, minutes: 120, modelTurns: null };
-/** One an operator recorded: another solver, an eight-minute wall, forty model turns, three tasks. */
 const SHORT: Recorded = {
   solver: { model: "claude/claude-sonnet-5-5", effort: "low" },
   minutes: 8,
@@ -44,7 +43,6 @@ describe("what the flags of a setting name", () => {
     // `--solve-turns`.
     expect(longer).toEqual({ ...LIMITS, wallSeconds: 14_400 });
     expect(SETTING_OPTIONS).not.toHaveProperty("solve-turns");
-    // The model's own turns are the one budget's where no command names a number, whoever solves.
     expect(longer.modelTurns).toBe(LIMITS.modelTurns);
     expect(settingNamed({ "solve-model-turns": "40" }).limits).toEqual({ ...LIMITS, modelTurns: 40 });
     expect(settingNamed({ solver: "claude/claude-sonnet-5-5", "solver-effort": "low" }).solver).toEqual({
@@ -97,27 +95,23 @@ describe("a campaign's setting, recorded once", () => {
     keepSetting(log, settingAsked({}, null));
     expect(recordedSetting(read(log))).toEqual(UNNAMED);
     expect(read(log)[0]?.data).not.toHaveProperty("tasks");
-    // A command that runs under the record keeps nothing more.
     keepSetting(log, settingAsked({}, recordedSetting(read(log))));
     expect(read(log)).toHaveLength(1);
-    // A second record on a log, as an older command wrote on `--new-setting`, is the one read
-    // back: the last stands, and no command writes one now.
+    // A second record, as an older command wrote on `--new-setting`, is the one read back.
     keepSetting(log, settingAsked({ "solve-minutes": "8" }, null));
     expect(recordedSetting(read(log))).toEqual({ ...UNNAMED, minutes: 8 });
     expect(read(log).map(({ kind }) => kind)).toEqual(["campaign.setting", "campaign.setting"]);
-    // A record that does not read whole is none: a command then says what it runs under afresh.
     const torn: LogEvent = {
       at: "2026-10-09T00:00:00.000Z",
       kind: "campaign.setting",
       data: { minutes: "8" },
     };
     expect(recordedSetting([torn])).toBeNull();
-    // An older record holds the prompts a solve was given; one that held another count than
-    // every solve is given now ran under another setting, and is refused rather than read as this one.
+    // An older record holding another count of prompts than every solve is given now ran under another
+    // setting, and is refused rather than read as this one.
     const counted = (turns: number): LogEvent => ({ ...torn, data: { ...UNNAMED, turns } });
     expect(recordedSetting([counted(24)])).toEqual(UNNAMED);
     expect(() => recordedSetting([counted(60)])).toThrow(/60 prompts.*24/u);
-    // Old settings still read, and their named tasks have no say in the draw or the next command.
     for (const tasks of [null, ["t-1", "t-2", "t-3"]]) {
       const old = recordedSetting([{ ...torn, data: { ...UNNAMED, tasks } }]);
       expect(old).toEqual(UNNAMED);
@@ -132,8 +126,6 @@ describe("a campaign's setting, recorded once", () => {
     for (const flag of ["0", "1.5", "two"]) {
       expect(() => settingAsked({ solves: flag }, null)).toThrow(/--solves .*whole number/u);
     }
-    // A record from before the count was a setting reads at the count its comparisons began at, so
-    // a campaign continued under this source keeps it; with no comparison, at the default, two.
     const { solves: _, ...before } = SHORT;
     const setting: LogEvent = { at: "2026-10-28T00:00:00.000Z", kind: "campaign.setting", data: before };
     expect(recordedSetting([setting])?.solves).toBe(2);
@@ -148,9 +140,7 @@ describe("a campaign's setting, recorded once", () => {
   });
 });
 
-// A campaign whose solves were made before a setting was recorded has one all the same: the one
-// its last test-side solves ran under, such as a solver held to 15 of its own turns under a
-// 30-minute wall, with no record in its log.
+// A campaign whose solves predate any recorded setting has the one its last test-side solves ran under.
 describe("the first record of a campaign that already holds solves", () => {
   const ran = {
     model: "claude/claude-sonnet-5-5",
@@ -172,19 +162,16 @@ describe("the first record of a campaign that already holds solves", () => {
     ]) {
       expect(mismatch).toContain(fact);
     }
-    // Another solver under the same limits is another setting as much.
     const named = settingAsked(same, null);
     expect(firstRecord(named, { ...named.named, solver }, ran)).toBeUndefined();
     expect(
       firstRecord(named, { ...named.named, solver: { model: "p/other", effort: "high" } }, ran),
     ).toContain("another");
-    // A wall with no model turns on record is named without the flag.
     const { modelTurns: _, ...unturned } = LIMITS;
     const unlimited = { ...ran, limits: { ...unturned, wallSeconds: 480 } };
     const prior = firstRecord(forgot, forgot.named, unlimited);
     expect(prior).toContain("--solve-minutes 8");
     expect(prior).not.toContain("--solve-model-turns");
-    // The model's turns alone make another setting.
     const turned = settingAsked({ "solve-minutes": "30", "solve-model-turns": "20" }, null);
     expect(firstRecord(turned, turned.named, ran)).toContain("another");
   });

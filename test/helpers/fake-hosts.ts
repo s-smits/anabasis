@@ -17,8 +17,8 @@ import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 const COMMIT = "a".repeat(40);
 const REPO = join(import.meta.dir, "../..");
 
-// A file `NAME` in `FAKE_NOW`, once written, stands for the variable at each later call: a child of a
-// verb sees no change to the verb's environment, as a count or table that moves while the verb waits.
+// A file `NAME` in `FAKE_NOW`, once written, stands for the variable at later calls, since a verb's
+// child sees no change to the verb's environment.
 const RECORD = `import { appendFileSync, existsSync, readFileSync } from "node:fs";
 const args = process.argv.slice(2);
 const fake = (name) => existsSync(process.env.FAKE_NOW + "/" + name) ? readFileSync(process.env.FAKE_NOW + "/" + name, "utf8") : process.env[name];
@@ -129,8 +129,8 @@ export function fakeHosts() {
     FAKE_COMMIT: COMMIT,
     FAKE_PREPARED: join(root, "prepared"),
     FAKE_NOW: join(root, "now"),
-    // A child's own temporary root, as the suite gives each test file. Without it a child resolved
-    // the machine's, and a sweep under test released the real seat roots there.
+    // A child's own temporary root, as the suite gives each test file, so a sweep under test cannot
+    // release the machine's real seat roots.
     ANA_TEST_TMPDIR: root,
   };
   let nextDriver = 0;

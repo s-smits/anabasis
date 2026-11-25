@@ -32,7 +32,6 @@ function replayed(path: string): string {
   ].join(" · ");
 }
 
-/** `bun run runs replay`. */
 export async function replay(args: readonly string[]): Promise<void> {
   const { asked, names } = askedIn(args);
   const asks = asked.holds.length + asked.has.length > 0;

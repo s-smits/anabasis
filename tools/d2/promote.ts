@@ -1,8 +1,8 @@
 /**
- * Promote a harness the campaign keeps to be its reference harness: the operator's word, with a
- * record.
+ * Promote a harness the campaign keeps to be its reference: the operator's word, with a record.
+ * Without a step on record it needs `--despite "<why>"`.
  *
- *   bun tools/d2/promote.ts --name buffer --harness latest [--yes]
+ *   bun tools/d2/promote.ts --name buffer --harness latest [--yes] [--despite "<why>"]
  */
 import { unpromoted } from "#src/campaign/decide.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
@@ -22,7 +22,6 @@ const OPTIONS = {
   despite: { type: "string" },
 } as const;
 
-/** `bun tools/d2/promote.ts`. It returns the command's exit code. */
 export async function promoteCommand(args: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { log, harness } = harnessNamed(values);
@@ -48,7 +47,7 @@ export async function promoteCommand(args: readonly string[]): Promise<number> {
   for (const { comparison, against, reading } of rests) {
     console.log(`  ${comparison}: against ${said(against)}, read ${reading}`);
   }
-  // The level is the opening's where it names one, and the default otherwise.
+  // The opening's level where it names one, the default otherwise.
   const terms = openingOf(events)?.terms;
   const plan = planOf(events, {
     unprepared: false,

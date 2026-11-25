@@ -35,14 +35,10 @@ export const noAliasRestatingReturnRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Module-local alias declarations in this file, by name. */
     const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
-    /** How many times each name is written as a type reference, anywhere in the file. */
     const mentions = new Map<string, number>();
-    /** The function each name annotates as a return type, when it does so exactly once. */
     const returnedBy = new Map<string, string>();
 
-    /** The function whose return annotation this reference is, by name, or null. */
     function owningReturn(node: ESTree.TSTypeReference): string | null {
       const annotation = node.parent;
       if (annotation.type !== "TSTypeAnnotation") return null;

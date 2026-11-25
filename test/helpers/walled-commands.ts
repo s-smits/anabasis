@@ -1,6 +1,6 @@
 /**
  * Runs each command as a seat's commands run (`runWalled`, in a claimed root) and prints what each
- * said, as JSON. A test starts this as a child to set the home the wall reads as a process starts.
+ * said, as JSON. A test starts it as a child to set the home the wall reads as a process starts.
  *
  *   bun test/helpers/walled-commands.ts <repository root> <command>...
  */
@@ -17,7 +17,6 @@ makeSeatDirs(dirs);
 const base = solveIsolationPolicy({ repoRoot });
 if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
 const wall = { base, dirs, toolTree: null, limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 } };
-/** What `command` printed, once it has ended. */
 async function said(command: string): Promise<string> {
   let output = "";
   await runWalled(wall, command, {

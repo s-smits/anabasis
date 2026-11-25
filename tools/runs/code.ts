@@ -1,10 +1,7 @@
 /**
- * Remote and local checkout preparation for fresh campaigns, transfers, and continuations. Remote
- * launch verbs execute from a detached controller worktree pinned to the requested published commit
- * rather than whatever revision the host's main checkout holds, leaving live runs and the configured
- * tree undisturbed. Cold controllers fetch, verify remote publication, and run a frozen dependency
- * install; launch preparation re-verifies the exact commit, while routine read requests reuse a
- * cached controller after confirming its working tree is clean.
+ * Remote and local checkout preparation for fresh campaigns, transfers and continuations. Remote
+ * verbs run from a detached controller worktree pinned to the requested published commit, not
+ * whatever the host's main checkout holds.
  */
 import { existsSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
@@ -15,25 +12,23 @@ import { runTextOrThrow, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, configuredRuntime } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 
-/** Preparation mode: reuse an existing cached controller or force a fresh verification and install. */
 type Mode = "cached" | "install";
 
-/** Subdirectory under the shared Git directory holding one controller worktree per commit. `PRUNE`
- *  retains the three most recent controllers; `runs retire` leaves this directory to `PRUNE`. */
+/** One controller worktree per commit under the shared Git directory; `PRUNE` keeps the newest
+ *  three, and `runs retire` leaves this directory to it. */
 const CONTROLLERS = "ana-code";
-/** Timeout for remote preparation, accommodating cold frozen installs on Linux hosts. */
+/** Timeout for remote preparation, long enough for cold frozen installs on Linux hosts. */
 const PREPARE_MS = 300_000;
 /** How long a verified read controller stays cached in-process before re-checking clean state. */
 const CONTROLLER_TTL_MS = 60_000;
 const warned = new Set<string>();
-/** Deduplicates concurrent and back-to-back read controller checks per `(host, commit)` in one process. */
+/** Deduplicates read controller checks per `(host, commit)` in one process. */
 const preparing = new Map<string, { until: number; promise: Promise<Host | null> }>();
 
-/** Shell helper deciding whether lock directory `$1` is stale (matching `holder.ts`): returns true
- *  when the recorded PID is no longer alive, or when no PID was written (killed mid-creation) and
- *  the directory is older than `PREPARE_MS`. PID reuse is tolerated conservatively. Taking over a
- *  stale lock prevents crashed preparations from permanently blocking pruning; active holders are
- *  waited on because concurrent `git fetch` calls race on refs and cold installs can exceed `PREPARE_MS`. */
+/** Whether lock directory `$1` is stale (as `holder.ts` reads one): its recorded PID is dead, or
+ *  none was written and it is older than `PREPARE_MS`. A stale lock is taken over so a crashed
+ *  preparation never blocks pruning; live holders are waited on, since concurrent `git fetch` calls
+ *  race on refs. */
 const STALE = `stale() {
   holder="$(cat "$1/pid" 2>/dev/null || true)"
   case "$holder" in ''|*[!0-9]*) ;; *) ! kill -0 "$holder" 2>/dev/null; return;; esac
@@ -41,8 +36,8 @@ const STALE = `stale() {
   test "$(($(date +%s) - stamp))" -gt ${String(PREPARE_MS / 1000)}
 }`;
 
-/** Prunes old, idle controller worktrees beyond the newest three. Preserves all controllers if
- *  process inspection fails. Uses `running` rather than `commands` because `zsh` reserves `commands`. */
+/** Prunes idle controller worktrees beyond the newest three, keeping all if process inspection
+ *  fails. The variable is `running` because `zsh` reserves `commands`. */
 const PRUNE = `
 if running="$(ps -axww -o args=)"; then
   if command -v lsof >/dev/null 2>&1; then
@@ -65,11 +60,10 @@ $cwds" in *"$candidate"*) continue;; esac
   fi
 fi`;
 
-/** Returns the controller directory inside the shared Git directory of `repo`. */
 export const controllersOf = (repo: string) =>
   join(gitText(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"), CONTROLLERS);
 
-/** Resolves the nearest published ancestor of `HEAD` so remote reads work from unpublished branches. */
+/** The nearest published ancestor of `HEAD`, so remote reads work from unpublished branches. */
 function readCommit(): string {
   const repo = import.meta.dir;
   const head = gitText(repo, "rev-parse", "HEAD");
@@ -85,8 +79,8 @@ function readCommit(): string {
   return commit;
 }
 
-/** Fetches `origin`, resolves `revision` to a commit SHA, and verifies that it is reachable from a
- *  remote branch or remote ref (such as a pushed run tag after branch rewrites). */
+/** Fetches `origin`, resolves `revision`, and checks it is reachable from a remote branch or ref
+ *  (such as a pushed run tag after branch rewrites). */
 export function publishedAt(tree: string, revision: string): string {
   gitText(tree, "fetch", "-q", "origin");
   const commit = gitText(tree, "rev-parse", "--verify", `${revision}^{commit}`);
@@ -111,12 +105,11 @@ export function installAt(tree: string, commit: string): void {
   runTextSyncOrThrow(["nice", "-n", "10", capturedExecPath, "install", "--frozen-lockfile"], { cwd: tree });
 }
 
-/** Returns the sibling worktree path where `treeAt` checks out `commit`. */
 export const atCommit = (repo: string, commit: string) =>
   join(dirname(mainTree(repo)), `anabasis-at-${commit.slice(0, 9)}`);
 
-/** Ensures a detached worktree at `commit` with installed dependencies exists for readers or seeds
- *  requiring historical code; returns null if `commit` is absent from the repository. */
+/** A detached worktree at `commit` with installed dependencies, for readers or seeds that need
+ *  historical code; null where the repository lacks `commit`. */
 export function treeAt(repo: string, commit: string): string | null {
   if (gitMaybe(repo, "cat-file", "-e", `${commit}^{commit}`) === null) return null;
   const tree = atCommit(repo, commit);
@@ -125,8 +118,8 @@ export function treeAt(repo: string, commit: string): string | null {
   return tree;
 }
 
-/** Generates the remote shell script shared by one-shot launch preparation and cached read requests.
- *  Successful frozen installs are cached by commit outside the checkout and re-verified on launch. */
+/** The remote shell script shared by launch preparation and cached read requests. Frozen installs
+ *  are cached by commit outside the checkout and re-verified on launch. */
 function preparation(host: Host, commit: string, mode: Mode): string {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("host preparation needs a whole commit id");
   return `set -eu
@@ -166,7 +159,8 @@ test "$(git rev-parse HEAD)" = ${quoted(commit)}
 test -z "$(git status --porcelain)" || { echo 'control tree has uncommitted changes' >&2; exit 1; }`;
 }
 
-/** Prepares a remote controller directly over SSH without relying on an older remote CLI to update itself. */
+/** Prepares a remote controller directly over SSH, without relying on an older remote CLI to update
+ *  itself. */
 export async function preparedHost(host: Host, commit: string, mode: Mode = "install"): Promise<Host> {
   const script = `${preparation(host, commit, mode)}\nprintf '%s\\n' "$tree"`;
   const tree = (await runTextOrThrow(sshScript(host, script), { timeout: PREPARE_MS })).trim();

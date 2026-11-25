@@ -1,8 +1,7 @@
 /**
- * Host CPU and load-average sampling and streaming watcher primitives (`watchersOf`,
- * `keepFollowing`, `firstReadings`, `minuteLoads`). Powers both `bun run runs loadwatch` and
- * `ANA_CHECK_HOST=auto` host selection so interactive monitoring and automated task placement read
- * identical metrics.
+ * Host CPU and load sampling and the streaming watcher (`watchersOf`, `keepFollowing`,
+ * `firstReadings`, `minuteLoads`), read by both `bun run runs loadwatch` and the check runner's
+ * `auto`, so monitoring and placement read the same numbers.
  */
 import { capturedSpawn } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
@@ -21,7 +20,6 @@ interface Sample {
 export type State<S = Sample> = S | "connecting" | "unreachable";
 export interface Watched<S = Sample> {
   readonly label: string;
-  /** The host sampled, or undefined for this machine. */
   readonly host: Host | undefined;
   readonly argv: readonly string[];
   /** One reading from a block of the loop's output and the reading before it, or null for a block
@@ -69,8 +67,8 @@ else
 fi
 `;
 
-/** Null after `ms`, on a timer that does not hold the process open once the race it is in is over:
- *  a `Bun.sleep` there kept a pick that had its answers alive for the whole silence. */
+/** Null after `ms`, on a timer that does not hold the process open once its race is over, as a
+ *  `Bun.sleep` would. */
 function lapse(ms: number): Promise<null> {
   return new Promise((resolve) => {
     setTimeout(() => {
@@ -95,7 +93,6 @@ export function sampleOf(block: string): Sample | null {
   };
 }
 
-/** The sampling loop, a sample every `seconds`. */
 export const watchedScript = (seconds: number): string =>
   LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5))).replaceAll(
     "@W@",
@@ -119,7 +116,7 @@ export function watchersOf<S>(
   }));
 }
 
-/** Follow each connection for good, opening one that closes or falls silent again after a pause. */
+/** Follows each connection for good, opening one that closes or falls silent again after a pause. */
 export function keepFollowing<S>(watched: readonly Watched<S>[], intervalMs: number): void {
   for (const each of watched) {
     (async () => {
@@ -131,8 +128,8 @@ export function keepFollowing<S>(watched: readonly Watched<S>[], intervalMs: num
   }
 }
 
-/** Read one connection's blocks, each ended by a `---` line, until it closes or falls silent, or
- *  until a reading is `ready`; each read block in turn is the watched state. */
+/** Reads one connection's blocks, each ended by `---`, until it closes, falls silent, or a reading
+ *  is `ready`; each block in turn is the watched state. */
 async function follow<S>(
   watched: Watched<S>,
   intervalMs: number,

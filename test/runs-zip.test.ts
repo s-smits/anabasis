@@ -1,6 +1,6 @@
-// The runs zip holds what its level names of a run's folder, a link inside the folder as the link,
-// and never an installed package, a link out of the folder or a file named like a secret; it opens
-// with a README, the guide and a MANIFEST, and refuses to go over its size.
+// The runs zip holds what its level names of a run's folder, an inner link as the link, and never an
+// installed package, an outward link or a file named like a secret; it opens with a README, the guide
+// and a MANIFEST, and refuses to go over its size.
 import { describe, expect, it } from "bun:test";
 import {
   mkdirSync,
@@ -48,7 +48,6 @@ describe("the runs zip", () => {
         mkdirSync(dirname(join(folder, path)), { recursive: true });
         writeFileSync(join(folder, path), content);
       };
-      // The log of a live run: its last line is the append in flight.
       put("log.jsonl", `${LOG.map((event) => JSON.stringify(event)).join("\n")}\n{"at":`);
       put("launch-b-1.json", JSON.stringify(RECEIPT));
       put("checks/brief.json", "{}");

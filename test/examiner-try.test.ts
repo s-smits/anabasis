@@ -16,7 +16,6 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { instance, seat, sweep, toolOf } from "./helpers/examiner-seat.ts";
 
-// An answer in the fixture's format.
 const ANSWER = { answer: "49", unit: "N" };
 
 afterAll(sweep);
@@ -43,13 +42,11 @@ describe("a value given from a file in the Examiner's home", () => {
   writeFileSync(join(outside, "task.json"), JSON.stringify(large));
   symlinkSync(join(outside, "task.json"), join(home, "linked.json"));
 
-  /** The Examiner's `try_answer` in a session with home `at`. */
   const trying = (at: string | null = home) => {
     const s = seat("write", []);
     const request = { ...s.request, verify: async () => ({ kind: "pass" as const }) };
     return toolOf(writing(request, undefined, { home: at ?? undefined }), "try_answer");
   };
-  /** The arguments that tool runs with, as given `args`. */
   const prepared = (args: JsonObject, at: string | null = home) => trying(at).prepareArguments?.(args);
 
   it("reads a whole list from a file before the schema is checked, and refuses one of the wrong shape without echoing it", () => {
@@ -86,7 +83,6 @@ describe("a value given from a file in the Examiner's home", () => {
     writeFileSync(join(home, "broken.json"), "{ not json");
     mkdirSync(join(home, "folder.json"));
     writeFileSync(join(home, "large.json"), `"${"x".repeat(4_000_000)}"`);
-    // A dataset of 2 MB, as drafts name, is read.
     writeFileSync(join(home, "dataset.json"), `"${"x".repeat(2_000_000)}"`);
     expect(() => prepared({ ...large, answer: { from_file: "dataset.json" } })).not.toThrow();
     for (const [path, refusal] of [

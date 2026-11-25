@@ -1,12 +1,6 @@
 /**
- * The exam of a campaign that opened from a prompt, as files: the draft its log holds, staged as a
- * pack laid out the way a stored one is, so that every command reads it as it reads a v1 bundle.
- *
- * When the drafting Examiner installed tools under `.toolchain/` in its home, `stageExam` freezes
- * that tree into the staged bundle first (preserving symlinks). Any remaining declared host
- * executables are recorded in `.toolchain/host-tools.json` so the offline cell dispatches directly
- * to resolved host executables without shell wrappers while keeping drafted checks `authored` under
- * Rule 10 until admitted (`tools/d1b/draft.ts`).
+ * The exam of a campaign opened from a prompt, as files: the draft its log holds, staged as a pack
+ * laid out as a stored one is, so every command reads it as it reads a v1 bundle.
  */
 import { refuseNamingHome } from "#src/builder/kept.ts";
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
@@ -31,27 +25,24 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
 
-/** A draft as a pack on disk. */
 interface Staged {
-  /** The pack, laid out as a stored bundle is. */
   readonly bundle: string;
-  /** Its check program, staged without the tasks and the control answers, as a verifier opens it. */
+  /** Its check program without the tasks and control answers, as a verifier opens it. */
   readonly checks: string;
 }
 
 /** How many characters of the draft's digest name its folder. */
 const NAMED = 16;
 
-/** Where `stageExam` stages `draft` under a campaign's folder, whether or not it has. */
 function examStaged(dir: string, draft: Draft): Staged {
   const root = join(dir, "exams", hashJsonValue(draft).slice(0, NAMED));
   return { bundle: join(root, "bundle"), checks: join(root, "checks") };
 }
 
 /**
- * The exam a campaign's log drafted, where the campaign staged it, for a reader that may write
- * nothing under the campaign's folder (`tools/wri/wri.ts grade`): null where the log drafted no
- * exam, as an old campaign over a stored pack did, and refused where the draft was never staged.
+ * For a reader that may write nothing under the campaign's folder (`tools/wri/wri.ts grade`): null
+ * where the log drafted no exam, as an old campaign over a stored pack did, and refused where the
+ * draft was never staged.
  */
 export function stagedExamOf(log: string): Staged | null {
   const draft = draftOf(read(log, TRACE_KINDS));
@@ -63,12 +54,12 @@ export function stagedExamOf(log: string): Staged | null {
   return staged;
 }
 
-/** The id of an example task, by its place in the draft. */
 export const exampleId = (index: number): string => `ex-${String(index + 1).padStart(3, "0")}`;
 
-/** Freeze any Examiner-installed `.toolchain/` from `sourceHome` and write `.toolchain/host-tools.json`
- *  with `origin: "draft"` plus any remaining declared host executables so `resolveVerifierTool`
- *  dispatches directly while keeping drafted checks `author` under Rule 10. */
+/** Freezes any Examiner-installed `.toolchain/` from `sourceHome` (preserving symlinks) and writes
+ *  `.toolchain/host-tools.json` with `origin: "draft"` and the remaining declared host executables,
+ *  so `resolveVerifierTool` dispatches to them directly while drafted checks stay `author` under
+ *  rule 10 until admitted. */
 function stageTools(bundle: string, draft: Draft, sourceHome?: string): void {
   const toolchain = join(bundle, TOOL_TREE_DIR);
   if (sourceHome !== undefined) {
@@ -109,12 +100,6 @@ function stageTools(bundle: string, draft: Draft, sourceHome?: string): void {
   writeFileSync(hostFile, `${capturedJsonStringify({ origin: "draft", tools: hostOnly }, null, 2)}\n`);
 }
 
-/**
- * Stage a draft under a campaign's folder, and return where. When `sourceHome` holds a
- * `.toolchain/` directory populated by the drafting Examiner, it is frozen into the staged exam's
- * `.toolchain/` first (preserving symlinks); any remaining declared program is recorded in
- * `.toolchain/host-tools.json` so `resolveVerifierTool` resolves it from the host toolchain path.
- */
 export function stageExam(dir: string, draft: Draft, sourceHome?: string): Staged {
   const { bundle, checks } = examStaged(dir, draft);
   if (existsSync(checks)) {
@@ -187,13 +172,10 @@ export function stageExam(dir: string, draft: Draft, sourceHome?: string): Stage
 }
 
 /**
- * What the host reads of a draft whose shape holds, one sentence a fault: the acceptance reading
- * every checker is held to, less the faults that are the operator's to admit, with the checker
- * read and the whole reading, which a draft that stands keeps as the campaign's (`draft.ts`). A
- * check program that does not load or a wall that is not there stops a verifier, and here that is
- * told as a fault too: the draft's author is in the session and can mend the first. The session
- * reads the draft's shape before it calls this (`draftFaults`), and the reading's notes are left
- * out, since on the reply that ends the session they would carry nothing to a model.
+ * The acceptance reading every checker is held to, less the faults the operator admits, with the
+ * checker and the whole reading a standing draft keeps (`draft.ts`). A check program that does not
+ * load or a missing wall is told as a fault too, since the draft's author is in the session and can
+ * mend the first. The session reads the draft's shape first (`draftFaults`).
  */
 export async function draftReading(dir: string, draft: Draft, width: number, sourceHome?: string) {
   try {
@@ -211,7 +193,7 @@ export async function draftReading(dir: string, draft: Draft, width: number, sou
       found: toolOnPath(bundle),
       width,
     });
-    // The checker as a campaign opens it (`openCampaign`), so that one frozen here is the one it runs.
+    // The checker as `openCampaign` opens it, so one frozen here is the one it runs.
     const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
     const faults: readonly string[] = reading.faults;
     return {

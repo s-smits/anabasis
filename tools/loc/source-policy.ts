@@ -1,7 +1,6 @@
-// Enforces the push-gating source policies: file-size and function-size ceilings, banned literals
-// and calls that would reintroduce retired systems, dependency and security layer boundaries, and
-// retirement of stale copied-file ceiling exemptions once a file fits within the standard limits.
-// Provenance and history belong to Git rather than policy metadata.
+// Enforces the push-gating source policies: file- and function-size ceilings, banned literals and calls
+// that would reintroduce retired systems, dependency and security layer boundaries, and retirement of
+// stale copied-file ceiling exemptions.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -11,12 +10,9 @@ import { countNonBlank } from "./nonblank-loc.ts";
 import sourcePolicy from "./source-policy.json" with { type: "json" };
 import { scanTokens } from "./token-facts.ts";
 
-// File and function ceilings scaled for `biome format` at `lineWidth: 110`. The earlier 600-line
-// file and 80-line function ceilings assumed manual line breaks; automatic wrapping at 110 columns
-// expands deeply indented functions disproportionately (90th-percentile multipliers of 1.330 per
-// file and 1.425 per function across formatted files), giving 800 and 115 when rounded up.
-// Measurements across 100 to 160 columns showed 96.5% of authored lines already fit within 110
-// columns, so the ceilings were adjusted rather than widening the formatter.
+// Ceilings scaled for `biome format` at `lineWidth: 110`: wrapping expands deeply indented functions
+// disproportionately (90th-percentile multipliers of 1.330 per file and 1.425 per function), which
+// takes the 600-line file and 80-line function ceilings to 800 and 115.
 export const NEW_FILE_CEILING = 800;
 export const NEW_FUNCTION_CEILING = 115;
 export const AGENTS_MD_BYTE_CEILING = 24_000;
@@ -38,12 +34,10 @@ const FORBIDDEN_FROM_ISOLATED = [
 ] as const;
 const SOURCE_EXT = /\.[cm]?[jt]sx?$/u;
 
-/** Authored roots owned by this repository. `vendor` is pinned verbatim and `starters` is copied
- *  into Builder workspaces with external consumers. The simplification census scans these roots plus
- *  `.claude`. */
+/** Authored roots owned by this repository; `vendor` is pinned verbatim. The simplification census
+ *  scans these roots plus `.claude`. */
 export const AUTHORED_ROOTS = ["src", "tools", "packages/ui/src"] as const;
 
-/** Per-file line ceilings for legacy or copied files exempt from the standard authored limits. */
 const copiedFileLimits: Readonly<Record<string, number>> = sourcePolicy.copiedFileLimits;
 const refusedLiterals: ReadonlySet<string> = new Set(sourcePolicy.refusedLiterals);
 const refusedCalls: ReadonlySet<string> = new Set(sourcePolicy.refusedCalls);
@@ -75,13 +69,11 @@ const boundaryOf = (file: string, imported: string): string | null => {
   return null;
 };
 
-/** Whether `path` is a production source file (`AGENTS.md` §12). */
 export const production = (path: string): boolean =>
   SOURCE_EXT.test(path) &&
   PRODUCTION_ROOTS.some((root) => path.startsWith(`${root}/`)) &&
   helperOf(path) === null;
 
-/** Each import of `files` breaching production-to-helper or security layer boundaries, by `graph`. */
 export function breaches(files: readonly string[], graph: (file: string) => readonly string[]) {
   return files.filter(production).flatMap((file) =>
     graph(file).flatMap((imported) => {
@@ -100,21 +92,19 @@ function walkFiles(root: string): string[] {
   }
   const files: string[] = [];
   for (const name of entries.toSorted()) {
-    // Skip installed dependencies, build output, and nested dot-directories (including `.git` and
-    // temporary test scratch directories, which would otherwise distort counts and race with test
-    // cleanup). Top-level roots such as `.claude` are passed directly and remain included.
+    // Nested dot-directories include `.git` and test scratch directories, which would distort counts
+    // and race with test cleanup; top-level roots such as `.claude/skills` are passed directly.
     if (name === "node_modules" || name === "dist" || name.startsWith(".")) continue;
     const path = join(root, name);
-    // Skip nested Git checkouts (for example agent worktrees under `.claude/worktrees/`) so
-    // duplicated repository files are not scanned twice.
+    // Nested Git checkouts (agent worktrees under `.claude/worktrees/`) would scan the repository
+    // twice.
     if (!statSync(path).isDirectory()) files.push(path);
     else if (!existsSync(join(path, ".git"))) files.push(...walkFiles(path));
   }
   return files;
 }
 
-/** Reads all files matching `suffixes` under `roots` into a path-to-content map. Shared with
- *  `tools/oxlint/tree-findings.ts` so both scans inspect the same file corpus. */
+/** Shared with `tools/oxlint/tree-findings.ts` so both scans inspect the same file corpus. */
 export function corpus(roots: readonly string[], suffixes: readonly string[]): Map<string, string> {
   const files = new Map<string, string>();
   for (const root of roots) {
@@ -183,10 +173,9 @@ export function sourceTextFindings(path: string, text: string): SourcePolicyFind
 }
 
 /**
- * Reports entries in `copiedFileLimits` that no longer have any effect, either because the named
- * file was deleted or because it now satisfies both standard authored ceilings. Because a copied
- * ceiling also disables the function-size check for that file, stale exemptions are refused rather
- * than retained.
+ * Entries in `copiedFileLimits` that no longer have any effect: the file was deleted or now meets
+ * both standard ceilings. A copied ceiling also disables the function-size check, so a stale one is
+ * refused.
  */
 function staleCopyLimits(read: (path: string) => string | null): SourcePolicyFinding[] {
   const findings: SourcePolicyFinding[] = [];

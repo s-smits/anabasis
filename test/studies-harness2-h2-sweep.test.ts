@@ -1,10 +1,9 @@
-// One sweep of the TypeScript Harness² port (`studies/harness2/jobbench.ts`) end to end, with a
-// stand-in `claude` first on its PATH and no credential in its environment, so no model is called.
-// The stand-in writes deliverables and stream-json `result` events with `total_cost_usd` for each
-// rollout, and edits `context/harness/` and replies as an improver session would, logging every
-// call. Four tasks in three professions: alpha's two in order, so the second reads the first's
-// library entry; beta's one, which never sees alpha's; and gamma's, whose deliverables carry a
-// grader's verdict, so no session may see its evidence.
+// One sweep of the Harness² port (`studies/harness2/jobbench.ts`) end to end with a stand-in `claude`
+// and no credential, so no model is called; the stand-in writes deliverables and `result` events with
+// `total_cost_usd`, and edits `context/harness/` as an improver would. Four tasks in three professions:
+// alpha's two in order, so the second reads the first's library entry; beta's one, which never sees
+// alpha's; and gamma's, whose deliverables carry a grader's verdict, so no session may see its
+// evidence.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   chmodSync,
@@ -32,7 +31,6 @@ interface RunOut {
 }
 
 const FIRST = "alpha/task1";
-/** The task every arm that is only a tree is scored on. */
 const BETA = "beta/task1";
 const TASKS = [FIRST, "alpha/task2", BETA, "gamma/task1"];
 const SWEEP = new URL("../studies/harness2/jobbench.ts", import.meta.url).pathname;
@@ -43,7 +41,6 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-study-harness2-sweep-"
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 const [jb, out, calls] = [join(root, "jb"), join(root, "out"), join(root, "calls.jsonl")];
 
-/** The stand-in `claude`: a rollout when asked for stream-json, an improver session otherwise. */
 const STAND_IN = `import { appendFileSync, existsSync, fstatSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 const LOG = ${JSON.stringify(calls)};
@@ -272,9 +269,9 @@ describe("one Harness² k=1 sweep on a stand-in claude", () => {
 });
 
 /**
- * The stand-in judge: JobBench's `judge.py` shape. A rubric passes when the deliverables hold its
- * needle; with no deliverable every rubric fails unasked, as judge.py's does; a report that says
- * FLAKY leaves one rubric unanswered; each answered rubric bills the shim log a cent.
+ * The stand-in judge in JobBench's `judge.py` shape: a rubric passes when the deliverables hold its
+ * needle, every rubric fails with no deliverable, a FLAKY report leaves one unanswered, and each
+ * answer bills the shim log a cent.
  */
 const JUDGE_STAND_IN = `import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -327,7 +324,6 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     `#!/bin/sh\nexec '${capturedExecPath}' '${join(root, "judge.mjs")}' "$@"\n`,
   );
   chmodSync(join(jb, ".venv", "bin", "python"), 0o755);
-  // A second fair task, solved only by the arm whose deliverable the judge's reader cuts.
   const LONG = "beta/task2";
   mkdirSync(join(jb, "dataset", "main", LONG, "task_folder"), { recursive: true });
   writeFileSync(join(jb, "dataset", "main", LONG, "task_folder", "TASK_INSTRUCTIONS.txt"), "Report.\n");
@@ -369,8 +365,6 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     );
   const tableCmd = (...args: string[]) =>
     spawnOut([capturedExecPath, SCORE, "table", "--out", out, ...args], env);
-  // Two exported arms already in the store: one whose tool tree holds a program for a processor no
-  // host of the suite has (32-bit Arm), one holding the opening bytes of the Bun this test runs on.
   const armElf = Buffer.alloc(20);
   armElf.writeUInt32BE(0x7f_45_4c_46, 0);
   armElf.writeUInt16LE(40, 18);
@@ -473,8 +467,6 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
 
   it("gives the rollouts' interpreter a pip of its own once, where it has none, and asks under the word alone", () => {
     const asked = readFileSync(join(root, "pip.txt"), "utf8").trim().split("\n");
-    // The refusal and the plans asked nothing; the first scoring found none and added one, and
-    // every later scoring found it there.
     expect(asked.slice(0, 3)).toEqual(["pip", "ensurepip", "pip"]);
     expect(asked.filter((what) => what === "ensurepip")).toHaveLength(1);
     expect(runs.base?.stdout).toContain("installer: pip added for");
@@ -502,7 +494,6 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
         capturedExecPath.slice(0, capturedExecPath.lastIndexOf("/")),
       ]);
       expect([field(row, "budget"), field(row, "env")]).toEqual(["5", "5"]);
-      // An install that names no interpreter takes the one `python3` starts.
       expect(field(row, "venv")).toBe(join(jb, ".venv"));
       const files = field(row, "files");
       expect(

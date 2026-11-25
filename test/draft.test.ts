@@ -395,7 +395,8 @@ describe.concurrent("staging and offline reading", () => {
       ...book,
       accept: SOUND.accept.map((c) => ({ ...c, files: [{ path: "book.xlsx", text: "<v>6</v>" }] })),
     };
-    // Hidden values: unread fails, check-deciding passes silently, objective-only (including key throw) emits factual note.
+    // Hidden values: unread fails, check-deciding passes silently, objective-only (a key throw
+    // included) is noted.
     const unread = { ...SOUND, tasks: SOUND.tasks.map((t, seed) => ({ ...t, hidden: { seed } })) };
     const factors = [5, 6, 7] as const;
     const hiddenDecided: Draft = {
@@ -509,8 +510,8 @@ describe.concurrent("staging and offline reading", () => {
       expect(engine.sha256).toBe(sha256OfFile(realpathSync(engine.path)));
     }
 
-    // Even a non-shell host executable (`git`) stays `author` when forwarded via `host-tools.json`,
-    // whereas a binary physically installed inside `.toolchain/bin/` hashes its target and updates cleanly.
+    // Even a non-shell host executable (`git`) stays `author` when forwarded via `host-tools.json`; a
+    // binary installed in `.toolchain/bin/` pins its target's hash.
     const hostGit: Draft = {
       ...SOUND,
       checks: [{ id: "check-product", rule: "R1", assertion: "via host git", tools: ["git"] }],
@@ -550,9 +551,9 @@ describe.concurrent("staging and offline reading", () => {
     expect(before?.sha256).toBeDefined();
     expect(after?.sha256).not.toBe(before?.sha256);
 
-    // Examiner-installed `.toolchain/` executables (and sibling files) freeze into the offline verifier cell
-    // ahead of host PATH, stay `author` under Rule 10 (`origin: "draft"`), refresh on retries, and run
-    // offline after `home` is deleted.
+    // Examiner-installed `.toolchain/` executables freeze into the offline verifier cell ahead of host
+    // PATH, stay `author` under Rule 10 (`origin: "draft"`), refresh on retries, and run after `home`
+    // is deleted.
     const home = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-toolchain-")));
     const customDir = join(root, "custom-toolchain");
     const binDir = join(home, TOOL_TREE_DIR, "bin");
@@ -626,9 +627,8 @@ describe.concurrent("staging and offline reading", () => {
     expect(() => stageExam(join(root, "symlink-tree"), customDraft, badHome)).toThrow("must be a directory");
     rmSync(badHome, { recursive: true, force: true });
 
-    // Static evaluator scanner: strings inside `${...}`, nested templates, division, and method
-    // calls obj.fetch()/obj.require() do not false-positive, while template escapes, bare
-    // Date()/Function(), indirect eval, process destructuring/optional chaining, and import() are caught.
+    // Strings inside `${...}`, nested templates, division and `obj.fetch()` are no finding; template
+    // escapes, bare `Date()` and `Function()`, indirect eval, process destructuring and `import()` are.
     for (const clean of [
       'export const checks = { "check-product": (r) => `${r.artifact.answer || "Date.now()"}`.length > 0 };\n',
       'export const checks = { "check-product": () => `outer ${`inner Math.random()`}`.length > 0 };\n',
@@ -749,10 +749,9 @@ describe.concurrent("campaign draft lifecycle", () => {
     const [replayed] = await Promise.all([
       draftCommand(
         [...opened(replayName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "5"],
-        // Try 1: holeOne -> LLM Pass 1 flags hole1. Try 2: holeOne again -> $0 replay blocks (no LLM call!).
-        // Try 3: holeTwo -> $0 replay confirms hole1 fixed, LLM Pass 2 flags hole2.
-        // Try 4: holeTwo again -> $0 replay blocks even after MAX_DRAFT_AUDITS = 2!
-        // Try 5: SOUND -> $0 replay confirms hole2 fixed -> draft stands.
+        // Five puts: audit 1 flags the first hole, and its repeat is blocked by the free probe replay;
+        // the second hole passes replay and audit 2 flags it; its repeat is blocked by replay past
+        // `MAX_DRAFT_AUDITS`; SOUND stands.
         putting(holeOne, holeOne, holeTwo, holeTwo, SOUND),
         async (_reader, target) => {
           replayCalls.push({

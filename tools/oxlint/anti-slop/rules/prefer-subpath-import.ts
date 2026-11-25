@@ -40,7 +40,6 @@ export const preferSubpathImportRule = defineRule({
     defaultOptions: [{ relativeOnly: [] }],
   },
   createOnce(context) {
-    /** Report a string-literal specifier that climbs into a tree an alias names. */
     function check(source: ESTree.Node): void {
       const option = context.options?.[0];
       const listed = option instanceof Object && !Array.isArray(option) ? option.relativeOnly : undefined;

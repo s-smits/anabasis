@@ -11,18 +11,12 @@ import { AnswerIssues, DetailHead, EndingBadge, harnessLabel, Pending, sideLabel
 import { money, seconds } from "./format.ts";
 import { RulingBadge } from "./solve-rows.tsx";
 
-/*
- * One solve: what it was (its task, its side, its harness), how it ended, and its trace, the last
- * step of the drill-down from a campaign. The Moves pane opens it from a session's practice solves
- * and a comparison's scored tasks, the Tasks pane from a task's solves.
- *
- * What the default tier withholds: a held-out task's trace,
- * the verdict and the ruling. Each place says where it is instead. A ruling also stays hidden on the
- * exam side while its rejection waits for a person's label or its comparison has not reported,
- * which `SolveDetail` says, so that the two absences read apart.
- */
+// One solve: its task, side and harness, how it ended, and its trace, the drill-down's last step from
+// the Moves or Tasks pane. The default tier withholds a held-out task's trace, the verdict and the
+// ruling, and each place says so; a ruling also stays hidden on the exam side while its rejection waits
+// for a label or its comparison has not reported, which `SolveDetail` says, so the two absences read
+// apart.
 
-/** Where the detail returns to, and what its way back is called. */
 interface Back {
   readonly back: RouteChange;
   readonly backLabel: string;
@@ -34,7 +28,6 @@ const BY = {
   label: "a person's label",
 } as const;
 
-/** The verdict, as the tier lets it be shown. */
 function Verdict({ detail }: { detail: SolveDetail }) {
   if (detail.verdict === undefined) {
     return <ExamSide what="the verdict, with the answer and the checks that refused it" />;
@@ -71,7 +64,6 @@ function Verdict({ detail }: { detail: SolveDetail }) {
   );
 }
 
-/** The ruling, as the tier and a label still to come let it be shown. */
 function RulingPart({ detail }: { detail: SolveDetail }) {
   if (detail.ruling === undefined) {
     if (detail.withheld !== null) return <RulingWithheld why={detail.withheld} />;
@@ -89,7 +81,6 @@ function RulingPart({ detail }: { detail: SolveDetail }) {
   );
 }
 
-/** A solve's detail, from its answer. */
 function SolveDetailView({
   detail,
   reading,
@@ -102,11 +93,11 @@ function SolveDetailView({
   navigation: Navigation;
 }) {
   const { solve } = detail;
-  // Titled by its task and side: a recorded solve's id opens with the campaign's name, which can
-  // run to dozens of characters, so it stands in the line below instead.
+  // Titled by its task and side: a recorded solve's id opens with the campaign's name, which can run
+  // long, so it stands in the line below.
   const task = solve.taskId ?? shortHash(solve.task, 8);
-  // The Referee rules a rejection inside a comparison only, so a practice solve has no ruling to
-  // place, on either side, and its rejection does not say the exam side holds one.
+  // The Referee rules a rejection inside a comparison only, so a practice solve's rejection does not
+  // say the exam side holds a ruling.
   const ruled =
     (detail.heldOut && isRejection(solve)) || (detail.ruling !== undefined && detail.ruling !== null);
   const facts = [
@@ -179,8 +170,6 @@ function SolveDetailView({
   );
 }
 
-/** A solve's answer as it stands: the detail it answers, the previous solve's while the next is
- *  read and not yet `late`, and what stands in its place before any or once it is late. */
 export function SolveAnswerView({
   live,
   late,
@@ -203,7 +192,6 @@ export function SolveAnswerView({
   );
 }
 
-/** The solve the route names, read and shown. */
 export function SolveView({
   reading,
   navigation,

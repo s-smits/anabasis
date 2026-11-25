@@ -95,7 +95,6 @@ const readUnder = (answerFormat: JsonObject, checks: Verifier = passAll) =>
     controls: [],
   });
 
-/** Deterministic LCG for reproducible property tests. */
 function prng(seed: number) {
   let state = seed >>> 0;
   const next = () => {
@@ -134,7 +133,6 @@ describe("control tallies, faults, and instruments", () => {
       { id: "span", instrument: "author", missing: [], passed: 2, refused: 1, named: 1, caught: 1 },
     ]);
 
-    // Unknown taskId in control throws explicitly.
     await expect(
       reading({ tasks: [ROOF], controls: [{ taskId: "ghost-1", answer: { mass: 5 }, refusedBy: null }] }),
     ).rejects.toThrow("ghost-1, which the pack holds no task for");
@@ -163,7 +161,8 @@ describe("control tallies, faults, and instruments", () => {
       matching(/span.*refused nothing/u),
     ]);
 
-    // Missing tool + unrun suppression: faulty check emits `missing` + `could not run`, never `refused nothing` / `let nothing pass`.
+    // Missing tool and unrun check: a faulty check is named missing and `could not run`, never `refused
+    // nothing` or `let nothing pass`.
     const crashing: Verifier = async (_task, answer) =>
       asRecord(answer)?.mass === 5
         ? { kind: "faulty", check: "mass", reason: "segfault" }
@@ -598,7 +597,7 @@ describe("seeded property invariants", () => {
     const rng = prng(20_261_123);
     const families = ["alpha", "beta", "gamma"] as const;
 
-    // 1. Check-tally conservation + permutation symmetry across 30 random briefs/tasks/controls.
+    // 1. Check-tally conservation across 30 random briefs, tasks and controls.
     for (let trial = 0; trial < 30; trial += 1) {
       const checkCount = 1 + rng.int(4);
       const truthChecks: Brief["truthChecks"] = Array.from({ length: checkCount }, (_, i) => ({
@@ -674,7 +673,7 @@ describe("seeded property invariants", () => {
         prev = now;
       }
 
-      // Permutation symmetry on first 15 trials.
+      // Permutation symmetry, on the first 15 trials.
       if (trial < 15) {
         const perm = await reading({
           brief: randBrief,
@@ -688,7 +687,7 @@ describe("seeded property invariants", () => {
       }
     }
 
-    // 2. doNothingAnswer termination & minimalism across 30 random acyclic and cyclic schemas.
+    // 2. doNothingAnswer termination across 30 random schemas, some with a self-cycle in `$defs`.
     const genSchema = (depth: number): JsonObject => {
       if (depth <= 0) {
         return rng.pick<JsonObject>([

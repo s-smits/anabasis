@@ -1,10 +1,7 @@
 /**
- * The triggers of the lanes that read how a run was conducted rather than what it measured: the
- * endings a campaign went on from and the operator's words (lane 13), the Builder's conversation
- * across its compactions (lane 23), the exam a campaign drafted from its prompt (lane 2), the
- * launches that ran it (lane 22), and whether its log reads in order (lane 22 too). Lane 5's count
- * of the Referee's refused evidence sits here too, since `read.ts` stands near the size policy's
- * ceiling.
+ * The triggers of how a run was conducted rather than what it measured: endings the campaign went on
+ * from and the operator's words, the Builder's conversation across compactions, the drafted exam,
+ * the launches, whether the log reads in order, and the Referee's refused evidence.
  */
 import { ANSWERED, PAUSE, pendingWords } from "#src/campaign/word.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -14,17 +11,14 @@ import { plural } from "#src/meta/text.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { fired, emitIf, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
-/** Lane 13: endings the campaign went on from, and the operator's words with how many an event
- *  acted on, read as the host reads them (`pendingWords`). It does not count the moves a Builder
- *  made where the table named another: the Builder is not told the table's move, so that count
- *  would read bookkeeping. */
+/** Endings the campaign went on from, and the operator's words with how many an event acted on,
+ *  read as the host reads them (`pendingWords`). */
 function moveTriggers(log: Index): Trigger[] {
   const last = log.events.length - 1;
   const endings = log.events.flatMap(({ kind, data }, index) =>
     kind === "campaign.ended" && index < last ? [`${text(data.ending)} at event ${String(index)}`] : [],
   );
   const words = log.events.filter(({ kind }) => kind === "campaign.word");
-  // A pause names the verb that left it and its point, where its log is new enough to hold them.
   const said = ({ data }: LogEvent): string =>
     data.word === PAUSE && isString(data.why) ? `${PAUSE} (${data.why})` : text(data.word);
   // A pause is answered by its time, not by a move (`paused`), so only the other words are owed one.
@@ -39,7 +33,7 @@ function moveTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 23: each Builder session's compactions beside its turns and its calls of `read_opening`. */
+/** Each Builder session's compactions beside its turns and its `read_opening` calls. */
 function conversationTriggers(log: Index): Trigger[] {
   const per = (kind: LogEvent["kind"]) => countBy(log.of(kind), (data) => text(data.session));
   const [compacted, turns] = [per("build.compacted"), per("build.turn")];
@@ -55,8 +49,7 @@ function conversationTriggers(log: Index): Trigger[] {
   return emitIf(lines.length > 0, "BUILDER COMPACTED", lines.join("; "));
 }
 
-/** Lane 2: the drafts an exam took, how each drafting session ended, and the measurement it
- *  recorded. */
+/** The drafts an exam took, how each drafting session ended, and the measurement it recorded. */
 function draftTriggers(log: Index): Trigger[] {
   const drafted = log.of("exam.drafted");
   if (drafted.length === 0) return [];
@@ -72,10 +65,9 @@ function draftTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 22: the launches beside the log, where there is more than one, more than one commit, a
- *  dirty tree, or a campaign command that left no receipt. It counts the solver's Python by version
- *  and packages, among the receipts that hold one, since a host's pin can move both between two
- *  launches at one commit, on one login and one Bun. */
+/** The launches beside the log, where there is more than one, more than one commit, a dirty tree,
+ *  or a campaign command that left no receipt; with the solver's Python by version and packages,
+ *  since a host's pin can move both between two launches at one commit. */
 function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   if (launches.length === 0) {
     return emitIf(
@@ -98,8 +90,8 @@ function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   );
 }
 
-/** Lane 22: what an append-only log of one writer cannot hold: a clock that runs backwards, a solve
- *  that finished without starting, a comparison started twice under one id. */
+/** What an append-only log of one writer cannot hold: a clock that runs backwards, a solve that
+ *  finished without starting, a comparison started twice under one id. */
 function orderTriggers(log: Index): Trigger[] {
   const backwards = log.events.filter(
     (event, index) => index > 0 && event.at < (log.events[index - 1]?.at ?? ""),
@@ -117,7 +109,6 @@ function orderTriggers(log: Index): Trigger[] {
   return emitIf(said.length > 0, "LOG OUT OF ORDER", said.join("; "));
 }
 
-/** Lane 5: the rulings the host refused for want of their evidence, by the ruling asked for. */
 function refusalTriggers(log: Index): Trigger[] {
   const refused = log.of("referee.refused");
   return emitIf(
@@ -127,7 +118,6 @@ function refusalTriggers(log: Index): Trigger[] {
   );
 }
 
-/** Every trigger of this module, in lane order. */
 export function runTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   return [
     ...refusalTriggers(log),

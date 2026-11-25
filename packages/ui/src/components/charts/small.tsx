@@ -5,12 +5,8 @@ import { carriedText, MEASURES } from "../../views/campaign-data.ts";
 import { money, time } from "../../views/format.ts";
 import { ChartContainer, ChartTooltip } from "../ui/chart.tsx";
 
-/*
- * Two compact charts for the Campaign pane: a stacked bar chart breaking down each comparison's
- * won tasks by the measure that carried them (without connecting lines, since the evaluated task
- * set varies across comparisons), and a cumulative spend chart ordered by log move. Both disable
- * animations and memoise on their input arrays.
- */
+// The Campaign pane's two small charts: each comparison's won tasks by the measure that carried them,
+// and spend by move; both memoised on their input arrays.
 
 interface CarriedRow {
   readonly key: string;
@@ -21,8 +17,8 @@ interface CarriedRow {
 
 const ACCENT = "var(--ana-accent)";
 const BORDER = "var(--ana-border)";
-/** Opacity levels distinguishing validity from objective wins within the single accent colour so
- *  outcome colours retain their dedicated meaning (see `DESIGN.md`). */
+/** Opacities telling validity from objective wins within the one accent colour, so outcome colours
+ *  keep their meaning (`DESIGN.md`). */
 const STRENGTH = { validity: 1, objective: 0.6 } as const satisfies Record<(typeof MEASURES)[number], number>;
 const MARGIN = { top: 12, right: 16, bottom: 4, left: 0 } as const;
 
@@ -45,7 +41,6 @@ function CarriedTooltip({
   );
 }
 
-/** Renders the legend swatches for the win-carrying measures. */
 export function CarriedKey() {
   return (
     <ul className="ana-legend-list">
@@ -63,10 +58,6 @@ export function CarriedKey() {
   );
 }
 
-/** Stacked bar chart of won tasks per reported comparison, split by the measure that carried each
- *  win (`carriedBy`). Showing the measure breakdown instead of per-side validity rates reveals
- *  whether gains came from validity or from the objective once validity saturates. Bars remain
- *  disconnected because the evaluated task set changes between comparisons. */
 export const CarriedChart = memo(function CarriedChart({ bars }: { bars: readonly ComparisonBar[] }) {
   const rows: CarriedRow[] = useMemo(
     () => bars.flatMap((bar) => (bar.carried === null ? [] : [{ key: bar.id, ...bar.carried.won, bar }])),
@@ -118,9 +109,8 @@ function SpendTooltip({
   );
 }
 
-/** Plots cumulative billed cost across moves on an auto-scaled y-axis. Scaling to the full
- *  campaign budget would compress early spend into a flat line along the floor; the budget cap is
- *  shown separately in the card header and hero summary. */
+/** Cumulative billed cost across moves on an auto-scaled axis: scaled to the whole budget, early
+ *  spend would lie flat along the floor; the cap shows in the card's header. */
 export const SpendChart = memo(function SpendChart({ spend }: { spend: readonly SpendPoint[] }) {
   return (
     <ChartContainer>

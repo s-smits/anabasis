@@ -6,12 +6,11 @@ import { importTracker } from "../shared/import-fix.ts";
 import { isOneArgumentCall } from "../shared/statements.ts";
 
 /**
- * Flags hand-rolled caught-error rendering (`cause instanceof Error ? cause.message : String(cause)`
- * and `cause instanceof Error ? cause : new Error(String(cause))`) outside `src/meta/runtime-values.ts`
- * and `packages/ui`, replacing them with `errorMessage(cause)` and `asError(cause)` from
- * `src/meta/runtime-values.ts`. Auto-fixes bare identifier subjects and reports complex subjects.
+ * Flags hand-rolled caught-error rendering (`cause instanceof Error ? cause.message :
+ * String(cause)` and `cause instanceof Error ? cause : new Error(String(cause))`) outside
+ * `src/meta/runtime-values.ts` and `packages/ui`, rewriting a bare identifier subject to
+ * `errorMessage(cause)` or `asError(cause)` and reporting complex ones.
  */
-/** The module that owns what a caught value reads as, and so the one file that spells it out. */
 const OWNER = "src/meta/runtime-values.ts";
 
 export const noHandRolledErrorRenderRule = defineRule({
@@ -40,14 +39,12 @@ export const noHandRolledErrorRenderRule = defineRule({
   createOnce(context) {
     const imports = importTracker("runtime-values.ts", OWNER);
 
-    /** The subject of `X instanceof Error`, as source text, or null when the test is not that. */
     function instanceofSubject(test: ESTree.Expression): string | null {
       if (test.type !== "BinaryExpression" || test.operator !== "instanceof") return null;
       if (test.right.type !== "Identifier" || test.right.name !== "Error") return null;
       return context.sourceCode.getText(test.left);
     }
 
-    /** `String(x)`, or `errorMessage(x)` inside a `new Error(…)`, over the same subject. */
     function rendersSubject(node: ESTree.Expression, subject: string): boolean {
       if (!isOneArgumentCall(node)) return false;
       if (node.callee.type !== "Identifier") return false;
@@ -56,10 +53,9 @@ export const noHandRolledErrorRenderRule = defineRule({
     }
 
     /**
-     * Both shapes are reported the same way: name the owner, rewrite to it, and import it. The
-     * hand-rolled form reads its subject two or three times and the owner once, so only a plain
-     * name moves; `load() instanceof Error ? …` calls `load` again for the message, and a member
-     * may be a getter answering differently each time, which the rewrite would quietly change.
+     * Only a plain name moves: `load() instanceof Error ? …` calls `load` again for the message,
+     * and a member may be a getter answering differently each time, which the rewrite would quietly
+     * change.
      */
     function reportAs(node: ESTree.ConditionalExpression, subject: string, owner: string): void {
       const report = { node, messageId: "handRolled", data: { subject, owner } };
@@ -78,7 +74,6 @@ export const noHandRolledErrorRenderRule = defineRule({
     }
 
     return {
-      // The owner spells both shapes itself, which is the point of it.
       before: () => !isOneOf(context.filename, [OWNER]) && !isUnder(context.filename, "packages/ui"),
 
       Program: (node) => imports.read(node),

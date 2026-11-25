@@ -1,7 +1,7 @@
 /**
- * What a promotion mechanism is, so that one can be tried without a candidate tree: a task's score,
- * a test over the scores, and a guard that may refuse a step. Any of them may be free code in a file
- * (`--mechanism`); most are written as knobs (`--try bill=0.05,when=tied`).
+ * A promotion mechanism, so one can be tried without a candidate tree: a task's score, a test over
+ * the scores, and a guard that may refuse a step. Any may be free code in a file (`--mechanism`);
+ * most are written as knobs (`--try bill=0.05,when=tied`).
  */
 import { flipP, GAP_FLOOR, rawFlipP, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
 import type { Solve, Task } from "./record.ts";
@@ -10,9 +10,9 @@ export interface Mechanism {
   readonly name: string;
   /** What a task scores for the new harness, positive where it is the better, in whole points. */
   score: (task: Task) => number;
-  /** Whether a comparison's scores read a step for the new side; the sign-flip test by default. */
   test?: (scores: readonly number[], level: number, tasks: readonly Task[]) => boolean;
-  /** Whether a step that read may promote; every step by default. Only a candidate's step reads it. */
+  /** Whether a step that read may promote; every step by default. Only a candidate's step reads it.
+   */
   guard?: (tasks: readonly Task[]) => boolean;
 }
 
@@ -42,7 +42,6 @@ export type Knobs = Readonly<
     Record<(typeof OPTIONAL)[number], number | null> & { [Key in Choice]: (typeof CHOICES)[Key][number] }
 >;
 
-/** Production's score and test, as knobs. */
 export const TODAY: Knobs = {
   validity: WEIGHTS.validity,
   objective: WEIGHTS.objective,
@@ -65,7 +64,6 @@ export const TODAY: Knobs = {
   unit: "task",
 };
 
-/** What each form of the bill, of time and of the score's other choices reads, when none is named. */
 export const STANDARD = [
   "bill=0.1",
   "bill=0.05",
@@ -105,7 +103,6 @@ export const STANDARD = [
 const POINTS = 1000;
 const NEAR = 1e-9;
 
-/** How much better `one` is than `other` by the objective, under the knobs' floor and form. */
 function objectiveGain(
   knobs: Knobs,
   direction: Task["direction"],
@@ -124,8 +121,7 @@ function objectiveGain(
   return gain;
 }
 
-/** How much less the new side used, as a log ratio at most one either way; 0 under the floor, and
- *  where either is unknown or nothing. */
+/** A log ratio at most one either way; 0 under the floor, and where either is unknown or nothing. */
 function resourceGain(knobs: Knobs, fresh: number | null, old: number | null): number {
   if (fresh === null || old === null || fresh <= 0 || old <= 0) return 0;
   const ratio = Math.log2(old / fresh);
@@ -134,7 +130,6 @@ function resourceGain(knobs: Knobs, fresh: number | null, old: number | null): n
   return Math.max(-1, Math.min(1, ratio));
 }
 
-/** A task's points by measure under the knobs, unrounded. */
 function partsOf(task: Task, knobs: Knobs) {
   const sums = { validity: 0, objective: 0, bill: 0, turns: 0, seconds: 0 };
   for (const fresh of task.fresh) {
@@ -156,7 +151,6 @@ function partsOf(task: Task, knobs: Knobs) {
   };
 }
 
-/** The score under the knobs. */
 function scoreOf(task: Task, knobs: Knobs): number {
   if (task.retained && knobs.retained === "out") return 0;
   const { answers, resources } = partsOf(task, knobs);
@@ -167,7 +161,6 @@ function scoreOf(task: Task, knobs: Knobs): number {
   return wholePoints(answers + (counts ? resources : 0));
 }
 
-/** Whether the answers alone, without any resource, won more tasks than they lost. */
 function answersLead(tasks: readonly Task[], knobs: Knobs): boolean {
   const signs = tasks.map((task) => Math.sign(wholePoints(partsOf(task, knobs).answers)));
   return signs.reduce<number>((all, one) => all + one, 0) > 0;
@@ -188,8 +181,7 @@ export function ratioOf(tasks: readonly Task[], resource: Resource): number | nu
   return fresh > 0 && old > 0 ? fresh / old : null;
 }
 
-/** Whether every resource with a ceiling stays under it. A comparison with no usable task passes:
- *  it holds nothing that says the new side costs more. */
+/** A comparison with no usable task passes: it holds nothing that says the new side costs more. */
 function withinCeilings(tasks: readonly Task[], knobs: Knobs): boolean {
   const ceilings = [
     ["bill", knobs.mostBill],
@@ -199,7 +191,6 @@ function withinCeilings(tasks: readonly Task[], knobs: Knobs): boolean {
   return ceilings.every(([resource, most]) => most === null || (ratioOf(tasks, resource) ?? 0) <= most);
 }
 
-/** The scores the test reads under `unit`, one a task or one a family. */
 function unitsOf(scores: readonly number[], tasks: readonly Task[], unit: Knobs["unit"]): number[] {
   if (unit === "task") return [...scores];
   const kin = Map.groupBy(scores, (_, at) => tasks[at]?.family ?? `task ${String(at)}`);
@@ -211,7 +202,6 @@ function unitsOf(scores: readonly number[], tasks: readonly Task[], unit: Knobs[
   );
 }
 
-/** A mechanism from knobs. */
 export function knobbed(knobs: Knobs, name: string): Mechanism {
   const pOf = (scores: readonly number[]) => {
     if (knobs.test === "sign") return flipP(scores.map(Math.sign));

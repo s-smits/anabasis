@@ -27,17 +27,14 @@ const FIELDS = 2;
 const WRITES = 3;
 const EXCLUSIVE = 0.9;
 
-/** A field's value in one co-write: set to something, or cleared. */
 type Value = "set" | "clear";
 
-/** The fields of one state written in one place. */
 interface CoWrite {
   state: string;
   fields: Map<string, Value>;
   node: ESTree.Node;
 }
 
-/** One comparison a condition makes: its subject, the value it is held to, and whether equal. */
 interface Comparison {
   subject: string;
   against: string;
@@ -46,17 +43,14 @@ interface Comparison {
   literal: boolean;
 }
 
-/** An object created whole, with the fields it writes as `true` or `false`. */
 interface FlagRecord {
   node: ESTree.Node;
   flags: Map<string, boolean>;
 }
 
-/** The state a call's setter sets, by its name or its method's name. */
 const setterOfCall = (callee: ESTree.Node): string | null =>
   setterState(identifierName(callee) ?? propertyName(callee));
 
-/** Whether a written value clears the field: `false`, `null`, `undefined` or `void 0`. */
 function valueOf(node: ESTree.Node): Value {
   const literal = literalValue(node);
   const cleared =
@@ -67,7 +61,6 @@ function valueOf(node: ESTree.Node): Value {
   return cleared ? "clear" : "set";
 }
 
-/** The comparisons a condition joins with `&&`: `t && t !== "r"` makes one, `t !== "r"`. */
 function comparisonsOf(node: ESTree.Node, text: (node: ESTree.Node) => string): Comparison[] {
   const bare = innermost(node);
   if (bare.type === "LogicalExpression" && bare.operator === "&&") {
@@ -82,7 +75,6 @@ function comparisonsOf(node: ESTree.Node, text: (node: ESTree.Node) => string): 
   return [{ subject: text(subject), against: text(against), equal, literal: against.type === "Literal" }];
 }
 
-/** The first pair of fields whose values cannot both hold, with the subject they compare. */
 function exclusivePair(
   values: ReadonlyMap<string, ESTree.Node>,
   text: (node: ESTree.Node) => string,
@@ -90,8 +82,8 @@ function exclusivePair(
   const tests = [...values].map(([name, value]) => [name, comparisonsOf(value, text)] as const);
   for (const [index, [a, ofA]] of tests.entries()) {
     for (const [b, ofB] of tests.slice(index + 1)) {
-      // Two comparisons of one subject exclude each other: `x === k` and `x !== k`, or `x === a`
-      // and `x === b` for two literals; `x === items.length - 1` may equal `0`.
+      // Two comparisons of one subject exclude each other: `x === k` and `x !== k`, or `x === a` and `x
+      // === b` for two literals.
       const clash = ofA.find((one) =>
         ofB.some(
           (other) =>
@@ -109,8 +101,8 @@ function exclusivePair(
   return null;
 }
 
-/** Each pair of flags written as opposite literals in two records and never both `true`, at the
- *  first record that sets one: `{ imported: true, frozen: false }` beside the reverse. */
+/** Each pair of flags written as opposite literals in two records and never both `true`: `{
+ *  imported: true, frozen: false }` beside the reverse. */
 function oppositePairs(records: readonly FlagRecord[]): [ESTree.Node, string, string, number][] {
   const found: [ESTree.Node, string, string, number][] = [];
   const names = [...new Set(records.flatMap((record) => [...record.flags.keys()]))];
@@ -130,7 +122,6 @@ function oppositePairs(records: readonly FlagRecord[]): [ESTree.Node, string, st
   return found;
 }
 
-/** Whether an object is handed straight to a call or `new`, as an options argument is. */
 function passed(object: ESTree.Node): boolean {
   const at = outermost(object);
   const parent = at.parent;
@@ -140,8 +131,7 @@ function passed(object: ESTree.Node): boolean {
   );
 }
 
-/** The setter an object reaches as its argument, or as what an updater passed to it returns:
- *  `setState({ … })`, `setState((prev) => ({ … }))` or `setState((prev) => { return { … }; })`. */
+/** `setState({ … })`, `setState((prev) => ({ … }))` or `setState((prev) => { return { … }; })`. */
 function setterOf(object: ESTree.ObjectExpression): string | null {
   let at: ESTree.Node = object;
   for (let up: ESTree.Node | null = at.parent; up !== null; up = up.parent) {
@@ -174,25 +164,20 @@ function component(node: ESTree.Node): string {
   return found;
 }
 
-/** A threshold option, or its default where the option is not a number. */
 const numberOr = (option: JsonValue | undefined, fallback: number): number =>
   isNumber(option) ? option : fallback;
 
-/** The name a state takes in the suggested union: `loading` for `isLoading`. */
 const stateName = (field: string): string => {
   const word = /^(?:is|has)([A-Z]\w*)$/u.exec(field)?.[1];
   return word === undefined ? field : `${word.charAt(0).toLowerCase()}${word.slice(1)}`;
 };
 
-/** A suggested union of named states: `mode: "loading" | "error"`. */
 const suggestOf = (states: readonly string[]): string =>
   `mode: ${states.map((one) => `"${one}"`).join(" | ")}`;
 
-/** Whether each written value sets its field or clears it. */
 const settings = (values: ReadonlyMap<string, ESTree.Node>): Map<string, Value> =>
   new Map([...values].map(([name, value]) => [name, valueOf(value)]));
 
-/** The clusters of one state's co-writes: fields linked pairwise, joined into components. */
 function clusters(writes: readonly CoWrite[], minWrites: number): string[][] {
   const names = [...new Set(writes.flatMap((write) => [...write.fields.keys()]))];
   const parent = new Map(names.map((name) => [name, name]));
@@ -254,7 +239,6 @@ export const noCoupledFlagsRule = defineRule({
     const records: FlagRecord[] = [];
     const text = (node: ESTree.Node): string => context.sourceCode.getText(node).replaceAll(/\s+/gu, "");
 
-    /** One statement's write: a field of an object assigned, or a `useState` setter called. */
     function statementWrite(statement: ESTree.Statement): [string, string, ESTree.Node, ESTree.Node] | null {
       const assigned = plainAssignment(statement);
       if (assigned !== null) {
@@ -274,7 +258,6 @@ export const noCoupledFlagsRule = defineRule({
       return [component(statement), field, argument, statement];
     }
 
-    /** Report the first pair of fields whose comparisons cannot both hold. */
     function exclusiveAt(values: ReadonlyMap<string, ESTree.Node>, node: ESTree.Node): void {
       const pair = exclusivePair(values, text);
       if (pair !== null) {
@@ -284,7 +267,6 @@ export const noCoupledFlagsRule = defineRule({
       }
     }
 
-    /** The co-writes of each run of consecutive writing statements, one per state written. */
     function runs(body: readonly ESTree.Statement[]): void {
       let run: [string, string, ESTree.Node, ESTree.Node][] = [];
       const close = (): void => {

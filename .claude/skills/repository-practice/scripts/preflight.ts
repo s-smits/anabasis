@@ -1,22 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Report the checks and guidance associated with a change.
- *
- *   bun .claude/skills/repository-practice/scripts/preflight.ts [--base <rev> | --commit <rev>]
- *     [--stack]
- *
- * Read the working tree against HEAD, including untracked files; --base chooses another revision.
- * --commit reads a commit against its first parent, using that commit's file content but today's
- * test graph. For old commits, suggested tests therefore approximate the original static pass.
- *
- * Ask existing owners for the documentation set, nearby tests, UI setup paths, hook guidance,
- * source-size findings, hook configuration, worktree eligibility and optional stack position.
- * Scan Markdown for a limited set of writing patterns, excluding code, quoted text, links and paths.
- * Suggest importance and category labels from changed paths, validating categories against land's
- * set. The operator and AGENTS.md section 11 decide whether those suggestions apply.
- *
- * The script collects existing readers so a session need not reconstruct their rules before every
- * commit.
+ * Reports the checks and guidance a change owes: `preflight.ts [--base <rev> | --commit <rev>]
+ * [--stack]`. It reads the working tree, untracked files included, against HEAD or `--base`;
+ * `--commit` reads a commit against its first parent with today's test graph, so suggested tests
+ * for old commits approximate the original static pass. It asks existing owners for the
+ * documentation set, nearby tests, UI setup, hooks, source size, worktree eligibility and stack
+ * position, scans Markdown for a few writing patterns, and suggests importance and category labels,
+ * which the operator and `AGENTS.md` section 11 decide.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -60,7 +50,6 @@ interface Area {
   readonly files: string[];
 }
 
-/** What a change owes, as facts; `told` renders it. */
 export interface Owed {
   readonly changed: number;
   readonly documentationOnly: boolean;
@@ -74,15 +63,13 @@ export interface Owed {
 }
 
 const USAGE = "preflight.ts [--base <rev> | --commit <rev>] [--stack]";
-/** Writing slips that a pattern can see, each with what it reports. */
 const PROSE: readonly (readonly [string, RegExp])[] = [
   ["banned word", /\b(?:robust|bulletproof|10x)\b/iu],
   ["relative date", /\b(?:yesterday|tomorrow|tonight|last (?:week|month|night)|next (?:week|month))\b/iu],
 ];
-/** What a prose scan leaves out of a line: inline code, a quotation (a banned word cited as banned),
- *  a Markdown link, which names a file, and a bare path. */
+/** What a prose scan leaves out of a line: inline code, a quotation (a banned word cited as
+ *  banned), a Markdown link and a bare path. */
 const QUOTED = /`[^`]*`|"[^"]*"|\[[^\]]*\]\([^)]*\)|\S*\/\S*/gu;
-/** How many lines of one file's slips of one kind are named. */
 const SHOWN = 5;
 /** Paths to the category whose description names them, first match wins (`gh label list`). A test
  *  file is left out of the vote: it takes the subject of what it tests. */
@@ -112,14 +99,13 @@ const CATEGORY_OF: readonly (readonly [RegExp, string])[] = [
   [/^tools\/runtime\/|^\.githooks\/|^\.github\/|^\.claude\/skills\/(?:stack-pr|local-checks)\//u, "landing"],
   [/^tools\/(?:oxlint|loc)\/|^biome\.json$|^\.oxlintrc\.json$/u, "quality"],
 ];
-/** The category that names a subject only where no other does: prose beside code is the code's,
- *  and a file no rule holds is counted with it. */
+/** The category that names a subject only where no other does: prose beside code is the code's, and
+ *  a file no rule holds is counted with it. */
 const FALLBACK = new Set(["docs"]);
-/** The categories of the engine: what a campaign decides, measures or shows a seat, where a
- *  change is I1 unless it fixes no defect (`AGENTS.md` section 11). */
+/** What a campaign decides, measures or shows a seat, where a change is I1 unless it fixes no
+ *  defect (`AGENTS.md` section 11). */
 const ENGINE = new Set(["comparison", "exam", "verdicts", "climb", "supply", "harness", "solve"]);
 
-/** The diff of one commit against its first parent, or of the working tree against `base`. */
 export function changeOf(
   root: string,
   from: { readonly commit: string } | { readonly base: string },
@@ -144,18 +130,15 @@ export function changeOf(
   };
 }
 
-/** A file's text in the change, or null where the change deleted it. */
 function textOf(root: string, at: string | null, file: string): string | null {
   if (at === null) return existsSync(join(root, file)) ? readFileSync(join(root, file), "utf8") : null;
   try {
     return gitOutput(root, "show", `${at}:${file}`);
   } catch {
-    // The commit deleted the file, so there is nothing to measure.
     return null;
   }
 }
 
-/** Section 13's visible slips in one Markdown text, outside fenced code and what `QUOTED` matches. */
 function proseFindings(path: string, text: string): ProseFinding[] {
   let fenced = false;
   return text.split("\n").flatMap((raw, index) => {
@@ -174,8 +157,6 @@ function proseFindings(path: string, text: string): ProseFinding[] {
 
 const inside = (file: string, path: string): boolean => file === path || file.startsWith(`${path}/`);
 
-/** The suggested labels: the category most changed files fall under, and an importance by the
- *  definitions of `AGENTS.md` section 11, read from the categories alone. */
 function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance"> {
   const counts: Record<string, number> = {};
   for (const file of files.filter((each) => !TEST_FILE.test(each))) {
@@ -204,7 +185,6 @@ function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance
   return { category: { label, counts }, importance };
 }
 
-/** What `change` owes, read in `root`. */
 export function requiredChecksOf(root: string, change: Change): Owed {
   const areas = new Map<string, Area>();
   for (const file of change.all) {
@@ -236,7 +216,6 @@ export function requiredChecksOf(root: string, change: Change): Owed {
   };
 }
 
-/** One line for each file and kind of slip: the count, and the first lines with what matched. */
 function proseLines(found: readonly ProseFinding[]): string[] {
   const groups = Map.groupBy(found, (each) => `${each.path}: ${each.kind}`);
   return [...groups].map(([group, each]) => {
@@ -246,7 +225,6 @@ function proseLines(found: readonly ProseFinding[]): string[] {
   });
 }
 
-/** The lines a preflight prints. */
 export function told(owed: Owed): string[] {
   const counts = Object.entries(owed.category.counts)
     .map(([label, count]) => `${label} ${String(count)}`)
@@ -268,10 +246,9 @@ export function told(owed: Owed): string[] {
   ];
 }
 
-/** The facts about the tree a change is made in, each from its owner: whether the hooks are on
- *  (`git config core.hooksPath`, set by `bun run hooks:install`), whether a run may start here
- *  (`treeFault`, `tools/d2/campaign.ts`), and with `stack` where the branch sits on the open stack
- *  (`formatStackSummary`, `tools/runtime/pulls.ts`, over what GitHub lists). */
+/** Whether the hooks are on (`core.hooksPath`, set by `bun run hooks:install`), whether a run may
+ *  start here (`treeFault`), and with `stack` where the branch sits on the open stack
+ *  (`formatStackSummary`). */
 export function treeLines(root: string, stack: "stack" | "no-stack"): string[] {
   const hooks = gitMaybe(root, "config", "core.hooksPath");
   const fault = treeFault(root);

@@ -15,15 +15,10 @@ import { money, seconds } from "./format.ts";
 import type { Ruling } from "../../../../src/referee/referee.ts";
 import { plural } from "../../../../src/meta/text.ts";
 
-/*
- * Solves as rows: a Builder session's practice solves, a task's solves across comparisons. A row
- * opens the solve's detail. The ruling column says, for a rejection, what the tier lets it say:
- * the Referee's ruling on the exam side, why it is withheld from both tiers where it is (a person's
- * label still to come, or a comparison that has not reported), and otherwise that the exam side
- * holds it.
- */
+// Solves as rows, each opening its detail. A rejection's ruling cell says what the tier lets it: the
+// Referee's ruling on the exam side, why it is withheld from both tiers where it is, and otherwise that
+// the exam side holds it.
 
-/** The columns a table may leave out where every row would say the same. */
 type Column = "task" | "comparison" | "side" | "harness" | "ruling";
 
 const RULINGS = {
@@ -32,18 +27,16 @@ const RULINGS = {
   unclear: { label: "unclear", tone: "neutral" },
 } as const satisfies Record<Ruling, { readonly label: string; readonly tone: Tone }>;
 
-/** A Referee's ruling as a badge. */
 export function RulingBadge({ ruling }: { ruling: Ruling }) {
   return <Badge tone={RULINGS[ruling].tone}>{RULINGS[ruling].label}</Badge>;
 }
 
-/** The label of a ruling kind, as the rulings by kind are counted. */
 export function rulingLabel(ruling: Ruling): string {
   return RULINGS[ruling].label;
 }
 
-/** What a rejection's ruling cell says in `tier`, with `withheld` as why its ruling is held back
- *  from both tiers; nothing for a solve that was not rejected. */
+/** What a rejection's ruling cell says in `tier`, with `withheld` as why it is held back from both
+ *  tiers; nothing for a solve not rejected. */
 function RulingCell({ row, tier, withheld }: { row: SolveRow; tier: Tier; withheld: Withheld }) {
   if (!isRejection(row)) return null;
   if (row.ruling !== undefined) {
@@ -59,8 +52,6 @@ function RulingCell({ row, tier, withheld }: { row: SolveRow; tier: Tier; withhe
   return <span className="ana-faint">exam side</span>;
 }
 
-/** The rulings of one task's rejections in a comparison: each one on the exam side, and one line
- *  for them all where the tier withholds them or they are withheld from both. */
 export function RulingsCell({
   rows,
   tier,
@@ -85,8 +76,6 @@ export function RulingsCell({
   );
 }
 
-/** Solves as a table (`Table`), sorted and narrowed by ending, side and comparison where the table
- *  shows them. */
 export function SolveTable({
   rows,
   reading,
@@ -98,7 +87,6 @@ export function SolveTable({
   rows: readonly SolveRow[];
   reading: CampaignReading;
   tier: Tier;
-  /** The task versions whose rulings wait for a person's label. */
   awaiting: ReadonlySet<string>;
   show: readonly Column[];
   onOpen: (id: string) => void;

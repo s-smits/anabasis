@@ -1,31 +1,14 @@
 /**
- * Divides a stack at a pull request, and moves what stands above it onto the trunk once it has merged,
- * so that a stack can land in parts.
+ * Divides a stack at a pull request and, once it has merged, moves what stands above onto the
+ * trunk, so a stack can land in parts. `land --merge` leaves those above holding the old trunk, and
+ * a rebase can need commits redone by hand and loses their passes. So each commit above the merged
+ * head is copied with only its parents changed (same tree, author, dates and message, written as
+ * objects, touching no worktree), keeping the trees `contentKey` (`tools/runtime/gate.ts`)
+ * remembers a pass by. A trunk whose tree moved past the merged head is refused. Without `--yes`
+ * nothing moves; on a pull request still open the copy runs against a throwaway merge commit.
+ * Members are read from the chain of bases, so a second run finishes what a first could not.
  *
  *   bun run split -- <pull request> [--yes]
- *
- * `bun run land -- <pull request> --merge` merges a stack up to the one named, through GitHub's
- * partial stack merge, and leaves those above it open. It merges with a merge commit, so none of
- * them holds the trunk's new head and `land` refuses them until they are replayed. A replay by
- * rebase can need commits redone by hand, moves branches that other worktrees have checked out,
- * and loses the passes the pull requests above had earned; and a landing's members must be its
- * native stack's, so dividing one by hand is slow.
- *
- * So this copies each commit above the merged head with only its parents changed: the same tree,
- * author, dates and message, written as objects, touching no worktree and with no conflict possible.
- * The merge commit's tree is the merged head's, which `land` checks as it merges, so every copy keeps
- * the tree and the parent's tree that `contentKey` (`tools/runtime/gate.ts`) remembers a pass by, and
- * `land --sanitize` finds them all where it runs from a tree with the same CI gate. A trunk whose tree
- * has moved past the merged head would change every tree, so it is refused rather than proved anew
- * without anyone asking.
- *
- * Without `--yes` nothing moves. On a pull request still open, the same copy runs against a merge
- * commit made for the purpose, which no ref holds, so a split can be read before its merge.
- *
- * Both read the members of each native stack they link from the chain of bases rather than from the
- * native stack they dissolve, so a second run finishes what the first could not: a commit already on
- * the trunk's head copies to itself, and a stack unstacked before its link failed is linked, where
- * reading the old native stack would leave a run cut short after its unstack nothing to read.
  */
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
@@ -47,15 +30,13 @@ import { leasedPush } from "./restack.ts";
 
 const USAGE = "usage: bun run split -- <pull request> [--yes]";
 
-/** The pull request a stack is split above, as `gh pr view --json` gives it. */
 interface Cut {
   readonly state: string;
   readonly headRefName: string;
   readonly headRefOid: string;
 }
 
-/** A copy of each commit with its parents mapped, `from` becoming `onto`: the same bytes otherwise.
- *  Latin-1 reads each byte as one character and writes it back, so a name or a message in another
+/** Latin-1 reads each byte as one character and writes it back, so a name or message in another
  *  encoding survives, where UTF-8 text would replace what it cannot read. */
 function copies(root: string, commits: readonly string[], from: string, onto: string): Map<string, string> {
   const copied = new Map([[from, onto]]);
@@ -76,8 +57,8 @@ function copies(root: string, commits: readonly string[], from: string, onto: st
 }
 
 /** Makes `members` one native stack on `base`, bottom first, dissolving the native stack that holds
- *  the bottom first; a lone pull request needs none. Each reads GitHub afresh and the members come
- *  from the chain of bases, which no step here moves, so a run cut short is finished by the next. */
+ *  the bottom first; a lone pull request needs none. Members come from the chain of bases, which no
+ *  step here moves, so a run cut short is finished by the next. */
 function relink(root: string, members: readonly Pull[], base: string): void {
   const [bottom] = members;
   if (bottom === undefined) return;
@@ -90,7 +71,6 @@ function relink(root: string, members: readonly Pull[], base: string): void {
   console.log(`Linked ${numbers.map((number) => `#${number}`).join(" ")} on ${base}.`);
 }
 
-/** The stack `number` is in as two, with it on top of the lower. No branch or base moves. */
 function divide(root: string, number: number): void {
   const open = openPulls(root);
   const cut = open.find((pull) => pull.number === number);
@@ -102,8 +82,8 @@ function divide(root: string, number: number): void {
   relink(root, above, cut.headRefName);
 }
 
-/** Prints the copy, and with `yes` pushes it. A refused push throws Git's own text, the rejection of
- *  each branch, which `main` prints: the operator has to see which lease failed. */
+/** Prints the copy, and with `yes` pushes it; a refused push throws Git's own text, so the operator
+ *  sees which lease failed. */
 function split(root: string, number: number, yes: boolean): void {
   const {
     state,

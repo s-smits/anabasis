@@ -1,11 +1,8 @@
 /**
- * Current-system WRI triggers covering pass soundness (`settledPassLabels`), deliverable artifact
- * capture (`manifestOf`), practice probing and epoch-scoped release, export readiness, Examiner
- * zero-yield and family concentration, seat compaction and interrupted handover, underpowered
- * no-steps, solver tool-error friction, and billing residuals.
- *
- * Every trigger prints only wall-safe counts, digests, and session identifiers — never task text,
- * family names, file paths, or hidden values.
+ * Triggers for pass soundness, deliverable capture, practice probing and release, export readiness,
+ * Examiner yield and family concentration, compaction and interrupted handover, underpowered
+ * no-steps, tool-error friction and billing residuals. They print only counts, digests and session
+ * ids, never task text, family names, file paths or hidden values.
  */
 import { short } from "#src/campaign/move.ts";
 import { DELIVERABLES, manifestOf } from "#src/kernel/answer-files.ts";
@@ -39,7 +36,7 @@ const MIN_ARM_CALLS = 10;
 const RESIDUAL_PCT = 5;
 const RESIDUAL_RE = /\(([+-]\d+(?:\.\d+)?)%\)$/u;
 
-/** Lane 1: human pass-soundness labels recorded on this log (`passAgreement`). */
+/** Human pass-soundness labels recorded on this log (`passAgreement`). */
 function passLabelTriggers(log: Index): Trigger[] {
   const summary = passAgreement(settledPassLabels(log.events));
   if (summary.total === 0) return [];
@@ -51,7 +48,6 @@ function passLabelTriggers(log: Index): Trigger[] {
   );
 }
 
-/** Lane 3: deliverable file capture across verdicts and draft file declarations. */
 function deliverableTriggers(log: Index): Trigger[] {
   const verdicts = log.of("verdict");
   let [withFiles, totalFiles, maxBytes, atBound] = [0, 0, 0, 0];
@@ -82,7 +78,7 @@ function deliverableTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 11: repeated single-task practice probing and pre-promotion tasks released after promotion. */
+/** Repeated single-task practice probing, and pre-promotion tasks released after promotion. */
 function practiceSignalTriggers(log: Index): Trigger[] {
   const repeated = log.builds.flatMap((build) => {
     const counts = countBy(practiceOf(log, build), (solve) => solve.version);
@@ -113,7 +109,6 @@ function practiceSignalTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 12: built or promoted harnesses ready for portability and external-transfer review. */
 function exportTriggers(log: Index): Trigger[] {
   const promoted = log.of("harness.promoted").map((data) => short(text(data.harness)));
   const built = new Set(
@@ -129,7 +124,6 @@ function exportTriggers(log: Index): Trigger[] {
   );
 }
 
-/** Lane 13: Examiner sessions holding zero tasks and held-out family concentration (counts only). */
 function examinerSignalTriggers(log: Index): Trigger[] {
   const proposedBy = countBy(
     log.of("task.proposed").filter((data) => isString(data.session)),
@@ -177,7 +171,6 @@ function examinerSignalTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 15: Examiner/solver compactions and Builder sessions opening after interrupted predecessors. */
 function continuityTriggers(log: Index): Trigger[] {
   const compactions = log.traces.filter((each) => each.part === "compacted");
   const examCompacted = compactions.filter((each) => each.seat === "exam" || each.seat === "draft");
@@ -210,7 +203,7 @@ function continuityTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 16: repeated candidate no-steps scored on 10 or fewer tasks (burning stop-rule patience). */
+/** Repeated candidate no-steps scored on 10 or fewer tasks, which burn stop-rule patience. */
 function underpoweredTriggers(log: Index): Trigger[] {
   const small = log.compared.flatMap(({ session, own, last }) => {
     if (text(last.reading) !== "no-step" || own.fresh === own.starter || own.old === own.fresh) return [];
@@ -226,7 +219,7 @@ function underpoweredTriggers(log: Index): Trigger[] {
   );
 }
 
-/** Lane 17: comparison arms whose solver tool calls exceed a 20% error rate. */
+/** Comparison arms whose solver tool calls exceed a 20% error rate. */
 function toolErrorTriggers(log: Index): Trigger[] {
   const high = log.compared.flatMap(({ session, own, scoring }) => {
     const checkSide = (label: string, harness: JsonValue | undefined) => {
@@ -242,7 +235,7 @@ function toolErrorTriggers(log: Index): Trigger[] {
   return emitIf(high.length > 0, "HIGH TOOL ERROR RATE", high.join("; "));
 }
 
-/** Lane 19: billing residual > 5% between local meter and backend totals, or open unpriced compactions. */
+/** A billing residual over 5% between the local meter and backend totals, or open unpriced compactions. */
 function billingTriggers(log: Index): Trigger[] {
   const line = costLine(log.events);
   const match = RESIDUAL_RE.exec(line);
@@ -255,7 +248,6 @@ function billingTriggers(log: Index): Trigger[] {
   return emitIf(parts.length > 0, "BILLING RESIDUAL", parts.join("; "));
 }
 
-/** All current-system triggers added in the WRI rewrite. */
 export function signalTriggers(log: Index): Trigger[] {
   return [
     ...passLabelTriggers(log),

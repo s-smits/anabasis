@@ -1,11 +1,5 @@
-// The solve isolation's policy, and the wall built on it proved by running it: every case that runs
-// a command runs it as a seat's commands run (`runWalled`, in a claimed root), on the host the suite
-// runs on, because a profile checked only as configuration is a profile nobody has seen refuse
-// anything, rather than v1's launch of its sandboxed model process, which no seat of v2 runs.
-//
-// Each refusal is paired with a read that has to succeed: a wall that refuses everything would pass
-// a suite testing refusals alone while making the product unusable. Run 4 is the reason it is not
-// hypothetical: it walled off its own repair-attribution and Judge paths.
+// Each command runs as a seat's commands run (`runWalled`), and each refusal is paired with a read that
+// must succeed, since a wall refusing everything passes refusals alone.
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   existsSync,
@@ -47,8 +41,6 @@ const realNode = nodePath !== null && !realpathSync(nodePath).endsWith("/bun");
 
 const made: string[] = [];
 function workRepo(): string {
-  // Named as `mktemp` names a folder, so that a policy that does not deny it lets a walled command
-  // read it, as a folder anywhere else outside the denied trees would be read (`toolchainTemp`).
   const root = toolchainTemp("ana-solve-sandbox");
   made.push(root);
   return root;
@@ -58,8 +50,6 @@ afterEach(() => {
 });
 let seats = 0;
 
-/** A seat's wall over `repoRoot`, unprobed, in a claimed root; `fn` runs with it, and the root
- *  goes after. */
 async function inSeat(
   repoRoot: string,
   otherTrees: readonly string[],
@@ -110,10 +100,8 @@ describe("the solve isolation's policy", () => {
   });
 
   it("reopens a tool tree with what it links to, but for one in the seat's root that links out of it", () => {
-    // The tree's real path is not reopened wherever a link leads, since a Builder that linked
-    // `harness/.toolchain` to the repository would read it through the wall. A tree the host or a
-    // pack provides keeps its link. The policy is built by hand, as it is a pure function of its
-    // roots and runs where no wall does.
+    // A link must not reopen a tree's real path, or a Builder linking `harness/.toolchain` to the
+    // repository reads it through the wall; host- and pack-provided trees keep their links.
     const repoRoot = realpathSync(workRepo());
     const base: SolveIsolationPolicy = {
       profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
@@ -124,7 +112,6 @@ describe("the solve isolation's policy", () => {
       mechanismId: LINUX_BWRAP_ID,
       network: true,
     };
-    // A kept state names its tree by the link the host writes, to a tree beside it.
     const states = join(repoRoot, ".ana", "d2", "c", "states");
     const keptTree = join(states, "kept", ".toolchain");
     mkdirSync(join(states, "tree-abc", "bin"), { recursive: true });
@@ -137,7 +124,6 @@ describe("the solve isolation's policy", () => {
     const dirs = { root: seat, kept: join(seat, "kept"), home, temp: join(seat, "tmp") };
     const allows = (toolTree: string) => commandIsolationPolicy(base, { ...dirs, toolTree }).readAllowRoots;
     expect(allows(keptTree)).toContain(join(states, "tree-abc"));
-    // A stored bundle whose tree is a link to one elsewhere is reopened with its target, as before.
     const bundleTree = join(realpathSync(workRepo()), "bundle", ".toolchain");
     mkdirSync(join(bundleTree, ".."));
     mkdirSync(join(repoRoot, "shared-tree"));
@@ -164,7 +150,6 @@ describe("the solve isolation's policy", () => {
     const base = solveIsolationPolicy({ repoRoot, readAllowRoots: [runtimeRoot] });
     if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
     expect(base.allowedReadRoots).toContain(runtimeRoot);
-    // `inSeat` builds its own base without the runtime, so this case builds the wall it runs under.
     await inSeat(repoRoot, [], async (wall, run) => {
       const output = await run(`cat ${homeCanary} 2>&1; cat ${runtimeCanary} 2>&1`, { ...wall, base });
       expect(output).not.toContain("HOME-CANARY");
@@ -172,10 +157,8 @@ describe("the solve isolation's policy", () => {
     });
   }, 60_000);
 
-  // Node, deciding a `.js` program's module type, walks up from a kept tree to the checkout's
-  // package.json, and the wall's refusal of it must not end every program of the tree.
-  // A host with no Node of its own, as a Linux one may be, has no module walk to test: `bun run`
-  // puts a `node` that is Bun on the path, in a folder the wall closes.
+  // Node's module-type walk from a kept tree reaches the checkout's package.json; the wall's refusal
+  // there must not end the tree's programs.
   it.skipIf(!realNode)(
     "runs a program of a kept tool tree with no manifest of its own, and keeps the checkout's closed",
     async () => {
@@ -184,14 +167,12 @@ describe("the solve isolation's policy", () => {
       const campaign = join(repoRoot, ".ana", "d2", "c");
       const tree = join(campaign, "states", "tree-abc");
       mkdirSync(join(tree, "bin"), { recursive: true });
-      // The empty manifest a campaign's folder holds (`openCampaign`).
       writeFileSync(join(campaign, "package.json"), "{}\n");
       writeFileSync(join(tree, "bin", "list.js"), 'console.log(require("node:path").basename("/a/ran"));\n');
       await inSeat(repoRoot, [], async (wall, run) => {
         const command = `node ${join(tree, "bin", "list.js")} 2>&1; cat ${join(repoRoot, "package.json")} 2>&1`;
         const output = await run(command, { ...wall, toolTree: tree });
         expect(output).toStartWith("ran\n");
-        // Seatbelt refuses the read; Bubblewrap leaves the path out of the mount, so it is not there.
         expect(output).toContain(CLOSED);
         expect(output).not.toContain("module");
       });
@@ -219,13 +200,11 @@ describe("the solve isolation's policy", () => {
     60_000,
   );
 
-  // On Linux an overmount leaves the directory empty, so its listing names no tenant either way.
   it.skipIf(!onDarwin)(
     "closes the per-user temporary directory but for what mktemp and the shims make in it, and keeps TMPDIR on the seat's root",
     async () => {
       const [shared] = userTempRules().roots;
       if (shared === undefined) throw new Error("this host names no user temporary directory");
-      // Another process's folder there, and a file it left directly in it.
       const other = mkdtempSync(join(shared, "ana-other-"));
       const left = join(shared, `ana-left-${String(runtimeProcess.pid)}.txt`);
       const named = join(shared, `ana-named-${String(runtimeProcess.pid)}`);
@@ -270,13 +249,11 @@ describe("the wall's probe", () => {
     const bare = workRepo();
     await inSeat(repoRoot, [sibling, bare], async (wall) => {
       expect(await probeWall(wall, repoRoot, sibling)).toBeNull();
-      // A sibling with no `package.json` proves nothing by refusing it, and is not tried.
       expect(await probeWall(wall, repoRoot, bare)).toBeNull();
-      // The seat's probe: once a policy a process, before the wall's first use.
       const base = await walledBase(wall.dirs, { repoRoot, otherTrees: [sibling, bare] }, "a test");
       expect(base.policyHash).toBe(wall.base.policyHash);
-      // The probe writes nothing in a sibling, which another user may own, leaves
-      // nothing in the repository, and nothing in the seat's own folders or the host's in it.
+      // The probe writes nothing in a sibling, which another user may own, nor in the repository or the
+      // seat's own folders.
       expect(readdirSync(sibling)).toEqual(["package.json"]);
       expect(readdirSync(bare)).toEqual([]);
       expect(readdirSync(repoRoot)).toEqual([]);
@@ -297,11 +274,8 @@ describe("the rename guard", () => {
       const output = await run(
         `echo started; ls ${outer} 2>&1; mv ${join(outer, "parent")} ${moved} 2>&1; cat ${join(moved, "repo", "canary.txt")} 2>&1; true`,
       );
-      // The command ran: a launch that refused everything would also leave the canary unread.
       expect(output).toStartWith("started\n");
       if (onDarwin) {
-        // The parent is in sight, and the rename guard, not a missing path, refuses its rename. On
-        // Linux the folder lies in the hidden temporary directory, so the command cannot see it.
         expect(output.split("\n")).toContain("parent");
         expect(output).toMatch(/^mv: .*Operation not permitted$/m);
       }
@@ -312,10 +286,8 @@ describe("the rename guard", () => {
   }, 60_000);
 });
 
-// Seatbelt confines a process and its children, not what it asks of a process outside: each case
-// asks an unconfined one to act and checks that nothing came back. Under `(allow default)` the first
-// two would read a denied file and reach a socket. Linux's pid namespace and overmounts
-// answer the same questions by construction.
+// Seatbelt confines a process, not what it asks of an unconfined one: each case asks one to act and
+// checks nothing came back.
 describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
   it("is not started by `open` on an app the command wrote", async () => {
     const repoRoot = workRepo();
@@ -344,8 +316,8 @@ describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
   }, 60_000);
 
   it("reaches a socket in the seat's root and the resolver's, and no other listener's", async () => {
-    // A folder no path rule closes, so that only the rule on sockets stands between the command
-    // and the listener: the VPN daemon's and the print server's sockets lie in such a folder.
+    // A folder no path rule closes, so only the socket rule stands between the command and the
+    // listener, as for the VPN daemon's and print server's sockets.
     const cache = Bun.spawnSync(["/usr/bin/getconf", "DARWIN_USER_CACHE_DIR"]).stdout.toString().trim();
     const unclosed = mkdtempSync(join(cache, "ana-wall-"));
     made.push(unclosed);
@@ -361,7 +333,6 @@ describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
     });
     const client = (path: string) =>
       `python3 -I -c 'import socket,sys;socket.socket(socket.AF_UNIX).connect(sys.argv[1])' ${path} 2>/dev/null && echo reached || echo refused`;
-    // The seat's own is named from its temporary folder, as a socket's path is cut at 104 bytes.
     const probes = (own: string) =>
       `${client(join(unclosed, "s"))}; cd "$TMPDIR" && python3 -I -c 'import socket,sys;s=socket.socket(socket.AF_UNIX);s.bind(sys.argv[1]);s.listen();s.accept()' ${own} & sleep 1; cd "$TMPDIR"; ${client(own)}; ${client("/var/run/mDNSResponder")}`;
     try {
@@ -369,7 +340,6 @@ describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
         const reach = async (own: string, under = wall) =>
           (await run(probes(own), under)).split("\n").slice(0, 3);
         expect(await reach("o")).toEqual(["refused", "reached", "reached"]);
-        // A check's wall, which has no network: its own socket still, and the resolver's no more.
         const offline = { ...wall, base: { ...wall.base, network: false } };
         expect(await reach("p", offline)).toEqual(["refused", "reached", "refused"]);
       });

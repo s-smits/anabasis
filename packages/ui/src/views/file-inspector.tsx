@@ -7,7 +7,6 @@ import { bytes } from "./format.ts";
 import { isString, type JsonValue } from "../../../../src/meta/json-shape.ts";
 import { hasText } from "../../../../src/meta/text.ts";
 
-/** What the inspector shows: a harness file, a diff of two harnesses, or a raw event. */
 interface InspectorPayload {
   readonly content: FileContent;
   readonly value: JsonValue;
@@ -15,15 +14,10 @@ interface InspectorPayload {
   readonly bytes: number | null;
 }
 
-/** The read-only inspector on the right. v1 hid protected verifier files behind a reveal button;
- *  v2 keeps the exam side behind the server's tier instead, so what reaches the page may be shown.
- *  This is its frame: the head, the way out by button or Escape, and the focus it takes and gives
- *  back. What it holds is `inspector.tsx`'s to choose.
- *
- *  The pane takes focus as it attaches and gives it back to what held it before as it detaches,
- *  through its ref, and Escape closes it while focus is in it. Neither is an effect: StrictMode
- *  runs an effect twice, and the second run would take the pane itself for the origin, leaving
- *  focus on the page's body at every close. */
+/** The read-only inspector's frame: its head, the way out by button or Escape, and the focus it
+ *  takes and gives back; what it holds is `inspector.tsx`'s. The pane takes focus as it attaches
+ *  and returns it as it detaches, through its ref, rather than in an effect, which StrictMode runs
+ *  twice so the second run would take the pane for the origin. */
 export function FileInspector({
   label,
   path,
@@ -33,20 +27,19 @@ export function FileInspector({
   onClose,
   children,
 }: {
-  /** What is open: "Harness file", "Harness diff", "Event". */
   label: string;
   path: string;
   payload: InspectorPayload | null;
   loading: boolean;
   error: string | null;
   onClose: () => void;
-  /** What the inspector shows above the payload, or in its place where there is none: a harness's
-   *  file list, a diff, an event, or the line that says the exam side holds it. */
+  /** What the inspector shows above the payload, or in its place: a harness's file list, a diff, an
+   *  event, or the line that says the exam side holds it. */
   children?: ReactNode;
 }) {
   const origin = useRef<Element | null>(null);
-  // Stable, so that the pane attaches once while it stays open, whatever it shows, and not on each
-  // render. At its detach the pane is still in the page, focused or holding focus.
+  // Stable, so the pane attaches once while it stays open, not on each render; at its detach the pane
+  // is still in the page, focused or holding focus.
   const pane = useCallback((element: HTMLElement) => {
     origin.current = document.activeElement;
     element.focus({ preventScroll: true });

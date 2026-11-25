@@ -1,8 +1,5 @@
-// A solve's commands, executed under the real command wall in a claimed root: the home survives
-// between commands, the folder a command that brings files starts in does not, staged input
-// reaches it, neither the host-only folder, the repository, its other worktrees, a stored pack nor
-// a reviewer's Claude home can be read, the host's folder in the seat cannot be written, and no
-// command outlives the shell limits.
+// A solve's commands under the real wall in a claimed root: the home persists, host-only trees stay
+// unreadable, and no command outlives the shell limits.
 import { describe, expect, it } from "bun:test";
 import {
   existsSync,
@@ -32,7 +29,6 @@ import { hostScratch } from "../src/wall/policy.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 
-/** Each command scenario owns one claimed seat and releases its processes before removing it. */
 async function inSeat(
   repoRoot: string,
   use: (wall: CommandWall) => Promise<void>,
@@ -64,13 +60,11 @@ async function run(wall: CommandWall, command: string, stage?: (into: string) =>
   return { exitCode: result.exitCode, output };
 }
 
-/** A shell loop that counts into `$HOME/<name>` twenty times a second, for as long as it runs. */
 const beating = (name: string) =>
   `sh -c 'i=0; while :; do i=$((i+1)); echo $i > "$HOME/${name}"; sleep 0.05; done'`;
 
-/** Whether the loop `beating` started still runs, read from the host: its count moves. A pid is no
- *  evidence here, since Bubblewrap numbers a command's processes in a namespace of their own, and the
- *  pid a command prints names another process on the host or none. */
+/** Whether the loop `beating` started still runs, read from the host by its count: Bubblewrap
+ *  numbers a command's processes in a namespace of their own, so a printed pid is no evidence. */
 async function stillBeats(beat: string): Promise<boolean> {
   const count = () => (existsSync(beat) ? readFileSync(beat, "utf8") : "");
   await Bun.sleep(100);
@@ -85,7 +79,6 @@ describe.concurrent("a solve's walled commands", () => {
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-repo-")));
       writeFileSync(join(repoRoot, "secret"), "repo-canary");
-      // Where a reader or the Examiner keeps its Claude Code session, as `sit` makes it.
       const reader = realpathSync.native(hostScratch("claude-cli-reader-"));
       writeFileSync(join(reader, "session"), "reader-canary");
       try {
@@ -113,9 +106,8 @@ describe.concurrent("a solve's walled commands", () => {
             const read = await run(wall, `cat ${JSON.stringify(join(reader, "session"))} 2>&1; true`);
             expect(read.output).toContain(CLOSED);
 
-            // A command that backgrounds work and returns has left nothing running. The shell around the
-            // wall leads the command's group, not the shell that reaps it: read by its own pid, the group
-            // would be empty and a solver's loop would run on long after its command.
+            // The shell around the wall leads the command's group; read by its own pid, the group would
+            // be empty and a solver's loop would outlive its command.
             for (const [name, command] of [
               ["left", `nohup ${beating("left")} >/dev/null 2>&1 &`],
               ["apart", `set -m; ${beating("apart")} >/dev/null 2>&1 &`],
@@ -127,13 +119,10 @@ describe.concurrent("a solve's walled commands", () => {
               expect(await stillBeats(join(dirs.home, name))).toBe(false);
             }
 
-            // Every command is held to the condition's shell limits here, whoever launched it: one that
-            // names no timeout runs for the default, and one that names too long a timeout for the maximum.
             await expect(run(wall, "sleep 5")).rejects.toThrow("timeout:1");
             await expect(run(wall, "sleep 5", undefined, 60)).rejects.toThrow("timeout:2");
-            // A command the wall cuts is killed by its group and never runs its trap, so a child in a
-            // group of its own would outlive that too, as under an inner `timeout`, which solvers
-            // often write.
+            // A command the wall cuts is killed by its group, so a child in a group of its own, as
+            // under an inner `timeout`, would outlive it too.
             await expect(run(wall, `set -m; ${beating("cut")} & wait`)).rejects.toThrow("timeout:1");
             expect(await stillBeats(join(dirs.home, "cut"))).toBe(false);
           },
@@ -147,9 +136,8 @@ describe.concurrent("a solve's walled commands", () => {
     60_000,
   );
 
-  // Two campaigns at once on one host. Each seat's root, the host's folder beside it, the claim that
-  // names its process, and a verifier's cell are one campaign's: every wall closes the two parents
-  // they lie in and opens the running seat's root alone, so no name has to be guessed right.
+  // Two campaigns on one host: every wall closes the two parents seats lie in and opens the running
+  // seat's root alone, so no name has to be guessed right.
   it.skipIf(!osIsolationSupport().ok)(
     "read, list and write nothing of another campaign's seat running beside them, nor a verifier's cell",
     async () => {
@@ -160,7 +148,6 @@ describe.concurrent("a solve's walled commands", () => {
         [
           `cat ${JSON.stringify(join(theirs.home, "note"))} 2>/dev/null || echo home-refused`,
           `cat ${JSON.stringify(join(theirs.host, "config"))} 2>/dev/null || echo host-refused`,
-          // Seatbelt refuses the listing; Bubblewrap lists the parent with this seat's root alone.
           `ls ${JSON.stringify(dirname(theirs.root))} 2>/dev/null | grep -F ${JSON.stringify(basename(theirs.root))} || echo listing-refused`,
           `readlink ${JSON.stringify(`${theirs.root}.owner`)} 2>/dev/null || echo claim-refused`,
           `touch ${JSON.stringify(join(theirs.home, "planted"))} 2>/dev/null || echo write-refused`,
@@ -179,7 +166,6 @@ describe.concurrent("a solve's walled commands", () => {
               writeFileSync(join(wall.dirs.home, "note"), `${canary}\n`);
               writeFileSync(join(wall.dirs.host, "config"), canary);
             }
-            // Both ways, at once, as two campaigns' solves run.
             const [one, other] = await Promise.all([
               run(first, tries(second.dirs)),
               run(second, tries(first.dirs)),
@@ -199,8 +185,6 @@ describe.concurrent("a solve's walled commands", () => {
   );
 
   it("refuse a command the repository, its other worktree and the host's folder in the seat, and let it write and read its own", async () => {
-    // The four steps the wall test takes before a seat's first command (`walledBase`), here as a
-    // solver's command would spell them.
     const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reads-")));
     writeFileSync(join(repoRoot, "secret"), "repo-canary");
     const sibling = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-sibling-")));
@@ -234,8 +218,8 @@ describe.concurrent("a solve's walled commands", () => {
   }, 60_000);
 
   it("refuse a command a signal to a process outside its wall, and let it signal its own", async () => {
-    // Under Seatbelt's `(allow default)` a command could `kill` any process of the operator's, the
-    // campaign that runs it among them; Linux gives it a pid namespace.
+    // Under Seatbelt's `(allow default)` a command could `kill` any of the operator's processes; Linux
+    // gives it a pid namespace.
     const repoRoot = toolchainTemp("ana-command-signal-repo");
     const outside = Bun.spawn(["sleep", "60"], { stdout: "ignore", stderr: "ignore" });
     try {
@@ -258,7 +242,6 @@ describe.concurrent("a solve's walled commands", () => {
   }, 60_000);
 
   it("refuse a command a stored pack by the pack's path, which no folder's name stands in for", async () => {
-    // A pack laid out as the buffer pack is, its hidden values under `correctness-model`.
     const repoRoot = toolchainTemp("ana-command-pack-repo");
     const pack = toolchainTemp("ana-command-pack");
     const bundle = join(pack, "fixture", "workspace");
@@ -275,9 +258,8 @@ describe.concurrent("a solve's walled commands", () => {
           return (await run({ ...wall, base }, `cat ${hidden} 2>/dev/null || echo pack-refused`)).output;
         };
         expect(await readUnder([pack, bundle])).toBe("pack-refused\n");
-        // Left out of the policy, the same file is read on Darwin in a folder named as `mktemp` names
-        // one, which the wall grants a toolchain: its folder's name closes nothing. Linux hides the
-        // whole temporary directory.
+        // Left out of the policy, the file is read on Darwin in a folder named as `mktemp` names one,
+        // which the wall grants a toolchain; Linux hides the whole temporary directory.
         if (runtimeProcess.platform === "darwin") expect(await readUnder([])).toBe("pack-canary\n");
       });
     } finally {
@@ -290,14 +272,11 @@ describe.concurrent("a solve's walled commands", () => {
     "give a seat a temporary directory of its own under its root, and each command a /tmp that shows nothing another left in the host's",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-private-tmp-")));
-      // A canary another solve, a verification cell or the host itself might have left in /tmp.
       const canary = join("/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
       writeFileSync(canary, "left by the host");
       try {
         await inSeat(repoRoot, async (wall) => {
           const { dirs } = wall;
-          // The seat's TMPDIR is its own folder in its root, removed with it, and the host's
-          // /tmp with the canary in it is hidden behind an empty private one.
           const first = await run(
             wall,
             `echo "$TMPDIR"; ls /tmp; cat ${canary} 2>&1 || echo unseen; echo first > /tmp/left; echo second > "$TMPDIR/left"`,
@@ -305,9 +284,6 @@ describe.concurrent("a solve's walled commands", () => {
           expect(first.output).toContain(join(basename(dirs.root), "tmp"));
           expect(first.output).not.toContain("left by the host");
           expect(first.output).toContain("unseen");
-          // What the first command wrote under /tmp is gone with it: the next command starts in a
-          // fresh private /tmp, and the host's /tmp never saw it. The seat's TMPDIR keeps what it was
-          // given, as the home does.
           const second = await run(
             wall,
             'ls /tmp; cat /tmp/left 2>/dev/null || echo gone; cat "$TMPDIR/left"',
@@ -325,10 +301,8 @@ describe.concurrent("a solve's walled commands", () => {
     60_000,
   );
 
-  // Linux hides the seats' parent under an empty tmpfs and binds a seat's root back inside it.
-  // Seatbelt closes the parent, and the per-user temporary directory it lies in, by rule, and opens
-  // the seat's root again after both (`darwinCommandProfile`). With either closure alone this
-  // passes; with both taken out of the profile it fails on a macOS runner.
+  // Linux hides the seats' parent under an empty tmpfs; Seatbelt closes it by rule
+  // (`darwinCommandProfile`). Either closure alone passes this.
   it.skipIf(!osIsolationSupport().ok)(
     "keep a seat's temporary directory across its commands, and close it to every other seat",
     async () => {
@@ -342,9 +316,8 @@ describe.concurrent("a solve's walled commands", () => {
             expect(first.output).toBe(`${own.dirs.temp}\n`);
             expect(own.dirs.temp.startsWith(`${own.dirs.root}/`)).toBe(true);
             expect((await run(own, 'cat "$TMPDIR/left"')).output).toBe("own-canary\n");
-            // The other seat, whose TMPDIR is its own, finds nothing of the first seat's by its path:
-            // no read, no listing, no stat, no write, no folder and no removal, and no name of it in
-            // the seats' parent.
+            // The other seat finds nothing of the first's by its path, and no name of it in the seats'
+            // parent.
             const refused = await run(
               other,
               [
@@ -389,7 +362,6 @@ describe.concurrent("a solve's walled commands", () => {
       const canary = join("/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
       const program = join("/tmp", `ana-h1-program-${String(runtimeProcess.pid)}`);
       const left = join("/tmp", `ana-h1-left-${String(runtimeProcess.pid)}`);
-      // And what a v1 run left in /var/tmp: a folder an Examiner could list and read.
       const kept = join("/private/var/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
       writeFileSync(canary, "left by the host");
       writeFileSync(program, "#!/bin/sh\necho ran\n", { mode: 0o755 });
@@ -421,9 +393,6 @@ describe.concurrent("a solve's walled commands", () => {
           }
           expect(existsSync(left)).toBe(false);
           expect(existsSync(`${left}.d`)).toBe(false);
-          // The temporary files a tool takes without naming /tmp still work: the shell's here-document,
-          // Python's tempfile in the command's own folder, and `mktemp`, which on Darwin takes the user
-          // temporary directory the wall still grants, under a name of its own choosing.
           const followed = await run(
             wall,
             "cat <<'EOF'\nheredoc\nEOF\nmktemp -d\npython3 -c 'import tempfile; print(tempfile.mkdtemp())'",
@@ -451,30 +420,23 @@ describe.concurrent("a solve's walled commands", () => {
         await inSeat(repoRoot, async (wall) => {
           const { dirs } = wall;
           const own = join(basename(dirs.root), "tmp");
-          // `/usr/bin/python3` and `/usr/bin/make` are xcrun shims, which start their tool with TMPDIR
-          // reset to the user temporary directory, where campaigns would leave millions of Python
-          // temp folders, outside every solve's root and its command's end.
+          // `/usr/bin/python3` and `/usr/bin/make` are xcrun shims that reset TMPDIR to the user
+          // temporary directory, outside every solve's root.
           const pythonTemp = await run(wall, "python3 -c 'import tempfile; print(tempfile.mkdtemp())'");
           expect(pythonTemp.output).toContain(own);
           expect(existsSync(pythonTemp.output.trim())).toBe(true);
           const recipe = await run(wall, String.raw`printf 'all:\n\t@echo $$TMPDIR\n' > Makefile && make`);
           expect(recipe.output).toContain(own);
-          // A compiler started by its own path is given the SDK the shim named for it.
           const built = await run(
             wall,
             String.raw`printf '#include <stdio.h>\nint main(void){puts("built");return 0;}\n' > h.c && cc h.c -o h && ./h`,
           );
           expect(built.output).toBe("built\n");
-          // A Bun child of a solver's command might not see the seat's TMPDIR, fall back to a
-          // temporary folder the wall closes, and end a solve on the environment's fault. Each Bun
-          // below says what TMPDIR and `os.tmpdir()` name and makes a folder there as a tool would.
-          // The command's `bun` is the host's own, not an older one a macOS runner's
-          // `/opt/homebrew/bin` holds, which started in the seat would read no environment: `/tmp`,
-          // refused, and no `bun` on its PATH.
+          // A Bun child might fall back from the seat's TMPDIR to a folder the wall closes; the
+          // command's `bun` is the host's own, which reads the environment.
           const probe = String.raw`const os = require("os"); const fs = require("fs"); const path = require("path");
 const made = fs.mkdtempSync(path.join(os.tmpdir(), "p-")); fs.writeFileSync(path.join(made, "f"), "x");
 console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDIR, taken: os.tmpdir(), made }));`;
-          // One JSON value a row, so a path with a space in it reads whole; any other line is an error.
           const written = await run(
             wall,
             [
@@ -501,7 +463,6 @@ console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDI
             expect(made).toContain(own);
             expect(readFileSync(join(made, "f"), "utf8")).toBe("x");
           }
-          // The `bun` a command names is the executable the host runs on.
           const named = (await run(wall, "command -v bun")).output.trim();
           expect(realpathSync.native(named)).toBe(realpathSync.native(runtimeProcess.execPath));
         });
@@ -517,8 +478,8 @@ describe.concurrent("a wall's network reach", () => {
   it.skipIf(!osIsolationSupport().ok)(
     "probes again once an unreached reading is ten minutes old, and keeps a reached one",
     async () => {
-      // One unreached probe does not stand for the process's life, since a provider's blip at a
-      // Builder session's opening would tell that whole 24-hour session it had no network.
+      // One unreached probe does not stand for the process's life: a provider's blip at an opening
+      // would tell a 24-hour session it had no network.
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reach-")));
       try {
         await inSeat(repoRoot, async (wall) => {

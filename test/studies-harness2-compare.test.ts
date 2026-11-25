@@ -1,7 +1,7 @@
 /**
- * What fixes a JobBench comparison's terms and reads its result: a draw from unread professions, sides
- * no reader can name, terms written once, an A/A beside each reading, and a further judging that needs
- * no rollout. No model is called.
+ * What fixes a JobBench comparison's terms and reads its result: a draw from unread professions,
+ * sides no reader can name, terms written once, an A/A beside each reading, and a further judging
+ * with no rollout. No model is called.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { chmodSync } from "node:fs";
@@ -39,7 +39,6 @@ const root = mkdtempSync(join(tmpdir(), "ana-study-compare-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 const json = (value: JsonValue): string => capturedJsonStringify(value) ?? "";
 
-/** One grading in the benchmark's layout: each rubric as [weight, score]. */
 function grade(out: string, side: string, task: string, rubrics: readonly (readonly [number, number])[]) {
   const [group, name] = task.split("/");
   const folder = join(
@@ -357,8 +356,8 @@ describe("a derived tree", () => {
 });
 
 /**
- * The whole path on stand-ins: `claude` writes one report and bills half a dollar, and the judge takes
- * the benchmark's rubric file, as `score.ts`'s own test stands in for it.
+ * The whole path on stand-ins: `claude` writes one report and bills half a dollar, and the judge
+ * takes the benchmark's rubric file.
  */
 describe("a comparison run through the scorer, on stand-ins", () => {
   const COMPARE = new URL("../studies/harness2/compare.ts", import.meta.url).pathname;

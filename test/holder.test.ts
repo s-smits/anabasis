@@ -41,7 +41,6 @@ const record = (file: string, pid: number, host = hostname(), start = startOf(pi
   rmSync(file, { force: true });
   symlinkSync(`${String(pid)} ${host} ${start}`, file);
 };
-/** Whether `file` is there, as a link that points nowhere is too. */
 const there = (file: string): boolean => lstatSync(file, { throwIfNoEntry: false }) !== undefined;
 const holderPath = JSON.stringify(join(import.meta.dir, "..", "src", "meta", "holder.ts"));
 

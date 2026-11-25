@@ -1,13 +1,11 @@
 /**
  * Shared terminal driver for live multi-host monitors (`loadwatch`, `netwatch`) over `ANA_HOSTS`
- * plus the local machine (`Watch`).
+ * and this machine. Live, it redraws on the alternate screen, one streaming shell loop per host
+ * (`keepFollowing`, `load.ts`), writing changed lines inside synchronised-output blocks. `--once`
+ * prints one frame once every host has reported or timed out; `-s` one summary line over the `-w`
+ * window.
  *
  *   bun run runs <watch> [<seconds>] [--once | -s|--short [-w|--window <window>]]
- *
- * In live mode, redraws on the alternate screen until interrupted, maintaining one persistent
- * streaming shell loop per host (`keepFollowing`, `load.ts`) and emitting differential line updates
- * inside DEC 2026 synchronised-output blocks. `--once` prints a single frame once every host has
- * reported or timed out; `-s` prints a one-line summary for the selected `-w` window.
  */
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
@@ -15,7 +13,6 @@ import { hostsOf } from "./host-config.ts";
 import { firstReadings, keepFollowing, watchersOf, type State, type Watched } from "./load.ts";
 import { Misused } from "./registry.ts";
 
-/** What one watch reads from each machine and draws. */
 interface Watch<S> {
   /** The frame's title is `ana <name> watch`. */
   readonly name: string;
@@ -27,7 +24,6 @@ interface Watch<S> {
   readonly parse: (block: string, before: State<S>) => S | null;
   /** Whether a reading has all a frame draws. */
   readonly ready: (reading: S) => boolean;
-  /** The frame below its title. */
   readonly frame: (watched: readonly Watched<S>[]) => string[];
   /** What `--once` prints below the frame. */
   readonly once: (watched: readonly Watched<S>[]) => string[];

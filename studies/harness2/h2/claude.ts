@@ -1,14 +1,11 @@
 /**
  * Every `claude` process Harness² starts on JobBench, and the reader of what one wrote: the rollout
- * (`harness2/benchmarks/jb_claude_runner.py` with `ClaudeCodeSubstrate.exec_argv` and `exec_env`),
- * the improver session (`Proposer._claude_cli` and `call` in `harness2/core/proposer.py`) and the
- * stream-json renderer a later session reads a rollout through (`render_events`, `summarize`), all
- * Apache-2.0, Google LLC, at 1cfe254 with the fork's Claude Code commits.
- *
- * Local changes: a rollout reports what it billed (the sum of each attempt's `total_cost_usd`),
- * which Harness² never reads back; the runner's outer wall (twice the timeout plus ten minutes)
- * is left out, since each attempt already has its own; no session is served from the audit cache,
- * so every call is a fresh draw; and a timed-out session's whole process group is ended.
+ * (`jb_claude_runner.py`, `ClaudeCodeSubstrate.exec_argv` and `exec_env`), the improver session
+ * (`Proposer._claude_cli` and `call`) and the stream-json renderer (`render_events`, `summarize`),
+ * all Apache-2.0, Google LLC, at 1cfe254 with the fork's Claude Code commits. Local changes: a
+ * rollout reports what it billed; the runner's outer wall is left out, since each attempt has its
+ * own; no session is served from the audit cache, so every call is a fresh draw; and a timed-out
+ * session's whole process group is ended.
  */
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import {
@@ -34,7 +31,6 @@ import { sha256 } from "#src/meta/digest.ts";
 import { pyDumps, pyLen, pySlice, pyStr, pyStrip, splitLines, truthy, walkFiles } from "./py.ts";
 import { installTree } from "./tree.ts";
 
-/** What a `claude` process is started with, from the pilot's `h2l1.sh` and `config.py`. */
 export interface Claude {
   readonly bin: string;
   readonly model: string;
@@ -44,14 +40,12 @@ export interface Claude {
   readonly env: Readonly<Record<string, string>>;
 }
 
-/** Where one rollout reads its task and leaves its output, under the run store. */
 export interface RolloutPlace {
   readonly store: string;
   readonly task: string;
   readonly label: string;
 }
 
-/** What one improver session returned (`Reply`). */
 export interface Reply {
   readonly text: string;
   readonly costUsd: number;
@@ -60,24 +54,21 @@ export interface Reply {
 }
 
 /**
- * The subtype a rollout's log line gives a result the API ended in error, a usage or session limit
- * or a provider failure, where `error_max_budget` and `error_max_turns` are the arm's own limits.
- * Scoring reads it as a non-result (`rolloutLog`, `score.ts`), never as the arm's zero, rather
- * than trying it again and then judging it as a 0.
+ * The subtype for a result the API ended in error (a usage or session limit or a provider failure),
+ * where `error_max_budget` and `error_max_turns` are the arm's own limits. Scoring reads it as a
+ * non-result (`rolloutLog`, `score.ts`), never as the arm's zero.
  */
 export const REFUSED = "refused";
 
-/** One attempt of a rollout: `stage` fills the workspace, `argv` writes the trajectory and `seen`
- *  reads what the attempt left (`claudeCode`; `piAgent`, score.ts). */
+/** `stage` fills the workspace, `argv` writes the trajectory and `seen` reads what the attempt left
+ *  (`claudeCode`; `piAgent`, score.ts). */
 export interface Agent {
   readonly stage?: (treeDir: string, workspace: string) => void;
   readonly argv: (ask: Readonly<Record<"prompt" | "treeDir" | "workspace" | "traj", string>>) => string[];
   readonly seen: (traj: string) => ReturnType<typeof summarize>;
 }
 
-/** The improver's reasoning effort (`_channels`, `effort="high"`). */
 const IMPROVER_EFFORT = "high";
-/** `config.SCRUB_ENV` less the auth names an improver keeps (`_CLAUDE_AUTH_ENV`). */
 const IMPROVER_SCRUB = new Set([
   "HARNESS2_JUDGE_API_KEY",
   "HARNESS2_BRIDGE_KEY",
@@ -101,7 +92,7 @@ const MAX_CHARS = 8_000_000;
 const ARGS_TRUNC = 2000;
 const ROLLOUT_ATTEMPTS = 2;
 const GRACE_MS = 30_000;
-/** The prompt every JobBench rollout reads (`jb_opencode_runner.PROMPT`), verbatim. */
+/** `jb_opencode_runner.PROMPT`, verbatim. */
 const ROLLOUT_PROMPT = `=== TASK FOLDER ===
 {task_folder}
 
@@ -131,7 +122,6 @@ function clip(value: JsonValue | undefined, limit: number): string {
   return limit <= 0 || length <= limit ? text : pySlice(text, 0, limit) + truncated(length - limit);
 }
 
-/** `len(x or [])` for the counts the init line prints. */
 function count(value: JsonValue | undefined): number {
   if (!truthy(value)) return 0;
   if (Array.isArray(value)) return value.length;
@@ -255,7 +245,6 @@ export function renderEvents(path: string): string {
     : rendered;
 }
 
-/** The parts of `summarize` the runner's log line and the bill read. */
 export function summarize(path: string): { turns: number; subtype: string; tools: number; costUsd: number } {
   let events: JsonObject[];
   try {
@@ -282,7 +271,6 @@ export function summarize(path: string): { turns: number; subtype: string; tools
   };
 }
 
-/** Whether a child ended within `ms`, waking each second so that no long timer outlives it. */
 async function exitedWithin(child: Bun.Subprocess, ms: number): Promise<boolean> {
   const deadline = Date.now() + ms;
   while (child.exitCode === null && child.signalCode === null && Date.now() < deadline) {
@@ -292,8 +280,8 @@ async function exitedWithin(child: Bun.Subprocess, ms: number): Promise<boolean>
 }
 
 /**
- * `run_in_group`: one process in a group of its own; on timeout TERM the group, wait out the
- * grace, KILL what is left, and report 124 as timeout(1) does.
+ * `run_in_group`: on timeout TERM the group, wait out the grace, KILL what is left, and report 124
+ * as timeout(1) does.
  */
 export async function inGroup(
   argv: readonly string[],
@@ -332,11 +320,10 @@ function stamp(at: Date, form: "file" | "clock"): string {
   return `${at.getFullYear()}${two(at.getMonth() + 1)}${two(at.getDate())}_${clock.replaceAll(":", "")}`;
 }
 
-/** `claude -p` over the tree `installTree` installs, as the pilot's runner started it. */
 function claudeCode(claude: Claude): Agent {
   return {
-    // Straight into the workspace: a copy from a staged folder wrote each kept link as an absolute
-    // path into that folder, which was deleted before the solve began.
+    // Straight into the workspace: a copy from a staged folder would write each kept link as an
+    // absolute path into a folder deleted before the solve.
     stage: installTree,
     argv: ({ prompt, workspace }) => [
       claude.bin,
@@ -362,10 +349,9 @@ function claudeCode(claude: Claude): Agent {
 }
 
 /**
- * `run_one` behind `execute`: stage the workspace, run the agent up to twice (a second time only
- * when the first left no deliverable and did not spend its budget), and copy, never rename, what it
- * produced to `model_output/<label>`, since the store can be another filesystem. Returns the dollars
- * billed; the output directory may be left empty.
+ * `run_one` behind `execute`: run the agent up to twice (again only when the first was refused or
+ * left no deliverable, and did not spend its budget), and copy, never rename, its output to
+ * `model_output/<label>`, since the store can be another filesystem. Returns the dollars billed.
  */
 export async function rollout(
   place: RolloutPlace,
@@ -385,8 +371,8 @@ export async function rollout(
   mkdirSync(join(place.store, ".harness2-logs"), { recursive: true });
   const log = (line: string): void => appendFileSync(logFile, `${line}\n`);
   mkdirSync(trajDir, { recursive: true });
-  // The prompt and every command's working directory spell this path, so it names the task alone: the
-  // pilot's runner put the arm's label in it, which told each solver which arm it was rolling.
+  // The prompt and every command's working directory spell this path, so it names the task alone, never
+  // the arm's label.
   mkdirSync(join(tmpdir(), "hevo_ws_cc"), { recursive: true });
   const workspace = mkdtempSync(join(tmpdir(), "hevo_ws_cc", `${name}_`));
   const output = join(workspace, "output");
@@ -410,8 +396,8 @@ export async function rollout(
       const code = await inGroup(agent.argv({ prompt, treeDir, workspace, traj }), {
         cwd: workspace,
         env: {
-          // Claude Code otherwise opens every session's prompt with a memory folder of its own and
-          // how to write to it, which no campaign's solver reads and no rollout of twelve used.
+          // Claude Code otherwise opens every prompt with a memory folder of its own, which no
+          // campaign's solver reads.
           CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
           DISABLE_AUTOUPDATER: "1",
@@ -456,7 +442,6 @@ export async function rollout(
   return billed;
 }
 
-/** A session that gave no usable reply after its transport attempts (`ProposerError`). */
 export class ProposerError extends Error {
   readonly attempts: number;
   readonly costUsd: number;
@@ -493,8 +478,8 @@ function parsePayload(stdout: string): JsonObject {
   return { result: text };
 }
 
-/** `_call_fingerprint`: the audit name's key, over the label, the mission, the evidence's real path
- *  and its bytes, each part closed by a NUL, so a call's audit files carry Harness²'s own name. */
+/** `_call_fingerprint`: over the label, the mission, the evidence's real path and its bytes, each
+ *  part closed by a NUL, so a call's audit files carry Harness²'s own name. */
 export function callKey(label: string, mission: string, contextDir: string): string {
   const parts: (string | Uint8Array)[] = [label, mission, "", realpathSync(contextDir)];
   for (const rel of walkFiles(contextDir, ["__pycache__"])) {
@@ -503,7 +488,6 @@ export function callKey(label: string, mission: string, contextDir: string): str
   return sha256(Buffer.concat(parts.flatMap((part) => [Buffer.from(part), Buffer.from([0])]))).slice(0, 16);
 }
 
-/** One improver session in a fresh copy of `contextDir`, with up to `tries` transport attempts. */
 export async function improve(
   call: { mission: string; contextDir: string; label: string; harvest: string | null; tries: number },
   claude: Claude,

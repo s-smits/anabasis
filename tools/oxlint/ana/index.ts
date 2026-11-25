@@ -32,9 +32,8 @@ import { preferFindOverLoopRule } from "./rules/prefer-find-over-loop.ts";
 
 /**
  * Repository-owned custom lint rules (`ana/*`), registered at `error` in `.oxlintrc.json` and
- * enforced under `bun run lint -- --strict` or `ANA_LINT_STRICT=1`. Vendored trees
- * (`vendor/pi-claude-bridge/**` and `tools/oxlint/anti-slop/**`) are exempted in `.oxlintrc.json`
- * where applicable; cross-file structural scans run in `bun run simplify` (`tools/oxlint/simplify-census.ts`).
+ * enforced under `bun run lint -- --strict` or `ANA_LINT_STRICT=1`; `vendor` is ignored there.
+ * Cross-file structural scans run in `bun run simplify` (`tools/oxlint/simplify-census.ts`).
  */
 const anaPlugin = eslintCompatPlugin({
   meta: { name: "ana" },

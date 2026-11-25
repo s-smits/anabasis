@@ -1,14 +1,10 @@
 /**
- * The bun router (`tools/runtime/router/`) as a machine meets it: installed by its own `install.ts`
- * into a scratch home, then run as `bun` over a real Git tree. The stand-in ssh models the transport
- * and the hosts, never the runner's commands: a host is a folder whose state is a file in it, a
- * master is its socket file, and every command runs in the host's home under bash with HOME and PATH
- * alone, since ssh carries no environment, so a push goes through it to a real `git-receive-pack`.
- * Each host's pinned Bun records how task.sh called it, so the settings, the status and the deadline
- * are read where the task ran, and each install it was asked for. A task holds or exits through its
- * own arguments (`hold:<path>`, `exit:<n>`). A stand-in `ps` lists no other process to the reaper, so
- * no case can reap an orphan of the machine running the suite; the reaper's own case names what it
- * lists.
+ * The bun router (`tools/runtime/router/`) installed by its own `install.ts` into a scratch home
+ * and run as `bun` over a real Git tree. The stand-in ssh models only transport and hosts: a host
+ * is a folder, a master its socket file, and each command runs under bash with HOME and PATH alone,
+ * as ssh carries no environment. Each host's pinned Bun records how task.sh called it; a task holds
+ * or exits through its arguments (`hold:<path>`, `exit:<n>`). A stand-in `ps` lists no other
+ * process, so no case can reap an orphan of the machine running the suite.
  */
 import {
   chmodSync,

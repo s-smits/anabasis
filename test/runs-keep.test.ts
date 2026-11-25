@@ -38,7 +38,6 @@ describe("the turn a keeper takes", () => {
       [[waited(1)], "open", "watch"],
       [[waited(5, "load")], "open", "watch"],
       [[waited(5), event("build.started", { session: "b-1" })], "open", "watch"],
-      // A seat that ran on after the wait writes its call and its failed turn; the wait stands.
       [
         [waited(2), event("exam.call", { session: "x-1" }), event("exam.turn", { stopReason: "error" })],
         "open",
@@ -54,8 +53,8 @@ describe("the turn a keeper takes", () => {
     for (const ending of ["budget", "stop", "operator", "finished", "no-room"]) {
       expect(turn([event("campaign.ended", { ending })], false)).toBe("done");
     }
-    // A wait the launch before this one recorded is not this launch's to move: the keeper that just
-    // moved the run would move it again while its new process makes its first calls.
+    // A wait the launch before this one recorded is not this launch's to move, or the keeper that just
+    // moved the run would move it again during its first calls.
     expect(turn([waited(2), event("exam.call", { session: "x-1" })], true, 1)).toBe("watch");
   });
 
@@ -66,7 +65,6 @@ describe("the turn a keeper takes", () => {
       expect(state).toEqual({ kind: "ended", ending });
       expect(turnOf(state, NOW, HOUR)).toBe("done");
     }
-    // A login's limit is waited out, so its process dies on the wait or ends on its environment.
     for (const events of [[waited(2)], [waited(2), event("campaign.ended", { ending: "environment" })]]) {
       expect(kept(events).kind).toBe("kept");
       expect(turnOf(kept(events), NOW, HOUR)).toBe("continue");
@@ -132,7 +130,6 @@ describe("a keeper's looks, scripted", () => {
   const MINUTE = 60_000;
   const WAIT_MS = Number(WAIT_HOURS) * HOUR;
 
-  /** A keeper of a run on login 2 over logins 2 to 4, over a log and readings a test sets. */
   function scripted(flags: readonly string[] = [`--builder=${OPUS}`], login: string | undefined = "2") {
     const none: string[] = [];
     const nobody: { name: string; login: string; host: string }[] = [];
@@ -277,10 +274,9 @@ describe("a keeper's looks, scripted", () => {
 });
 
 describe.concurrent("going on with a live run after a pause", () => {
-  /** `continue --after next` of a live campaign whose comparisons began at 0.02, on `level`. The
-   *  campaign command here takes its dry run's refusal from the real opening (`opened`), and its
-   *  live run, once it reads the pause word, finishes a solve. Each case takes 60 s: under a whole
-   *  suite, the word, the run's end and `continue`'s polls outlast 20 s. */
+  /** `continue --after next` of a live campaign whose comparisons began at 0.02, on `level`; the
+   *  dry run's refusal comes from the real opening (`opened`). Each case takes 60 s, as a whole
+   *  suite's word, run end and polls outlast 20 s. */
   async function goOnLive(level: string) {
     const made = fakeHosts();
     fixtures.push(made.root);
@@ -315,8 +311,6 @@ else {
       stdout: "ignore",
       stderr: "ignore",
     });
-    // The fixture's `ps` lists the live run while it lives, and not once it is a zombie, as
-    // `writers` reads it.
     const row = `${String(live.pid)} ${capturedExecPath} tools/d2/harness-builder.ts --name sample`;
     writeFileSync(
       join(made.root, "bin", "ps"),

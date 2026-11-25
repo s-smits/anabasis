@@ -1,16 +1,10 @@
 /**
- * The page's API: every `/api/*` request ends here with a JSON answer.
- *
- * Three refusals come before any reading. The server binds the loopback, and a request whose
- * `Host` is not a loopback name is refused, so a page on another origin cannot reach it through a
- * name it controls. Every request carries the token the server printed at its start: on macOS the
- * command wall lets a Builder's or a solver's shell reach the network, so a loopback port alone
- * keeps nothing from them. And an endpoint the exam tier alone
- * answers (`EXAM_ONLY`) is refused on a server started without `--exam-side`.
- *
- * Nothing here writes. The API reads the campaigns' logs on every request, refolding a log only
- * where its size or its time changed (`logs.ts`), so a step that lands in a log is on the next
- * poll.
+ * The page's API: every `/api/*` request ends here with a JSON answer. Three refusals come before
+ * any reading: a `Host` that is not a loopback name, so a page on another origin cannot reach the
+ * server through a name it controls; a missing or wrong token, since on macOS a seat's shell can
+ * reach loopback ports; and an `EXAM_ONLY` endpoint on a server without `--exam-side`. Nothing here
+ * writes; a log is refolded only where its size or time changed (`logs.ts`), so a step that lands
+ * is on the next poll.
  */
 import {
   API_PREFIX,
@@ -36,20 +30,14 @@ import { taskAnswer, tasksAnswer } from "./tasks.ts";
 import { capturedJsonStringify } from "../../../../src/meta/json-runtime.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
 
-/** What the server was started with. */
 export interface ServerOptions {
-  /** The repository whose worktrees hold the campaigns, or the one directory that does. */
   readonly repo: string;
   readonly trees: Trees;
-  /** The token every request must carry, printed once at the start. */
   readonly token: string;
-  /** `--exam-side`: answer in the exam tier. */
   readonly examSide: boolean;
-  /** The clock the listing is kept by, as `Reading` takes it. */
   readonly now?: (() => number) | undefined;
 }
 
-/** Every endpoint's handler. */
 type Handlers = { readonly [Name in Endpoint]: Handler<Name> };
 
 const HANDLERS: Handlers = {
@@ -77,8 +65,8 @@ function json(status: number, body: AnswerOf<Endpoint> | ApiError): Response {
 
 const refusal = (refused: Refusal, error: string): Response => json(403, { error, refused });
 
-/** Whether a `Host` header names the loopback. A request with none is refused: every browser and
- *  every HTTP/1.1 client sends one. */
+/** Whether a `Host` header names the loopback; one with none is refused, as every browser and
+ *  HTTP/1.1 client sends one. */
 function loopbackHost(host: string | null): boolean {
   if (host === null) return false;
   const named = host.trim().toLowerCase();
@@ -109,7 +97,6 @@ function examSideRefusal(endpoint: Endpoint, tier: Tier): Response | null {
   );
 }
 
-/** The query of `endpoint` as the URL carries it, holding every required parameter. */
 function queryOf<Name extends Endpoint>(endpoint: Name, url: URL): Query<Name> {
   const { required, optional } = PARAMETERS[endpoint];
   const missing = required.filter((name) => !url.searchParams.has(name));

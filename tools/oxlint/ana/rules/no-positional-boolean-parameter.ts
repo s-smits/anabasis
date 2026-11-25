@@ -4,10 +4,8 @@ import { isTestFile } from "../shared/file-role.ts";
 import { flagBinding } from "../shared/flags.ts";
 import { identifierName } from "../shared/statements.ts";
 
-/** The function a parameter list belongs to: a declaration, an expression or an arrow. */
 type Owner = ESTree.Function | ESTree.ArrowFunctionExpression;
 
-/** `[]`, `{}`, `null` or `undefined`: an arm that yields nothing. */
 function yieldsNothing(node: ESTree.Node): boolean {
   if (node.type === "ArrayExpression") return node.elements.length === 0;
   if (node.type === "ObjectExpression") return node.properties.length === 0;
@@ -15,7 +13,6 @@ function yieldsNothing(node: ESTree.Node): boolean {
   return node.type === "Identifier" && node.name === "undefined";
 }
 
-/** Whether this read of the boolean is the test of a conditional one of whose arms yields nothing. */
 function gatesYield(read: ESTree.Node): boolean {
   const { parent } = read;
   if (parent?.type !== "ConditionalExpression" || parent.test !== read) return false;
@@ -56,10 +53,9 @@ export const noPositionalBooleanParameterRule = defineRule({
   },
   createOnce(context) {
     /**
-     * Whether every call this file can see passes an identifier of the parameter's own name at
-     * that position, so the call site already reads as the declaration does. Null when the calls
-     * are not all in view: a declaration with no visible call, or one reached through anything
-     * other than a plain named call, is answered by the caller this rule cannot read.
+     * Whether every call this file can see passes an identifier of the parameter's own name at that
+     * position, so the call site already reads as the declaration does. False when the calls are
+     * not all in view: the caller this rule cannot read answers for them.
      */
     function namedAtEveryCall(declaring: ESTree.Node, fn: string, index: number, name: string): boolean {
       const declared = context.sourceCode
@@ -75,11 +71,8 @@ export const noPositionalBooleanParameterRule = defineRule({
         const argument = call.arguments[index];
         if (argument === undefined) return false;
         if (argument.type === "Identifier") return argument.name === name;
-        // `submitted()` reads at the call site exactly as `submitted` does. A reader of
-        // `completedOutcome(…, submitted(), condition)` is told which state is being passed and
-        // where it came from, which is the whole of what this rule asks for.
-        // `solvedCase.acceptedSubmit` names the state and, one word more than the bare
-        // identifier does, where it came from. A computed access names nothing at the call site.
+        // `submitted()` or `solvedCase.acceptedSubmit` at the call site names the state being passed
+        // and where it came from; a computed access names nothing.
         if (argument.type === "MemberExpression") {
           return (
             !argument.computed && argument.property.type === "Identifier" && argument.property.name === name
@@ -94,8 +87,8 @@ export const noPositionalBooleanParameterRule = defineRule({
       });
     }
 
-    /** Whether this file only hands the function on as an argument, so that whatever it is handed
-     *  to calls it with the data and no call site here passes a bare `true`. */
+    /** Whether this file only hands the function on as an argument, so no call site here passes a
+     *  bare `true`. */
     function handedOnOnly(declaring: ESTree.Node, fn: string): boolean {
       const reads = context.sourceCode
         .getDeclaredVariables(declaring)
@@ -109,7 +102,6 @@ export const noPositionalBooleanParameterRule = defineRule({
       });
     }
 
-    /** Whether every read of the boolean in `owner` decides only whether it yields anything. */
     function gatesItsYield(owner: Owner, name: string): boolean {
       const variable = context.sourceCode
         .getDeclaredVariables(owner)
@@ -129,7 +121,6 @@ export const noPositionalBooleanParameterRule = defineRule({
         if (binding === null) continue;
         if (gatesItsYield(owner, binding.name)) continue;
         if (declaring !== null && namedAtEveryCall(declaring, fn, index, binding.name)) continue;
-        // The call as a reader meets it: `fn(true)` for a lone parameter, `fn(…, true)` for a last.
         const call = [index > 0 ? "…" : [], "true", index < parameters.length - 1 ? "…" : []].flat();
         context.report({
           node: parameter,
@@ -140,12 +131,12 @@ export const noPositionalBooleanParameterRule = defineRule({
     }
 
     return {
-      // A test states both arguments beside each other and reads them together; the opacity this
-      // rule is about is a caller in another file.
+      // A test states both arguments side by side; the opacity this rule is about is a caller in
+      // another file.
       before: () => !isTestFile(context.filename),
 
-      // An exported declaration arrives wrapped, so its own node is not the module-scope statement
-      // and its callers are in other files: it never takes the call-site exemption.
+      // An exported declaration's callers are in other files, so it never takes the call-site
+      // exemption.
       FunctionDeclaration: (node) => {
         const fn = node.id === null ? "this function" : node.id.name;
         if (!node.parent.type.startsWith("Export") && handedOnOnly(node, fn)) return;
@@ -156,8 +147,8 @@ export const noPositionalBooleanParameterRule = defineRule({
         if (node.key.type !== "Identifier") return;
         report(null, node.key.name, node.value);
       },
-      // `const close = (handle: string, failed: boolean) => …` declares as a function does; one
-      // inside an export list or another statement has callers this rule never sees.
+      // `const close = (handle: string, failed: boolean) => …` declares as a function does; one inside
+      // an export list or another statement has callers this rule never sees.
       VariableDeclarator: (node) => {
         const { id, init } = node;
         const callable = init?.type === "ArrowFunctionExpression" || init?.type === "FunctionExpression";

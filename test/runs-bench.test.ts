@@ -52,18 +52,15 @@ afterAll(() => {
 describe("runs bench", () => {
   test("a run's pack chooses its benchmark, and a choice the list leaves open refuses before any machine is asked", () => {
     expect(settingsOf(RUN, ENV)).toMatchObject({ bench: "statbench", runner: { name: "bench" } });
-    // A benchmark with no machine named is rolled on this one.
     const { host: _, ...local } = STATS;
     expect(settingsOf(RUN, benches(local)).runner).toBeUndefined();
     expect(() => settingsOf("other-fresh-opus-builder", ENV)).toThrow(/no benchmark reads pack other/u);
     // A pack listed reads the packs named from it, and no pack that merely starts with its letters.
     expect(settingsOf("stats-v2-fresh-opus-builder", ENV).bench).toBe("statbench");
     expect(() => settingsOf("statsx-fresh-opus-builder", ENV)).toThrow(/no benchmark reads pack statsx/u);
-    // Two benchmarks that read one pack each take a read of their own, named.
     const two = benches(STATS, { ...STATS, name: "second", packs: ["stats", "other"] });
     expect(() => settingsOf(RUN, two)).toThrow(/statbench, second read it; name one with --bench/u);
     expect(settingsOf(RUN, two, "second").bench).toBe("second");
-    // The single machine of before is not read.
     expect(() => settingsOf(RUN, { ANA_HOSTS: HOSTS, ABLATION_HOST: "bench" })).toThrow(/no benchmark/u);
   });
 
@@ -74,7 +71,6 @@ describe("runs bench", () => {
     expect(() => benchesOf(benches(STATS, STATS))).toThrow(/repeats statbench/u);
     expect(() => benchesOf(benches({ ...STATS, host: "nowhere" }))).toThrow(/no host nowhere/u);
     expect(benchesOf({})).toEqual([]);
-    // A verb kept to this machine reads the benchmark rolled here and none rolled elsewhere.
     const { host: _host, ...local } = { ...STATS, name: "local" };
     const kept = benchesOf({ ...benches(STATS, local), ANA_HOP: "1" });
     expect(kept.map(({ name, host }) => [name, host])).toEqual([["local", undefined]]);

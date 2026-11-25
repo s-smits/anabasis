@@ -1,30 +1,14 @@
 /**
- * A word the operator leaves for a campaign that is running:
+ * A word the operator leaves for a running campaign: one `campaign.word` event the campaign reads
+ * at the next move's boundary (`pendingWords`, `src/campaign/word.ts`), never waited for. `--stop
+ * "<why>"` ends it (ending `operator`; run again, it goes on from the log), `--tasks "<why>"` has
+ * an Examiner write tasks before anything else is built or compared, and `--budget <dollars>` sets
+ * the total from there on. No seat reads a word or its reason. This command and the campaign both
+ * append to one log; each append is one whole-line write.
  *
  *   bun tools/d2/word.ts --name buffer --stop "the host is needed for something else"
  *   bun tools/d2/word.ts --name buffer --tasks "the last three batches all tied"
  *   bun tools/d2/word.ts --name buffer --budget 250
- *
- * A word lets the operator steer a campaign without stopping the one that runs to run another
- * command. A word is one event in the campaign's log
- * (`campaign.word`). The campaign command reads it at the next move's boundary
- * (`pendingWords`, `src/campaign/word.ts`), so it changes the move after the one that is running
- * and nothing in it, and it is never waited for: a campaign with no word left goes on.
- *
- *   --stop    the campaign ends there on the operator's word (`campaign.ended`, ending
- *             `operator`). Run again, its command goes on from the log.
- *   --tasks   an Examiner session writes other tasks before anything else is built or compared.
- *   --budget  the campaign's total in dollars from there on: what is left of it caps each move.
- *
- * An older log may hold a `--cause` word, which released a campaign its A/A comparison had ended;
- * nothing reads it now.
- *
- * Each takes effect once: the event that acts on a word names it. Nothing here reaches a seat. A
- * word is the operator's to the campaign's controller, and no Builder, Examiner, solver or
- * reviewer reads it or its reason.
- *
- * Two processes write one log here, this command and the campaign's. An append is one write of
- * one line at the log's end, which a local filesystem keeps whole.
  */
 import { openingOf } from "#src/campaign/opening.ts";
 import { ANSWERED, type Answered } from "#src/campaign/word.ts";
@@ -41,11 +25,10 @@ const OPTIONS = {
   budget: { type: "string" },
 } as const;
 
-/** `bun tools/d2/word.ts`. Returns the word it left. */
 export function wordCommand(args: readonly string[]): Answered {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { name, stop, tasks, budget } = values;
-  // One flag a kind of word, each named by the kind it leaves (`ANSWERED`).
+  // One flag per kind of word (`ANSWERED`).
   const [word, ...more] = ANSWERED.filter((kind) => values[kind] !== undefined);
   if (name === undefined || word === undefined || more.length > 0) {
     throw new Error('name --name and one word: --stop "<why>", --tasks "<why>" or --budget <dollars>');

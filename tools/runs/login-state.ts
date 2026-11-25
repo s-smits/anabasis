@@ -1,7 +1,6 @@
 /**
- * Whether a login is open or closed, read from one reading of `readLogins`. Closed means a window is
- * used up or refused, until that window's reset; two closed windows mean the later reset. A login
- * that could not be read is neither, since a read that failed says nothing of its limits.
+ * Whether a login is open or closed, from one reading of `readLogins`. Closed means a window is
+ * used up or refused until its reset (the later of two); a login that could not be read is neither.
  */
 import { MINUTE_MS } from "#src/meta/clock.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -33,7 +32,6 @@ export function closedOf(reading: Reading): { until: number | null } | null {
   return { until: resets.includes(null) ? null : Math.max(...resets.flatMap((at) => at ?? [])) };
 }
 
-/** The logins of `readings` closed until a known reset, as a snapshot keeps them. */
 export function closedResets(readings: readonly Reading[]): Record<string, number> {
   return Object.fromEntries(
     readings.flatMap((reading) => {
@@ -53,7 +51,6 @@ export function listedBy(
   return readings.filter((reading) => !("error" in reading) && (closedOf(reading) === null ? open : closed));
 }
 
-/** What a head line of `usage` says of `reading`, in `clockOf`'s words. */
 export function stateWords(
   reading: Reading,
   allowed: readonly string[],

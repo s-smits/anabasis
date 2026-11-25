@@ -1,8 +1,8 @@
 /**
- * Campaign controller (`tools/d2/harness-builder.ts`): drives a campaign from its append-only log
- * until it reaches a terminal state (`budget`, `stop`, `exam`, `no-room`, `environment`, `operator`,
- * or `finished` after `IDLE` consecutive Builder conversations without a campaign move) or completes
- * `--moves`. Requires the executing Bun to match `packageManager` and `engines.bun` in `package.json`.
+ * The campaign controller: drives a campaign from its append-only log until an ending (`budget`,
+ * `stop`, `exam`, `no-room`, `environment`, `operator`, or `finished` after `IDLE` Builder
+ * conversations in a row without a campaign move) or `--moves`. The executing Bun must match
+ * `packageManager` and `engines.bun`.
  *
  *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
  *     --solver claude/claude-sonnet-5-5 --budget 60 --builder claude/claude-opus-5-5 \
@@ -72,26 +72,17 @@ import { sessionCommand } from "./session.ts";
 import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
 
 const ENDED = "campaign.ended";
-/** How a Builder's campaign conversation ended whole, by its finish or at its own limits: the
- *  conversations `idleOf` counts towards `finished`. One cut (`INTERRUPTED`) or stopped counts none. */
+/** A conversation that ended whole, by its finish or at its own limits: what `idleOf` counts
+ *  towards `finished`. One cut (`INTERRUPTED`) or stopped counts none. */
 const WHOLE: ReadonlySet<unknown> = new Set(["finished", "wall", "turns"]);
-/** How a Builder's campaign conversation ended where the campaign goes on with another: at its
- *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
-/** The moves the host makes itself, by the command an operator would run: the exam's draft and
- *  reading, the tasks set apart, a comparison, a promotion, and a revert. Every other is a conversation's. */
 type Made = Extract<Decided, { move: "draft" | "accept" | "prepare" | "compare" | "promote" | "revert" }>;
 
 /**
- * Whether the campaign goes on from a move that threw, which began where the log held `from`
- * events: a provider's limit with a reset is waited out, and so is a session on record as
- * crashed. A Builder's session that crashed is refused where it is read back (`spent`,
- * `src/builder/session.ts`), so its move throws. That throw is no environment's ending, which would
- * let a provider's failure on the Builder's own turn end the campaign, and led by its Builder that
- * turn is most of the campaign. It is the provider's failure as an Examiner's
- * crashed session is, which the campaign goes on from and the table's crash rule bounds
- * (`crashedRun`).
+ * A crashed Builder session's move throws where it is read back (`spent`); that is a provider's
+ * failure the campaign goes on from, bounded by the crash rule (`crashedRun`), not an environment's
+ * ending.
  */
 async function goesOn(log: string, from: number, error: unknown, host: Seats["host"]): Promise<boolean> {
   if (await waitOut(log, error, host?.sleep)) return true;
@@ -101,8 +92,6 @@ async function goesOn(log: string, from: number, error: unknown, host: Seats["ho
   return crashed;
 }
 
-/** Make one decided move by the command an operator would run, on record as it begins (`moved`) with
- *  what names it: a session's or a comparison's id, a harness, the checks admitted, or nothing. */
 async function make(decided: Made, turn: Turn, log: string): Promise<void> {
   const { events, opening, values, seats } = turn;
   const pack = packOf(values);
@@ -141,20 +130,9 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
     return;
   }
   const { session, args } = comparisonOf(decided, turn);
-  // The comparison's own flags beside the pack's, so the log says what command the move ran
-  // (a flag left off would otherwise show on no record).
   begin({ session, args: args.slice(pack.length) });
   await checkpointCommand(args, turn.held);
 }
-/**
- * What an operator reads where a campaign ends on its exam: the faults of the checker's last
- * reading, where this run did not just print them, and the command that admits the checks which
- * stand on the operator's word alone. An exam drafted from a prompt always holds such checks,
- * since no engine of the field is installed for it, so a campaign from a prompt under `--hitl`
- * waits here once, for that word. A reading made in this run printed its faults a line each as it was made
- * (`accept.ts`), so they are not printed here a second time; a run that ends on a reading an
- * earlier run made is the one that has them to print.
- */
 function examLines(
   events: readonly LogEvent[],
   values: Values,
@@ -182,12 +160,8 @@ function examLines(
 }
 
 /**
- * Keep this run of the command on record: `launch-run-<n>.json` beside the log, with the flags,
- * the commit and the load it started under (`Receipt`, `tools/runs/receipt.ts`). The
- * log holds the host's code by content and no commit, and the opening keeps the terms and not the
- * flag line, so without the receipt a run under this command would be on no record, and a setting
- * that differed from its flag file could not be traced. A rehearsal keeps none,
- * since its seats are scripts and it runs where it is told.
+ * The log holds the code by content and no commit, so the launch receipt keeps the flags, commit
+ * and load (`tools/runs/receipt.ts`).
  */
 function keepReceipt(log: string, args: readonly string[]): void {
   mkdirSync(dirname(log), { recursive: true });
@@ -205,14 +179,6 @@ function keepReceipt(log: string, args: readonly string[]): void {
   });
 }
 
-/**
- * End on record, as killed, each Builder, Examiner and drafting session a stopped run of the command
- * left open, with what the log holds of it, and a Builder's notes where its home still stands, since
- * a reopened campaign starting new sessions beside them would leave readers metering each only to
- * its last turn and counting it open. Killed is no crash, so the crash rule counts none of them. A
- * draft is ended too, since a pause waits for no draft to be open, and a campaign restarted inside
- * one could otherwise never pause cleanly.
- */
 export async function endCut(log: string): Promise<void> {
   for (const { of, session, ...spent } of cutSessions(read(log))) {
     if (of === "build") {
@@ -223,7 +189,6 @@ export async function endCut(log: string): Promise<void> {
   }
 }
 
-/** Record how the campaign ended, as its last event, unless that is what its last event says. */
 function ended(log: string, events: readonly LogEvent[], decided: Extract<Decided, { move: "end" }>): void {
   // An ending on a word the operator just left is a new one, whatever the last event says.
   if (decided.answers === undefined && endedOf(events)?.ending === decided.ending) return;
@@ -236,14 +201,6 @@ function ended(log: string, events: readonly LogEvent[], decided: Extract<Decide
   });
 }
 
-/**
- * One Builder conversation that makes the campaign's moves itself (`campaignTools`), for a
- * campaign its Builder leads, and what it left: null where the campaign goes on, the campaign's
- * ending where the conversation brought one, and otherwise the table's next move, which ends this
- * run of the command with nothing ended. The conversation is a Builder session by the command an
- * operator would run, and is on record as it begins, as every move is. Its own tool calls count
- * against `--moves`, and it does not.
- */
 async function converse(
   context: CampaignContext,
   named: Exclude<Decided, { move: "end" }>,
@@ -253,8 +210,6 @@ async function converse(
   const { cap, reviewer, pastStop } = sharedOf(turn);
   const session = nextId(turn.events, "b");
   const { builder } = turn.opening.seats;
-  // The practice owed since the last reading, a comparison or a promotion the host made between
-  // conversations among them, is in the workspace the conversation opens on.
   await releasePendingPractice(context, "a Builder conversation opens");
   const led = `the Builder's campaign conversation, where the table named ${named.move}`;
   moved(log, { move: "build", code: "led", why: led }, { session });
@@ -272,12 +227,9 @@ async function converse(
         ...pastStop,
       ],
       context.held,
-      // An Examiner session the table names is the host's to start as the conversation opens.
       campaignTools(context, named.move === "examine" ? "starts-examiner" : "starts-nothing"),
     );
   } catch (error) {
-    // A provider's limit or a crashed conversation is waited out, and the campaign goes on;
-    // anything else a conversation threw is the environment's ending, as for every move that began.
     if (context.failed === null && (await goesOn(log, turn.events.length, error, seats.host))) return null;
     append(log, ENDED, { ending: "environment", why: errorMessage(error), move: "build" });
     throw error;
@@ -290,21 +242,12 @@ async function converse(
     append(log, ENDED, { ending: "environment", why, move });
     return { move: "end", ending: "environment", code: "failed", why };
   }
-  // A conversation that ends whole, by finish or at its limits, is followed by another on the
-  // Builder's notes until IDLE in a row have made no campaign move (`idleOf`), since a finish that
-  // ended the campaign would end it with most of its budget unspent, often seconds after a promotion.
+  // A finish that ended the campaign would often leave most of its budget unspent seconds after a
+  // promotion, so another conversation follows until `IDLE` in a row made no move.
   const idle = WHOLE.has(how) ? idleOf(after) : 0;
   const table = decide(after, turnOf(context).plan);
-  // A comparison, any of them, and a promotion measure what a conversation left and ask no Builder for
-  // anything, so the host makes them first, and an ending the table names stands: a Builder's
-  // `finish` does not end the campaign while a comparison is owed, which a harness changed and then
-  // finished on would otherwise never have read. The host makes a comparison that began under other
-  // code as its first move, and its terms refuse it with the campaign's environment ending (`begin`,
-  // `src/campaign/round.ts`), where the Builder's tool would be refused it again and again. Every
-  // Examiner session the table names starts as the next conversation opens, beside it
-  // (`campaignTools`), rather than waiting for IDLE conversations in a row to make no move, which
-  // left promotions hours from their next tasks. A session that holds out nothing counts towards the
-  // table's own ending for want of room (`roomless`).
+  // A Builder's `finish` does not end the campaign while a comparison is owed, and the Examiner session
+  // the table names starts beside the next conversation rather than after `IDLE` idle ones.
   if (idle < IDLE || table.move === "promote" || table.move === "compare") {
     return how === "finished" || (AGAIN.has(how) && context.used < context.maxMoves) ? null : table;
   }
@@ -313,11 +256,6 @@ async function converse(
   return { move: "end", ending: "finished", code: "finished", why };
 }
 
-/**
- * One conversation of a campaign its Builder leads (`converse`), and what the command does with
- * what it left: a provider's limit waited out where the campaign goes on, and otherwise the line
- * of what comes next, with the ending on record and the campaign handed over where it ended.
- */
 async function lead(
   context: CampaignContext,
   named: Exclude<Decided, { move: "end" }>,
@@ -329,23 +267,13 @@ async function lead(
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
-  // Every ending goes on record once (`ended`), an environment's and the crash rule's among them,
-  // which read after the host halted a live Builder would otherwise never be.
   if (left.move === "end") ended(log, read(log), left);
-  // An environment's ending hands nothing over.
   if (left.move === "end" && left.ending !== "environment" && values.handover !== undefined) {
     await closeCommand([...packOf(values), "--to", values.handover]);
   }
   return left;
 }
 
-/**
- * The setting the campaign runs under: the log's record, where a flag that names another is
- * refused with both, as every command refuses it; or, where the log holds none, what the flags
- * name, with the opening's solver for a campaign from a prompt, to be recorded as the command
- * starts (`keepSetting`). The opening keeps no copy of the deadline, the scored tasks, the solves
- * or the model turns, which would be two records of one fact.
- */
 function settingOf(log: string, given: Values): AskedSetting {
   const events = read(log);
   const recorded = recordedSetting(events);
@@ -368,10 +296,8 @@ function settingOf(log: string, given: Values): AskedSetting {
 }
 
 /**
- * The opening of a paid campaign, refused where a seat's provider holds no credential here, before
- * anything is paid for (rule 14), and so also under `--dry-run`, which every launch runs first.
- * Every call of such a seat ends a provider non-result, while the seats that are served go on
- * billing for nothing.
+ * Refused also under `--dry-run`: every call of a seat without a credential would end a provider
+ * non-result while the served seats go on billing (rule 14).
  */
 async function served(opening: Opening, paid: "paid" | "scripted", named?: string): Promise<Opening> {
   if (paid === "scripted") return opening;
@@ -391,9 +317,6 @@ async function served(opening: Opening, paid: "paid" | "scripted", named?: strin
   return opening;
 }
 
-/** What is wrong with a manifest's Bun pins for the executing `version`, or null where
- *  `packageManager` and `engines.bun` both pin it exactly. A missing, ranged or other manager's pin
- *  differs as a wrong one does. */
 function pinFault(manifest: JsonValue, version: string): string | null {
   const record = asRecord(manifest);
   const pins = { packageManager: record?.packageManager, "engines.bun": asRecord(record?.engines)?.bun };
@@ -402,23 +325,17 @@ function pinFault(manifest: JsonValue, version: string): string | null {
     : `${capturedJsonStringify(pins)} must pin the executing Bun ${version}`;
 }
 
-/** Run one host move (`make`), recovering provider waits/crashes via `goesOn` or logging environment end. */
 async function runMade(decided: Made, turn: Turn, log: string, from: number): Promise<boolean> {
   try {
     await make(decided, turn, log);
-    // Inside the `try`, so a move that changed nothing ends the campaign as any other move that
-    // threw does, rather than the process exiting here with no ending on record.
+    // Inside the `try`, so a move that changed nothing ends the campaign rather than exiting with no
+    // ending on record.
     if (read(log).length <= from + 1) {
       throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
     }
     return true;
   } catch (error) {
-    // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
-    // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
-    // the table's crash rule ends the campaign where sessions crash in a row.
     if (await goesOn(log, from, error, turn.seats.host)) return false;
-    // Any other move that began and threw is the environment's ending, and the campaign goes on
-    // from its log when it is run again. One refused before it began leaves the log alone.
     if (read(log).length > from) {
       append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
     }
@@ -426,18 +343,12 @@ async function runMade(decided: Made, turn: Turn, log: string, from: number): Pr
   }
 }
 
-/**
- * `bun tools/d2/harness-builder.ts`, and under a rehearsal's seats the same loop with a script in
- * each model seat. It returns the last thing move 7 said: the campaign's ending, or the move that
- * would be made next.
- */
 export async function harnessBuilder(
   args: readonly string[],
   seats: Seats = { seated: solved },
 ): Promise<Decided> {
-  // Runtime drift, and a tree checked out again under paid seats, are refused before any opening,
-  // receipt or recovery can write to the campaign. A dry run seats none, so it goes on and says so:
-  // otherwise a dry run could pass in a main clone whose real run is then refused.
+  // A dry run only reports the drift, else it could pass in a main clone whose real run is then
+  // refused.
   const manifest = join(REPO, "package.json");
   const fault = pinFault(capturedJsonParse(readFileSync(manifest, "utf8")), Bun.version);
   if (fault !== null) throw new Error(`${manifest}: ${fault}`);
@@ -455,25 +366,18 @@ export async function harnessBuilder(
     throw new Error(`--moves ${String(given.moves)}: the moves to make are a number`);
   }
   const log = campaignLog(name);
-  // Opening a campaign stages its check program, and refuses one the log froze otherwise; it has no
-  // exam to open over until its first draft stands.
   let campaign: Campaign | null = null;
   const setting = settingOf(log, given);
   let opening = await served(opened(log, given, paid), paid, given.solver);
-  // Capture `began` before writing the launch receipt so a pre-armed `runs pause` that waits for
-  // this launch's receipt lands strictly after `began` for both the outer loop and `queued`.
+  // Read before the launch receipt, so a pre-armed `runs pause` that waits for this launch's receipt
+  // lands after `began` for both the outer loop and `queued`.
   const began = read(log).length;
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
   if (!given["dry-run"]) await endCut(log);
-  // Every move is made with the terms the opening keeps: this command's, and the record's for
-  // each it does not name.
   const values: Values = { ...given, ...opening.terms };
   const held = queued({ ...seats, loaded: values.loaded }, log, began);
-  /** The move this run made last: an exam read here printed its faults as it was read. */
   let last: Decided["move"] | null = null;
   for (let made = 0; ; ) {
-    // A total the operator left as a word rules from this move on: the newest stands, and the record
-    // answers every one, so that no older one applies at the next move.
     let events = read(log);
     const totals = pendingWords(events).filter(({ word }) => word === "budget");
     if (totals.length > 0) {
@@ -486,15 +390,13 @@ export async function harnessBuilder(
     if (made === 0) {
       const size = sizeLines(plan.wanted.target, plan.wanted.level);
       for (const line of size) console.log(line);
-      // A paid campaign that could never read a step is refused before it is paid for (rule 14):
-      // run, the table would send for tasks no target that small could use.
+      // A paid campaign that could never read a step is refused before it is paid for (rule 14).
       const floor = comparisonFloor(plan.wanted.level);
       if (paid === "paid" && plan.wanted.target < floor) {
         throw new Error(`${size[0] ?? ""}: name a --target of at least ${String(floor)}`);
       }
       if (!values["dry-run"]) keepSetting(log, setting);
     }
-    // Where the log stands as the move begins: the setting a first run just kept is no part of it.
     const from = made === 0 && !values["dry-run"] ? read(log).length : events.length;
     const decided = decide(events, plan);
     console.log(
@@ -505,15 +407,13 @@ export async function harnessBuilder(
       for (const line of faults) console.log(line);
       if (values["dry-run"]) return decided;
       ended(log, events, decided);
-      // What the campaign hands over, once it has an exam to open over (`close.ts`).
       if (values.handover !== undefined && campaign !== null) {
         await closeCommand([...packOf(values), "--to", values.handover]);
       }
       return decided;
     }
     if (values["dry-run"] || made >= most) return decided;
-    // Hold at an active or reached boundary pause before opening a new conversation or host move
-    // (promotions and reverts still land so reference state settles before `runs pause` stops the run).
+    // Promotions and reverts still land, so the reference settles before `runs pause` stops the run.
     if (
       decided.move !== "promote" &&
       decided.move !== "revert" &&
@@ -523,7 +423,6 @@ export async function harnessBuilder(
     ) {
       continue;
     }
-    // A Builder or an Examiner session the table names is the conversation's to make.
     if (decided.move === "build" || decided.move === "examine") {
       campaign ??= await openCampaign(packNamed(values));
       const turns = { maxMoves: most, used: made, failed: null, began };

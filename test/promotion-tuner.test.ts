@@ -1,4 +1,3 @@
-// Replay follows the selected tree's rule, including historical records.
 import { expect, it } from "bun:test";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
 import { loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
@@ -80,8 +79,8 @@ it("credits a won task to the measure that carried it, the bill where a tree bef
     weights: { ...own.weights, bill: 0.1 },
     points: (pair) => ({ ...own.points(pair), bill: pair.task === "rescued" ? 100 : 0 }),
   };
-  // Valid in four solves of four against three, four times the reference's measure by a lower-is-
-  // better objective, and billed half.
+  // Valid in four solves of four against three, four times the reference's measure on a lower-is-better
+  // objective, and billed half.
   const rescued: Paired = {
     task: "rescued",
     old: [false, true, true, true],
@@ -108,7 +107,6 @@ it("credits a won task to the measure that carried it, the bill where a tree bef
 it("uses a candidate tree's own stepOf without requiring a readsStep export", async () => {
   const home = mkdtempSync(join(tmpdir(), "ana-tuner-tree-"));
   try {
-    // Six tasks the new harness answers and the reference does not: the tree's own rule decides.
     const won = CHEAP.map((pair) => ({ ...pair, old: [false, false] }));
     for (const [rule, steps] of [
       ['() => "no-step"', 0],

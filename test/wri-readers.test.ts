@@ -844,7 +844,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
           scored: { wins: 1, losses: 1, ties: 0 },
         },
       },
-      // Overshoot comparison started AFTER pause(--after reported, base 0) was already reached
+      // An overshoot comparison started after the pause point (`--after reported`, base 0) was reached.
       {
         at: AT,
         kind: "comparison.started",
@@ -1140,7 +1140,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       },
       { at: STAMP, kind: "task.proposed", data: { version: "v-held", taskId: "x-1-001", session: "x-1" } },
       { at: STAMP, kind: "task.proposed", data: { version: "v-prac", taskId: "x-1-002", session: "x-1" } },
-      // Builder references x-1-002 BEFORE it is released -> must flag time-indexed held-task leak!
+      // The Builder names x-1-002 before its release, which must flag a time-indexed held-task leak.
       {
         at: STAMP,
         kind: "build.call",
@@ -1156,7 +1156,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       { at: STAMP, kind: "task.gate", data: { version: "v-prac", gate: 1, outcome: "passed" } },
       { at: STAMP, kind: "task.state", data: { version: "v-prac", state: "released" } },
       { at: STAMP, kind: "build.checkpoint", data: { session: "b-1", harness: candDigest } },
-      // Examiner wake call mentions 8-char short digest -> must flag exam harness-digests leak!
+      // An Examiner wake naming an 8-character short digest must flag an exam harness-digest leak.
       {
         at: STAMP,
         kind: "exam.started",
@@ -1184,7 +1184,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
         kind: "condition.recorded",
         data: { id: pracCondId, condition: requireJsonValue(pracCond) },
       },
-      // Practice solve runs dead-cli (must NOT mask dead-cli from comparison solves!).
+      // A practice solve runs dead-cli, which must not mask dead-cli from comparison solves.
       { at: STAMP, kind: "solve.started", data: { solve: "sp-1", condition: pracCondId, side: "practice" } },
       {
         at: STAMP,
@@ -1203,7 +1203,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
         kind: "solve.finished",
         data: { solve: "sp-1", ending: { outcome: "pass" }, seconds: 20, turns: 7 },
       },
-      // 4 comparison solves run write-package (which invokes check-package internally), all 7 turns < 90s (must NOT trigger PASSES AT A SMALL WALL SHARE).
+      // Four comparison solves run write-package, all seven turns under 90 s: no PASSES AT A SMALL WALL SHARE.
       ...Array.from({ length: 4 }, (_, nth): LogEvent[] => [
         {
           at: STAMP,
@@ -1258,7 +1258,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(portText).not.toContain("record_id");
 
     const diagText = diagnosticRows(cluster6Log, states).join("\n");
-    // 3 bins shipped; write-package ran, check-package credited via write-package, ONLY dead-cli (1) unused despite practice call.
+    // Three bins; check-package is credited through write-package, and only dead-cli is unused.
     expect(diagText).toContain("shipped 3 bin programs, 1 never invoked across 4 comparison solves");
 
     const firedNames = overview(cluster6Log).triggers.map(({ name }) => name);

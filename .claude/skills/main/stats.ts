@@ -1,25 +1,22 @@
-/**
- * Two-sample permutation test over campaign-level units.
- */
+/** Two-sample permutation test over campaign-level units. */
 
 /** Maximum combinations for exact enumeration before falling back to deterministic shuffles. */
 const DRAWS = 4000;
-/** Park-Miller Lehmer PRNG modulus, multiplier, and fixed seed. */
+/** Park-Miller Lehmer PRNG modulus, multiplier and fixed seed. */
 const MODULUS = 2_147_483_647;
 const MULTIPLIER = 48_271;
 const SEED = 20_261_111;
-/** Floating-point tolerance when comparing permutation differences against the observed difference. */
+/** Floating-point tolerance when comparing permutation differences against the observed one. */
 const SLACK = 1e-12;
 
-/** Result of a two-group permutation test. */
 export interface Shift {
-  /** Two-sided permutation p-value, or `null` if either group's statistic is undefined. */
+  /** Two-sided permutation p-value, or null if either group's statistic is undefined. */
   readonly p: number | null;
-  /** Smallest achievable p-value across all valid partitions of the pooled units, or `null` when `p` is `null`. */
+  /** Smallest achievable p across all valid partitions of the pooled units. */
   readonly least: number | null;
 }
 
-/** Number of ways to choose `size` items from `pool`, or `Infinity` when exceeding `DRAWS`. */
+/** `Infinity` when it exceeds `DRAWS`. */
 function dealsOf(pool: number, size: number): number {
   let ways = 1;
   for (let picked = 1; picked <= Math.min(size, pool - size); picked += 1) {
@@ -29,7 +26,6 @@ function dealsOf(pool: number, size: number): number {
   return Math.round(ways);
 }
 
-/** Every choice of `size` positions out of `pool`, in order. */
 function* choicesOf(pool: number, size: number): Generator<number[]> {
   const chosen = Array.from({ length: size }, (_, at) => at);
   for (;;) {
@@ -42,8 +38,7 @@ function* choicesOf(pool: number, size: number): Generator<number[]> {
   }
 }
 
-/** `DRAWS` shuffles of the positions below `pool`, each cut to its first `size`, the same on every
- *  call. */
+/** The same on every call. */
 function* shufflesOf(pool: number, size: number): Generator<number[]> {
   let state = SEED;
   for (let draw = 0; draw < DRAWS; draw += 1) {
@@ -57,9 +52,8 @@ function* shufflesOf(pool: number, size: number): Generator<number[]> {
   }
 }
 
-/** How often dealing the units of `then` and `now` out again moves `statistic` at least as far
- *  apart between the two groups as it stands. A deal that leaves a group without a value (an empty
- *  denominator) is counted on neither side. */
+/** How often dealing the units out again moves `statistic` at least as far apart as it stands. A
+ *  deal that leaves a group without a value is counted on neither side. */
 export function shiftOf<Unit>(
   then: readonly Unit[],
   now: readonly Unit[],

@@ -4,27 +4,17 @@ import { subpathAlias } from "../../anti-slop/shared/subpath-alias.ts";
 import { repoRelative } from "./file-role.ts";
 
 /**
- * The trees `anti-slop/prefer-subpath-import` leaves relative here, read off the option the lint
- * config passes it, so a fix and the rule never disagree about where an alias belongs.
- *
- * The list came over from v1, where `5bc9988:src/run/bundle-export.ts` copied `src`, `starters`
- * and `5bc9988:tools/harness` under a manifest it wrote without `imports`, and candidate isolation
- * resolved their specifiers as paths. Two of those three trees are not in v2.
- * `vendor` holds three packages with a manifest of their own, which the rule's nearest-manifest
- * reading already leaves alone, and three without one, which would otherwise read the root's.
+ * The trees `anti-slop/prefer-subpath-import` leaves relative, read off the option the lint config
+ * passes it, so a fix and the rule never disagree about where an alias belongs.
  */
 const RELATIVE_ONLY = config.rules["anti-slop/prefer-subpath-import"].flatMap((entry) =>
   entry instanceof Object ? entry.relativeOnly : [],
 );
 
 /**
- * How a file at `filename` spells a repository-relative `target` it does not import yet.
- *
- * Every rule that writes an import needs this and none can ask the module system for it, so the
- * arithmetic lives here rather than once per rule: the depth is the caller's own path, which is
- * the one fact a plugin rule reading one file does have. A spelling that climbs far enough for
- * `anti-slop/prefer-subpath-import` to report it comes back as the alias, so no fix writes a line
- * another rule then rewrites.
+ * How a file at `filename` spells a repository-relative `target` it does not import yet. A spelling
+ * that climbs far enough for `anti-slop/prefer-subpath-import` to report it comes back as the
+ * alias, so no fix writes a line another rule then rewrites.
  */
 export function importSpecifier(filename: string, target: string): string {
   const from = repoRelative(filename).split("/").slice(0, -1);
@@ -37,15 +27,10 @@ export function importSpecifier(filename: string, target: string): string {
 }
 
 /**
- * A rule that fixes a call by renaming it to an imported binding has to import that binding too,
- * and a file with eight such calls still needs exactly one import.
- *
- * oxlint drops a fix that overlaps one it already applied and lints again, so every diagnostic
- * carries the import edit rather than only the first: if the first diagnostic's edit lands, the
- * others see the binding present on the next pass and emit the rename alone; if it is the one
- * dropped, another diagnostic's copy lands instead. Suppressing the duplicates inside a pass is
- * what would lose the import, because the surviving diagnostic would be the one that no longer
- * asks for it.
+ * A file with eight renamed calls still needs exactly one import. oxlint drops a fix that overlaps
+ * one it already applied and lints again, so every diagnostic carries the import edit: suppressing
+ * duplicates inside a pass could leave the surviving diagnostic as the one that no longer asks for
+ * it.
  */
 export function importTracker(module: string, target: string) {
   let existing: ESTree.ImportDeclaration | null = null;
@@ -53,7 +38,6 @@ export function importTracker(module: string, target: string) {
   let first: ESTree.Node | null = null;
 
   return {
-    /** Read the file's imports before any report. Call this from a `Program` visitor. */
     read(program: ESTree.Program): void {
       existing = null;
       bound = new Set();
@@ -69,7 +53,6 @@ export function importTracker(module: string, target: string) {
       }
     },
 
-    /** The one edit that makes every name in `names` available here, or null when they all are. */
     fix(fixer: Fixer, names: string | readonly string[], filename: string): Fix | null {
       const missing = [names].flat().filter((name) => !bound.has(name));
       if (missing.length === 0) return null;

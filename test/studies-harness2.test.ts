@@ -1,8 +1,7 @@
-// The Harness² study's halves that need no container: an arm's harness taken from a campaign by
-// the owners the campaign's own handover uses, and two arms read as a campaign reads a comparison. The campaign is written here with the
-// log's own `append`, and its kept states under the digests they open as, as a session's freeze
-// keeps them. The compiled solver is run where the container's platform is the host's, and the
-// solver from source, as the outside scorer's `pi:` arm starts it, on every platform.
+// The Harness² study's halves that need no container: an arm's harness taken from a campaign by the
+// owners its handover uses, and two arms read as a campaign reads a comparison. The compiled solver
+// runs where the container's platform is the host's, and the solver from source, as the scorer's `pi:`
+// arm starts it, everywhere.
 import { afterAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
@@ -45,7 +44,6 @@ const MARKED = {
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-study-harness2-test-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-/** A campaign folder `name` with the starter and one child kept, and `events` in its log. */
 async function campaign(
   name: string,
   events: (log: string, starter: string, child: string) => void,
@@ -80,7 +78,6 @@ describe("an arm's harness, taken from a campaign", () => {
     const into = join(root, "arm-ended");
     const origin = await placeHarness(into, { campaign: ended.log });
     expect((await openHarness(into)).digest).toBe(ended.child);
-    // No starter comparison of it tallied a task, so its promotion is not yet confirmed.
     expect(origin).toStrictEqual({ campaign: "ended", ending: "budget", confirmed: false });
   });
 
@@ -132,7 +129,7 @@ describe("an arm's harness, taken from a campaign", () => {
 describe("the container solver", () => {
   it("loads as one compiled file, where no file of the tree is beside it", () => {
     // The answer tool does not read its capture program from beside itself as it loads, which a
-    // compiled solver does not hold, so the solver would end before it read a flag.
+    // compiled solver does not hold, or the solver would end before reading a flag.
     const solver = join(root, "pi-solve-here");
     const source = join(import.meta.dir, "..", "studies", "shared", "pi-solve.ts");
     runSync([capturedExecPath, "build", "--compile", source, "--outfile", solver]);
@@ -214,14 +211,12 @@ describe("a harness's programs, checked against the container", () => {
     mkdirSync(join(tree, "venv", "bin"), { recursive: true });
     writeFileSync(join(tree, "fine"), "#!/bin/sh\necho ok\n");
     writeFileSync(join(tree, "linux"), elf(62));
-    // A link that stays in the tree is carried with what it names, to a file or to a folder.
     symlinkSync("fine", join(tree, "venv", "bin", "sh"));
     symlinkSync("bin", join(tree, "venv", "lib64"));
     await foreignPrograms(tree);
     writeFileSync(join(tree, "venv", "bin", "tool"), "#!/private/tmp/venv/bin/python\n");
     writeFileSync(join(tree, "mac"), head(0xcf, 0xfa, 0xed, 0xfe));
     await expect(foreignPrograms(tree)).rejects.toThrow(/mac \(a Mach-O binary\), venv\/bin\/tool/u);
-    // A link out of the tree leads nowhere on another machine, by an absolute path or one above it.
     const links = join(root, "links");
     mkdirSync(join(links, "bin"), { recursive: true });
     symlinkSync("/opt/somewhere/python3.14", join(links, "bin", "python3.14"));
@@ -254,12 +249,11 @@ describe("a harness tree staged for a benchmark rollout", () => {
     writeFileSync(join(toolchain, "lib", "pkg", "mod.py"), "X = 1\n");
     writeFileSync(join(toolchain, "lib", "pkg", "__pycache__", "mod.pyc"), "compiled");
     writeFileSync(join(tree, ".claude", "settings.json"), '{"hooks": "of the tree"}\n');
-    // A link to a file, a link to a folder, as a virtual environment's `lib64 -> lib`, and one that
-    // leads nowhere: the copy file by file wrote the first out as its target and dropped the others.
+    // A link to a file, a link to a folder (as a venv's `lib64 -> lib`), and one that leads nowhere: a
+    // file-by-file copy would write the first as its target and drop the others.
     symlinkSync("python3", join(toolchain, "bin", "python"));
     symlinkSync("lib", join(toolchain, "lib64"));
     symlinkSync("/nowhere/python3.14", join(toolchain, "bin", "python3.14"));
-    // The workspace already holds the task, as a rollout's does when it stages the tree.
     const workspace = join(root, "linked-workspace");
     mkdirSync(join(workspace, "task"), { recursive: true });
     writeFileSync(join(workspace, "task", "prompt.md"), "the task\n");
@@ -273,7 +267,6 @@ describe("a harness tree staged for a benchmark rollout", () => {
       "X = 1\n",
     );
     expect(readFileSync(join(workspace, "task", "prompt.md"), "utf8")).toBe("the task\n");
-    // The settings Claude Code reads are the installer's, never the tree's own.
     expect(readFileSync(join(workspace, ".claude", "settings.json"), "utf8")).toBe("{}\n");
     expect(readFileSync(join(workspace, "CLAUDE.md"), "utf8")).toBe("# Guide\n");
   });
@@ -320,7 +313,6 @@ describe("a harness tree staged for a benchmark rollout", () => {
   });
 });
 
-/** The scorer's `pi:` arm: the harness as it is kept, its solver on pi-durable, with no model. */
 describe("a harness solved on pi-durable in the benchmark's rollout", () => {
   const pilot: Claude = {
     bin: "claude",
@@ -330,7 +322,6 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     timeoutS: 3600,
     env: {},
   };
-  /** One attempt as the arm's agent starts it, before its solver has left anything. */
   const started = (name: string) => {
     const agent = piAgent(pilot);
     const traj = join(root, `pi-arm-${String(runtimeProcess.pid)}-${name}.jsonl`);
@@ -338,7 +329,6 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     const flag = (flagged: string): string => argv[argv.indexOf(flagged) + 1] ?? "";
     return { agent, traj, argv, flag, logs: flag("--logs") };
   };
-  /** What the agent reads of an attempt whose solver left `result` and a trace of `calls` calls. */
   const read = (name: string, result: JsonObject, calls = 0) => {
     const attempt = started(name);
     writeFileSync(join(attempt.logs, RESULT_FILE), capturedJsonStringify(result));
@@ -357,7 +347,6 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
       "HOME",
     ];
     expect(Object.keys(keyless(names))).toStrictEqual(names.slice(1, 4));
-    // The fix rests on this: a name the shell's own environment holds as undefined is not inherited.
     const said = async (shellEnv: Record<string, undefined>) => {
       let out = "";
       await new NodeExecutionEnv({ cwd: root, shellEnv }).exec(
@@ -386,7 +375,6 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     ]);
     expect(argv).not.toContain("--model-turns");
     expect(readFileSync(flag("--instruction"), "utf8")).toBe("The task.");
-    // A solver killed before it wrote its result is a dead agent, which a rollout rolls again.
     expect(agent.seen(traj)).toStrictEqual({ turns: 0, subtype: "None", tools: 0, costUsd: 0 });
     expect(existsSync(logs)).toBe(false);
   });
@@ -400,7 +388,6 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(spent.seen).toMatchObject({ subtype: "error_max_budget_usd", costUsd: 5.02 });
     expect(read("threw", { ending: "crash", crash: "the session threw" }).seen.subtype).toBe(REFUSED);
     expect(read("silent", { ending: "provider" }).seen.subtype).toBe(REFUSED);
-    // The solver's own loss stays its own: it is scored on what it left.
     expect(read("late", { ending: "wall-ended", turns: 40 }).seen.subtype).toBe("wall-ended");
   });
 
@@ -483,13 +470,13 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(
       parseJsonAs<{ harness: string; mode: string }>(readFileSync(join(tree, "export.json"), "utf8")),
     ).toMatchObject({ harness: made.child, mode: "pi" });
-    // The tree and its build's price are all another machine needs: no campaign is read again.
     const elsewhere = ["--arm", `pi:${join(place, "no-campaign")}`, "--name", "pi-tooled"];
     expect(score(...elsewhere, "--dry-run").exitCode).toBe(0);
     renameSync(`${tree}.build.json`, `${tree}.build.kept`);
     expect(score(...elsewhere, "--dry-run").exitCode).not.toBe(0);
     renameSync(`${tree}.build.kept`, `${tree}.build.json`);
-    // `pi:starter` has no `.toolchain` and records `toolchain: null`; dry-running it must respect null instead of probing a missing toolchain dir.
+    // `pi:starter` has no `.toolchain` and records `toolchain: null`, so a dry run must not probe a
+    // missing toolchain folder.
     const readExport = (name: string) =>
       parseJsonAs<{ mode: string; toolchain: string | null }>(
         readFileSync(join(out, "trees", name, "export.json"), "utf8"),
@@ -518,7 +505,6 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     const staleReuse = score("--arm", "pi:starter", "--name", "stale-cc", "--dry-run");
     expect(staleReuse.exitCode).not.toBe(0);
     expect(decodeOutput(staleReuse.stderr)).toContain("is not a native pi tree");
-    // A tree written here for another machine is priced and rolls nothing; a rollout names none.
     const far = (machine: string) =>
       runSync(
         [capturedExecPath, SCORE, "tree", "--arm", "pi:starter", "--name", "far", "--out", out].concat(
@@ -599,7 +585,6 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
 describe("the arms table over a store of judged records", () => {
   it("prints the judge's criteria beside an arm's points, and an unknown count where its details are gone", () => {
     const out = join(root, "table");
-    /** One judged record of `arm`, and the judge's details with each rubric's criteria passed and read. */
     const judged = (
       arm: string,
       task: string,
@@ -638,7 +623,6 @@ describe("the arms table over a store of judged records", () => {
         }),
       );
     };
-    // A rubric pays all or nothing: `near` misses one criterion of four and loses six points to `far`.
     judged(
       "near",
       "stat/task2",
@@ -697,8 +681,8 @@ describe("the arms table over a store of judged records", () => {
     judged("b", "stat/task2", 6);
     judged("a", "bio/task2", 2);
     judged("b", "bio/task2", 4);
-    // Nearest hostile cases: a task one rollout lacks, a first task, which is not fair, and a task
-    // another arm's record cut, which leaves the block for every arm as it does in `table`.
+    // A task one rollout lacks, a first task, which is not fair, and a task another arm's record cut,
+    // which leaves the block for every arm as in `table`.
     judged("a", "chem/task2", 10);
     judged("a", "stat/task1", 10);
     judged("b", "stat/task1", 10);

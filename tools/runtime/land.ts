@@ -1,83 +1,22 @@
 /**
- * Lands a pull request, with every open one beneath it, on main, after proving each commit the
- * landing would publish where it sits.
+ * Lands a pull request, with every open one beneath it, on main, after proving each commit the landing
+ * would publish where it sits; passes are remembered by tree. Without a flag nothing is written to
+ * GitHub. A moved parent is replayed first (`restack`) and a moved head stops the proofs.
  *
  *   bun run land -- [<pull request> | latest] [--auto] [--watch] [--whole] [--sanitize [--from <pull request>] | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
  *
- * `--auto` follows the top: it lands the top of the longest chain above the pull request named, and
- * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
- * new top where one was stacked meanwhile (`topAbove`). Proofs are remembered by tree, so a moved
- * top costs only its new commits. Named without `--auto`, a landing stops at the pull request
- * named, and a pull request stacked above it stays open, moved onto the trunk once the merge goes
- * through; `bun run split` then replays the rest onto the merge with every pass kept. With no pull
- * request named, it lands the stack of two or more that holds the oldest open pull request, the one
- * `bun run follow` moves the main checkout to (`firstStack`, `pulls.ts`; the operator's choice),
- * and follows its top; `latest` follows the highest-numbered top, never into another chain.
+ * With no pull request named it lands the stack holding the oldest open one (`firstStack`); `latest`
+ * follows the highest-numbered top. `--auto` lands the new top where one was stacked meanwhile
+ * (`topAbove`), `--watch` lands again each time the stack moves until the pull request closes, and
+ * `--whole` runs the whole CI gate on the top's head. `--sanitize` posts each commit's verdict and
+ * `mergeable`; `--from` proves only from that pull request up and posts no `mergeable`, since no head
+ * has every commit proved. `--merge` refuses a draft and also wants `ci.yml` passed on the top's head,
+ * since only it proves the Linux isolation on a clean runner; it then posts `ana/stack-gate` and
+ * merges the native stack, and `--tag` cuts that release at the merge commit. Proofs spread over the
+ * check hosts, up to `--jobs N` at once.
  *
- * A plain push runs no step of the CI gate, and one with `ANA_PUSH_VERIFY=1` only the static steps
- * and nearby tests over the pushed head (`tools/runtime/pre-push.ts`), so a pushed commit is
- * unproved until it lands here. Here each landing head's first-parent line above main is proved
- * over its own checkout: the static steps and nearby tests, the top's too, and at a merge or on
- * `--whole` the whole CI gate on the top's head (`tools/runtime/gate.ts`), each pass already
- * recorded skipped. A sanitize runs no full suite on its top, which moves with each pull request
- * stacked on it (the operator's choice). `--sanitize` runs that proof when its author judges the
- * stack ready, without merging; `--from <pull request>` proves only the commits from that pull
- * request up, taking the head beneath it as known, and posts no `mergeable` pending or success,
- * since no head has every commit proved. The stack is read from GitHub as v2's stack-pr reads it,
- * each pull request's base the head of the one beneath it, and the bottom must be based on main.
- * Each head must contain the one beneath it and the bottom main's head, so the last merge leaves
- * main at exactly the top's tree, which the whole CI gate read.
- *
- * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
- * status `ana/commit` and stops, posting no status GitHub already shows (`statusBoard`). It also
- * posts the check `mergeable` on each pull request's head: success on each head as soon as every
- * commit from the bottom to it has passed, so the stack turns green from the bottom up while the
- * rest is gated, and failure on the head that holds a failed commit and on each above it. It posts
- * pending only where a commit is proved afresh, on that commit and on each head from the one
- * holding it up, and turns any it leaves pending into an error as it ends, so a red an earlier
- * landing left clears once its fix is being proved. A check belongs to its commit, so a push leaves
- * the new head without it and the pull request reads unproved again (the pre-push hook marks the
- * heads above it pending). A pull request stays a draft until its author or the operator marks it
- * ready (`gh pr ready <number>`): the check alone says a head is proved, and `--merge` refuses a
- * draft, so a change that waits on the operator (`AGENTS.md`, section 3) waits as one. `--merge`
- * posts the same, and also wants `ci.yml` passed on the top's head, since only it proves the Linux
- * isolation on a clean runner. Where no run exists it dispatches one before gating and waits for it
- * after, rerunning once the jobs no runner took (`tools/runtime/ci-runs.ts` says which run).
- * Then, on heads read again, it posts `ana/stack-gate` on every head and merges through GitHub, so
- * each pull request ends Merged. The merge is GitHub's asynchronous merge of the top, pinned to the
- * top's gated head, which merges everything beneath it in the native stack all or nothing: GitHub
- * refuses the pull request's own merge for a stack's member (HTTP 403), so a landing of several
- * pull requests is one native stack, linked before anything is gated where it is not (`stackOf`);
- * where `bun run split` divided the chain, a sanitize proves the stack holding the top (`ownStack`).
- * A merge that does not go through sets the status of every head back to pending.
- *
- * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
- * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
- * what the replay moved. A commit whose runner gave no verdict is marked with an error instead, and
- * the landing asks only to be run again. The chain is read again as each commit's proof starts and
- * before each pull request turns green where a commit was proved since, in full only where a pull
- * request opened, closed or moved (`checkListed`), so a moved head is landed as it stands before a
- * stale commit is proved, up to `MOVES` times. Proofs spread over the check hosts (`whereToProve`),
- * up to `--jobs N` at once, with `ANA_CHECK_HOST` unset; the top's whole CI gate runs alone.
- *
- * What moves behind a landing's back is followed: a moved parent is replayed first (`restack`), a
- * move under a commit being proved stops the proofs (`watching`), and a newer landing ends a
- * covered one (`claimOf`). It lands once and ends, and with `--watch` lands again each time the
- * stack moves (`follow`) until the pull request closes; a merge lands once.
- *
- * `ci.yml` is waited for in the open: the top's head carries a status of that name, pending while
- * the run goes and linked to it, since a dispatched run shows on no pull request, and a landing
- * that reused a passed run would otherwise read as one that merged without CI. A failed run brings
- * its failed jobs and the tail of their log home beside the gate's logs, and the refusal names the
- * run to rerun where its runner was at fault. `--merge --tag vX.Y.Z` cuts that release at the merge
- * commit, with the notes GitHub writes from the merged pull requests (`release`); a tag origin
- * holds already is refused before anything is gated.
- *
- * GitHub holds main to this command. The repository allows merge commits only, and ruleset 25824510
- * on the default branch, with no bypass actors, refuses deleting main and any non-fast-forward push
- * to it, and requires a pull request merged by the merge method with the status `ana/stack-gate`,
- * which only `--merge` posts (`STACK_CONTEXT`). `gh api repos/s-smits/anabasis/rulesets/25824510`
- * reads it. The one gap: a token with admin rights can post that status by hand.
+ * Ruleset 25824510 on main, with no bypass actors, requires `ana/stack-gate`, which only `--merge`
+ * posts (`STACK_CONTEXT`). The one gap: a token with admin rights can post that status by hand.
  */
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
@@ -123,48 +62,36 @@ import { movedFrom, movesOf, pushMoves, Unreplayable } from "./restack.ts";
 interface Landing {
   readonly trunk: string;
   readonly trunkSha: string;
-  /** The open pull requests the landing merges, bottom to top; the last is the one named. */
   readonly pulls: readonly Pull[];
-  /** The pull request named, which the landing merges with everything beneath it. */
   readonly top: Pull;
-  /** The bottom of each other open chain on the trunk, with another pull request above it. */
+  /** The bottom of each other open chain on the trunk with another pull request above it, which
+   *  `--merge` refuses without `--alone`. */
   readonly beside: readonly Pull[];
-  /** Every open pull request, as the landing read them. */
   readonly open: readonly Pull[];
 }
 
 interface Mode {
-  /** `--merge` merges and, as `--sanitize` does, posts each verdict; named together, `--merge` holds. */
   readonly kind: "proving" | "sanitizing" | "merging";
   readonly auto: boolean;
   readonly alone: boolean;
-  readonly topPass: "whole" | "static"; // the whole CI gate at a merge or on `--whole`
+  readonly topPass: "whole" | "static";
   readonly places: readonly Place[];
-  /** The release `--merge --tag` cuts at the merge. */
   readonly tag: string | null;
-  readonly from: number | null; // `--sanitize --from`: the lowest pull request whose commits are proved
+  readonly from: number | null;
 }
 
 const COMMIT_CONTEXT = "ana/commit";
 const STACK_CONTEXT = "ana/stack-gate";
 const CI_CONTEXT = "ci.yml";
-/** ANA_CI_POLL_MS shortens it for the tests that walk a run from queued to completed. */
 const CI_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 20_000;
 /** `ci.yml`'s jobs stop at 45 minutes; the rest is the macOS runner's queue. */
 const CI_WAIT_MS = 75 * 60_000;
-/** Each failed job of a `ci.yml` run, with its failed steps, one line each. */
 const CI_FAILED = String.raw`.jobs[] | select(.conclusion == "failure") | "\(.name): \([.steps[] | select(.conclusion == "failure") | .name] | join(", "))"`;
-/** The jobs of a failed run that never started, named when every job that did not pass is one. */
 const CI_UNTAKEN = String.raw`[.jobs[] | select(.conclusion != "success")] | select(length > 0 and all(.steps | length == 0)) | "no runner took " + (map(.name) | join(", "))`;
-/** How many of a failed run's last log lines a refusal prints; the whole log is kept beside the gate's. */
 const CI_TAIL = 40;
-/** How many times a landing reads its chain again after a head moved, before it refuses. */
 const MOVES = 3;
-/** A stack's merge is queued on GitHub's side and read back until it ends; stack 160's took a
- *  second. ANA_CI_POLL_MS shortens the poll for the tests as for `ci.yml`. */
 const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
 const STACK_WAIT_MS = 10 * 60_000;
-/** Subject labels: each pull request in a landing needs at least one. */
 export const CATEGORIES = new Set([
   "exam",
   "verdicts",
@@ -186,30 +113,24 @@ const USAGE =
 const TAG = /^v\d+\.\d+\.\d+$/u;
 
 class Refusal extends Error {}
-/** A head moved while the landing was proved. Passes are remembered by tree, so landing again costs
- *  only the moved commits, rather than refusing and waiting for someone to start it again. */
+/** Passes are remembered by tree, so landing again costs only the moved commits. */
 class Moved extends Refusal {}
 
 const say = (line: string): void => console.log(`land: ${line}`);
 const numbers = (pulls: readonly Pull[]): string => pulls.map((pull) => `#${String(pull.number)}`).join(", ");
 
-/** The top of the stack that holds the oldest open pull request (`firstStack`), which must be a
- *  stack of two or more: a lone pull request is landed only by name. */
 function oldestStack(root: string): number {
   const line = firstStack(openPulls(root));
   if (line.length < 2) throw new Refusal("no stacked pull request is open. Name one to land.");
   return line.at(-1)?.number ?? 0;
 }
 
-/** The top of the longest chain above `from`, or `from` itself. */
 const topAbove = (open: readonly Pull[], from: Pull): Pull => chainAbove(open, from).at(-1) ?? from;
 
-/** The pull request named and every open one beneath it, bottom to top, from GitHub's `open` list. */
 function readLanding(root: string, target: number, open: readonly Pull[]): Landing {
   const named = open.find((pull) => pull.number === target);
   if (named === undefined) throw new Refusal(`#${String(target)} is not an open pull request.`);
   const pulls = [...beneath(open, named), named];
-  // `pulls` ends with the named pull request, so the fallback is never taken.
   const bottom = pulls[0] ?? named;
   const trunk = trunkOf(root);
   if (bottom.baseRefName !== trunk) {
@@ -231,8 +152,6 @@ function readLanding(root: string, target: number, open: readonly Pull[]): Landi
   return { trunk, trunkSha, pulls, top: named, beside, open };
 }
 
-/** Refuses a landing in which a pull request carries no importance label or more than one, or no
- *  category label. */
 function checkLabels(landing: Landing): void {
   const faults = landing.pulls.flatMap((pull) => {
     const ranks = ranksOf(pull);
@@ -251,9 +170,6 @@ function checkLabels(landing: Landing): void {
   }
 }
 
-/** The last merge has the top's tree only when each head contains the one beneath it, down to the
- *  trunk's current head, and each pull request shows its own commits only when its head holds no
- *  other open one's off its chain (`doubled.ts`). */
 function checkChain(root: string, landing: Landing): void {
   let below = { name: `${landing.trunk}'s head`, sha: landing.trunkSha };
   for (const pull of landing.pulls) {
@@ -269,7 +185,6 @@ function checkChain(root: string, landing: Landing): void {
   if (repeating.length > 0) throw new Refusal(`${repeating.join(" ")} Land again.`);
 }
 
-/** Dispatches `ci.yml` on the top's head unless a run is already there. */
 function startCi(root: string, top: Pull): void {
   const head = `#${String(top.number)}'s head ${short(top.headRefOid)}`;
   const ci = ciRun(root, top.headRefOid);
@@ -309,9 +224,6 @@ function startCi(root: string, top: Pull): void {
   say(`dispatched ${what} on ${head}; it runs while the commits are gated here.`);
 }
 
-/** Waits for `ci.yml` on the top's head and shows its verdict there as the check `ci.yml`, linked to
- *  its run: a run `land` dispatches is no pull request's run, so GitHub lists it on no pull request,
- *  and a merge after a passed run would otherwise read as one made without CI. */
 async function awaitCi(root: string, top: Pull): Promise<void> {
   const deadline = Date.now() + CI_WAIT_MS;
   let ci = ciRun(root, top.headRefOid);
@@ -340,7 +252,6 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
       `${CI_WORKFLOW} on ${head} has not finished: ${url ?? "no run has started"}. Land again once it has.`,
     );
   }
-  // The failed jobs' own output, fetched here so the fix starts from it rather than from a link.
   const steps = gh(root, ["run", "view", id, "--json", "jobs", "--jq", CI_FAILED]).out;
   const fetched = gh(root, ["run", "view", id, "--log-failed"]);
   const failed = fetched.ok ? fetched.out : `gh could not fetch the failed jobs' log: ${fetched.err}`;
@@ -357,11 +268,6 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
   );
 }
 
-/** The open native stack GitHub holds the landing's bottom in, or null for a lone pull request in
- *  none. The stack merges everything up to the top, so its members up to the top have to be the
- *  landing's chain. Where they are its lower part, or several are in no stack, `"link"` links the
- *  whole chain (the short form appends above GitHub's top, `doubled.ts`) and reads it again; `"say"`
- *  only says it. Any other order is refused, since a link never reorders. */
 function stackOf(root: string, landing: Landing, unlinked: "link" | "say"): number | null {
   const { pulls, top } = landing;
   const chain = pulls.map((pull) => String(pull.number));
@@ -396,9 +302,9 @@ function stackOf(root: string, landing: Landing, unlinked: "link" | "say"): numb
   }
 }
 
-/** Reads the landing's native stack (`stackOf`) from the bottom of the one holding the top, where
- *  `bun run split` divided the chain (`stackStart`), and gives that index; such an upper stack is
- *  not merged, since GitHub would merge it onto the branch beneath instead of the trunk. */
+/** Where `bun run split` divided the chain, the index of the native stack holding the top
+ *  (`stackStart`); such an upper stack is not merged, since GitHub would merge it onto the branch
+ *  beneath instead of the trunk. */
 function ownStack(root: string, landing: Landing, mode: Mode): number {
   const own = stackStart(root, landing.pulls);
   const starts = `GitHub's stack holding #${String(landing.top.number)} starts at #${String(landing.pulls[own]?.number)}`;
@@ -408,10 +314,6 @@ function ownStack(root: string, landing: Landing, mode: Mode): number {
   return own;
 }
 
-/** Merges the top, with the stack beneath it, as GitHub's asynchronous merge does, all or nothing,
- *  pinned to the top's gated head, and reads it back until it ends. `refused` means nothing merged;
- *  `unsure` that something may have, went into a merge queue (a merge request ends there), or merged
- *  to a tree other than the top's, which is the one the CI gate read. */
 async function mergeStack(
   root: string,
   landing: Landing,
@@ -469,16 +371,11 @@ async function mergeStack(
   return { ended: "unsure", sha };
 }
 
-/** `checkCurrent`, read in full only where GitHub's one list of open pull requests, about 0.8 s,
- *  differs from the landing's; the full reading adds the trunk's head, two fetches and the doubled
- *  lines, about 3 s, which a landing of many pull requests with every pass remembered would
- *  otherwise pay once for each before its first commit was proved afresh. */
 function checkListed(root: string, target: number, landing: Landing): void {
   const open = openPulls(root);
   if (placesOf(open) !== placesOf(landing.open)) checkCurrent(root, target, landing, open);
 }
 
-/** Refuses a proof whose chain has moved before a commit's proof starts or a success is published. */
 function checkCurrent(root: string, target: number, landing: Landing, open: readonly Pull[]): void {
   const again = readLanding(root, target, open);
   if (movedFrom(again.open, landing.pulls) !== -1 || again.trunkSha !== landing.trunkSha) {
@@ -487,9 +384,6 @@ function checkCurrent(root: string, target: number, landing: Landing, open: read
   checkChain(root, again);
 }
 
-/** `landing`, each pull request up to the stack top whose parent moved replayed onto it and pushed
- *  (on the operator's word: "restack everything that is sequentially on top of that again"), with
- *  `--sanitize` or `--merge`; otherwise `checkChain` refuses a chain that needs it. */
 function restack(root: string, target: number, landing: Landing, mode: Mode): Landing {
   if (mode.kind === "proving") return landing;
   const above = chainAbove(landing.open, landing.top);
@@ -511,10 +405,6 @@ function restack(root: string, target: number, landing: Landing, mode: Mode): La
   return readLanding(root, target, openPulls(root));
 }
 
-/** Posts the required status on every head, then merges the top with the stack beneath it, and
- *  gives the merge commit. A merge not read as merged, refused or unsure, takes the status back from
- *  every head, an unsure one included; one that is moves each pull request on
- *  the top's branch onto the trunk. */
 async function merge(root: string, target: number, landing: Landing): Promise<string | null> {
   checkCurrent(root, target, landing, openPulls(root));
   const heads = landing.pulls.map((pull) => pull.headRefOid);
@@ -554,9 +444,6 @@ async function merge(root: string, target: number, landing: Landing): Promise<st
   return sha;
 }
 
-/** Cuts the release at the merge the landing made, with the notes GitHub writes from the pull
- *  requests it merged; they can be rewritten on the release afterwards. It is cut here, at the
- *  gated merge, rather than by hand from main's head after the landing (the operator's choice). */
 function release(root: string, mode: Mode, sha: string): number {
   if (mode.tag === null) return 0;
   const args = ["release", "create", mode.tag, "--target", sha, "--title", mode.tag, "--generate-notes"];
@@ -571,11 +458,9 @@ function release(root: string, mode: Mode, sha: string): number {
   return 1;
 }
 
-/** The index of the lowest pull request of the landing whose head holds `commit`. */
 const holding = (root: string, landing: Landing, commit: string): number =>
   landing.pulls.findIndex((pull) => gitSays(root, ["merge-base", "--is-ancestor", commit, pull.headRefOid]));
 
-/** Where the fix for a failed commit goes, and how a second landing finds it. */
 function recipe(root: string, landing: Landing, commit: string): void {
   const at = short(commit);
   const index = holding(root, landing, commit);
@@ -595,10 +480,8 @@ function recipe(root: string, landing: Landing, commit: string): void {
   console.error(`land: the commits below ${at} keep their ids and their passes. Land again.`);
 }
 
-/** Whether a pull request was stacked on the landing's top since it was read. */
 const moved = (root: string, top: Pull): boolean => topAbove(openPulls(root), top).number !== top.number;
 
-/** What stops a landing's proofs where `open` shows a head moved at or beneath a commit `under` way. */
 function movedUnder(root: string, landing: Landing, under: readonly string[]): Moved | null {
   const from = movedFrom(openPulls(root), landing.pulls);
   const pull = landing.pulls[from];
@@ -606,8 +489,6 @@ function movedUnder(root: string, landing: Landing, under: readonly string[]): M
   return new Moved(`#${String(pull.number)} moved under a commit being proved.`);
 }
 
-/** Proves, and with `--merge` merges, the landing up to `target`; `moved` where `--auto` found a
- *  new top before the landing ended. */
 async function landTo(root: string, target: number, mode: Mode, board: Board): Promise<number | "moved"> {
   // The refusals no replay can change come before it, so a refused landing force-pushes nothing.
   const read = readLanding(root, target, openPulls(root));
@@ -629,7 +510,6 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
   const { top } = landing;
   const own = ownStack(root, landing, mode);
   if (mode.kind === "merging") startCi(root, top);
-  // Each landing head's own line, including a lower head reached through a merge's other parent.
   const heads = landing.pulls.map((pull) => pull.headRefOid);
   const whole = mode.topPass === "whole" ? top.headRefOid : null;
   const lowest = mode.from === null ? own : landing.pulls.findIndex(({ number }) => number === mode.from);
@@ -647,15 +527,11 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
   if (reach) board.read(proofs.map(({ commit }) => commit));
   const mergeable = (pull: Pull, state: StatusState, description: string): void =>
     board.post(pull.headRefOid, { context: MERGEABLE_CONTEXT, state, description });
-  // A pull request turns green as soon as every commit from the bottom to its head has passed,
-  // so the stack shows its proof climbing while the commits above are still being gated.
   const at = new Map(proofs.map((proof, index) => [proof.commit, index]));
   const passed = new Set<string>();
-  // The last reading of the open pull requests stands until a commit has been proved since: a
-  // remembered verdict takes no time, so the heads it turns green are read for once, not one by one.
   const proving = new Set<string>();
   let settled = true;
-  let green = lowest === 0 ? 0 : landing.pulls.length; // a partial proof turns no head green
+  let green = lowest === 0 ? 0 : landing.pulls.length;
   let pending = landing.pulls.length;
   const greenUpTo = (): void => {
     const unproved = proofs.findIndex((proof) => !passed.has(proof.commit));
@@ -688,7 +564,6 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
       settled = state === "pending" || (settled && !proving.has(commit));
       if (!reach) return;
       board.post(commit, { context: COMMIT_CONTEXT, state, description });
-      // A head that holds a commit proved again reads pending until it passes, not an earlier red.
       const from = state === "pending" ? Math.max(green, holding(root, landing, commit)) : pending;
       for (const pull of landing.pulls.slice(from, pending)) {
         mergeable(pull, "pending", "bun run land is proving it");
@@ -764,7 +639,6 @@ async function main(argv: readonly string[]): Promise<number> {
     tag: values.tag ?? null,
     from,
   };
-  // `latest` is resolved once, so a follow keeps to that chain instead of another chain's newer top.
   const top = latest ? latestTop(openPulls(root)) : named;
   if (top === 0) {
     console.error("land: no pull request is open. Nothing was merged.");
@@ -774,7 +648,6 @@ async function main(argv: readonly string[]): Promise<number> {
   return values.watch && mode.kind !== "merging" ? follow(root, top, say, round) : round();
 }
 
-/** One landing of the pull request `first` names, or of a new top above it, to its end; its exit status. */
 async function landOnce(root: string, first: () => number, mode: Mode): Promise<number> {
   const board = statusBoard(root);
   let alone = (): void => undefined;

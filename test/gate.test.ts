@@ -1,10 +1,8 @@
 /**
- * The gate's proof over a list of commits (`proveCommits`, `tools/runtime/gate.ts`), as `bun run land`
- * and the pre-push hook call it, over real commits in a fixture repository, with Bun replaced only at
- * the gate's steps (`test/helpers/fake-bun.ts`). A small driver written into the fixture imports the
- * gate from a checkout and proves the `<commit>:<pass>` pairs it is given, so a case names each
- * commit's pass as land would and reads which steps and nearby tests each pass ran, and which pass
- * a remembered one spared, without going through the pre-push hook.
+ * The gate's proof over a list of commits (`proveCommits`, `tools/runtime/gate.ts`) over real
+ * commits in a fixture repository, with Bun replaced only at the gate's steps
+ * (`test/helpers/fake-bun.ts`). A small driver in the fixture proves the `<commit>:<pass>` pairs it
+ * is given, as land would, without going through the pre-push hook.
  */
 import {
   appendFileSync,
@@ -43,7 +41,6 @@ function initCommit(file: string, text: string, message: string): string {
 }
 const short = (sha: string): string => sha.slice(0, 9);
 
-/** A driver that proves `<commit>:<pass>` pairs with the gate at `gate`, `-` for documentation. */
 function driverOf(gate: string): string {
   const path = join(fixture, `prove-${String(gate.length)}-${short(Bun.hash(gate).toString(16))}.ts`);
   writeFileSync(
@@ -107,12 +104,10 @@ const base = initCommit("src/owner.ts", "export const owner = 1;\n", "base");
 initCommit("README.md", "two\n", "docs");
 const source = initCommit("src/owner.ts", "export const owner = 2;\n", "source");
 const second = initCommit("src/b.ts", "export const b = 2;\n", "second");
-// Main holds `base`, as a clone's remote-tracking ref says.
 initGit("update-ref", "refs/remotes/origin/main", base);
 
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
 
-/** What land asks of `source` and `second` above the documentation commit: the static steps, then the whole gate. */
 const landing = [`${source}:static`, `${second}:whole`];
 let round = 0;
 
@@ -124,7 +119,6 @@ function sandbox() {
   const git = (...args: string[]): string => execTextSync("git", args, { cwd: work }).trim();
   const blob = (text: string): string =>
     execTextSync("git", ["hash-object", "-w", "--stdin"], { cwd: work, stdin: text }).trim();
-  /** A tree or commit's tree with one more file at the top, holding its own name. */
   const withFile = (from: string, name: string): string =>
     execTextSync("git", ["mktree"], {
       cwd: work,
@@ -149,7 +143,6 @@ describe.concurrent("proveCommits", () => {
     const steps = readFileSync(log, "utf8")
       .split("\n")
       .filter((line) => line.startsWith(source));
-    // The cheap steps run first and in turn; the rest start side by side, in no fixed order.
     const ran = steps.map((line) => line.split("\t")[1] ?? "");
     expect(ran.slice(0, 3)).toEqual(["install --frozen-lockfile", "run format:check", "run secrets"]);
     expect(ran.slice(3).toSorted((one, other) => one.localeCompare(other))).toEqual([
@@ -191,7 +184,6 @@ describe.concurrent("proveCommits", () => {
         ...lines(git("ls-tree", from)).filter((row) => !row.endsWith(`\t${name}`)),
         `040000 tree ${sub}\t${name}`,
       ]);
-    // Three imports from `deep.test.ts` to `src/b.ts`, four from `far.test.ts`, one from the browser's.
     const tests = tree([
       file("browser-page.test.ts", 'import "../../../src/b.ts";\n'),
       file("deep.test.ts", 'import "./h1.ts";\n'),
@@ -218,10 +210,8 @@ describe.concurrent("proveCommits", () => {
     ]);
     const imported = git("commit-tree", into(away, "src", src), "-p", away, "-m", "what the UI imports");
     const head = git("commit-tree", withFile(imported, "d.ts"), "-p", imported, "-m", "head");
-    // A root file the UI's gate does not run with, and one it installs from.
     const config = git("commit-tree", withFile(away, "tsconfig.json"), "-p", away, "-m", "a config");
     const lock = git("commit-tree", withFile(config, "bun.lock"), "-p", config, "-m", "the lockfile");
-    // The UI's steps of a commit's gate, in their order: they run in turn, beside the other steps.
     const ran = (sha: string): string[] =>
       readFileSync(log, "utf8")
         .split("\n")
@@ -248,13 +238,11 @@ describe.concurrent("proveCommits", () => {
     expect((await prove([`${config}:static`, `${lock}:static`])).status).toBe(0);
     expect(ran(config)).toEqual(["run ui:deps"]);
     expect(ran(lock)).toEqual(["run ui:deps", "run ui:gate"]);
-    // Main holding the UI: a whole pass over the same change runs the browser's file too.
     git("update-ref", "refs/remotes/origin/main", away);
     rmSync(log, { force: true });
     forgetPasses();
     expect((await prove([`${imported}:static`, `${head}:whole`])).status).toBe(0);
     expect(ran(head)).toEqual(near("browser-page.test.ts", "deep.test.ts"));
-    // Main holding the change: a whole pass over a head that leaves what the UI reads alone.
     git("update-ref", "refs/remotes/origin/main", imported);
     rmSync(log, { force: true });
     forgetPasses();
@@ -264,7 +252,6 @@ describe.concurrent("proveCommits", () => {
 
   it("runs a tree again once code the gate runs changed, and not for a neighbour it never imports or a comment", async () => {
     const { log, prove } = sandbox();
-    // A copy of the checker as a caller's checkout holds it: the gate and what it imports.
     const checker = join(fixture, "checker");
     for (const part of ["package.json", "tools/runtime", "tools/runs/host-config.ts", "src/meta"]) {
       cpSync(join(import.meta.dir, "..", part), join(checker, part), { recursive: true });
@@ -312,8 +299,6 @@ describe.concurrent("proveCommits", () => {
 
   it("lets a running proof finish and keep its pass before a rejected mark removes the checkouts", async () => {
     const { prove } = sandbox();
-    // `second` has no nearby test and passes at once; `source` is still in its two-second test step
-    // when the mark for `second` throws, as land's does when a head moved.
     const result = await prove([`${second}:static`, `${source}:static`], {
       DRIVER_JOBS: "2",
       DRIVER_MOVED_AT: second,
@@ -331,8 +316,8 @@ describe.concurrent("proveCommits", () => {
       ANA_FAKE_TOGETHER: "2",
     });
     expect(spread.status).toBe(0);
-    // beta has the more room, so it takes the first; then each has one free and alpha is listed first.
-    // The two begin together, so the log holds them in either order: the place each took is the fact.
+    // beta has more room, so it takes the first; the two begin together, so the place each took is the
+    // fact, not the log's order.
     expect(wherePassesRan(log).toSorted()).toEqual([`${second} beta`, `${source} alpha`].toSorted());
     forgetPasses();
     rmSync(log, { force: true });
@@ -349,13 +334,11 @@ describe.concurrent("proveCommits", () => {
     const ran = wherePassesRan(log);
     expect(ran.slice(0, 2).toSorted()).toEqual([`${source} alpha`, `${second} alpha`].toSorted());
     expect(ran.slice(2).toSorted()).toEqual([`${source} beta`, `${second} beta`].toSorted());
-    // Each pass is remembered as any other, whichever place proved it.
     rmSync(log, { force: true });
     expect((await prove(pairs)).status).toBe(0);
     expect(gatesRun(log)).toEqual([]);
   });
 
-  // A dropped connection, and no slot in time (`tools/runtime/router/run.ts`).
   for (const code of ["255", "75"]) {
     it(`gives no verdict as before where its one place exited ${code} twice`, async () => {
       const { log, prove } = sandbox();
@@ -375,14 +358,12 @@ describe.concurrent("proveCommits", () => {
     const { log, prove } = sandbox();
     const result = await prove(landing, { ANA_FAKE_FAIL: `${source} lint` });
     expect(result.status).toBe(1);
-    // The tests start beside the lint, so they ran; the next commit's gate did not start.
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`]);
     const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
     expect(last).toStartWith("FAILS lint Log: ");
     expect(readFileSync(last.slice(last.indexOf("Log: ") + 5), "utf8")).toContain(
       "gate: step lint failed (exit 1)",
     );
-    // The commits beneath a fix keep their passes; this one has none to keep.
     expect((await prove(landing)).stderr).not.toContain("passed earlier");
   });
 
@@ -402,9 +383,8 @@ describe.concurrent("proveCommits", () => {
 
   it("ends a pass under way when stopped, records nothing of it and starts no other", async () => {
     const { log, prove } = sandbox();
-    // The test step takes two seconds, so a stop once it starts lands while the static pass of
-    // `source` runs. A stop at 1.2 s could land on a loaded host before that pass had begun, so no
-    // gate would run and the case would fail.
+    // The test step takes two seconds, so a stop once it starts lands while the static pass of `source`
+    // runs.
     const result = await prove(landing, {
       ANA_FAKE_SUITE: "(pass) one",
       DRIVER_STOP_AT: `workers\t${source}`,
@@ -417,7 +397,6 @@ describe.concurrent("proveCommits", () => {
     expect(proved, "the stopped pass is proved again").toEqual([source, source, second]);
   });
 
-  // The wrapper prints its lines in colour, so the recorded shape begins with an escape.
   const red = "\u001B[0m\u001B[31m";
   const pulses = [
     [
@@ -459,7 +438,6 @@ describe.concurrent("one landing of a clone at a time", () => {
     execTextSync("git", ["init", "-q"], { cwd: clone });
     const lock = join(clone, ".git", "ana-land.lock");
     const mine = String(runtimeProcess.pid);
-    // The lock is a link whose target is its holder's record.
     symlinkSync(recordOf(runtimeProcess.pid), lock);
     const said: string[] = [];
     const held = holdAlone(clone, (line) => said.push(line), 20);
@@ -562,7 +540,6 @@ describe.concurrent("one landing of a clone at a time", () => {
   it("names each commit's pull request on the lines that name the commit", () => {
     const said: string[] = [];
     const proofs = ["a", "b", "c", "d"].map((letter) => ({ commit: letter.repeat(40), pass: null }));
-    // #2 has no commit of its own: its head is #1's, so c and d are #3's.
     const pulls = [1, 2, 3].map((number) => ({ number, headRefOid: (number === 3 ? "d" : "b").repeat(40) }));
     const say = sayingPulls(proofs, pulls, (line) => said.push(line));
     say(`1 of 4, ${"a".repeat(9)}: documentation only.`);

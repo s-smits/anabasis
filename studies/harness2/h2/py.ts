@@ -1,12 +1,9 @@
 /**
- * The few Python behaviours the port has to repeat byte for byte, because Harness²'s evidence
- * trees and missions are built from them: how Python prints a value inside an f-string and a `!r`,
- * how `json.dumps` writes, what `str.strip` and `str.splitlines` treat as space and line ends, that
- * `len` and slices count code points, that `sorted(Path.rglob("*"))` orders by path parts, what
- * `fnmatch` matches, and `difflib`'s unified diff, whose hunks come from `SequenceMatcher` with its
- * autojunk rule. Each is CPython's behaviour for the inputs Harness² gives it; where the port
- * knowingly falls short, the function says so. It serves `../README.md`'s TypeScript Harness²
- * (`h2/`), so that its evidence matches the pilot's recorded trees.
+ * The few Python behaviours the port has to repeat byte for byte, because Harness²'s evidence trees
+ * and missions are built from them: f-string and `!r` printing, `json.dumps`, `str.strip` and
+ * `str.splitlines`, code-point `len` and slices, `sorted(Path.rglob("*"))` order, `fnmatch`, and
+ * `difflib`'s unified diff with `SequenceMatcher`'s autojunk rule. Each is CPython's behaviour for
+ * the inputs Harness² gives it; where the port knowingly falls short, the function says so.
  */
 import { readdirSync, statSync } from "#src/meta/filesystem.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
@@ -33,26 +30,21 @@ const SHORT_ESCAPES = new Map([
   ["\t", String.raw`\t`],
   ["\\", String.raw`\\`],
 ]);
-/** `get_opcodes`' tag for a gap before a match, keyed by whether `a` and then `b` skip lines. */
 const GAP_TAG = new Map<string, Tag>([
   ["true,true", "replace"],
   ["true,false", "delete"],
   ["false,true", "insert"],
 ]);
-/** `get_grouped_opcodes`' default context, as `unified_diff` passes it. */
 const CONTEXT = 3;
 
-/** `str.strip()`. */
 export function pyStrip(text: string): string {
   return text.replaceAll(STRIP, "");
 }
 
-/** `str.lstrip()`. */
 export function pyLstrip(text: string): string {
   return text.replace(LSTRIP, "");
 }
 
-/** `str.splitlines()`, or with `keep` set `splitlines(keepends=True)`. */
 export function splitLines(text: string, keep: "keep" | "drop" = "drop"): string[] {
   const lines: string[] = [];
   let start = 0;
@@ -70,13 +62,11 @@ export function pyLen(text: string): number {
   return SURROGATE.test(text) ? Array.from(text).length : text.length;
 }
 
-/** `text[start:end]` over code points; `end` undefined runs to the end. */
 export function pySlice(text: string, start: number, end?: number): string {
   if (!SURROGATE.test(text)) return text.slice(start, end);
   return Array.from(text).slice(start, end).join("");
 }
 
-/** Python's truthiness of a decoded JSON value: what `x or y` and `if x` read. */
 export function truthy(value: JsonValue | undefined): boolean {
   if (value === null || value === undefined || value === false || value === 0 || value === "") return false;
   if (Array.isArray(value)) return value.length > 0;
@@ -84,8 +74,8 @@ export function truthy(value: JsonValue | undefined): boolean {
 }
 
 /**
- * `repr` of a decoded JSON number. JSON's `1.0` and `1` both arrive as 1, so a whole number prints
- * as Python prints the int: the one place the port can differ from a float Python held.
+ * JSON's `1.0` and `1` both arrive as 1, so a whole number prints as Python prints the int: the one
+ * place the port can differ from a float Python held.
  */
 function pyNumber(value: number): string {
   if (!Number.isFinite(value)) return Number.isNaN(value) ? "nan" : value > 0 ? "inf" : "-inf";
@@ -117,7 +107,6 @@ function reprString(text: string): string {
   return `${quote}${out}${quote}`;
 }
 
-/** `repr(value)` for a decoded JSON value. */
 export function pyRepr(value: JsonValue | undefined): string {
   if (isString(value)) return reprString(value);
   if (Array.isArray(value)) return `[${value.map((item) => pyRepr(item)).join(", ")}]`;
@@ -129,7 +118,6 @@ export function pyRepr(value: JsonValue | undefined): string {
   return pyStr(value);
 }
 
-/** `str(value)`, as an f-string prints it. */
 export function pyStr(value: JsonValue | undefined): string {
   if (value === null || value === undefined) return "None";
   if (value === true || value === false) return value ? "True" : "False";
@@ -138,8 +126,8 @@ export function pyStr(value: JsonValue | undefined): string {
 }
 
 /**
- * `json.dumps(value)`: `", "` and `": "` between items on one line, or `indent` spaces a level, and
- * non-ASCII escaped as `ensure_ascii` does unless `ascii` is `"raw"` (`ensure_ascii=False`).
+ * `json.dumps(value)`: `", "` and `": "` on one line, or `indent` spaces a level, and non-ASCII
+ * escaped as `ensure_ascii` does unless `ascii` is `"raw"`.
  */
 export function pyDumps(
   value: JsonValue,
@@ -173,7 +161,6 @@ function dumpValue(value: JsonValue, indent: number | undefined, depth: number):
   return `${open}\n${pad}${items.join(`,\n${pad}`)}\n${" ".repeat(indent * depth)}${close}`;
 }
 
-/** Path parts compared one by one, as `sorted()` orders `Path` objects. */
 function byParts(left: string, right: string): number {
   const a = left.split("/");
   const b = right.split("/");
@@ -186,9 +173,9 @@ function byParts(left: string, right: string): number {
 }
 
 /**
- * The files under `root`, relative and `/`-separated, in `sorted(root.rglob("*"))` order, with
- * `skip` naming directory parts never entered (`__pycache__`). A link to a file counts, as
- * `is_file()` follows it; a link to a directory is not entered.
+ * In `sorted(root.rglob("*"))` order, with `skip` naming directory parts never entered
+ * (`__pycache__`). A link to a file counts, as `is_file()` follows it; a link to a directory is not
+ * entered.
  */
 export function walkFiles(root: string, skip: readonly string[] = []): string[] {
   const out: string[] = [];
@@ -210,8 +197,8 @@ export function walkFiles(root: string, skip: readonly string[] = []): string[] 
 }
 
 /**
- * `fnmatch.fnmatch(name, pattern)` on POSIX: case-sensitive, `*` crosses `/`. Bracket classes are
- * left out, since no pattern Harness² declares for JobBench holds one.
+ * `fnmatch.fnmatch` on POSIX: case-sensitive, `*` crosses `/`. Bracket classes are left out, since
+ * no pattern Harness² declares for JobBench holds one.
  */
 export function fnmatch(name: string, pattern: string): boolean {
   const source = Array.from(pattern)

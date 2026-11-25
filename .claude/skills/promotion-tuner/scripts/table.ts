@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * The campaigns on record as rows: when each reached its first comparison and its first promotion,
- * and what each promotion took in elapsed, active and unloaded hours and in dollars. It starts no
- * solve, calls no model and writes nothing.
+ * The campaigns on record as rows: when each reached its first comparison and promotion, and what
+ * each promotion took in elapsed, active and unloaded hours and in dollars. It starts no solve,
+ * calls no model and writes nothing.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, money, printed } from "#skills/main/print.ts";
@@ -41,7 +41,6 @@ const ACTIVE = "active h";
 const UNLOADED = "unloaded h";
 const FIRST_PROMOTION = "1st promotion h";
 const ROW_MODES = ["recent", "runs", "promotions", "cost"] as const;
-/** The measures a run's row gives as its own counts. */
 const COUNTED = [
   MEASURES.perComparison,
   MEASURES.confirmed,
@@ -119,7 +118,6 @@ const CAVEAT = [
   "Unloaded hours also take out the share of each stretch an overloaded host could not serve (1 - cores/load), as if the run were CPU-bound: an upper bound on what load cost, an estimate.",
   "One run is one draw, and the spread between runs is wide: trend.ts sets groups of runs against it, and results are never compared across settings.",
 ];
-/** What `--rows cost` adds to the caveat. */
 const REPRICED =
   "Repriced: every recorded turn at today's list prices through today's seat meter, the one measure every run shares; it leaves out a backend's excess over its turns (compactions, retries), which only runs from #563 on record, so repriced/recorded just under 1 on a newer run is that excess.";
 
@@ -168,7 +166,6 @@ const recentRows = (runs: readonly Run[]) =>
     ];
   });
 
-/** The medians of the finished runs a recent view lists, so a live run is read against them. */
 function recentSummary(runs: readonly Run[]): string {
   const past = runs.filter((run) => !run.live);
   const medians = [MEASURES.firstPromotion, MEASURES.rung, MEASURES.rungDollars].map(
@@ -193,7 +190,6 @@ const promotionRows = (runs: readonly Run[]) =>
     ]),
   );
 
-/** Dollars over a count, or none where nothing was priced or counted. */
 const per = (dollars: number | null, count: number) =>
   money(dollars === null || count === 0 ? null : dollars / count);
 

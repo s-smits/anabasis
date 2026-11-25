@@ -1,7 +1,7 @@
 /**
- * Import a harness into a campaign's states, under its digest: the operator's word that a harness
- * built elsewhere is one this campaign keeps, so that a session may start from it (`--parent`), a
- * comparison may name it, and the operator may promote it (`promote.ts --despite "epoch 0"`).
+ * Import a harness built elsewhere into a campaign's states, under its digest, on the operator's
+ * word, so a session may start from it (`--parent`), a comparison may name it, and `promote.ts
+ * --despite "<why>"` may promote it.
  *
  *   bun tools/d2/import.ts --name r-1 --harness ~/handover/t-4/harness [--note "<why>"]
  */
@@ -20,7 +20,6 @@ const OPTIONS = {
   note: { type: "string" },
 } as const;
 
-/** `bun tools/d2/import.ts`. Returns the imported harness by its digest and where it is kept. */
 export async function importCommand(args: readonly string[]): Promise<{ digest: string; dir: string }> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { log, harness } = harnessNamed(values);
@@ -38,9 +37,9 @@ export async function importCommand(args: readonly string[]): Promise<{ digest: 
     console.log(`harness ${digest} is one the campaign keeps already; nothing is recorded`);
     return { digest, dir };
   }
-  // The programs as a session keeps them: in a tree beside the state, named by a link. A link
-  // under the source is followed to the tree itself. The states are made first: a campaign opened
-  // and not yet run has none, and its import of a harness with programs would otherwise fail.
+  // The programs are kept as a session keeps them, in a tree beside the state named by a link (a link
+  // under the source is followed to the tree). The states folder is made first: a campaign opened and
+  // not yet run has none.
   const own = parentToolTree(source);
   mkdirSync(states, { recursive: true });
   const tree = own === null ? null : mkdtempSync(join(states, "tree-"));
@@ -60,7 +59,8 @@ export async function importCommand(args: readonly string[]): Promise<{ digest: 
     if (tree !== null) rmSync(tree, { recursive: true, force: true });
     throw error;
   }
-  // The origin by its last two path segments: the closing report prints it, and leaves the host.
+  // The origin by its last two path segments, which the closing report prints and which leaves the
+  // host.
   const from = join(basename(dirname(source)), basename(source));
   append(log, "harness.imported", { harness: digest, from, ...keyIfDefined("note", values.note) });
   console.log(

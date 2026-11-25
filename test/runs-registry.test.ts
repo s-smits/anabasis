@@ -50,7 +50,6 @@ describe("a run's writers", () => {
 describe("the processes that may write a log", () => {
   it("finds a campaign command with the worktree it runs in, and leaves another process out", async () => {
     const tree = mkdtempSync(join(root, "tree-"));
-    // Bun running a script at the campaign command's path, as `ps` lists a launch, beside another.
     mkdirSync(join(tree, "tools", "d2"), { recursive: true });
     for (const script of [BUILDER, "tools/d2/unrelated.ts"]) {
       writeFileSync(join(tree, script), "await Bun.sleep(30_000);\n");

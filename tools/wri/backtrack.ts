@@ -1,10 +1,9 @@
 /**
- * Same-domain longitudinal version backtracking (`wri.ts backtrack`, `history.txt`, `record.md`,
- * and `synthesis-prompt.md`). Compares target run(s) against older runs of the same domain
- * (`domainOf`) under the same setting, decaying attention weight monotonically as release-version
- * distance grows: `direct` (gap < 1) and `near` (1 <= gap < 2) expand per-run metrics alongside
- * stored `.ana/wri/` syntheses and `outside-reads.md` rows; `mid` (2 <= gap < 3) rolls up by
- * release cohort; `distant` (gap >= 3) collapses to one background count.
+ * Same-domain version backtracking for `wri.ts backtrack`, `record.md` and the synthesis prompt.
+ * Target runs are set against older runs of the same domain (`domainOf`) and setting, with
+ * attention decaying as release distance grows: `direct` (gap < 1) and `near` (gap < 2) runs are
+ * expanded with their stored syntheses and `outside-reads.md` rows, `mid` (gap < 3) runs are rolled
+ * up by release, and `distant` ones are one count.
  */
 import { loadRuns, type Run as SummaryRun } from "#skills/main/runs.ts";
 import { LOG_FILE } from "#src/kernel/log.ts";
@@ -18,7 +17,6 @@ import { archiveOf, domainOf } from "#tools/runs/registry.ts";
 import { type SynthesisRef, synthesesByCampaign } from "./index.ts";
 import { ledgerFiles, OUTSIDE, rowsOf } from "./ledger.ts";
 
-/** Parsed semantic version from a release tag (`vX.Y.Z`). */
 export interface Semver {
   readonly major: number;
   readonly minor: number;
@@ -26,13 +24,10 @@ export interface Semver {
   readonly tag: string;
 }
 
-/** Attention tier assigned by release-version distance from the target cohort. */
 type AttentionTier = "direct" | "near" | "mid" | "distant" | "other-setting";
 
-/** Ordering of another release relative to the target release. */
 type Direction = "same" | "older" | "newer";
 
-/** Decaying attention score for comparing another run against the target cohort. */
 interface Attention {
   readonly gap: number;
   readonly weight: number;
@@ -41,7 +36,6 @@ interface Attention {
   readonly direction: Direction;
 }
 
-/** Compact wall-safe campaign summary folded for longitudinal version comparison. */
 export interface BacktrackRun {
   readonly name: string;
   readonly domain: string;
@@ -69,13 +63,11 @@ export interface BacktrackRun {
   readonly ending: string;
 }
 
-/** External transfer status extracted from `outside-reads.md` (aggregate counts only). */
 export interface OutsideRef {
   readonly status: string;
   readonly summary: string;
 }
 
-/** Aggregated metrics for one release cohort of the same domain and setting. */
 interface CohortRow {
   readonly releaseLabel: string;
   readonly semver: Semver | null;
@@ -99,7 +91,6 @@ interface CohortRow {
   readonly repriced: number | null;
 }
 
-/** Expanded per-run row shown only for `direct` and `near` attention tiers (`gap < 2`). */
 interface ExpandedPeer {
   readonly run: BacktrackRun;
   readonly attention: Attention;
@@ -107,7 +98,6 @@ interface ExpandedPeer {
   readonly outside: OutsideRef | null;
 }
 
-/** Complete same-domain version-backtracking report ready for rendering. */
 interface BacktrackReport {
   readonly domain: string;
   readonly pack: string;
@@ -165,7 +155,6 @@ const TARGET_ATTENTION: Attention = { gap: 0, weight: 1, tier: "direct", samePac
 const SUMMARY_MAX = 140;
 const CONSTRAINT_MAX = 200;
 
-/** Parses the first `vX.Y.Z` semantic version from a tag or release label (`after v0.12.2`). */
 export function parseReleaseTag(text: string | null | undefined): Semver | null {
   if (text === null || text === undefined) return null;
   const match = SEMVER_TAG.exec(text);
@@ -177,15 +166,13 @@ export function parseReleaseTag(text: string | null | undefined): Semver | null 
   return { major, minor, patch, tag: `v${String(major)}.${String(minor)}.${String(patch)}` };
 }
 
-/** Compares two semver tags: positive when `one` is newer than `other`. */
 function compareSemver(one: Semver, other: Semver): number {
   if (one.major !== other.major) return one.major - other.major;
   if (one.minor !== other.minor) return one.minor - other.minor;
   return one.patch - other.patch;
 }
 
-/** Computes version distance and ordering from `target` to `other`, strictly monotone in semver
- *  recency: higher patches on an older minor (e.g. `v0.11.4` vs `v0.11.2`) sit closer to `target`. */
+/** Distance from `target` to `other`, monotone in recency: a higher patch on an older minor sits closer. */
 export function versionGap(
   target: Semver,
   other: Semver,
@@ -205,8 +192,7 @@ export function versionGap(
   return { gap: majorDiff * MAJOR_WEIGHT + minorDiff + patchTie, direction };
 }
 
-/** Assigns monotonic decaying attention weight and tier to `other` relative to `target`. Different
- *  settings always receive zero weight so cross-setting runs are never pooled into causal deltas. */
+/** A run of another setting weighs zero, so cross-setting runs are never pooled into a delta. */
 export function attentionOf(target: CohortKey, other: CohortKey): Attention {
   const samePack = other.pack === target.pack;
   if (other.setting !== target.setting) {
@@ -221,7 +207,6 @@ export function attentionOf(target: CohortKey, other: CohortKey): Attention {
   return { gap, weight, tier, samePack, direction };
 }
 
-/** Sums numeric fields across a cohort of runs into one aggregate row. */
 function aggregateCohort(head: CohortHead, group: readonly BacktrackRun[], targetPack: string): CohortRow {
   const sum = (of: (run: BacktrackRun) => number) => group.reduce((total, run) => total + of(run), 0);
   const samePackRuns = group.filter((run) => run.pack === targetPack).length;
@@ -248,35 +233,29 @@ function aggregateCohort(head: CohortHead, group: readonly BacktrackRun[], targe
   };
 }
 
-/** Formats a ratio as `n/d (pct%)` or `0/0` when the denominator is empty. */
 const ratio = (numerator: number, denominator: number): string =>
   denominator === 0
     ? "0/0"
     : `${String(numerator)}/${String(denominator)} (${((numerator / denominator) * 100).toFixed(0)}%)`;
 
-/** Formats repriced-or-recorded dollars per promotion, or `-` at zero promotions. */
 function costPerPromo(row: Pick<CohortRow, "promotions" | "dollars" | "repriced">): string {
   if (row.promotions === 0) return "-";
   const spend = row.repriced ?? row.dollars;
   return `$${String(Math.round(spend / row.promotions))}`;
 }
 
-/** Formats active hours per promotion, or `-` at zero promotions. */
 const hoursPerPromo = (row: Pick<CohortRow, "promotions" | "activeHours">): string =>
   row.promotions === 0 ? "-" : `${(row.activeHours / row.promotions).toFixed(1)}h`;
 
-/** Formats promotions per 100 active hours for matched-active-hour climb comparisons. */
 const promosPer100h = (row: Pick<CohortRow, "promotions" | "activeHours">): string =>
   row.activeHours <= 0 ? "-" : ((row.promotions / row.activeHours) * 100).toFixed(1);
 
-/** Shortens a string cleanly to `limit` characters on one line. */
 function clip(text: string, limit: number): string {
   const flat = text.replaceAll(/\s+/gu, " ").trim();
   return flat.length <= limit ? flat : `${flat.slice(0, limit - 1)}…`;
 }
 
-/** Computes a concise factor-by-factor delta between the target cohort and the nearest older
- *  release cohort (`direction === "older"`, smallest `gap`). */
+/** The target cohort against the nearest older release's cohort, factor by factor. */
 function buildDeltaLines(
   targetCohort: CohortRow,
   cohorts: readonly CohortRow[],
@@ -311,9 +290,6 @@ function buildDeltaLines(
   return lines;
 }
 
-/** Pure longitudinal comparison core: groups same-domain peers by release, decays attention weight
- *  by version gap, expands `direct`/`near` runs with stored syntheses and outside reads, and
- *  collapses `distant` and `other-setting` runs to brief counts. */
 export function buildBacktrack(
   targets: readonly BacktrackRun[],
   peers: readonly BacktrackRun[],
@@ -407,8 +383,6 @@ export function buildBacktrack(
   };
 }
 
-/** Renders a `BacktrackReport` into compact wall-safe markdown lines for `history.txt`,
- *  `record.md`, `synthesis-prompt.md`, and `wri.ts backtrack`. */
 export function formatBacktrack(report: BacktrackReport): string[] {
   const lines: string[] = [
     `# Same-domain version backtracking: ${report.domain} (${report.pack})`,
@@ -484,7 +458,6 @@ export function formatBacktrack(report: BacktrackReport): string[] {
   return lines;
 }
 
-/** Parses one `git describe --tags --long` line into exact (`-0-g...`) or ancestor (`after <tag>`). */
 function parsedDescribe(line: string): ReleaseRef | null {
   const match = DESCRIBED.exec(line.trim());
   if (match === null) return null;
@@ -492,7 +465,6 @@ function parsedDescribe(line: string): ReleaseRef | null {
   return { tag, label: count === "0" ? tag : `after ${tag}` };
 }
 
-/** Batch-resolves launch commits to ancestor release tags in one `git describe` call when possible. */
 function prefetchReleases(
   commits: readonly (string | null)[],
   repo: string,
@@ -516,7 +488,6 @@ function prefetchReleases(
   }
 }
 
-/** Maps a `#skills/main/runs.ts` `Run` plus its launch commit into a `BacktrackRun`. */
 function toBacktrackRun(
   run: SummaryRun,
   commit: string | null,
@@ -553,7 +524,6 @@ function toBacktrackRun(
   };
 }
 
-/** Reads `outside-reads.md` rows across `.ana/wri/` into compact aggregate status + fair-set summary. */
 function outsideDetailsOf(wriRoot: string): Map<string, OutsideRef> {
   const found = new Map<string, OutsideRef>();
   if (!existsSync(wriRoot)) return found;
@@ -571,7 +541,6 @@ function outsideDetailsOf(wriRoot: string): Map<string, OutsideRef> {
   return found;
 }
 
-/** Resolves commits for a batch of `(run, logPath)` pairs and converts them into `BacktrackRun`s. */
 function mappedRuns(
   pairs: readonly (readonly [SummaryRun, string | null])[],
   repo: string,
@@ -588,7 +557,7 @@ function mappedRuns(
   return withCommits.map(([run, commit]) => toBacktrackRun(run, commit, cache));
 }
 
-/** Loads same-domain archived runs for `domain` from the local archive without touching SSH or `.env`. */
+/** Reads the local archive only, never SSH or `.env`. */
 async function loadDomainArchive(
   domain: string,
   repo: string,
@@ -609,7 +578,6 @@ async function loadDomainArchive(
   );
 }
 
-/** Builds longitudinal same-domain version-backtracking lines for one or more campaign `logs`. */
 export async function backtrackForLogs(logs: readonly string[], repo: string): Promise<string[]> {
   const cache = new Map<string, ReleaseRef | null>();
   const targetPairs: (readonly [SummaryRun, string])[] = [];
@@ -637,7 +605,6 @@ export async function backtrackForLogs(logs: readonly string[], repo: string): P
   );
 }
 
-/** Builds longitudinal same-domain version-backtracking lines for the newest run(s) of `domain`. */
 export async function backtrackForDomain(domain: string, repo: string): Promise<string[]> {
   const cache = new Map<string, ReleaseRef | null>();
   const wriRoot = join(mainTree(repo), ".ana", "wri");

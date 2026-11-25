@@ -1,7 +1,5 @@
-// `trend.ts` sets the runs of the newest window against those of the windows before it, and
-// `outside.ts` sets a benchmark's scores beside the promotions they belong to. Both describe the
-// record and decide nothing; these tests hold the placing, the comparability rule, the verdicts
-// and the join, each with its nearest hostile case.
+// `trend.ts` sets the newest window's runs against earlier windows', and `outside.ts` sets a
+// benchmark's scores beside their promotions; both describe the record and decide nothing.
 import { afterAll, expect, it } from "bun:test";
 import type { Promotion, Run } from "#skills/main/runs.ts";
 import { outsideLines, type Score, scoresOf } from "#skills/promotion-tuner/scripts/outside.ts";
@@ -135,7 +133,6 @@ const score = (
   ...over,
 });
 
-/** The outside block's rows by arm, each a list of its cells. */
 const outsideRows = (scores: readonly Score[], runs: readonly Run[]) =>
   new Map(
     outsideLines(scores, runs, "tsv")
@@ -147,8 +144,8 @@ const outsideRows = (scores: readonly Score[], runs: readonly Run[]) =>
   );
 
 it("bounds an arm by the sums of whole Starter rollouts, never by the Starter's worst and best of each task", () => {
-  // Two Starter rollouts trade places on two tasks: each sums to 50, where the lower of each task
-  // sums to 20 and the higher to 80, a spread no rollout had and one that every added rollout widens.
+  // Two Starter rollouts trade places on two tasks: each sums to 50, where the per-task lower sums to
+  // 20 and the higher to 80, a spread no rollout had.
   const starter = [
     score("starter-a", "t1", 10, "starter"),
     score("starter-a", "t2", 40, "starter"),
@@ -167,7 +164,6 @@ it("bounds an arm by the sums of whole Starter rollouts, never by the Starter's 
       ...arm("under", ["t1", "t2"], 15),
       ...arm("over", ["t1", "t2"], 35),
       ...arm("level", ["t1", "t2"], 25),
-      // On one task the arm that holds it alone counts beside the two that hold both.
       ...arm("single", ["t1"], 5),
       ...arm("lone", ["t3"], 30),
       // No Starter arm holds these two tasks together, so nothing bounds their sum.

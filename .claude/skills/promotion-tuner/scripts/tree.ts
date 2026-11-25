@@ -1,9 +1,8 @@
 /**
- * The tree whose score reads the record in a promotion replay. A tree is any worktree of the
- * repository, `main`'s or a candidate's, and the replay reaches its kernel only through its own
- * modules, so one script reads the same record under two scores and the tables differ in what the
- * trees differ in, rather than each prototype importing a tree by hand. The logs a replay reads are
- * listed by `campaignLogs` (`.claude/skills/main/logs.ts`).
+ * The tree whose score reads the record in a promotion replay: any worktree of the repository,
+ * `main`'s or a candidate's, whose kernel the replay reaches only through the tree's own modules,
+ * so one script reads the same record under two scores and the tables differ only in what the trees
+ * differ in.
  */
 import { type Paired, UNMEASURED } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -12,7 +11,6 @@ import { gitText } from "#src/meta/git.ts";
 import { asRecord, isFunction } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 
-/** What a reading of the reference against itself is made between (`Sides`, `compare.ts`). */
 interface Sides {
   readonly old: string;
   readonly fresh: string;
@@ -22,16 +20,12 @@ interface Sides {
   readonly objective?: { readonly direction: "lower" | "higher" } | undefined;
 }
 
-/** A task's points by measure. A tree from before 2 November also scores the bill; a tree after it
- *  scores none, which reads here as no points by the bill. */
+/** A task's points by measure; a tree that scores no bill reads here as no points by the bill. */
 export type Points = Readonly<Record<"validity" | "objective" | "bill", number>>;
 
-/** The kernel of one tree, as the replay calls it. */
 export interface Tree {
   readonly path: string;
-  /** The tree's short commit, and whether its `src` holds changes no commit has. */
   readonly commit: string;
-  /** The tree's weight of each measure (`WEIGHTS`). */
   readonly weights: Points;
   read: (path: string) => LogEvent[];
   lastReports: (events: readonly LogEvent[]) => Reported[];
@@ -42,13 +36,9 @@ export interface Tree {
     sides: Sides,
     solves: number,
   ) => Paired[];
-  /** A task's points by measure under the tree's weights (`pointsOf`). */
   points: (pair: Paired) => Points;
   flipP: (differences: readonly number[]) => number;
-  /** Whether the tree's own step rule (`stepOf`) reads a step on these scores, with `unbilled`
-   *  null where a set's scores without the bill cannot be read again. */
   readsStep: (differences: readonly number[], unbilled: readonly number[] | null, level: number) => boolean;
-  /** Whether a reading of a harness against itself reads a step either way at `level`. */
   readsStepEitherWay: (differences: readonly number[], level: number, unbilled: readonly number[]) => boolean;
   billedBetween: (events: readonly LogEvent[], from: number, to: number) => number;
 }
@@ -67,7 +57,7 @@ export async function loadTree(path: string): Promise<Tree> {
     kernel<object>("meter.ts"),
     kernel<object>("trace.ts"),
   ]);
-  // From 1 November a tree's billing folds are its meter's; a tree before keeps them in its trace.
+  // A tree's billing folds are its meter's, or in an older tree its trace's.
   const billing: unknown = Reflect.get(meter, "billedBetween") ?? Reflect.get(trace, "billedBetween");
   if (!isFunction(billing)) throw new Error(`${path} has no billedBetween in its meter or its trace`);
   if (!isFunction(compare.pointsOf) || asRecord(compare.WEIGHTS) === null) {
@@ -84,10 +74,8 @@ export async function loadTree(path: string): Promise<Tree> {
     pairsOf: (events, versions, sides, solves) => compare.pairsOf(events, versions, sides, solves).pairs,
     points: (pair) => ({ bill: 0, ...compare.pointsOf(pair) }),
     flipP: (differences) => compare.flipP(differences),
-    // The tree's own rule, whatever it exports beside it: one tree read the bill-free test
-    // inside `stepOf` before `readsStep` existed, a tree before it reads its scores alone, and a tree
-    // from 2 November scores no bill, so its scores are the ones it reads. A rule that needs scores
-    // without the bill where none can be read refuses them, and reads no step.
+    // The tree's own rule: `stepOf` where it exports one, else `readsStep` on the scores. A rule
+    // that needs scores without the bill where none can be read refuses them, and reads no step.
     readsStep: (differences, unbilled, level) => {
       const stepOf: unknown = Reflect.get(compare, "stepOf");
       if (!isFunction(stepOf)) return compare.readsStep(differences, level);
@@ -98,8 +86,8 @@ export async function loadTree(path: string): Promise<Tree> {
         return false;
       }
     },
-    // From 31 October a tree's step reads the scores without the bill alone, and its `readsStep`
-    // takes them and the level; a tree before that reads the scores as they stand first.
+    // A two-argument `readsStep` reads the scores without the bill and the level; an older one
+    // reads the scores as they stand first.
     readsStepEitherWay: (differences, level, unbilled) =>
       isFunction(compare.readsStep) && compare.readsStep.length === 2
         ? compare.readsStepEitherWay(unbilled, level)

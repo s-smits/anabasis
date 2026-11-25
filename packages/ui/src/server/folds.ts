@@ -1,10 +1,7 @@
 /**
- * The repository's folds of one log, each computed once for the log as it was read and then kept
- * with it, so that every endpoint and the poll of the campaign list share one reading.
- *
- * Every fact the page shows is one of these folds' output, or computed from one (one reader a
- * fact, `AGENTS.md` section 5, habit 2). A log read
- * again after it changed is another `Log`, and the folds kept for the old one go with it.
+ * The repository's folds of one log, each computed once and kept with the log as read, so every
+ * endpoint and the list's poll share one reading. A log read again after it changed is another
+ * `Log`, and the old one's folds go with it.
  */
 import { epochsOf } from "../../../../src/campaign/climb.ts";
 import { campaignOf } from "../../../../src/campaign/handover.ts";
@@ -18,12 +15,10 @@ import { practiceRan, ranUnder, solvesIn, verdictsOf } from "../../../../src/ker
 import { taskSets } from "../../../../src/kernel/task.ts";
 import type { TaskDraw } from "../models.ts";
 
-/** One log as it was read: the unit every fold below is kept for. */
 export interface Log {
   readonly events: readonly LogEvent[];
 }
 
-/** `make` of a log, made once for that log and kept while the log is. */
 export function once<T>(make: (log: Log) => T): (log: Log) => T {
   const kept = new WeakMap<Log, { readonly value: T }>();
   return (log) => {
@@ -39,21 +34,16 @@ export const campaignIn = once(({ events }) => campaignOf(events));
 export const reportsIn = once(({ events }) => lastReports(events));
 export const epochsIn = once(({ events }) => epochsOf(events));
 export const setsIn = once(({ events }) => taskSets(events));
-/** Every solve as its own two events tell it (`solvesIn`), by id. */
 export const solvedIn = once(({ events }) => new Map(solvesIn(events).map((solve) => [solve.id, solve])));
 export const ranIn = once(({ events }) => ranUnder(events));
-/** The practice solves (`practiceRan`), by id. */
 export const practiceIn = once(({ events }) => new Set(practiceRan(events).map(({ id }) => id)));
 export const verdictsIn = once(({ events }) => verdictsOf(events));
 export const conditionsIn = once(({ events }) => conditionsOf(events));
-/** The one place each held-out task has (`poolOf`): the tasks waiting for a person's label and
- *  the exhausted ones are read off it, as the supply counts them (`supplyOf`,
- *  `src/campaign/admission.ts`). */
+/** The one place each held-out task has (`poolOf`), from which the tasks awaiting a label and the
+ *  exhausted ones are read, as the supply counts them (`supplyOf`). */
 const poolIn = once(({ events }) => poolOf(events));
 export const awaitingIn = once((log) => new Set(poolIn(log).awaiting));
 export const doubtedIn = once((log) => new Set(poolIn(log).doubted));
-/** Each held-out task's one place in the draw, by version: the pool's out, retained and frontier
- *  lists partition the held set, and a task not held out has none. */
 export const drawsIn = once((log): ReadonlyMap<string, TaskDraw> => {
   const { frontier, retained, exhausted } = poolIn(log);
   const [awaiting, doubted, spent] = [awaitingIn(log), doubtedIn(log), new Set(exhausted)];

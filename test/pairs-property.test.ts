@@ -1,11 +1,9 @@
-// The pairs a comparison reads from its log (`pairsOf`), checked over seeded random logs against the
-// generator's own record of each solve. The generator writes what a runner writes, with every way a
-// solve can fail to count: another comparison's or none, another setting, a stronger solver's side,
-// a non-result, no ending, a harness opened other than its condition names, a third harness; and it
-// finishes solves out of the order they started. The expectation is the rule as `pairsOf` states it:
-// the first `solves` a side started, of those that count; a task short of them is short; a disputed
-// task is out on both sides; the reference read against itself is split into mirrored halves whose
-// count carries on from task to task.
+// The pairs a comparison reads from its log (`pairsOf`), over seeded random logs against the
+// generator's own record. The generator writes every way a solve can fail to count (another comparison
+// or setting, a stronger solver, a non-result, no ending, a mismatched or third harness) and finishes
+// solves out of order. The rule: the first `solves` a side started that count; a task short of them is
+// short; a disputed task is out on both sides; the reference against itself splits into mirrored halves
+// whose count carries over tasks.
 import { describe, expect, it } from "bun:test";
 import { pairsOf } from "../src/kernel/compare.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
@@ -15,7 +13,6 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 
-/** One solve as the generator planned it, in the order the solves started. */
 interface Planned {
   readonly id: string;
   readonly task: string;
@@ -29,7 +26,6 @@ interface Planned {
   readonly objective: number | null;
 }
 
-/** What a comparison reads: its two sides, whether the reference is split, and its objective. */
 interface Read {
   readonly old: string;
   readonly fresh: string;
@@ -72,7 +68,6 @@ function generator(seed: number) {
   return { next, pick };
 }
 
-/** A log of up to 14 solves on three held-out tasks, some disputed, and the plan it was written from. */
 function logOf(seed: number) {
   const { next, pick } = generator(seed);
   const planned = Array.from(

@@ -1,19 +1,16 @@
 /**
  * The four improver prompts Harness² writes for JobBench on Claude Code at k=1: the INVARIANT and
- * DOMAIN proposers, the aggregator and the experience writer. `prompts.txt` holds them as Harness²'s
- * own Python rendered them with each benchmark text field left as a `{{slot}}` (its header names
- * the source, commits and licence), so the prose here is never retyped. The fields come from one
- * sections file, the shared-prompt `sections.json` the pilot read through `HARNESS2_JB_SHARED`.
- *
- * Python leaves out the lens and yardstick blocks when their field is blank; every field is
- * required here instead, since the pilot's sections file fills all five.
+ * DOMAIN proposers, the aggregator and the experience writer. `prompts.txt` holds them as
+ * Harness²'s own Python rendered them, each benchmark text field left as a `{{slot}}`, so the prose
+ * is never retyped; the fields come from one shared-prompt `sections.json`. Python leaves out the
+ * lens and yardstick blocks when their field is blank; every field is required here, since the
+ * pilot's sections file fills all five.
  */
 import { readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { isRecord, isString } from "#src/meta/json-shape.ts";
 import { pyStrip } from "./py.ts";
 
-/** The benchmark text fields a sections file supplies. */
 type Field = "work" | "inv_levers" | "dom_levers" | "yardstick" | "domain_guidance";
 export type Sections = Readonly<Record<Field, string>>;
 export type Job = "propose INV" | "propose DOM" | "aggregate" | "experience";
@@ -25,7 +22,6 @@ const TEMPLATES = new Map(
     .flatMap((part, index, parts) => (index % 2 === 0 ? [[part, parts[index + 1] ?? ""] as const] : [])),
 );
 
-/** The five fields of a sections file, each stripped as Python strips it, or a thrown reason. */
 export function readSections(path: string): Sections {
   const doc = capturedJsonParse(readFileSync(path, "utf8"));
   const field = (name: Field): string => {

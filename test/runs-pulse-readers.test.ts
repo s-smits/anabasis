@@ -171,7 +171,6 @@ describe.skipIf(!osIsolationSupport().ok)("what a look wrote, through a seat's w
   const SECRET = "reader-output-must-stay-hidden";
   const context = BACKGROUND_CONTEXT;
 
-  /** Whether a seat can read `path`, in a shell and by its file tools. */
   async function readable(env: ExecutionEnv, path: string): Promise<boolean> {
     let output = "";
     const shell = await env.exec(

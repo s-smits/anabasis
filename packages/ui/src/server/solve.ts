@@ -1,8 +1,7 @@
 /**
  * `GET /api/solve?key=&id=`: one solve (`solvesIn`, `ranUnder`). Its trace in the default tier only
- * where its task was a practice task when it started and no comparison asked for it
- * (`practiceRan`); its verdict (`verdictsOf`) and its ruling in the exam tier only, and the ruling
- * in neither while it is withheld (`rulingWithheld`, `withheld.ts`).
+ * for a practice task's solve no comparison asked for (`practiceRan`); its verdict (`verdictsOf`)
+ * and ruling in the exam tier only, the ruling in neither while withheld (`withheld.ts`).
  */
 import { blockingOf } from "../../../../src/kernel/verify.ts";
 import { taskSets } from "../../../../src/kernel/task.ts";

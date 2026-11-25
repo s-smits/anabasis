@@ -34,7 +34,6 @@ function campaign(made: ReturnType<typeof fixture>, name: string, tree = join(ma
   const folder = join(tree, ".ana", "d2", name);
   mkdirSync(folder, { recursive: true });
   const log = join(folder, "log.jsonl");
-  // A launch writes its receipt before its first event.
   writeReceipt(log, "run-1", {
     at: new Date().toISOString(),
     pid: 42,
@@ -134,7 +133,7 @@ describe.concurrent("fleet workflows", () => {
 
   it("continue refuses --after next with another commit before it pauses anything", async () => {
     // `next` may stop a run inside a comparison, which the start at another commit then refuses,
-    // leaving the run stopped (the v0.9.0 review).
+    // leaving the run stopped.
     const made = fixture();
     const source = campaign(made, "local", made.main);
     const before = readFileSync(source.log, "utf8");

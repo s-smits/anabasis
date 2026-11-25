@@ -1,40 +1,26 @@
 /**
- * The not-slop ledger: every slop finding a reader looked at and answered no, with the reason.
- *
- * The slop cleaner is heuristic. Its best measured scan was right at 51 of 71 sites; a report that
- * reprints the other twenty at every commit teaches its reader to stop reading it. So a site can be
- * answered once, and every reader of the findings (`bun run lint`, `bun run simplify` and the
- * pre-commit slop report) drops what the ledger lists.
- *
- * One ledger holds the answers to both halves of the cleaner. The whole-tree scans have no other
- * place for one: a copied block spans two files, and a comment in either would answer only half
- * of it. The per-file rules had inline `oxlint-disable` comments, and those were the weaker store:
- * a comment survives an edit to the line it excuses, so an answer about one expression kept
- * excusing whatever was later written there, and a comment without a reason (thirty-one of
- * the forty in the tree on 2026-09-21 had none) records that someone was silenced, not why.
- *
- * The file is tab-separated, one sorted row per line under a header, so it renders as a table,
- * diffs one row per answer, and `.gitattributes` merges it by union: two branches answering two
- * sites never conflict. `bun run not-slop` writes and prunes it; nothing reads it but the code here.
+ * The not-slop ledger: every slop finding a reader looked at and answered no, with the reason. The
+ * slop cleaner is heuristic, so a site is answered once and every reader of the findings (`bun run
+ * lint`, `bun run simplify`, the pre-commit slop report) drops what the ledger lists. One ledger
+ * answers both the per-file rules and the whole-tree scans, whose copied blocks span two files; an
+ * inline `oxlint-disable` would survive an edit to the line it excuses. Tab-separated with one
+ * sorted row per answer, so `.gitattributes` merges it by union; `bun run not-slop` writes and
+ * prunes it.
  */
 import { boundText } from "../../src/meta/bounded-text.ts";
 import { sha256 } from "../../src/meta/digest.ts";
 import { compareCodeUnits } from "../../src/meta/stable-json.ts";
 import { PLUGINS } from "./plugins.ts";
 
-/** The ledger, relative to the repository root every reader runs from. */
 export const NOT_SLOP_LEDGER = "tools/oxlint/not-slop.tsv";
 
-/** The columns, in order; the first line of the file spells them. */
 const COLUMNS = ["id", "rule", "path", "answered", "reason", "excerpt"] as const;
 
-/** The whole-tree scans answer under this prefix, as `bun run simplify` already spells them. */
 export const TREE_RULE_PREFIX = "tree/";
 
 /** Words a reason needs before it is one: "fine" and "not slop" say nothing a reviewer can check. */
 const REASON_WORDS = 3;
 
-/** UTF-8 bytes of the hashed text a row carries, which is enough to recognise the site. */
 const EXCERPT_BYTES = 100;
 
 const ID = /^[0-9a-f]{12}$/u;
@@ -44,26 +30,20 @@ const ID = /^[0-9a-f]{12}$/u;
 const INLINE_ANSWER_RULE = "ana/no-inline-slop-answer";
 const NO_COMMENTS_RULE = "ana/no-comments";
 
-/** One answered site. */
 export interface Answer {
   id: string;
-  /** `ana/no-deep-nesting`, `anti-slop/no-runtime-typeof` or `tree/no-duplicate-block`. */
   rule: string;
-  /** Every file the site spans, comma-separated, in the order the fingerprint read them. */
   path: string;
-  /** The day the answer was given, `YYYY-MM-DD`. */
   answered: string;
   reason: string;
   excerpt: string;
 }
 
-/** The text of one place a site spans. */
 export interface Place {
   path: string;
   text: string;
 }
 
-/** What the ledger holds, and each row it could not read with why. */
 export interface Ledger {
   answers: Answer[];
   unread: string[];
@@ -71,22 +51,18 @@ export interface Ledger {
 
 const collapsed = (text: string): string => text.replaceAll(/\s+/gu, " ").trim();
 
-/** The places in one order whatever order a scan found them in, and whatever the host's locale:
- *  an id hashed in a locale's collation could differ between two hosts. */
+/** One order whatever order a scan found the places in and whatever the host's locale, so an id is
+ *  the same on every host. */
 const ordered = (places: readonly Place[]): Place[] =>
   places.toSorted(
     (left, right) => compareCodeUnits(left.path, right.path) || compareCodeUnits(left.text, right.text),
   );
 
-/**
- * The id of a site: its rule, and the path and collapsed text of every place it spans.
- */
 export function siteId(rule: string, places: readonly Place[]): string {
   const parts = ordered(places).flatMap((place) => [place.path, collapsed(place.text)]);
   return sha256([rule, ...parts].join("\0")).slice(0, 12);
 }
 
-/** The start of the hashed text, which a row carries so a reviewer can see what it answers. */
 export function siteExcerpt(places: readonly Place[]): string {
   const text = collapsed(
     ordered(places)
@@ -96,9 +72,6 @@ export function siteExcerpt(places: readonly Place[]): string {
   return boundText(text, EXCERPT_BYTES).shown;
 }
 
-/**
- * Why a lint rule's findings cannot be answered in the ledger, or null when they can.
- */
 export function unanswerable(rule: string): string | null {
   if (rule.startsWith(TREE_RULE_PREFIX)) return null;
   if (rule === INLINE_ANSWER_RULE) {
@@ -120,7 +93,6 @@ export function unanswerable(rule: string): string | null {
   return null;
 }
 
-/** Why a row cannot be read, or null when it can. */
 function rowProblem(cells: readonly string[]): string | null {
   const [id = "", rule = "", path = "", answered = "", reason = ""] = cells;
   if (cells.length !== COLUMNS.length) return `${cells.length} columns, not ${COLUMNS.length}`;
@@ -133,7 +105,6 @@ function rowProblem(cells: readonly string[]): string | null {
   return unanswerable(rule);
 }
 
-/** The ledger's rows, and every line it refused with the reason: a refused row answers nothing. */
 export function readLedger(text: string): Ledger {
   const [header, ...rows] = text.split("\n");
   const ledger: Ledger = { answers: [], unread: [] };
@@ -154,9 +125,6 @@ export function readLedger(text: string): Ledger {
   return ledger;
 }
 
-/**
- * The ledger's text: one row per id, sorted by path, rule and id, under the header.
- */
 export function formatLedger(answers: readonly Answer[]): string {
   const byId = new Map(answers.map((answer) => [answer.id, answer]));
   const rows = [...byId.values()]
@@ -170,7 +138,6 @@ export function formatLedger(answers: readonly Answer[]): string {
   return `${[COLUMNS.join("\t"), ...rows].join("\n")}\n`;
 }
 
-/** The ledger on disk, or an empty one where the file is absent. */
 export async function ledgerOnDisk(root = "."): Promise<Ledger> {
   const file = Bun.file(`${root}/${NOT_SLOP_LEDGER}`);
   return readLedger((await file.exists()) ? await file.text() : "");

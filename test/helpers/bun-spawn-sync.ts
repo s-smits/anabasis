@@ -17,9 +17,8 @@ export function spawnTextSync(command: string, args: readonly string[], options:
   const input = isString(stdin) ? encoder.encode(stdin) : stdin;
   let result: Bun.SyncSubprocess<"pipe", "pipe">;
   try {
-    // Bun 1.4.2 passes a snapshot of the original process environment when `env` is omitted,
-    // so a child process would not observe keys deleted from `Bun.env` by a test. Pass the
-    // current environment explicitly.
+    // Bun passes a snapshot of the original environment when `env` is omitted, so a child would not see
+    // keys a test deleted from `Bun.env`.
     result = Bun.spawnSync({
       cmd: [command, ...args],
       stdin: input,
@@ -56,10 +55,8 @@ export function execTextSync(
   options: TextCommandOptions = {},
 ): string {
   const result = spawnTextSync(command, args, options);
-  // Embed the full failure context in the error message. Bun renders a thrown `Error` by its
-  // message alone and matches it the same way under `toMatchObject`, so custom properties
-  // attached to the error would be invisible both when debugging failures and when asserting
-  // on stdout and stderr in tests.
+  // Bun renders and matches a thrown `Error` by its message alone, so the failure context goes in the
+  // message rather than in properties.
   if (result.error !== null || result.status !== 0 || result.signal !== null) {
     const cause =
       result.status === null || result.status === 0

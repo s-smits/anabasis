@@ -1,16 +1,12 @@
 /**
- * Stop a run, and release what it held on the host: v1's stop, on v2's records.
+ * Stops a run and releases what it held on the host. It ends the process that writes each named
+ * campaign's log and every process that one started, and nothing else, since a round started by
+ * hand can share its process group with a sibling. A name is one campaign's whole name
+ * (`runNamed`). Without `--yes` it prints what it would end. The campaign goes on from its log when
+ * run again under the same name (`bun run runs continue`); a word (`tools/d2/word.ts`) or `bun run
+ * runs pause` stops one at a boundary instead.
  *
  *   bun run runs stop <name> ... [--yes]
- *
- * `stop` ends the process that writes each named campaign's log and every process that one
- * started, and nothing else: a round started by hand can share its process group with a sibling. A
- * name is one campaign's whole name (`runNamed`), refused where it is none or two. Without `--yes`
- * it prints what it would end. A campaign goes on from its log when its command is run again under
- * the same name (`bun run runs continue`), and the session the stop fell inside has spent its id;
- * a word left with `tools/d2/word.ts` ends a campaign at its next move boundary and spends none, and
- * `bun run runs pause` stops one at its next step, or where nothing but its Builder's conversation
- * is open.
  */
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { keepCutNotes, sessionDirs, spent } from "#src/builder/session.ts";
@@ -54,9 +50,9 @@ export function family(table: string, pid: number): number[] {
 }
 
 /**
- * The directories of the solves and sessions a run started and never finished. A run that was
- * stopped or killed leaves the root of each, and what still works in it: only its own process
- * would have let them go. A seed's log begins as its source's, and what that run has open is the source's to hold.
+ * The directories of the solves and sessions a run started and never finished: a stopped or killed
+ * run leaves them, since only its own process would have let them go. A seed's log begins as its
+ * source's, and what that run has open is the source's to hold.
  */
 export function unreleasedSandboxes(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?: string })[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
@@ -89,8 +85,7 @@ function after(run: Run, ran: readonly string[]): string {
   );
 }
 
-/** End `run`'s writers in `running` and all they started, the run's own process first so that it
- *  starts nothing more. */
+/** Ends `run`'s writers and all they started, the run's own process first, so that it starts nothing more. */
 async function end(run: Run, running: readonly Running[], yes: boolean): Promise<number> {
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,ppid="]);
   const found = writers(run, running);
@@ -137,7 +132,6 @@ export async function release(
   return left.length;
 }
 
-/** `bun run runs stop`. */
 export async function stop(args: readonly string[]): Promise<void> {
   const { values, positionals: names } = parseArgs({
     args: [...args],

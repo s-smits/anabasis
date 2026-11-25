@@ -1,10 +1,7 @@
-// Pre-commit and repository-wide secret scanner (ported from v1's `tools/secrets/scan.ts`).
-// Supports two scanning scopes using the same rule set:
-//   --staged   lines added in the Git index (run by `bun run commit:check`)
-//   range      lines added across a commit range via `scanAdded` (run by the pre-push hook)
-//   default    all tracked files (`bun run secrets`, run by the gate and CI's darwin job)
-// Staged mode inspects added lines only, because a pre-commit check cannot rewrite committed
-// history and re-reporting existing lines encourages operators to bypass the check.
+// Pre-commit and repository-wide secret scanner, one rule set over three scopes: `--staged` scans lines
+// added in the index (`bun run commit:check`), a range scans lines a push adds (`scanAdded`, the
+// pre-push hook), and no argument scans every tracked file (`bun run secrets`, the gate and CI). Staged
+// mode reads added lines only: re-reporting committed lines teaches operators to bypass the check.
 
 import { existsSync, readFileSync, statSync } from "../../src/meta/filesystem.ts";
 import { type SecretHit, WAIVER, scanText } from "./rules.ts";
@@ -12,21 +9,19 @@ import { runtimeProcess } from "../../src/meta/process.ts";
 import { hostTool } from "../../src/meta/host-tool.ts";
 import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
 
-/** Refuse dotenv files by path because they may store credentials, including when staged with
- *  `git add -f`. Templates are exempt from this path rule but still receive the content scan. */
+/** Dotenv files are refused by path, even when staged with `git add -f`; templates are exempt from
+ *  this path rule but still receive the content scan. */
 const ENV_FILE = /(^|\/)\.env(\.|$)/;
 const ENV_TEMPLATE = /(^|\/)\.env\.([\w-]+\.)?(example|sample|template|dist)$/;
 
 /** Skip these generated formats in the content scan; credentials inside them are not detected. */
 const SKIP_CONTENT = [/\.lock$/, /\.min\.js$/, /\.map$/];
 
-/** Added lines from the index or a range, with their real line numbers in the new file. */
 interface ScanAddedResult {
   hits: SecretHit[];
   refusedPaths: string[];
 }
 
-/** Every tracked file as it stands on disk. */
 interface ScanTreeResult {
   hits: SecretHit[];
   refusedPaths: string[];
@@ -46,7 +41,6 @@ function scannable(path: string): boolean {
   return !SKIP_CONTENT.some((skip) => skip.test(path));
 }
 
-/** Scans lines added by `git diff <range>` (such as `--cached` or a commit range). */
 export function scanAdded(range: readonly string[]): ScanAddedResult {
   const staged = git(["diff", ...range, "--name-only", "--diff-filter=ACMR"])
     .split("\n")

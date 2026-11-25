@@ -1,17 +1,9 @@
-// The climb, simulated: a campaign run by its log over the fixture pack with a script in each
-// model seat, where a task's difficulty is its base and a harness's strength is a number its guide
-// carries. A solve passes where the base is at most the strength, and gives no answer otherwise;
-// each edit of the Builder that leads the campaign raises the strength by two; each Examiner session asked for room reads the
-// reference harness's strength from its kept state and writes tasks on either side of it, as an
-// Examiner that hears which tasks were answered would. What this proves is the host's part
-// of the climb and nothing of a model: that a scripted Builder promotes a harness, requests harder tasks
-// written, promotes a harder one on them, and ends on its budget of moves and not before. Run by
-// name, since its solves run under the real wall and take minutes:
-//
-//   ANA_CLIMB=1 bun run test -- test/climb.test.ts
-//
-// The operator's question: does the system climb, epoch after epoch, where an
-// epoch ends with a promotion and the next one's tasks are harder?
+// The climb, simulated: a campaign over the fixture pack with a script in each model seat, where a
+// task's difficulty is its base and a harness's strength a number its guide carries; each Builder edit
+// raises it by two, and each Examiner session writes tasks either side of the reference's strength. It
+// proves the host's part of the climb and nothing of a model: a scripted Builder promotes, gets harder
+// tasks written, promotes again on them, and ends on its budget of moves. Its solves run under the real
+// wall and take minutes, so it runs by name: `ANA_CLIMB=1 bun run test -- test/climb.test.ts`.
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { stopRule } from "../src/campaign/admission.ts";
@@ -49,20 +41,12 @@ const REPORTED = "comparison.reported" as const;
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
 const NAME = `test-climb-${String(runtimeProcess.pid)}`;
 const TASKS = fixtureTasks(7);
-/** The starter's strength: it answers a base of three and under. */
 const STARTER_STRENGTH = 3;
-/** What one edit of the Builder adds. */
 const RAISE = 2;
-/** Tasks an Examiner asked for writes, by how far above the reference's strength each is: one
- *  past it, which the reference answers on some of its solves and not all, so that a task is
- *  informative for it as room asks (`informative`, `roomOf`);
- *  and harder ones, some past any harness so far. */
+/** One past the reference's strength, which it answers on some solves and not all, so the task
+ *  is informative (`informative`, `roomOf`); and harder ones, some past any harness so far. */
 const ABOVE = [1, 1, 2, 2, 3, 4];
-/** A led Builder's finish in a conversation after its first, said twice where finish first gives
- *  a notice. */
 const IDLE: readonly [string, JsonObject] = ["finish", { note: "Nothing further." }];
-/** How many times each harness has solved each task, by task and harness folder: a harness
- *  answers a task one past its strength on every other solve. */
 const tried = new Map<string, number>();
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-climb-")));
 const folder = join(REPO, ".ana", "d2", NAME);
@@ -102,12 +86,9 @@ setDefaultTimeout(1_800_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  // `ANA_CLIMB_KEEP=1` keeps the campaign's folder for reading, under `.ana/d2/`.
   if (runtimeProcess.env.ANA_CLIMB_KEEP === undefined) rmSync(folder, { recursive: true, force: true });
 });
 
-/** The strength a harness's guide carries, its last line of the kind, or the starter's where it
- *  carries none: each session appends one, so the last is the session's. */
 function strengthOf(dir: string): number {
   const guide = join(dir, "agent", GUIDE_FILE);
   const found = existsSync(guide)
@@ -116,7 +97,6 @@ function strengthOf(dir: string): number {
   return found === undefined ? STARTER_STRENGTH : Number(found[1]);
 }
 
-/** What a campaign's log holds of one kind, in order. */
 const of = (kind: string): JsonObject[] =>
   read(join(folder, "log.jsonl")).flatMap((each: LogEvent) => (each.kind === kind ? [each.data] : []));
 
@@ -136,11 +116,9 @@ describe("the climb", () => {
         "check-product",
         "--practice",
         "2",
-        // The target a simulated climb stalls at when drawn by hash from the tasks of every epoch
-        // at once: 8 over the 19 tasks the third epoch held take two or three the reference fails
-        // and leave the comparison one win short. The draw takes the newest epoch's tasks first
-        // (`scoredSet`), and this run is the proof that the third epoch reads its step at the
-        // target a real campaign runs near.
+        // Drawn by hash from every epoch at once, 8 of the third epoch's 19 tasks leave the comparison
+        // one win short; the draw takes the newest epoch first (`scoredSet`), so the third epoch reads
+        // its step at the target.
         "--target",
         "8",
         "--patience",
@@ -149,15 +127,12 @@ describe("the climb", () => {
       let written = 0;
       const seats: Seats = {
         seated: (campaign) => ({
-          // One scripted Builder keeps its conversation while it edits and compares, and
-          // the conversations after it make no campaign move.
           builder: read(campaign.log).some(({ kind }) => kind === "build.started")
             ? scriptedModel([IDLE, IDLE])
             : scriptedModel([
                 ...Array.from({ length: 3 }, (_, epoch) => {
                   const strength = STARTER_STRENGTH + (epoch + 1) * RAISE;
                   return [
-                    // The comparisons read the tasks the session writes, so the Builder waits for it.
                     ["examine", {}],
                     ["wait", {}],
                     [
@@ -173,9 +148,8 @@ describe("the climb", () => {
                 ["finish", { note: "Three scripted improvements in one conversation." }],
               ]),
           setting: campaign.setting({ ...campaign.test, ...scriptedModel([]) }),
-          // A solve passes where the task's base is at most the harness's strength, and one past it
-          // on every other solve, since a task the reference fails in every solve, or answers in
-          // every solve, leaves it no room, and a climb that wrote only such tasks would stall.
+          // One past its strength on every other solve, since a task the reference always fails or
+          // always answers leaves no room.
           solve: async (task, harness, kill, comparison) => {
             const base = asRecord(task.publicInput)?.base;
             const key = `${JSON.stringify(task.publicInput)} ${harness.dir}`;
@@ -194,10 +168,6 @@ describe("the climb", () => {
             return campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill, comparison);
           },
         }),
-        // An Examiner writes tasks harder than the reference harness answers: each a fresh
-        // instance (`n`, which no check reads, makes it one), at a base above the reference's
-        // strength. It knows the reference from the log, as the outcomes it hears tell a real one
-        // which tasks were answered; it knows nothing of the harness the Builder is making.
         examine: (request) => {
           const promoted = of("harness.promoted").at(-1)?.harness;
           const reference = isString(promoted) ? join(folder, "states", promoted) : FIXTURE;
@@ -217,9 +187,8 @@ describe("the climb", () => {
           });
         },
       };
-      // Three epochs take 21 moves with every task scored. A campaign that ends on its moves has
-      // not stopped. Led by
-      // its Builder, the three improvements are made by campaign tools inside one conversation.
+      // A campaign that ends on its moves has not stopped; led by its Builder, the improvements are
+      // made inside one conversation.
       const ending = await harnessBuilder([...flags, "--moves", "24"], seats);
       const moves = of("campaign.move").map(({ move }) => (isString(move) ? move : "?"));
       const promotions = of("harness.promoted");
@@ -227,7 +196,6 @@ describe("the climb", () => {
       const epochs = epochsOf(log);
       console.log(moves.join(" "));
       for (const epoch of epochs) console.log(epochLine(epoch));
-      // Each comparison by the bases it scored, for reading where a climb stalls.
       const baseOf = new Map(
         log.flatMap(({ kind, data }) => {
           const base = asRecord(asRecord(data.task)?.publicInput)?.base;
@@ -252,20 +220,14 @@ describe("the climb", () => {
           );
         }
       }
-      // The highest base held out in an epoch: what the test knows of difficulty.
       const hardest = (epoch: Epoch) =>
         Math.max(0, ...epoch.tasks.map((version) => baseOf.get(version) ?? 0));
       // The first conversation made every improvement, and none after it changed a harness; a
       // finish does not end the campaign there.
       const later = of("build.finished").slice(1);
       expect(later.map(({ changed }) => changed)).not.toContain(true);
-      // Two promotions at least, each on tasks harder than the last epoch's: the second epoch's
-      // tasks reach higher bases, the starter answers fewer of them, and the promoted harness of
-      // each epoch is stronger than the one before.
       expect(promotions.length).toBeGreaterThanOrEqual(2);
       expect(epochs.length).toBeGreaterThanOrEqual(3);
-      // An epoch may hold out no task: the first holds a repeat's draw as well, and
-      // where its tasks leave the promoted harness room, the next is promoted on them.
       const [first, second] = epochs.filter((epoch) => epoch.tasks.length > 0);
       if (first === undefined || second === undefined) throw new Error("fewer than two epochs wrote tasks");
       expect(hardest(second)).toBeGreaterThan(hardest(first));
@@ -280,8 +242,6 @@ describe("the climb", () => {
 });
 
 describe("the chance of a false promotion among an epoch's attempts", () => {
-  /** A candidate's comparison against `old` that tallied one task, with the reference read
-   *  against itself beside it where `noise` holds its differences. */
   const attempt = (session: string, old: string, fresh: string, noise?: number[]) =>
     event(REPORTED, {
       session,
@@ -312,30 +272,23 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     });
     const log = [started, stepped, attempt("g-2", "S", "h2"), rated];
     const [epoch] = epochsOf(log);
-    // Each attempt at its own rate, the level where its report holds none.
     expect(epoch?.falsePromotion).toMatchObject({ attempts: 3, errors: 0, controls: 0 });
     expect(epoch?.falsePromotion.union).toBeCloseTo(0.25, 12);
     if (epoch === undefined) throw new Error("an epoch");
-    // The line and the closing report's epoch carry the attempts, their summed estimate and that
-    // no control was read; the campaign's line sums the epochs' estimates, here the one epoch's, as
-    // an estimate and no bound (the plan's 7.6).
     const [epochRisk, total] = riskLines(log);
     for (const line of [epochLine(epoch), epochRisk]) {
       expect(line).toMatch(/\b3 promotion attempts\b.*\b25%.*\bno powered A\/A control\b/u);
     }
     expect(total).toContain("25%");
     expect(total).toContain("formal bound");
-    // A rate under ten percent is printed to a tenth: 1.8% is not 2%.
     const small = { ...rated, data: { ...rated.data, frontier: { differences: [0], falseRate: 0.018 } } };
     expect(riskLines([started, small])[0]).toContain("false-promotion risk 1.8%;");
   });
 
   it("counts the A/A controls that could read a step and those that read one, one-sided at the level, beside the design's rate, and lets them set none of it", () => {
-    // Three controls tie every task and cannot read a step at any level; the fourth wins three of
-    // four untied tasks, which could have read one at 0.10 (four of four, p 1/16) and reads none
-    // (p 5/16). A control that could not read a step is not counted as one that read none, since
-    // most controls on record were such; nor are controls read in pairs, or against a 95% bound
-    // in place of the design's 10%.
+    // Three controls tie every task and cannot read a step; the fourth wins three of four untied tasks
+    // (p 5/16) and could have read one only at four of four (p 1/16). A control that could not read a
+    // step is not counted as one that read none.
     const ties = [0, 0, 0];
     const log = [
       started,
@@ -364,18 +317,16 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epochLine(second)).toContain(
       "estimated false-promotion risk 10%; 0 of 1 powered A/A control triggered a false positive (0 two-sided), plus 3 underpowered at alpha, 3 of them tied on every task (zero reference variance);",
     );
-    // A control too small with one untied task did not tie every task, so it is too small and no more.
     const short = [started, attempt("g-1", "S", "h2", [1, 0, 0])];
     expect(epochsOf(short)[0]?.falsePromotion).toMatchObject({ incapable: 1, tied: 0 });
     expect(riskLines(short)[0]).toContain("plus 1 underpowered at alpha.");
-    // A control with no task tallied tied none, so it is too small and no more.
     const empty = [started, attempt("g-1", "S", "h2", [])];
     expect(epochsOf(empty)[0]?.falsePromotion).toMatchObject({ incapable: 1, tied: 0 });
     expect(riskLines(log)[2]).toStartWith(
       "Campaign-wide estimated false-promotion risk across all epochs: 50%",
     );
-    // A control whose four tasks all went one way reads a step at 0.10 (p 1/16): one error, said.
-    // The other way it reads none one-sided, as a comparison is, and one either way.
+    // Four tasks all one way read a step at 0.10 (p 1/16): one error. The other way reads none
+    // one-sided.
     const lucky = [
       started,
       attempt("g-1", "S", "h2", [1, 1, 1, 1]),
@@ -390,7 +341,6 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(riskLines(lucky)[0]).toContain(
       "1 of 2 powered A/A controls triggered a false positive (2 two-sided).",
     );
-    // Past one the sum is capped there.
     const many = Array.from({ length: 11 }, (_, at) =>
       attempt(`g-${String(at + 1)}`, "S", `h${String(at + 2)}`),
     );
@@ -446,9 +396,6 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
 });
 
 describe("the starter comparison in an epoch's row", () => {
-  // In an objective domain the starter answers every task validly and still loses on the
-  // objective: the row reads the reference's tally against it without the bill, from the
-  // reference's side, and not the starter's share of valid answers.
   const opened = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });
   const promoted = event("harness.promoted", { harness: "h2" });
   const starterRead = (scored: JsonObject, more: JsonObject = {}) =>
@@ -503,7 +450,6 @@ describe("the starter comparison in an epoch's row", () => {
     const again = starterRead(six, { session: "g-3", reading: "step" });
     const redrawn = epochsOf([opened, promoted, short, again])[1];
     expect([redrawn?.starter_tally?.wins, redrawn?.confirmed]).toEqual([5, false]);
-    // One that tallied nothing tested nothing, so the comparison after it is the first reading.
     const empty = starterRead({ differences: [], unbilled: [] }, { reading: "not-scored" });
     expect(epochsOf([opened, promoted, empty, again])[1]?.confirmed).toBe(true);
   });
@@ -515,7 +461,6 @@ describe("the starter comparison in an epoch's row", () => {
       { reading: "step", fresh: "S", points },
     ];
     expect(validityOf(steps, [opened])).toMatchObject({ stepped: 1, onValidity: 1 });
-    // A log whose terms name no Starter leaves every step counted, as before.
     expect(validityOf(steps, [promoted])).toMatchObject({ stepped: 2, onValidity: 2 });
   });
 
@@ -531,7 +476,6 @@ describe("the starter comparison in an epoch's row", () => {
 describe("a campaign against its bars", () => {
   const LEVEL = 0.02;
   const opened = event("comparison.started", { session: "g-0", old: "S", fresh: "h1", starter: "S" });
-  /** A report of `fresh` against `old` at 0.02, with an A/A beside it where `noise` is given. */
   const reported = (session: string, old: string, fresh: string, noise?: readonly number[]) =>
     event(REPORTED, {
       session,
@@ -542,7 +486,6 @@ describe("a campaign against its bars", () => {
       frontier: { differences: [0] },
       noise: noise === undefined ? null : { differences: [...noise] },
     });
-  /** The reference's read against the starter, won by `wins` tasks. */
   const againstStarter = (session: string, old: string, wins: number) =>
     event(REPORTED, {
       ...reported(session, old, "S").data,
@@ -550,7 +493,6 @@ describe("a campaign against its bars", () => {
       scored: { differences: Array.from({ length: wins }, () => -1) },
     });
   const promotedTo = (harness: string, from: string) => event("harness.promoted", { harness, from });
-  /** Six promotions in a row, each attempted once, with no starter comparison. */
   const six = Array.from({ length: 6 }, (_, at) => {
     const [from, harness] = [at === 0 ? "S" : `h${String(at)}`, `h${String(at + 1)}`];
     return [reported(`g-${harness}`, from, harness), promotedTo(harness, from)];
@@ -563,11 +505,9 @@ describe("a campaign against its bars", () => {
       opened,
       reported("g-1", "S", "h1"),
       promotedTo("h1", "S"),
-      // Confirmed on six tasks won at 0.02, and a later draw of the pair changes nothing.
       againstStarter("g-2", "h1", 6),
       reported("g-3", "h1", "h2"),
       promotedTo("h2", "h1"),
-      // Five of five is short of the level, so this one is read and unconfirmed.
       againstStarter("g-4", "h2", 5),
       againstStarter("g-5", "h2", 6),
       promotedTo("h3", "h2"),
@@ -579,15 +519,12 @@ describe("a campaign against its bars", () => {
   });
 
   it("reads the A/A comparisons reported after the sixth promotion alone, and keeps those too small and each direction apart", () => {
-    // Five promotions are short of the milestone, whatever the A/A comparisons read.
     const five = six.slice(0, -2);
     expect(honesty([...five, reported("g-a", "h5", "h6", allWon)])).toContain("promotion 6 not yet reached");
-    // The A/A beside the very comparison that promoted the sixth stands before it, and is no reading of it.
     const atTheStep = six.map((each) =>
       each.data.session === "g-h6" ? reported("g-h6", "h5", "h6", allWon) : each,
     );
     expect(honesty(atTheStep)).toContain("after promotion 6, 0 A/A controls");
-    // One too small, one able that reads none, one for the second solves, one for the first.
     const after = [
       reported("g-a", "h6", "h7", [1, 1]),
       reported("g-b", "h6", "h8", [1, -1, 1, -1, 1, -1]),
@@ -602,7 +539,6 @@ describe("a campaign against its bars", () => {
     expect(honesty([...six, ...after])).toBe(
       "- Honesty: after promotion 6, 4 A/A controls against target 10; 3 powered A/A controls: 1 one-sided, 2 two-sided false positives.",
     );
-    // A reference that matched itself on every task is said apart from one merely too small.
     const tied = reported("g-e", "h6", "h11", [0, 0, 0, 0, 0, 0]);
     expect(honesty([...six, ...after, tied])).toBe(
       "- Honesty: after promotion 6, 5 A/A controls against target 10; 3 powered A/A controls: 1 one-sided, 2 two-sided false positives. 1 of them tied every task (identical reference outcomes across rollouts, unpowered).",
@@ -610,7 +546,6 @@ describe("a campaign against its bars", () => {
     expect(honesty([...five, tied])).toBe(
       "- Honesty: promotion 6 not yet reached (target: 10 post-milestone A/A controls). To date: 0 powered A/A controls: 0 one-sided, 0 two-sided false positives. 1 of 1 A/A control so far tied every task (identical reference outcomes across rollouts, unpowered).",
     );
-    // A settlement reports a comparison again: it stands where it first reported, before the promotion.
     const settled = [
       ...five,
       reported("g-s", "h5", "h6"),
@@ -623,7 +558,6 @@ describe("a campaign against its bars", () => {
   it("reads the starter against itself on the halves of its own solves in each starter comparison, and counts it towards no bar", () => {
     const starterLine = (events: readonly LogEvent[]) => barLines([opened, ...events])[3];
     let solves = 0;
-    /** `harness`'s solves of `task` in comparison `session`, each a pass or a fail. */
     const solved = (session: string, task: string, harness: string, valid: readonly boolean[]) => {
       const ran = condition(task, harness);
       const id = conditionId(ran);
@@ -641,8 +575,6 @@ describe("a campaign against its bars", () => {
       ];
     };
     const TASKS6 = ["v1", "v2", "v3", "v4", "v5", "v6"];
-    /** A comparison of `fresh` against `old` on the six tasks at `each` solves a side, the starter's
-     *  solves of every task given by `starter`. */
     const compared = (
       session: string,
       old: string,
@@ -669,31 +601,21 @@ describe("a campaign against its bars", () => {
     ];
     const promoted = [reported("g-1", "S", "h1"), promotedTo("h1", "S"), ...TASKS6.flatMap(heldOut)];
     const [drifts, alike, once] = [() => [true, false], () => [true, true], () => [true]];
-    // One sample of the starter passes every task and the other fails it, the first sample being
-    // the earlier solve on every other task (`pairsOf`): six untied tasks, all one way, which read
-    // a step for neither half one-sided and for one half either way.
     const apart = (place: number) => (place % 2 === 0 ? [true, false] : [false, true]);
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, apart)])).toBe(
       "- Baseline A/A control: 1 split-arm starter comparison, 1 powered A/A control: 0 one-sided, 1 two-sided false positives, 0 tied every task. Observational only, excluded from honesty bar.",
     );
-    // A starter that passes its first solve of every task and fails its second drifted in time, and
-    // its halves hold three such tasks each: no step either way.
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toContain(
       "1 powered A/A control: 0 one-sided, 0 two-sided false positives, 0 tied every task.",
     );
-    // A starter that answers alike on every solve ties every task with itself.
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toContain(
       "1 split-arm starter comparison, 0 powered A/A controls: 0 one-sided, 0 two-sided false positives, 1 tied every task.",
     );
-    // One solve a side does not split, and a candidate's comparison is no starter comparison.
     const none = "- Baseline A/A control: no split-arm starter comparison recorded yet. Observational only.";
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 1, once)])).toBe(none);
     expect(starterLine([...promoted, ...compared("g-2", "h1", "h2", 2, drifts)])).toBe(none);
-    // The reading the comparison reported is the reference's against the starter, untouched.
     const log = [opened, ...promoted, ...compared("g-2", "h1", "S", 2, drifts)];
     expect(epochsOf(log)[1]?.starter_tally).toEqual({ wins: 0, losses: 0, ties: 6 });
-    // Where neither side varies, the starter's tie on every task is no measured zero, and the
-    // repetition line names that comparison; where the starter varies, it names none.
     const repeats = (events: readonly LogEvent[]) => barLines([opened, ...events])[4];
     expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toBe(
       "- Rollout consistency: in 1 comparison both arms had uniform validity across all rollouts per task, and in 1 uniform objective scores as well (g-2, zero split-arm variance on either arm). Observational only.",
@@ -701,14 +623,11 @@ describe("a campaign against its bars", () => {
     expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toBe(
       "- Rollout consistency: in 0 comparisons both arms had uniform validity across all rollouts per task, and in 0 uniform objective scores as well. Observational only.",
     );
-    // Validity is counted apart: a reference that passes every solve but measures 1 and 0.93 repeats
-    // its validity and not its measure.
     expect(barLines(objectiveLog(0.05))[4]).toBe(
       "- Rollout consistency: in 1 comparison both arms had uniform validity across all rollouts per task, and in 0 uniform objective scores as well. Observational only.",
     );
-    // One measure is one within the floor the score ties at, as the A/A reads it: two solves a
-    // float's last digits apart are no split (a difference of at most 1.9e-9 on every task is left
-    // unnamed), and two solves 2% apart are a split.
+    // A difference within the floor the score ties at is no split (1.9e-9 is left unnamed); 2% apart is
+    // a split.
     const every = (measures: readonly [number, number]) =>
       Object.fromEntries(["t0", "t1", "t2", "t3", "t4", "t5"].map((task) => [task, measures]));
     const measured = (measures: readonly [number, number]) =>
@@ -790,23 +709,18 @@ describe("a campaign against its bars", () => {
       promotedTo("h2", "h1"),
       ...["y1", "y2", "y3", "y4", "y5", "y6"].flatMap(heldOut),
     ];
-    // A not-scored starter comparison must not trigger a revert.
     const notScored = [...base, ...report("g-4", "h2", "S", "not-scored", [])];
     expect(decide(notScored, plan).move).not.toBe("revert");
-    // An underpowered positive starter comparison (reference leads 3-0-3 at level 0.1, incapable of clearing) must not revert.
     const underpowered = [...base, ...report("g-4", "h2", "S", "no-step", [-1, -1, -1, 0, 0, 0])];
     expect(epochsOf(underpowered).at(-1)).toMatchObject({ confirmed: false, starter_able: false });
     expect(decide(underpowered, plan).move).not.toBe("revert");
-    // An all-tied starter comparison (0-0-6, zero advantage over starter) still reverts.
     const allTied = [...base, ...report("g-4", "h2", "S", "no-step", [0, 0, 0, 0, 0, 0])];
     expect(decide(allTied, plan)).toMatchObject({ move: "revert", harness: "h1" });
-    // A powered failing starter comparison reverts h2 back to confirmed h1 (not S).
     const failedStarter = [...base, ...report("g-4", "h2", "S", "no-step", [1, 1, -1, -1, 0, 0])];
     expect(decide(failedStarter, plan)).toMatchObject({ move: "revert", harness: "h1" });
     const reverted = [...failedStarter, event("harness.reverted", { harness: "h1", from: "h2" })];
     const epochs = epochsOf(reverted);
     expect(epochs.at(-1)).toMatchObject({ reference: "h1", confirmed: true, reverted: true });
-    // Reverted h1 is already confirmed: no redundant starter compare and no re-promotion of h2.
     expect(decide(reverted, plan).move).toBe("build");
     expect(stopRule(reverted)).toMatchObject({ sinceStep: 1, stop: false });
     expect(barLines(reverted)[0]).toContain("2 promotions, 1 confirmed");

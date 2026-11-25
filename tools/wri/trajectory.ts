@@ -3,41 +3,14 @@
  *
  *   bun tools/wri/wri.ts trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8]
  *
- * A promotion count says nothing across runs whose comparisons draw other tasks under other rules,
- * and hours to a promotion says nothing of what it bought: a run that reaches a fair harness in two
- * hours and stalls can read better or worse than one that takes four, depending on where it is cut.
- * The operator asked for a reading that holds both, so that a race to the first
- * comparison and a stall after it both show. Each run therefore reads as step functions of its work
- * hours, cut at one set of hours, and a run that had stopped by an hour reads `.` there rather than
- * standing still: an ended run is censored, not flat.
- *
- * The channels stay apart and none is a verdict:
- * - **Climb**: promotions and confirmed promotions by the hour, the longest stretch without one and
- *   the stretch since the last.
- * - **Lead over the Starter**: points a tallied task each time the Starter sat in a comparison.
- *   The Starter's digest is one across these runs, so it is the one opponent they share, though the
- *   tasks differ. A step's own size reads against a reference that moves, so it is printed apart.
- * - **Weight**: the reference's guide lines, and the files and lines of the programs it wrote. An
- *   installed interpreter, package or binary is left out (`ownPrograms`), since a harness's files
- *   can be thousands of an interpreter's beside a handful of programs.
- * - **Exam load**: each comparison's clock, tally, and each side's turns and valid share.
- * - **Task grade**, only with `--grades`: the median of lane 14's task grades in each comparison,
- *   from `task<TAB>run<TAB>id<TAB>grade` rows in any report. It changes no reading and no seat is
- *   told it (`AGENTS.md`, rules 1 and 3).
- *
- * A first version read quality off the grades, the mean of a version's soundness and the highest
- * grade it held, by the hour and up to horizons. That reading found the grade held was nearly always
- * the highest grade the exam offered, that most of the first promotion's rise was a soundness the
- * Starter is given none of, and that carrying a stopped run's last reference made a stall and a stop
- * one number. So none of it is computed here, and a stopped run stays censored in every table.
- *
- * A read's lead falls by construction as tasks that did not choose the harness join it, so set it
- * beside the split `starter-reads` prints, and read it across one run's reads only with that in mind.
- *
- * Runs of different commits are described side by side (`AGENTS.md`, section 9). Only a comparison on
- * one set of tasks says which harness is better. Work hours subtract every recorded wait and any
- * silence of half an hour, which also takes out a solve-queue wait while other solves ran, so they
- * are a lower bound. Read-only; the output stays on the exam side with the log it reads.
+ * Each run reads as step functions of its work hours, cut at one set of hours, so a race to the first
+ * comparison and a stall after it both show; a run that had stopped by an hour reads `.` there, since
+ * an ended run is censored, not flat. The channels stay apart and none is a verdict: the climb, the
+ * lead over the Starter (the one opponent the runs share), the reference's weight in guide lines and
+ * its own programs (`ownFiles`, so an installed interpreter does not swamp them), the exam load, and
+ * with `--grades` the median task grade. A read's lead falls by construction as tasks that did not
+ * choose the harness join it. Work hours subtract every recorded wait and any half-hour silence, so
+ * they are a lower bound.
  */
 import { DIGEST } from "#src/campaign/names.ts";
 import { epochsOf, starterIn } from "#src/campaign/climb.ts";
@@ -68,25 +41,20 @@ interface Side {
 interface Reading {
   readonly session: string;
   readonly hour: number;
-  /** Work hours from the comparison's start to its report. */
   readonly took: number | null;
   readonly reading: string;
   readonly tally: string;
   readonly each: number;
-  /** The built side's points a task over the Starter, where the Starter sat in this comparison. */
   readonly lead: number | null;
   readonly aa: string;
   readonly starter: Side | null;
   readonly built: Side | null;
-  /** The median task grade of the comparison's tasks, with `--grades`. */
   readonly grade: number | null;
 }
 interface Promotion {
   readonly harness: string;
   readonly hour: number;
-  /** Whether a starter comparison read it at all. */
   readonly read: boolean;
-  /** The hour its starter read confirmed it, or null. */
   readonly confirmed: number | null;
 }
 interface Trajectory {
@@ -94,9 +62,7 @@ interface Trajectory {
   readonly opened: string;
   readonly elapsed: number;
   readonly work: number;
-  /** The ending the log records, or null where it records none. */
   readonly ending: string | null;
-  /** The comparison the log stops inside, or null. */
   readonly cut: string | null;
   readonly candidate: number | null;
   readonly readings: readonly Reading[];
@@ -130,7 +96,6 @@ export function clockOf(events: readonly LogEvent[]): (at: string) => number {
 
 const num = (value: JsonValue | undefined) => (isNumber(value) ? value : 0);
 
-/** What each side did in each comparison, and the tasks each comparison solved. */
 function solvesOf(events: readonly LogEvent[]) {
   const started = new Map<string, { comparison: string; task: string }>();
   const sides = new Map<string, { turns: number; valid: number; results: number }>();
@@ -159,12 +124,10 @@ function solvesOf(events: readonly LogEvent[]) {
   return { sides, opposed };
 }
 
-/** The side of a comparison as printed, or null where that side ran nothing. */
 function sideOf(sides: ReadonlyMap<string, Side>, session: string, harness: unknown): Side | null {
   return isString(harness) ? (sides.get(`${session}:${harness}`) ?? null) : null;
 }
 
-/** One campaign's readings and promotions on its work-hours clock. */
 function trajectoryOf(name: string, events: readonly LogEvent[], grades: Grades | null): Trajectory {
   const clock = clockOf(events);
   const starts = eventsOf(events, "comparison.started");
@@ -245,7 +208,7 @@ export function keptStates(statesDir: string): string[] {
 }
 
 /** The unified diff of what a harness wrote, from `parent` (a state folder, or none) to `version`,
- *  one context line a hunk, path by path in order; `filesOf` names the files read, by label. */
+ *  one context line a hunk. */
 export function diffOf(
   parent: string,
   version: string,
@@ -326,7 +289,6 @@ export function madeOf(events: readonly LogEvent[], digest: string, starter: str
   };
 }
 
-/** A kept harness's weight from its state beside the log, or null where the copy keeps none. */
 export function weightOf(state: string): HarnessSize | null {
   if (!existsSync(state)) return null;
   const guideFile = join(state, GUIDE_PATH);
@@ -339,7 +301,7 @@ export function weightOf(state: string): HarnessSize | null {
   };
 }
 
-/** The task grades of a lane 14 report: its `task` rows, anything else passed over. */
+/** The task grades of a grading report: its `task` rows, anything else passed over. */
 export function gradesIn(text: string): Grades {
   const tasks = new Map<string, number>();
   for (const line of text.split("\n")) {
@@ -353,13 +315,11 @@ export function gradesIn(text: string): Grades {
 
 const fixed = (value: number | null, places = 1) => (value === null ? "-" : value.toFixed(places));
 
-/** The longest stretch with no promotion, from the opening through to the run's last hour. */
 function longestGap({ promotions, work }: Pick<Trajectory, "promotions" | "work">): number {
   const marks = [0, ...promotions.map(({ hour }) => hour), work];
   return Math.max(...marks.slice(1).map((mark, nth) => mark - (marks[nth] ?? 0)));
 }
 
-/** The reference in force at an hour: the last promoted by then, the Starter before any. */
 function referenceAt(
   { promotions, starter }: Pick<Trajectory, "promotions" | "starter">,
   hour: number,
@@ -375,7 +335,6 @@ function table(head: readonly string[], rows: readonly (readonly (string | numbe
   return [row(head), row(head.map(() => "---")), ...rows.map(row)].join("\n");
 }
 
-/** One channel, a row a run and a column an hour, with `.` once the run had stopped, and its end. */
 function byHour(
   runs: readonly Trajectory[],
   hours: readonly number[],
@@ -391,7 +350,6 @@ function byHour(
   );
 }
 
-/** One row a run: when it reached each mark, and how its gaps ran. */
 function stretchesOf(runs: readonly Trajectory[]): string {
   return table(
     [
@@ -438,7 +396,6 @@ function stretchesOf(runs: readonly Trajectory[]): string {
   );
 }
 
-/** One table a run, a row a comparison. */
 function comparisonsOf(run: Trajectory): string {
   const sideCell = (side: Side | null) =>
     side === null

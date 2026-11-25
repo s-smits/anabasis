@@ -1,10 +1,9 @@
 /**
- * `bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]`
- *
- * Prints a campaign's setup, sessions, comparisons, climb summary, and the next action selected by
- * the decision table (`decide`, `src/campaign/decide.ts`). Terms fall back from CLI flags to
- * `campaign.opened` (`src/campaign/opening.ts`) to repository defaults so `runs view` matches
- * `tools/d2/harness-builder.ts` on the same log.
+ * `bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]`: a
+ * campaign's setup, sessions, comparisons, climb summary, and the next action the decision table
+ * selects (`decide`, `src/campaign/decide.ts`). Terms fall back from flags to `campaign.opened`
+ * (`src/campaign/opening.ts`) to defaults, so it matches `tools/d2/harness-builder.ts` on the same
+ * log.
  */
 import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";
@@ -30,9 +29,8 @@ import { lastLaunch } from "./receipt.ts";
 import { lifeOf } from "./diagnosis.ts";
 import { runReason, runState } from "./state.ts";
 
-/** Threshold above which a delay between first comparison admissibility and start is flagged. */
+/** A delay between first comparison admissibility and start longer than this is flagged. */
 const DELAY_FLAG_MS = 75 * MINUTE_MS;
-/** CLI flags forwarded to the campaign decision table. */
 const VIEW_OPTIONS = {
   level: { type: "string" },
   target: { type: "string" },
@@ -52,7 +50,6 @@ const STANDINGS = [
 
 const row = (id: string, body: string) => `  ${id.padEnd(11)} ${body}`;
 
-/** Format a session's lifecycle state: final ending, interrupted, or still active at `now`. */
 function stateOf(step: Exclude<Handover, { readonly step: "comparison" }>, now: number): string {
   if (step.ended !== null) return step.ended;
   if (step.cut) return "interrupted before completion (superseded by a later step)";
@@ -60,7 +57,7 @@ function stateOf(step: Exclude<Handover, { readonly step: "comparison" }>, now: 
   return `active, ${plural(step.turns, "turn")}, last event at ${step.last.slice(11, 19)}Z (${plural(minutes, "minute")} ago)`;
 }
 
-/** Format one campaign step (Examiner, Builder, or comparison) using letter aliases from `called`. */
+/** One campaign step (Examiner, Builder, or comparison), with letter aliases from `called`. */
 function stepLine(step: Handover, now: number, called: Called): string {
   if (step.step === "examiner") {
     return row(
@@ -110,7 +107,6 @@ function stepLine(step: Handover, now: number, called: Called): string {
   );
 }
 
-/** Format the setup, step rows, and practice failure summary of a campaign at `now`. */
 export function viewLines(name: string, campaign: Campaign, now: number, called: Called = short): string[] {
   const { supply, fails } = campaign;
   const checker =
@@ -135,14 +131,13 @@ export function viewLines(name: string, campaign: Campaign, now: number, called:
 }
 
 /**
- * Evaluate the decision table on `events` using flag overrides, recorded opening terms, and
- * repository defaults. Shared with the UI server (`packages/ui/src/server/reading.ts`).
+ * The decision table on `events` under flag overrides, recorded opening terms and defaults; shared
+ * with the UI server (`packages/ui/src/server/reading.ts`).
  */
 export function decidedOn(events: readonly LogEvent[], values: ViewFlags = {}): Decided {
   return decide(events, planOn(events, values));
 }
 
-/** Resolve the campaign plan shared by the decision table and stopping-condition readers. */
 export function planOn(events: readonly LogEvent[], values: ViewFlags = {}): Plan {
   const opening = openingOf(events);
   const term = (flag: "level" | "practice", fallback: string) =>
@@ -161,7 +156,7 @@ export function planOn(events: readonly LogEvent[], values: ViewFlags = {}): Pla
   );
 }
 
-/** Render `bun run runs view <name>` using this checkout's reader after refreshing remote state. */
+/** `bun run runs view <name>`, by this checkout's reader after refreshing remote state. */
 export async function view(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
@@ -209,7 +204,6 @@ export function waitedIn(waits: readonly Call[], from: string, to: string): numb
   return total / HOUR_MS;
 }
 
-/** Extract all Builder `wait` tool calls from the log. */
 export const builderWaits = (events: readonly LogEvent[]): Call[] =>
   eventsOf(events, "build.call").flatMap(({ index, event }) => {
     if (event.data.tool !== "wait") return [];
@@ -230,9 +224,9 @@ export function poolOn(events: readonly LogEvent[], upTo: number) {
 }
 
 /**
- * Find the first log index at which comparison admission opened, and measure the elapsed hours until
- * the first comparison started (or log end), along with the share spent inside Builder `wait` calls.
- * Returns `null` if admission never opened.
+ * The first log index at which comparison admission opened, the hours until the first comparison
+ * started (or log end), and the share spent in Builder `wait` calls; null if admission never
+ * opened.
  */
 export function firstComparisonDelay(events: readonly LogEvent[]) {
   const first = eventsOf(events, "comparison.started")[0]?.index ?? -1;

@@ -1,16 +1,11 @@
 /**
  * The Claude Code harness tree as Harness² edits it (`harness2/core/tree.py` with the
- * `CLAUDE_CODE_SURFACE` of `harness2/substrate/claude_code.py`, both Apache-2.0, Google LLC, at
- * 1cfe254 with the fork's Claude Code commits): which paths a proposal may write, how a tree is
- * read from and written to disk, the repair that names an untriggered skill in `CLAUDE.md`, the
- * validation whose messages a rejected proposal reads back, and the install that turns a tree into
- * the layout `claude -p` discovers in a rollout's workspace. Only the Claude Code surface is here,
- * so `SurfaceSpec`'s fields are constants.
- *
- * Local changes: a script's compile check runs in one `python3` child for the whole tree instead
- * of in Harness²'s own interpreter, so it judges by that Python's grammar; a hooks file that is not
- * JSON is reported with JavaScript's parse message instead of Python's; `diversity` and the census
- * `validate` returns are left out, since at k=1 neither decides anything.
+ * `CLAUDE_CODE_SURFACE` of `claude_code.py`, Apache-2.0, Google LLC, at 1cfe254 with the fork's
+ * commits): the editable paths, reading and writing a tree, the repair that names an untriggered
+ * skill in `CLAUDE.md`, validation, and the install into the layout `claude -p` discovers. Local
+ * changes: one `python3` child compile-checks every script, so it judges by that Python's grammar;
+ * a non-JSON hooks file is reported with JavaScript's parse message; `diversity` and `validate`'s
+ * census are left out, since at k=1 neither decides anything.
  */
 import {
   copyFileSync,
@@ -27,14 +22,12 @@ import { basename, dirname, join, relative } from "#src/meta/path.ts";
 import { runSync, decodeOutput } from "#src/meta/subprocess.ts";
 import { pyDumps, pyLen, pyLstrip, pyRepr, pySlice, pyStr, pyStrip, walkFiles } from "./py.ts";
 
-/** A harness: relative path to text, in the order it was read. */
 export type Tree = Map<string, string>;
 
 const ALWAYS_ON = "CLAUDE.md";
 const ALWAYS_ON_MAX = 8000;
 const HOOKS = ".claude/hooks.json";
 const NAME = String.raw`[a-z0-9][a-z0-9_\-]*`;
-/** Python's `\w` in a str pattern is Unicode-aware. */
 const WORD = String.raw`[\p{L}\p{N}_]`;
 const SKILL = new RegExp(`^\\.claude/skills/(${NAME})/SKILL\\.md$`, "u");
 const SKILL_SCRIPT = new RegExp(`^\\.claude/skills/${NAME}/scripts/[A-Za-z0-9_.\\-]+$`, "u");
@@ -44,7 +37,7 @@ const SCRIPT_REF = new RegExp(
   `(?:python3?\\s+)((?:\\.claude/skills/(?:${WORD}|-)+/)?scripts/(?:${WORD}|[.\\-])+\\.py)`,
   "gu",
 );
-/** Scripts the agent may call without shipping them: JobBench's own readers (`RESERVED_SCRIPTS`). */
+/** JobBench's own readers (`RESERVED_SCRIPTS`), which the agent may call without shipping them. */
 const RESERVED = new Set(["read_doc.py", "pack.py", "unpack.py"]);
 const HOOK_EVENTS = [
   "Notification",
@@ -84,7 +77,6 @@ const STUB_PATHS = new Set(STUBS.map(([rel]) => rel));
 /** What `install_tree` generates itself and so never copies: settings and the agents directory. */
 const GENERATED = [".claude/settings.json", ".claude/settings.local.json", ".claude/agents"];
 const SKIP = ["__pycache__"];
-/** `_py_compiles` for every script at once: `{rel: source}` in, `[error]` out. */
 const COMPILE = `import json, sys
 errs = []
 for rel, src in json.load(sys.stdin).items():
@@ -95,7 +87,6 @@ for rel, src in json.load(sys.stdin).items():
         errs.append(f"{rel} does not compile: {detail[:160]}")
 print(json.dumps(errs))`;
 
-/** `normalize_rel`, or null where Python raises. */
 function normalized(rel: string): string | null {
   let out = pyStrip(rel).replaceAll("\\", "/");
   if (out.startsWith("/") || out.split("/").includes("..")) return null;
@@ -103,7 +94,6 @@ function normalized(rel: string): string | null {
   return out.replaceAll(/^\/+|\/+$/gu, "");
 }
 
-/** `is_allowed`: whether a path is on the editable surface. */
 export function isAllowed(rel: string): boolean {
   const out = normalized(rel);
   if (out === null) return false;
@@ -114,7 +104,6 @@ export function isAllowed(rel: string): boolean {
   );
 }
 
-/** `read_tree`: every file on the surface, stubs left out, and `rejected` collecting the rest. */
 export function readTree(dir: string, rejected?: string[]): Tree {
   const tree: Tree = new Map();
   for (const rel of walkFiles(dir, SKIP)) {
@@ -125,7 +114,6 @@ export function readTree(dir: string, rejected?: string[]): Tree {
   return tree;
 }
 
-/** `write_tree`: replace the surface files under `dest` with the tree, keeping every other file. */
 export function writeTree(tree: Tree, dest: string, stubs: "stubs" | "bare" = "stubs"): string {
   mkdirSync(dest, { recursive: true });
   for (const rel of walkFiles(dest).toReversed()) {
@@ -145,7 +133,6 @@ export function writeTree(tree: Tree, dest: string, stubs: "stubs" | "bare" = "s
   return dest;
 }
 
-/** `always_on_text`: one always-on file on this surface. */
 export function alwaysOn(tree: Tree): string {
   return tree.get(ALWAYS_ON) ?? "";
 }
@@ -154,7 +141,7 @@ function skillNames(tree: Tree): string[] {
   return [...new Set([...tree.keys()].flatMap((rel) => SKILL.exec(rel)?.[1] ?? []))].toSorted();
 }
 
-/** The `^key:\s*…$` line of a frontmatter's first 600 characters, as `re.search(..., re.M)` finds it. */
+/** The frontmatter match in the body's first 600 characters, as `re.search(..., re.M)` finds it. */
 function frontmatter(body: string | undefined, rule: RegExp): RegExpExecArray | null {
   return rule.exec(pySlice(body ?? "", 0, 600));
 }
@@ -175,7 +162,6 @@ export function autotrigger(tree: Tree): string[] {
   return fixed;
 }
 
-/** Whether a tree differs from its base in any file, which is `kept_base`'s negation. */
 export function changedFrom(base: Tree, tree: Tree): boolean {
   return base.size !== tree.size || [...tree].some(([rel, body]) => base.get(rel) !== body);
 }
@@ -317,13 +303,12 @@ function agentFile(name: string, text: string): string {
   return `---\nname: ${name}\n${head}\n---${lead.slice(3 + split + 4)}`;
 }
 
-/** `install_tree`: the tree in the layout `claude -p` discovers at a workspace root. */
 export function installTree(treeDir: string, dest: string): void {
   mkdirSync(dest, { recursive: true });
   if (existsSync(join(treeDir, ALWAYS_ON))) copyFileSync(join(treeDir, ALWAYS_ON), join(dest, ALWAYS_ON));
   const claudeDir = join(dest, ".claude");
-  // Links stay links, as the export and the carry keep them: a copy file by file dropped a link to a
-  // folder, such as a virtual environment's `lib64 -> lib`, and wrote a link to a file out as its target.
+  // Links stay links, as the export and the carry keep them: a copy file by file would drop a link to a
+  // folder, such as a virtual environment's `lib64 -> lib`.
   const kept = (path: string) => {
     const rel = relative(treeDir, path);
     return (

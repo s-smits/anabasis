@@ -33,7 +33,6 @@ export const createDomainHarness: DomainHarnessFactory = () => ({
 
 afterAll(() => rmSync(scratchRoot, { recursive: true, force: true }));
 
-/** `harness` written out under a new folder of the scratch root. */
 function written(name: string, harness: Parameters<typeof writeHarness>[1] = PLAIN): string {
   const dir = join(scratchRoot, name);
   writeHarness(dir, harness);
@@ -113,9 +112,8 @@ describe("opening a harness", () => {
     const then = new Date("2026-10-01T00:00:00Z");
     utimesSync(join(bin, "tool"), then, then);
     digests.push((await openHarness(dir)).digest);
-    // A rewrite of the same size with its modification time set back must change the tree's stamp,
-    // or its content would be read from before it. The wait puts the change time past
-    // the coarse clock a file system stamps it with.
+    // A same-size rewrite with its modification time set back must change the tree's stamp; the wait
+    // puts the change time past the file system's coarse clock.
     const settled = statSync(join(bin, "tool")).ctimeMs + 20;
     while (Date.now() < settled) await Bun.sleep(5);
     writeFileSync(join(bin, "tool"), "#!/bin/sh\necho six\n");
@@ -128,8 +126,8 @@ describe("opening a harness", () => {
   });
 
   it("leaves the bytecode caches a run of its Python programs writes out of its digest, and a sourceless .pyc in", async () => {
-    // Running its programs can leave `__pycache__` in the states a campaign keeps, and two states
-    // that differ from the one practised by those caches alone must not read as unpractised.
+    // Running programs can leave `__pycache__` in kept states, and states differing from the practised
+    // one by caches alone must not read as unpractised.
     const dir = written("bytecode");
     const lib = join(dir, ".toolchain", "lib");
     mkdirSync(join(lib, "deeper"), { recursive: true });

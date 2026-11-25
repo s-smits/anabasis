@@ -1,8 +1,7 @@
 /**
- * The public side of a campaign's exam, for lane 6 to write its alternatives from before it reads
- * anything that could lead it: the contract as the Builder is given it (`contractOf`, the stand-in
- * `openCampaign` builds its seats' contract with), and each released task's public input with the
- * answers its practice solves passed with, which a Builder reads in their traces.
+ * The public side of a campaign's exam, for lane 20 to write its alternatives from before it reads
+ * anything that could lead it: the contract as the Builder is given it (`contractOf`), and each
+ * released task's public input with the answers its practice solves passed with.
  *
  *   bun tools/wri/public-exam.ts <log | campaign folder | name>
  */
@@ -22,8 +21,6 @@ import { proposedTasks } from "./tasks.ts";
 
 const USAGE = "usage: bun tools/wri/public-exam.ts <log | campaign folder | name>";
 
-/** The released tasks, each with its public input and the distinct answers its practice solves
- *  passed with, by digest, with how many solves gave each. */
 function releasedLines(events: readonly LogEvent[], bundle: string): string[] {
   const { held, released } = taskSets(events);
   const packed = new Map(readPack(bundle).tasks.map((task) => [task.taskId, task.publicInput] as const));
@@ -63,7 +60,6 @@ function releasedLines(events: readonly LogEvent[], bundle: string): string[] {
   ];
 }
 
-/** The public exam as lines, from the log and the pack the exam is staged as. */
 function publicExam(events: readonly LogEvent[], bundle: string): string[] {
   const format = draftOf(events)?.answerFormat;
   const contract = contractOf(readPack(bundle).brief, format ?? null);

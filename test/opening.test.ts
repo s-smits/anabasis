@@ -1,5 +1,5 @@
-// What a campaign runs by (`src/campaign/opening.ts`): its opening as the log records it, and the
-// plan move 7 reads beside the log.
+// What a campaign runs by (`src/campaign/opening.ts`): its opening as the log records it, and the plan
+// (`planOf`) read beside the log.
 
 import { describe, expect, it } from "bun:test";
 import { openingOf, planOf } from "../src/campaign/opening.ts";
@@ -25,7 +25,6 @@ describe("what a campaign runs by", () => {
     expect(opening).toMatchObject({ seats: { examiner: null }, prompt: null, solver: null });
     expect(opening).not.toHaveProperty("limit");
     expect(opening).not.toHaveProperty("sessions");
-    // A campaign that opened from a prompt holds it, with who solves, and its plan says so.
     const asked = {
       ...opened.data,
       prompt: "Queues.",

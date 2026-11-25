@@ -4,19 +4,15 @@ import { outcomeTotals, type Slot } from "../../views/campaign-data.ts";
 import { OUTCOMES } from "../../views/outcome.ts";
 
 /*
- * Legend and accessible data table for the comparisons chart. Displays the six task outcomes with
- * their totals across all reported comparisons, followed by a secondary row containing only the
- * annotation marks actually drawn on this campaign's chart. Alongside the legend, `CountsTable`
- * renders the same counts as a screen-reader- and keyboard-accessible table with one row per
- * comparison; each row's button opens the comparison in the Moves pane just as clicking its bar
- * does. Because the chart columns accept pointer input only, the table provides keyboard access:
- * it stays visually hidden until it receives focus, then appears beneath the chart.
+ * The comparisons chart's legend: the six outcomes with their totals over reported comparisons, then
+ * the marks this chart draws. `CountsTable` gives the same counts a row a comparison, each opening it
+ * in Moves as its bar does; the bars take pointer input only, so the table is the keyboard's way in,
+ * hidden until focused.
  */
 
 const TEXT = "var(--ana-text)";
 const DIM = "var(--ana-dim)";
 
-/** Renders a chart annotation symbol sized to sit inline with legend text. */
 function Glyph({ children }: { children: ReactNode }) {
   return (
     <svg aria-hidden className="ana-glyph" viewBox="0 0 16 12" width="16" height="12">
@@ -134,8 +130,6 @@ export function ChartKey({
   );
 }
 
-/** Renders the chart counts as an accessible table for screen readers and keyboard users; each
- *  row's button opens its comparison by move index via `onOpen`. */
 export function CountsTable({ slots, onOpen }: { slots: readonly Slot[]; onOpen: (move: number) => void }) {
   return (
     // Tables ignore a 1px width, so the visually hidden container wraps the table in a block.

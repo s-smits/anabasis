@@ -1,28 +1,15 @@
 /**
- * Harness²'s k=1 path on JobBench with Claude Code as executor and improver, in TypeScript, so that
- * a sweep of ours can be set beside the pilot's Python one (`h2/`, ported from Harness² at 1cfe254
- * with the fork's Claude Code commits 4a4d271, fabf45e and 0c121fd; Apache-2.0, Google LLC). The
- * operator asked to "propagate the Python harness into TypeScript anabasis
- * style, keep in the studies/harness2 folder for now".
- *
- *   bun studies/harness2/jobbench.ts sweep --tasks <profession/taskN,...> --out <dir>
- *     --sections <sections.json> --jb <job-bench-eval checkout> [--dry-run] --yes
- *
- * Each profession is one stream, run beside the others; within it the tasks run in order and each
- * reads the library its earlier tasks left (`h2/recursion.ts`). A sweep starts `claude -p` on the
- * login the environment carries, so it is paid and asks for `--yes`; `--dry-run` checks the inputs
- * and prints the plan with no model call. `--jb` (or `HARNESS2_JB_REPO`) names the job-bench-eval
- * checkout: its `dataset/main/<task>/task_folder` and the extractor in its `eval/judge.py`, run
- * under its `.venv` as the pilot ran it. `h2/base/CLAUDE.md` is Harness²'s
- * `third_party/jb_runner/claude_base_harness/CLAUDE.md` at 4a4d271, verbatim.
- *
- * Local changes: the rollout environment carries the runner's variables except
- * `HARNESS_RENDER_DIR`, since no runner script sits between; the extractor runs synchronously, so
- * a stage's evidence build holds the other streams' timers while judge.py reads a deliverable.
- *
- * Not ported: the OpenCode and Codex substrates, WorkBuddy and lab, report rendering, k > 1 with
- * its selector session, the judge (`judge.py` stays JobBench's own; `score.ts` runs it), the
- * completion marks that reuse a rollout, and the run-identity fields of the judge and Vertex.
+ * Harness²'s k=1 path on JobBench with Claude Code as executor and improver, ported to TypeScript
+ * (`h2/`, from Harness² at 1cfe254 with the fork's Claude Code commits; Apache-2.0, Google LLC) so
+ * a sweep of ours can be set beside the pilot's Python one. Run `bun studies/harness2/jobbench.ts
+ * sweep --tasks <profession/taskN,...> --out <dir> --sections <sections.json> --jb <checkout>
+ * [--dry-run] --yes`. Each profession is one stream, run beside the others, each task reading the
+ * library its earlier tasks left (`h2/recursion.ts`). A sweep is paid, so it asks for `--yes`;
+ * `--dry-run` prints the plan with no model call. `--jb` (or `HARNESS2_JB_REPO`) names the
+ * job-bench-eval checkout, whose `eval/judge.py` extractor runs under its `.venv`. Local change:
+ * the extractor runs synchronously, so an evidence build holds the other streams' timers. Not
+ * ported: other substrates, report rendering, k > 1 with its selector, the judge (`score.ts` runs
+ * judge.py), and completion marks that reuse a rollout.
  */
 import {
   cpSync,
@@ -47,7 +34,6 @@ import { prompt, readSections } from "./h2/prompts.ts";
 import { pyDumps, pyLen, pyLstrip, pySlice, splitLines, walkFiles } from "./h2/py.ts";
 import { DeadRollout, NAMESPACE, runDomain, type Bench } from "./h2/recursion.ts";
 
-/** The pilot's settings (`h2l1.sh`): one model for both seats, high effort, five dollars a rollout. */
 const PILOT = { model: "claude-opus-5-5", effort: "high", budgetUsd: "5", timeoutS: 3600 };
 const BASE_HARNESS = new URL("h2/base", import.meta.url).pathname;
 export const MAX_CHARS_PER_FILE = 200_000;
@@ -55,7 +41,6 @@ export const MAX_CHARS_PER_FILE = 200_000;
 const SQLITE_EXTS = new Set(["db", "sqlite", "sqlite3"]);
 const VISION = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
 const MAX_VISION = 8;
-/** The four improver jobs a task runs, whose prompt sizes the plan prints. */
 const JOBS = ["propose INV", "propose DOM", "aggregate", "experience"] as const;
 /** `config.SCRUB_ENV`: what the extractor's child never sees. */
 export const SCRUB = [
@@ -120,9 +105,8 @@ const OPTIONS = {
 } as const;
 
 /**
- * The fork's `os.environ` less `drop`: this process's environment with what the fork's Python
- * adds before it starts anything, `config.py`'s Vertex region and PEP 538's UTF-8 locale where the
- * inherited one is C, both seen when the port was checked against the fork.
+ * The fork's `os.environ` less `drop`: this environment plus what the fork's Python adds,
+ * `config.py`'s Vertex region and PEP 538's UTF-8 locale where the inherited one is C.
  */
 export function envOf(drop: readonly string[]): Record<string, string> {
   const own = runtimeProcess.env;
@@ -157,7 +141,6 @@ function rawExtract(dir: string): Extract {
   return { files, flat: parts.join("\n"), images: images.slice(0, MAX_VISION) };
 }
 
-/** judge.py's own reading of a deliverable, or null when it did not run or lacked its readers. */
 function judgeExtract(jb: string, dir: string): Extract | null {
   const judge = join(jb, "eval", "judge.py");
   if (!existsSync(judge)) return null;
@@ -187,12 +170,10 @@ function judgeExtract(jb: string, dir: string): Extract | null {
 }
 
 /**
- * The files of `dir` whose text judge.py's `extract_all_file_contents` cuts before the judge reads
- * it, each with its length in Python's characters. Its rule: `if ext not in SQLITE_EXTS and
- * len(content) > MAX_CHARS_PER_FILE`, where `ext` is the file's suffix lowered without its dot and
- * the content is `convert_file_to_text`'s; `limit` stands for `MAX_CHARS_PER_FILE` where a reading
- * judged again sets a wider cut. Null where the judge's own reader did not run, so that a cut
- * nobody could count is not read as none.
+ * The files whose text judge.py's `extract_all_file_contents` cuts (`ext not in SQLITE_EXTS and
+ * len(content) > MAX_CHARS_PER_FILE`), each with its length in Python's characters; `limit` stands
+ * for `MAX_CHARS_PER_FILE` where a rejudging sets a wider cut. Null where the judge's reader did
+ * not run, so a cut nobody could count is not read as none.
  */
 export function cutOf(
   jb: string,
@@ -210,7 +191,6 @@ export function cutOf(
   });
 }
 
-/** The JobBench adapter (`JobBenchAdapter` on the `cc` substrate), over one run store. */
 export function jobBench(
   jb: string,
   store: string,
@@ -269,9 +249,9 @@ export function jobBench(
       rmSync(traj, { recursive: true, force: true });
       cache.delete(resolve(out));
       seed(task);
-      // `jb_claude_runner.py`'s settings but its task, label and store, which it read for itself and
-      // which reached the solver's commands through its environment: the arm's name and the folder
-      // holding every arm's deliverables.
+      // `jb_claude_runner.py`'s settings but its task, label and store, which reached the solver's
+      // commands through its environment: the arm's name and the folder holding every arm's
+      // deliverables.
       const runner = {
         MODEL_ID: claude.model,
         EFFORT: claude.effort,
@@ -285,7 +265,6 @@ export function jobBench(
         agent,
       );
       if (isDir(out) && readdirSync(out).length > 0) return { runDir: out, usd };
-      // `_has_events`: at least one line of a trajectory reads as a JSON event.
       const traced =
         isDir(traj) &&
         readdirSync(traj).some(
@@ -308,10 +287,9 @@ export function jobBench(
 }
 
 /**
- * The `claude` every rollout starts with, the sweep's and `score.ts`'s alike: the pilot's settings
- * and this process's environment with `_run_runner`'s PATH, the judge's interpreter first and then
- * Bun's directory. `VIRTUAL_ENV` is added to the pilot's environment, so that a `uv pip install`
- * naming no interpreter takes the one `python3` starts instead of refusing for want of one.
+ * The pilot's settings and this environment with `_run_runner`'s PATH, the judge's interpreter
+ * first. `VIRTUAL_ENV` is added so a `uv pip install` naming no interpreter takes the one `python3`
+ * starts.
  */
 export function pilotClaude(jb: string): Claude {
   const venv = join(jb, ".venv");
@@ -327,10 +305,8 @@ export function pilotClaude(jb: string): Claude {
 }
 
 /**
- * Gives the rollouts' interpreter an installer of its own where it has none, and says so, or null.
- * A venv uv made holds no pip: `python3 -m pip` then finds no module, and a `pip` further down the
- * PATH is another interpreter's, so what it installs `python3` still cannot import. `ensurepip` is
- * the interpreter's own and reads no network.
+ * A venv uv made holds no pip, and a `pip` further down the PATH is another interpreter's;
+ * `ensurepip` is the interpreter's own and reads no network.
  */
 export function ownInstaller(python: string): string | null {
   if (runSync([python, "-m", "pip", "--version"]).exitCode === 0) return null;
@@ -338,7 +314,6 @@ export function ownInstaller(python: string): string | null {
   return made.exitCode === 0 ? `pip added for ${python}` : `${python} has no pip, and ensurepip gave none`;
 }
 
-/** The streams: each profession's tasks in the stream's order (`sorted`). */
 function streamsOf(list: string): Map<string, string[]> {
   const streams = new Map<string, string[]>();
   for (const task of list

@@ -1,5 +1,5 @@
 /**
- * `bun run runs netwatch [<seconds>] [--once | -s|--short]`: live Tailscale traffic monitor across
+ * `bun run runs netwatch [<seconds>] [--once | -s|--short]`: live Tailscale traffic across
  * configured hosts, driven by `watch.ts` and refreshed every `<seconds>` (default 2).
  */
 import { Type } from "typebox";
@@ -127,7 +127,6 @@ function rate(bytes: number): string {
 }
 const size = (bytes: number): string => rate(bytes).replace("/s", "");
 
-/** The next reading of a machine from a status block and the reading before it. */
 function readingOf(block: string, before: State<Reading>): Reading | null {
   const report = reportOf(block);
   if (report === null) return null;
@@ -135,7 +134,6 @@ function readingOf(block: string, before: State<Reading>): Reading | null {
   return { report, first: before.first, links: linksBetween(before.report, report, before.first) };
 }
 
-/** Each machine's links where it has them. */
 const linksOf = (watched: readonly Watched<Reading>[]): (readonly [string, readonly Link[]])[] =>
   watched.flatMap(({ label, state }) =>
     state === "connecting" || state === "unreachable" || state.links === null

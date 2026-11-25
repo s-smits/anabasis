@@ -1,7 +1,7 @@
 /**
- * The suite's wrapper: a failed test is the verdict at any load, with `ANA_TEST_BAIL` as every proof
- * of the pre-push hook and `bun run land` runs it, and without it as CI does. The host's load is
- * pinned through `ANA_TEST_HOST_LOAD`.
+ * The suite's wrapper: a failed test is the verdict at any load, with `ANA_TEST_BAIL` as the
+ * pre-push hook and `bun run land` run it, and without as CI does. `ANA_TEST_HOST_LOAD` pins the
+ * host's load.
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -17,8 +17,8 @@ const suite = join(import.meta.dir, "..", "tools", "runtime", "test-suite.ts");
 const fixture = mkdtempSync(join(tmpdir(), "ana-suite-bail-"));
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
 
-/** Runs a file that passes on any later run and a file after it, at the given load. `first` is the
- *  body of its one test, which fails the first time it runs. */
+/** Runs a file that passes on any later run, then a file after it, at the given load; `first` is
+ *  its one test's body, which fails the first time. */
 function suiteAt(load: string, bail: boolean, first = "expect(seen).toBe(true);") {
   const work = mkdtempSync(join(fixture, "run-"));
   const marker = join(work, "marker");
@@ -91,8 +91,8 @@ it("starts a server and never stops it", () => {
       return false;
     }
   };
-  // A killed process answers until its new parent reaps it, which on a loaded Linux runner takes a
-  // moment. A sleeper the suite missed sleeps for minutes, so this wait still fails on it.
+  // A killed process answers until its new parent reaps it, which takes a moment on a loaded Linux
+  // runner; a missed sleeper sleeps for minutes, so the wait still fails on it.
   const until = Date.now() + 5000;
   while (alive() && Date.now() < until) Bun.sleepSync(20);
   const left = alive();
@@ -121,7 +121,6 @@ it("reads its root and whether a live process claims it", () => {
   });
   expect(result.status).toBe(0);
   const [root = "", held] = readFileSync(seen, "utf8").split("\n");
-  // The parent the daily sweep reads, here under this suite's own root.
   expect(dirname(root)).toBe(SUITE_SCRATCH_ROOT);
   expect(held).toBe("true");
   expect([existsSync(root), existsSync(`${root}.owner`)]).toEqual([false, false]);

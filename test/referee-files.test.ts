@@ -1,4 +1,3 @@
-// The Referee and an answer's files: each read whole, what a probe's file kept, and a file the answer lacks.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -107,9 +106,6 @@ const ruling = (args: JsonObject) => call("record_ruling", args);
 const whole = (path: string, text: string) =>
   call(PROBE, { changes: [{ path, value: JSON.stringify(text) }] });
 
-/** One reading of a solve that submitted `files` and that `blocking` refused, its span too long where
- *  `span` is among them: the finding, the first message, each tool result as the reader was sent it,
- *  and the files each verification was given. */
 async function reading(
   files: readonly { path: string; text: string }[],
   blocking: readonly string[],
@@ -296,7 +292,6 @@ describe("a probe of a file", () => {
       ],
     );
     expect(s.finding).toMatchObject({ ruling: "earned", rule: "R2", field: SUMMARY, probes: [1] });
-    // Before any probe, and for a file no probe added, the ruling names no field of the answer.
     expect(s.refused).toEqual([
       containing("once a probe has added it"),
       containing("once a probe has added it"),
@@ -382,7 +377,6 @@ describe("publicInput.files bounding in Referee", () => {
     expect(s.opening).not.toContain(tailMarker);
     expect(s.opening).toContain("omittedBytes");
     expect(s.opening.length).toBeLessThan(30_000);
-    // Verifier and probes always receive the full, un-truncated publicInput.files text.
     expect(verifiedBigLen).toBe(bigCsv.length);
     expect(s.results[0]).toContain("big/input.csv");
     expect(s.results[0]).toContain("extra/table_9.csv");

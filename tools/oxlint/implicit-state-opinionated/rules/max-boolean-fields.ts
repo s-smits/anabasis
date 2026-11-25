@@ -25,16 +25,13 @@ const PARSE = /parse/iu;
 
 type FunctionLike = ESTree.Function | ESTree.ArrowFunctionExpression | ESTree.TSMethodSignature;
 
-/** A record the count reported, held until the file's parse calls and object literals are read. */
 interface Candidate {
   readonly node: ESTree.Node;
   readonly what: string;
-  /** The interface's or type alias's name; null for a type literal written in place. */
   readonly name: string | null;
   readonly flags: readonly string[];
 }
 
-/** The name a member declares, for the message. */
 function memberName(key: ESTree.Node): string {
   return identifierName(key) ?? "member";
 }
@@ -43,7 +40,6 @@ function memberName(key: ESTree.Node): string {
 const changingFlag = (type: ESTree.TSType | undefined): boolean =>
   type?.type !== "TSLiteralType" && isFlagType(type);
 
-/** The boolean members of an interface or a type literal, by name. */
 function booleanSignatures(members: readonly ESTree.TSSignature[]): string[] {
   return members.flatMap((member) =>
     member.type === "TSPropertySignature" &&
@@ -54,7 +50,6 @@ function booleanSignatures(members: readonly ESTree.TSSignature[]): string[] {
   );
 }
 
-/** The boolean fields of a class body: annotated `boolean`, or initialised to a boolean literal. */
 function booleanFields(body: ESTree.ClassBody): string[] {
   return body.body.flatMap((member) => {
     if (member.type !== "PropertyDefinition" || member.static || member.optional === true) {
@@ -68,7 +63,6 @@ function booleanFields(body: ESTree.ClassBody): string[] {
   });
 }
 
-/** Whether a call is a `useState` cell holding a boolean: a boolean literal, or `<boolean>`. */
 function booleanCell(call: ESTree.CallExpression): boolean {
   if (calleeName(call) !== "useState") {
     return false;
@@ -78,7 +72,6 @@ function booleanCell(call: ESTree.CallExpression): boolean {
   return isBoolean(literalValue(initial)) || isFlagType(typed);
 }
 
-/** The name a `const [x, setX] = useState(…)` binds, or a placeholder. */
 function cellName(call: ESTree.CallExpression): string {
   const declarator = call.parent;
   if (declarator?.type !== "VariableDeclarator" || declarator.id.type !== "ArrayPattern") {
@@ -88,15 +81,13 @@ function cellName(call: ESTree.CallExpression): string {
   return identifierName(first) ?? "state";
 }
 
-/** Whether `node` asks a set for one literal key: `marks.has("blind")`. */
 const membership = (node: ESTree.Node): boolean =>
   node.type === "CallExpression" &&
   propertyName(node.callee) === "has" &&
   node.arguments.length === 1 &&
   literalValue(node.arguments[0]) !== undefined;
 
-/** The names a flag's value reads: each identifier not reached through a member, `undefined` aside,
- *  and none for a membership, since one key's membership tells nothing of another's. */
+/** A membership reads no names, since one key's membership tells nothing of another's. */
 function namesRead(node: ESTree.Node, into: Set<string>): Set<string> {
   if (membership(node)) return into;
   if (node.type === "Identifier") {
@@ -113,8 +104,7 @@ function namesRead(node: ESTree.Node, into: Set<string>): Set<string> {
   return into;
 }
 
-/** Whether an object literal builds each of `flags` from what no other of them reads, with no flag
- *  a constant: a literal of constants shows nothing, and two flags that read one name may be one state. */
+/** A literal of constants shows nothing, and two flags that read one name may be one state. */
 function separate(values: ReadonlyMap<string, ESTree.Node>, flags: readonly string[]): boolean {
   const built = flags.flatMap((flag) => values.get(flag) ?? []);
   const reads = built.map((value) => [...namesRead(value, new Set())]);
@@ -126,7 +116,6 @@ function separate(values: ReadonlyMap<string, ESTree.Node>, flags: readonly stri
   );
 }
 
-/** The type a parse call is typed with, by its type argument or an `as` around it. */
 function parsedType(node: ESTree.CallExpression): string | null {
   if (!PARSE.test(calleeName(node) ?? "")) return null;
   const [argument] = node.typeArguments?.params ?? [];
@@ -207,7 +196,6 @@ export const maxBooleanFieldsRule = defineRule({
 
     const named = (node: { id?: ESTree.Node | null }): string => identifierName(node.id) ?? "this function";
 
-    /** Whether a record's flags are separate facts: the shape of a parsed file, or built apart. */
     function independent({ name, flags }: Candidate): boolean {
       if (name !== null && parsed.has(name)) return true;
       const building = literals.filter((values) => flags.every((flag) => values.has(flag)));

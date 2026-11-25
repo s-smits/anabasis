@@ -1,15 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Package an Oracle bundle: scan for credentials, compress, verify the archive, and print its size.
- *
- *   bun .claude/skills/oracle-handover/scripts/bundle.ts <bundle folder> [--max-mb 20]
- *
- * The directory must contain `REVIEW.md` (the task document) at its root. Every non-zip file is
- * checked against the repository's secret rules (`tools/secrets/rules.ts`), and any match aborts
- * bundling so hand-copied notes or patches cannot leak credentials. Embedded run archives come from
- * `bun run runs zip`, which already excludes secret-like paths. The output zip is written alongside
- * the directory without resource-fork sidecars. `open-pulls.ts` uses `zipped` before a task document
- * is added.
+ * Packages an Oracle bundle: `bundle.ts <bundle folder> [--max-mb 20]`. The folder must hold
+ * `REVIEW.md` (the task document) at its root; every non-zip file is checked against the secret
+ * rules (`tools/secrets/rules.ts`), and any match aborts, so hand-copied notes or patches cannot
+ * leak credentials. The zip is written beside the folder without resource-fork sidecars;
+ * `open-pulls.ts` uses `zipped`, which needs no task document.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
@@ -20,7 +15,6 @@ import { scanText } from "#tools/secrets/rules.ts";
 const DEFAULT_MAX_MB = 20;
 const MB = 1024 * 1024;
 
-/** Every file under `dir`, links left where they are. */
 function filesUnder(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -30,8 +24,8 @@ function filesUnder(dir: string): string[] {
   });
 }
 
-/** Zip folder `dir` beside itself, test the zip and return what was made. Refuses a folder that
- *  holds a credential-shaped line, and a zip over `maxBytes`. */
+/** Zips folder `dir` beside itself, tests the zip and returns what was made; refuses a folder
+ *  holding a credential-shaped line, and a zip over `maxBytes`. */
 export function zipped(dir: string, maxBytes: number) {
   const files = filesUnder(dir);
   const hits = files
@@ -56,7 +50,7 @@ export function zipped(dir: string, maxBytes: number) {
   return { out, bytes, files: files.length };
 }
 
-/** `zipped`, for a bundle: it also refuses a folder with no task document. */
+/** `zipped`, for a bundle; it also refuses a folder with no task document. */
 export function bundle(dir: string, maxBytes: number) {
   if (!existsSync(join(dir, "REVIEW.md"))) {
     throw new CommandFailure(`${dir} holds no REVIEW.md: the task document goes at the root`);
@@ -64,10 +58,8 @@ export function bundle(dir: string, maxBytes: number) {
   return zipped(dir, maxBytes);
 }
 
-/** The cap `--max-mb` names, or the default, in bytes. */
 export const maxBytesOf = (args: CommandArgs): number => (args.int("max-mb") ?? DEFAULT_MAX_MB) * MB;
 
-/** The one line a command says of the zip it made. */
 export const madeLine = (made: ReturnType<typeof zipped>): string =>
   `${made.out}  ${(made.bytes / MB).toFixed(1)} MB  ${String(made.files)} files`;
 

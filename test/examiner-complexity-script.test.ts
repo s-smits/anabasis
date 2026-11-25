@@ -1,8 +1,7 @@
-// The examiner-complexity readers: one line an Examiner session under the reference in force, a
-// campaign's hours to its first comparison and promotion, every draft an Examiner wrote beside what
-// the gate measured on it, blind grades against outcomes with non-results counted nowhere, and the
-// ladder's rungs re-rated blind against their stated grades. A comparison's zone is the reading's
-// (`test/comparison-reading-script.test.ts`).
+// The examiner-complexity readers: an Examiner session's line under the reference in force, a
+// campaign's hours to its first comparison and promotion, each draft beside what the gate measured,
+// blind grades against outcomes with non-results counted nowhere, and the ladder's rungs re-rated
+// blind.
 import { describe, expect, it } from "bun:test";
 import { compareLines, packetOf } from "#skills/examiner-complexity/scripts/grades.ts";
 

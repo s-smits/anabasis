@@ -23,7 +23,6 @@ import { dirname, join } from "../src/meta/path.ts";
 
 const LINUX = { name: "a Linux machine", mac: false, machine: 62, roots: null };
 const SITE = "py/cp312/lib/python3.12/site-packages";
-/** The opening of an arm64 Mach-O file, and of an x86-64 ELF one with `tag` after it. */
 const MACH_O = Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0, 0, 0x01]);
 const elf = (tag: string) => {
   const bytes = Buffer.alloc(20);
@@ -42,8 +41,6 @@ function put(dir: string, files: Readonly<Record<string, string | Buffer>>): voi
   }
 }
 
-/** A tool tree as a Builder on a Mac leaves one: a copied CPython, a compiled distribution and a
- *  pure one in its site packages, the harness's own programs, and `extra`. */
 function macTree(name: string, extra: Readonly<Record<string, string | Buffer>> = {}): string {
   const tree = join(root, name);
   put(tree, {
@@ -66,7 +63,6 @@ function macTree(name: string, extra: Readonly<Record<string, string | Buffer>> 
   return tree;
 }
 
-/** A managed CPython 3.12.15 for Linux, as `uv python install` lays one out. */
 const host = join(root, "host-python");
 put(host, {
   "bin/python3.12": elf("host python"),
@@ -76,8 +72,6 @@ put(host, {
   "lib/python3.12/site-packages/pip/__init__.py": "# pip\n",
 });
 
-/** An installer that has a Linux build of every distribution but those in `missing`, and the calls
- *  it was given. */
 function standIn(missing: readonly string[] = [], interpreter: string | null = host) {
   const asked: string[] = [];
   const python: PythonFor = {
@@ -119,7 +113,6 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
       true,
     );
     expect(existsSync(join(tree, `${SITE}/numpy/_core.cpython-312-x86_64-linux-gnu.so`))).toBe(true);
-    // The host's own packages, and the console scripts `--target` writes, stay out of the tree.
     expect(existsSync(join(tree, `${SITE}/pip`))).toBe(false);
     expect(existsSync(join(tree, `${SITE}/bin`))).toBe(false);
     await foreignPrograms(tree, LINUX);
@@ -184,7 +177,6 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     await expect(refused).rejects.toThrow(
       /on a Linux machine: no build of numpy==2\.5\.4 \(no wheel for numpy==2\.5\.4\)$/u,
     );
-    // Refused before anything moved: the Mac's interpreter and module are where they were.
     expect(readFileSync(join(tree, "py/cp312/pyexe/python3.12"))).toStrictEqual(MACH_O);
     expect(readFileSync(join(tree, `${SITE}/numpy/_core.cpython-312-darwin.so`))).toStrictEqual(original);
 
@@ -195,8 +187,6 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     );
     expect(bare.asked).toStrictEqual(["interpreter 3.12.15"]);
 
-    // A virtual environment whose interpreter is a link to the Mac's own: no interpreter in the tree
-    // owns it, so the tree is refused whole, naming the link.
     const venv = macTree("venv-link");
     mkdirSync(join(venv, "venv", "bin"), { recursive: true });
     symlinkSync("/opt/somewhere/bin/python3.14", join(venv, "venv", "bin", "python3.14"));
@@ -206,15 +196,12 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
   });
 
   it("refuses a compiled file no reinstall would put back, and refills a distribution in each folder that holds it", async () => {
-    // A module no `RECORD` lists, among the installed packages: dropped as a shared library, it
-    // would be gone at the first import.
     const stray = macTree("stray-module", { [`${SITE}/fastmath.cpython-312-darwin.so`]: MACH_O });
     await expect(rebuildForeignPython(stray, LINUX, standIn().python)).rejects.toThrow(
       /site-packages\/fastmath\.cpython-312-darwin\.so, a program of py\/cp312 \(CPython 3\.12\.15\)/u,
     );
     expect(readFileSync(join(stray, "py/cp312/pyexe/python3.12"))).toStrictEqual(MACH_O);
 
-    // A distribution's compiled program under `bin`, which the reinstall leaves out.
     const program = macTree("bin-program", {
       [`${SITE}/bin/f2py`]: MACH_O,
       [`${SITE}/numpy-2.5.4.dist-info/RECORD`]:
@@ -242,9 +229,8 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
   });
 
   it("builds a folder that names no minor for the place's python3, and one that names its minor for that", async () => {
-    // As a reference with no interpreter of its own leaves it: a launcher that takes the machine's
-    // `python3` with a flat `--target` folder of wheels for its campaign's 3.14, and a second folder
-    // laid out for 3.14 by name.
+    // A reference with no interpreter of its own: a launcher taking the machine's `python3` with a flat
+    // `--target` folder of wheels for 3.14, and a second folder laid out for 3.14 by name.
     const flat = (name: string) => {
       const tree = join(root, name);
       put(tree, {
@@ -275,8 +261,8 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
       /no build of numpy==2\.5\.4 \(no wheel for 3\.12\)/u,
     );
     expect(readFileSync(join(refused, "pylib/numpy/_core.cpython-314-darwin.so"))).toStrictEqual(before);
-    // Wheels already built for the place's system, but for another minor than its python3, as a
-    // Builder installs with `--python-platform`: installed again for that minor, the old files gone.
+    // Wheels built for the place's system but another minor than its python3, as `--python-platform`
+    // installs them: installed again for that minor, the old files gone.
     const native = (name: string) => {
       const tree = join(root, name);
       put(tree, {

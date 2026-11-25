@@ -1,18 +1,12 @@
 /**
- * External JobBench arm runner, judge wrapper, and arms/spread table reader.
- *
- *   bun studies/harness2/score.ts score --arm <arm> --name <name> --out <dir> --jb <checkout>
- *     --api-base <url> [--harness <kept>] [--tasks <profession/taskN,...>] [--judge-log <shim.jsonl>]
- *     [--solve-only] [--rubrics <file>] [--cap <chars>] [--dry-run] --yes
- *   bun studies/harness2/score.ts table --out <dir> [--tasks <profession/taskN,...>] [--name <name,...>]
- *   bun studies/harness2/score.ts spread --out <dir> --name <rollout,...>
- *   bun studies/harness2/score.ts tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]
- *     [--harness <kept>]
- *
- * Arms may be `pi:base`, `pi:starter`, `pi:<campaign>` (Anabasis native `pi-durable`), or `base`,
- * `tree:<dir>`, `heldout`, `again:<side>`, `sweep:base1`, `sweep:agg1` (Harness²). Rollouts run
- * sequentially under the benchmark's PATH and judge (`eval/judge.py`); records land in
- * `<out>/judged/<name>/` and track file-length cuts (`cut`) and workspace escape needles (`peeked`).
+ * External JobBench arm runner, judge wrapper, and arms/spread table reader. Verbs: `score --arm
+ * --name --out --jb --api-base [--harness] [--tasks] [--judge-log] [--solve-only] [--rubrics]
+ * [--cap] [--dry-run] --yes`, `table --out [--tasks] [--name]`, `spread --out --name <rollout,...>`
+ * and `tree --arm --name --out --for <linux-x64> [--python] [--harness]`. Arms are `pi:base`,
+ * `pi:starter`, `pi:<campaign>` (Anabasis native `pi-durable`), or `base`, `tree:<dir>`, `heldout`,
+ * `again:<side>`, `sweep:base1`, `sweep:agg1` (Harness²). Rollouts run under the benchmark's PATH
+ * and judge (`eval/judge.py`); records land in `<out>/judged/<name>/` with file-length cuts (`cut`)
+ * and workspace escape needles (`peeked`).
  */
 import { openHarness } from "#src/harness/open.ts";
 import { billedAll } from "#src/kernel/meter.ts";
@@ -58,9 +52,8 @@ import { cutOf, envOf, jobBench, MAX_CHARS_PER_FILE, ownInstaller, pilotClaude, 
 /** The judge as the pilot ran it (`h2l1.sh`, `judge-arm.sh`, `_run_judge`). */
 const JUDGE = { model: "anthropic/claude-opus-5-5", effort: "medium", timeoutS: 1800 } as const;
 /**
- * judge.py run whole under a wider cut: loaded as a module, as `EXTRACT_DRIVER` loads it, with its
- * `MAX_CHARS_PER_FILE` set before `main()` reads its flags from `sys.argv` through argparse;
- * `extract_all_file_contents` reads that global at each call.
+ * judge.py loaded as a module, as `EXTRACT_DRIVER` loads it, with `MAX_CHARS_PER_FILE` set before
+ * `main()` runs; `extract_all_file_contents` reads that global at each call.
  */
 const WIDER = `import importlib.util, sys
 
@@ -91,16 +84,15 @@ export const PILOT_TASKS = [
 ];
 const STAGES = ["base1", "inv1", "dom1", "agg1"];
 const PI = "pi:";
-/** The store's folder of each task's deliverables, one folder an arm. */
 const OUTPUT = "model_output";
 const PI_SOLVE = join(import.meta.dir, "..", "shared", "pi-solve.ts");
 /** A `pi-solve.ts` ending as Claude Code's log names it: a spent budget gets no second attempt, and
- *  a session that threw or the provider failed is a non-result, rolled again (rule 7). */
+ *  a crash or provider failure is a non-result, rolled again (rule 7). */
 const PI_RESULT = new Map(
   Object.entries({ submitted: "success", budget: "error_max_budget_usd", crash: REFUSED, provider: REFUSED }),
 );
 
-/** What a score's build cost: `of` names what was built, so an arm counts each build once. */
+/** `of` names what was built, so an arm counts each build once. */
 interface Build {
   readonly of: string;
   readonly usd: number;
@@ -108,15 +100,12 @@ interface Build {
 
 interface Arm {
   readonly name: string;
-  /** The digest, tree or sweep stage the arm's records name. */
   readonly harness: string;
-  /** The tree a task is solved under, or null where the sweep already solved it. */
   readonly tree: (task: string) => string | null;
   readonly label: (task: string) => string;
   readonly build: (task: string) => Build | null;
 }
 
-/** The options of `score`, as `parseArgs` reads them. */
 export interface Values {
   readonly arm?: string;
   readonly name?: string;
@@ -135,7 +124,6 @@ export interface Values {
   readonly python?: string;
 }
 
-/** How one judgement runs: the transport, the shim's log, the rubrics and any wider cut. */
 interface Judging {
   readonly apiBase: string;
   readonly shimLog: string | undefined;
@@ -172,7 +160,6 @@ const OPTIONS = {
   python: { type: "string" },
 } as const;
 
-/** `--cap` as a count of characters: a whole number above judge.py's own cut, or a refusal. */
 export function capOf(cap: string | undefined): number | undefined {
   if (cap === undefined) return undefined;
   const chars = Number(cap);
@@ -185,7 +172,6 @@ export function capOf(cap: string | undefined): number | undefined {
 }
 
 export const keyOf = (task: string): string => task.replace("/", "__");
-/** The tasks with a task before them in their profession, the held-out arm's (`heldout.sh`). */
 export const hasOneBefore = (task: string): boolean => !task.endsWith("/task1");
 const fair = (tasks: readonly string[]): string[] => tasks.filter(hasOneBefore);
 export const tasksOf = (named: string | undefined, otherwise: readonly string[]): string[] =>
@@ -199,16 +185,13 @@ const field = (value: JsonValue | undefined, ...keys: string[]): JsonValue | und
   keys.reduce<JsonValue | undefined>((at, key) => (isRecord(at) ? at[key] : undefined), value);
 const readJson = (path: string): JsonValue =>
   existsSync(path) ? capturedJsonParse(readFileSync(path, "utf8")) : null;
-/** A JSON value as text, as a record prints it. */
 const text = (value: JsonValue | undefined): string =>
   isString(value) ? value : value === undefined ? "" : capturedJsonStringify(value);
 
 /**
- * The runner's own log of one label, as the pilot's `costs.py` and `walls.py` read it: the dollars
- * of every attempt in every log, and the newest log's start to its last attempt. `ran` is false
- * where no attempt of the newest log reached a `result` of the arm's own, which is a dead agent or
- * a refused session (`REFUSED`), and where that log lacks the line a rollout closes with, which is
- * one that threw or was killed before its delivery: neither is a zero.
+ * The runner's own log of one label, as the pilot's `costs.py` and `walls.py` read it. `ran` is
+ * false where no attempt of the newest log reached a result of the arm's own (`REFUSED`), or where
+ * the log lacks the closing line of a rollout that threw or was killed: neither is a zero.
  */
 function rolloutLog(store: string, task: string, label: string) {
   const dir = join(store, ".harness2-logs");
@@ -251,11 +234,10 @@ function rolloutLog(store: string, task: string, label: string) {
   };
 }
 
-/** Where one attempt's solver writes: outside `model_traj`, whose files a record reads flat. */
 const piLogs = (traj: string): string => join(tmpdir(), "pi-solve-logs", basename(traj, ".jsonl"));
 
-/** One attempt of a pi arm: `pi-solve.ts` inside the placed harness on the pilot's model, effort and
- *  dollars, its wall two minutes inside the hold; its trace is copied, as the store is another mount. */
+/** `pi-solve.ts` inside the placed harness on the pilot's model, effort and dollars, its wall two
+ *  minutes inside the hold; its trace is copied, as the store is another mount. */
 export function piAgent(claude: Claude): Agent {
   return {
     argv: ({ prompt, treeDir, traj }) => {
@@ -307,7 +289,6 @@ export function piAgent(claude: Claude): Agent {
   };
 }
 
-/** The solver's own dry run of a pi arm, no model called: its tools and programs, or a refusal. */
 function piDry(claude: Claude, tree: string): string {
   const traj = join(tmpdir(), `pi-dry-${String(runtimeProcess.pid)}.jsonl`);
   const argv = piAgent(claude).argv({ prompt: "A dry run.", treeDir: tree, workspace: tmpdir(), traj });
@@ -487,7 +468,6 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
   });
 }
 
-/** `_judge_failed` and the partial check of `_read_details`: details that are no judgement. */
 function unjudged(got: JsonObject): string | null {
   const rubrics = Array.isArray(got.rubrics) ? got.rubrics : Array.isArray(got.details) ? got.details : [];
   if (isString(got.error) && got.error.trim() !== "" && rubrics.length === 0) {
@@ -512,7 +492,6 @@ function unjudged(got: JsonObject): string | null {
     : null;
 }
 
-/** The shim's dollars for the requests it took between `from` and `to`, in Unix seconds. */
 function shimDollars(log: string, from: number, to: number): number {
   let sum = 0;
   for (const line of readFileSync(log, "utf8")
@@ -746,7 +725,6 @@ export async function score(values: Values): Promise<void> {
   await runScoreLoop(tasks, bench, { jb, store, judged, arm, pi, how, needles, solveOnly });
 }
 
-/** The judged records under `<out>/judged/` of the labels `shown`, or of every label. */
 function recordsOf(out: string, shown: readonly string[] | undefined): JsonObject[] {
   const root = join(out, "judged");
   // A name with no folder throws on its path, as the sister readers refuse one.
@@ -758,24 +736,14 @@ function recordsOf(out: string, shown: readonly string[] | undefined): JsonObjec
   );
 }
 
-/** How many files a judged record says were cut from its deliverable, and 0 where it holds none. */
 const cuts = (record: JsonObject | undefined): number => (Array.isArray(record?.cut) ? record.cut.length : 0);
 
-/** The fair tasks of `tasks` on which no record of `records` had a file cut, or one nobody counted. */
 const uncutOf = (tasks: readonly string[], records: readonly JsonObject[]): string[] =>
   // A cut nobody could count (`cut: null`) is not read as none, so its task leaves the block too.
   fair(tasks).filter(
     (task) => !records.some((record) => record.task === task && (record.cut === null || cuts(record) > 0)),
   );
 
-/**
- * The rollouts `shown` names read as one arm, over the store's fair uncut tasks (`table`'s last
- * block) that every one of them scored: each rollout's points, their range, and each task's range,
- * the lowest mean share first. The outside row reads every difference against the Starter's spread
- * between rollouts, and asks that an arm's spread and worst task stand within what the Starter's
- * show (system-audit, "The pillars and the v1.0 bar"), rather than both being worked out by hand
- * from `table`.
- */
 const indexRecords = (records: readonly JsonObject[]) =>
   new Map(records.toReversed().map((r) => [`${text(r.arm)}\0${text(r.task)}`, r] as const));
 
@@ -797,6 +765,10 @@ const armTag = (arm: string, held: readonly JsonObject[]): string => {
   ].join(", ");
 };
 
+/**
+ * The rollouts `shown` names read as one arm over the store's fair uncut tasks that every one of
+ * them scored, with each task's range, so an arm's spread is read against the Starter's.
+ */
 function spread(out: string, shown: readonly string[]): void {
   const store = recordsOf(out, undefined);
   const byKey = indexRecords(store);
@@ -836,8 +808,8 @@ function table(out: string, named: string | undefined, shown: readonly string[] 
   const records = recordsOf(out, shown);
   const byKey = indexRecords(records);
   const arms = [...new Set(records.map((record) => text(record.arm)))].toSorted();
-  // Unnamed, the tasks are those the records hold, not the pilot's eight, of which a sitting may
-  // roll six, so that no arm reads "6 of 8" over a fair five no sitting chose.
+  // Unnamed, the tasks are those the records hold, not the pilot's eight, so no arm reads "6 of 8" over
+  // a fair five no sitting chose.
   const tasks = tasksOf(named, [...new Set(records.map((record) => text(record.task)))].toSorted());
   const money = (value: number | null): string => (value === null ? "?" : value.toFixed(2));
   const width = Math.max(10, ...arms.map((arm) => arm.length));
@@ -892,8 +864,8 @@ function table(out: string, named: string | undefined, shown: readonly string[] 
       );
       const [points, total, solve] = [sum("points"), sum("total"), sum("solveUsd")];
       const [judgeUsd, seconds] = [sum("judgeUsd"), sum("seconds")];
-      // A system costs its build and its solves; the judge prices the benchmark, not the system,
-      // and most of a sitting's total can be judging.
+      // A system costs its build and its solves; the judge prices the benchmark, not the system, and
+      // most of a sitting's total can be judging.
       const system = build === null || solve === null ? null : build + solve;
       const share =
         points === null || total === null || total === 0 ? "?" : ((100 * points) / total).toFixed(1);

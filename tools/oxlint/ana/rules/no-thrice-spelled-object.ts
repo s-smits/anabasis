@@ -2,7 +2,6 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { isTestFile } from "../shared/file-role.ts";
 
-/** The fewest properties a repeated literal must carry before naming it is worth a function. */
 const PROPERTY_FLOOR = 3;
 
 /** The fewest spellings that make an owner, in source and in a test. */
@@ -15,7 +14,6 @@ const SPELLING_FLOOR = { source: 3, test: 5 };
  * assertions (`asserted`) are exempt. There is no fix.
  */
 
-/** Whether a property value is a pure flag constant (`true`, `false`, `null`, `undefined`, `[]`, `{}`). */
 function valueless(value: ESTree.Node): boolean {
   if (value.type === "Literal") return value.value === true || value.value === false || value.value === null;
   if (value.type === "Identifier") return value.name === "undefined";
@@ -23,7 +21,6 @@ function valueless(value: ESTree.Node): boolean {
   return value.type === "ObjectExpression" && value.properties.length === 0;
 }
 
-/** Whether an expression is rooted at `expect`, through any chain of members and calls. */
 function assertionRoot(node: ESTree.Node): boolean {
   if (node.type === "Identifier") return node.name === "expect";
   if (node.type === "MemberExpression") return assertionRoot(node.object);
@@ -32,7 +29,6 @@ function assertionRoot(node: ESTree.Node): boolean {
 
 /** Whether the literal sits inside an `expect(...)` assertion, where inlining keeps the test readable. */
 function asserted(node: ESTree.ObjectExpression): boolean {
-  // Only the Program has no parent, and it answers `null`, so one spelling ends the walk.
   for (let at: ESTree.Node | null = node.parent; at !== null; at = at.parent) {
     if (at.type === "CallExpression" && assertionRoot(at.callee)) return true;
   }
@@ -65,7 +61,7 @@ export const noThriceSpelledObjectRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Every literal seen in this file, by its text with runs of whitespace collapsed to one. */
+    /** Object literals by text, with runs of whitespace collapsed to one. */
     const spellings = new Map<string, ESTree.ObjectExpression[]>();
 
     return {

@@ -5,9 +5,8 @@ import { preferStateUnionRule } from "./rules/prefer-state-union.ts";
 
 /**
  * The opinionated implicit-state rules: stances about where state may live, which hold in a
- * codebase that has chosen them and would be contested in one that has not. The generic rules, next
- * door in `implicit-state`, define an implicit state machine and find it from the syntax alone;
- * these go further and name a place a state must not live at all.
+ * codebase that has chosen them. The generic rules in `implicit-state` find an implicit state
+ * machine from the syntax alone; these name a place a state must not live at all.
  */
 const implicitStateOpinionatedPlugin = eslintCompatPlugin({
   meta: { name: "implicit-state-opinionated" },

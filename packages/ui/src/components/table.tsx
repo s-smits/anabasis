@@ -16,41 +16,33 @@ import { Choose } from "./picker.tsx";
 import { Button, NoSignal } from "./primitives.tsx";
 import { matchesTerms } from "./tool-call.tsx";
 
-/*
- * The page's one data table: rows sorted by a column's head, narrowed by a search box and by a
- * choice for each column that offers one, all in the browser over rows already read (TanStack
- * Table), rather than each table filtering by hand with native selects of its own and none
- * sorting. A table draws `ROWS` rows and the rest on asking, since a log of a few
- * thousand events drawn whole held the page for a second. Its sort, search, ticks and rows drawn
- * are kept across a reload of the view (`useKept`).
- */
+// The page's one data table (TanStack Table): rows sorted by a column's head and narrowed by a search
+// box and a choice per column, all in the browser over rows already read. It draws `ROWS` rows and the
+// rest on asking, since a log of a few thousand events drawn whole held the page for a second. Sort,
+// search, ticks and rows drawn are kept across a reload (`useKept`).
 
 const ROWS = 200;
 
-/** One column: its head, its cell, and what it sorts and filters by, where it does. */
+/** One column: its head, its cell, and what it sorts and filters by; without `sort` the head does
+ *  not sort, and without `choice` the column has no choice. */
 export interface Column<Row> {
   readonly id: string;
   readonly head: string;
   readonly cell: (row: Row) => ReactNode;
-  /** What the column sorts by; without it the head does not sort. */
   readonly sort?: (row: Row) => string | number | null;
-  /** The value its choice narrows by; without it the column has no choice. */
   readonly choice?: (row: Row) => string;
-  /** A choice's value in words, and the choice's own name where it differs from the head. */
   readonly words?: (value: string) => string;
   readonly chooser?: string;
   readonly numeric?: boolean;
   readonly className?: string;
 }
 
-/** The arrow a sortable head shows: which way it sorts, or that it can. */
 function SortMark({ sorted }: { sorted: false | "asc" | "desc" }) {
   if (sorted === "asc") return <ArrowUp aria-hidden="true" />;
   if (sorted === "desc") return <ArrowDown aria-hidden="true" />;
   return <ArrowUpDown aria-hidden="true" className="ana-sort-idle" />;
 }
 
-/** How many rows hold each value of a choice. */
 export function choiceCounts<Row>(rows: readonly Row[], choice: (row: Row) => string): Map<string, number> {
   const counts = new Map<string, number>();
   for (const row of rows) counts.set(choice(row), (counts.get(choice(row)) ?? 0) + 1);
@@ -69,19 +61,16 @@ export function Table<Row>({
   selected,
   sorted = [],
 }: {
-  /** What a row is, plural, as the count and the empty state say it. */
   label: string;
   rows: readonly Row[];
   columns: readonly Column<Row>[];
   rowKey: (row: Row) => string;
-  /** The text the search box reads of a row; without it there is no search box. */
   search?: (row: Row) => string;
   placeholder?: string;
   /** A divider before a row, drawn only in the list as recorded: no sort, no search, no choice. */
   between?: (row: Row, previous: Row | undefined) => ReactNode;
   after?: ReactNode;
   selected?: (row: Row) => boolean;
-  /** The sort the table opens with. */
   sorted?: SortingState;
 }) {
   const [sorting, setSorting] = useKept<SortingState>(`${label}.sort`, sorted);
@@ -123,8 +112,8 @@ export function Table<Row>({
   const choiceOf = (id: string) =>
     // SAFETY: every filter value is set by a `Choose` below, whose ticks are a list of strings.
     (chosen.find((each) => each.id === id)?.value as readonly string[] | undefined) ?? [];
-  // A choice every row answers alike would narrow nothing, so it stands only where the rows differ
-  // or while it is set.
+  // A choice every row answers alike would narrow nothing, so it stands only where the rows differ or
+  // while it is set.
   const choices = columns.filter(
     ({ id, choice }) =>
       choice !== undefined && (choiceOf(id).length > 0 || new Set(rows.map(choice)).size > 1),
@@ -136,8 +125,8 @@ export function Table<Row>({
           <Search value={query} onChange={setQuery} placeholder={placeholder ?? `Search ${label}`} />
         )}
         {choices.map((column) => {
-          // A choice offers the values the search and the other choices leave, each with its count,
-          // in the order the rows first hold them, and keeps its own ticks while they hold none.
+          // A choice offers the values the search and the other choices leave, each with its count, in
+          // the order the rows first hold them, and keeps its own ticks while they hold none.
           const choice = column.choice ?? String;
           const ticked = choiceOf(column.id);
           const facet = (table.getColumn(column.id)?.getFacetedRowModel().rows ?? []).map(

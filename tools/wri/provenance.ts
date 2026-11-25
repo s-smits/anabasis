@@ -1,22 +1,14 @@
 /**
- * Where each leaf of a submitted answer first appears, one row a solve, for lane 16's frozen table:
+ * Where each leaf of a submitted answer first appears, one row a solve (lane 15):
  *
  *   bun tools/wri/provenance.ts --log <log> --wins g-3 [--leaves]
  *   bun tools/wri/provenance.ts --log <log> --solves <id>,<id> [--leaves]
  *
- * A leaf is a number or a string of the judged answer (`verdictsOf`): each value of a JSON answer or
- * answer file, each cell of a CSV one and each number of any other text. Each is looked for, verbatim,
- * in what lay before the solve (the task's public input; the harness it ran under, its guide and its
- * own tool source, opened from the state beside the log; the public input of the practice tasks
- * released before that harness was first set to solve, and the measures their practice solves
- * returned to the Builder) and in the solve's own trace in log order (each call's arguments, then
- * its output, and the solver's turn text). The task's hidden values are a column of their own, on the
- * exam side. `--wins` reads the tasks a comparison's new harness won and the reference's solves of
- * them as the control; `--leaves` adds one line a leaf. It prints positions, sources and counts, never
- * a value, and reads no reading, score or other lane's file.
- *
- * Without it lane 16 sessions write this search by hand, in dozens of calls a session, and the lane
- * guard refuses their greps of the kept states this opens itself.
+ * A leaf is a number or string of the judged answer (`verdictsOf`). Each is looked for verbatim in
+ * what lay before the solve (the task's public input, the harness's guide and tool source, released
+ * practice and its measures) and in the solve's own trace in log order; the hidden values are a column
+ * of their own, on the exam side. `--wins` reads a comparison's won tasks with the reference's solves
+ * as control; `--leaves` adds a line a leaf. It prints positions, sources and counts, never a value.
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { ownFiles } from "#src/harness/files.ts";
@@ -39,27 +31,23 @@ import { callPrograms } from "#src/kernel/call-programs.ts";
 import { indexOf } from "./folds.ts";
 import { wonOf } from "./read.ts";
 
-/** One value of an answer: where it stands, what it is, and its significant digits or length. */
 interface Leaf {
   readonly position: string;
   readonly value: number | string;
   readonly size: number;
 }
 
-/** A text indexed for verbatim matches: each number at every precision it was written to. */
 interface Holder {
   readonly text: string;
   readonly keys: ReadonlySet<string>;
 }
 
-/** A place a leaf may appear, before the solve or in it. */
 interface Place {
   readonly source: Source;
   readonly where: string;
   readonly holder: Holder;
 }
 
-/** One leaf as found: its first place, the precision there, and who else holds it. */
 interface Found {
   readonly leaf: Leaf;
   readonly first: Place | null;
@@ -68,7 +56,6 @@ interface Found {
   readonly held: ReadonlySet<Source>;
 }
 
-/** What one solve's leaves came to. */
 interface Row {
   readonly solve: string;
   readonly side: Side;
@@ -79,14 +66,12 @@ interface Row {
   readonly kept: boolean;
 }
 
-/** An answer file and the last call before the submit whose arguments name it, with what it ran. */
 interface Named {
   readonly file: string;
   readonly call: number | null;
   readonly ran: string;
 }
 
-/** One solve to read, with what a reader needs of it from the log. */
 interface Asked {
   readonly solve: string;
   readonly side: Side;
@@ -104,7 +89,6 @@ type Source =
   | "practice-input"
   | "practice-measure";
 
-/** The first place a leaf is counted under, in this order. */
 const FIRSTS = [
   "input",
   "call-args",
@@ -115,7 +99,6 @@ const FIRSTS = [
   "practice-input",
   "practice-measure",
 ] as const satisfies readonly Source[];
-/** The sources a leaf is also counted as held by, whatever came first. */
 const HELD = [
   "guide",
   "tool-src",
@@ -149,7 +132,6 @@ const LEGEND = [
   `short: leaves of at most ${String(SHORT)} digits or characters. No value is printed.`,
 ];
 
-/** A number's significant digits as written: its digits less leading zeros, at least one. */
 function digitsOf(written: string): number {
   const mantissa = written
     .replace(/^-/u, "")
@@ -158,7 +140,6 @@ function digitsOf(written: string): number {
   return Math.max(1, mantissa.replace(/^0+/u, "").length);
 }
 
-/** Every number in `text`, indexed at each precision from one to its written digits. */
 function holderOf(text: string): Holder {
   const keys = new Set<string>();
   for (const [written] of text.matchAll(NUMBER)) {
@@ -171,7 +152,6 @@ function holderOf(text: string): Holder {
   return { text, keys };
 }
 
-/** The precision at which `holder` holds `leaf`, or null: a string by its length, exactly. */
 function heldAt(holder: Holder, { value, size }: Leaf): number | null {
   if (isString(value)) return holder.text.includes(value) ? size : null;
   const from = Math.min(size, MAX_PRECISION);
@@ -181,7 +161,6 @@ function heldAt(holder: Holder, { value, size }: Leaf): number | null {
   return null;
 }
 
-/** Every string and number a JSON value holds, one a line. */
 function flatText(value: JsonValue | undefined): string {
   if (value === undefined || value === null) return "";
   if (isString(value)) return value;
@@ -195,7 +174,6 @@ const numberLeaf = (position: string, written: string): Leaf => ({
   size: digitsOf(written),
 });
 
-/** The leaves of a JSON value under `at`. */
 function jsonLeaves(value: JsonValue, at: string): Leaf[] {
   if (isNumber(value)) return [numberLeaf(at, String(value))];
   if (isString(value)) return value === "" ? [] : [{ position: at, value, size: value.length }];
@@ -206,7 +184,6 @@ function jsonLeaves(value: JsonValue, at: string): Leaf[] {
   return Object.entries(value).flatMap(([key, each]) => jsonLeaves(each, `${at}.${key}`));
 }
 
-/** One table cell or text line's leaves: a whole number, else its numbers, and a table's word. */
 function cellLeaves(cell: string, at: string, unit: "cell" | "line"): Leaf[] {
   const trimmed = cell.trim();
   const table = unit === "cell";
@@ -218,7 +195,6 @@ function cellLeaves(cell: string, at: string, unit: "cell" | "line"): Leaf[] {
   return word ? [{ position: at, value: trimmed, size: trimmed.length }] : numbers;
 }
 
-/** The leaves of one answer file: a JSON one walked, a table's cells, any other text's numbers. */
 function fileLeaves(path: string, content: string): Leaf[] {
   if (path.endsWith(".json")) {
     try {
@@ -241,7 +217,6 @@ function fileLeaves(path: string, content: string): Leaf[] {
     );
 }
 
-/** Every leaf of a judged answer: its files' where it holds files, else the value walked. */
 function leavesOf(answer: JsonValue | undefined): Leaf[] {
   if (answer === undefined || answer === null) return [];
   const files = asRecord(asRecord(answer)?.files);
@@ -251,7 +226,6 @@ function leavesOf(answer: JsonValue | undefined): Leaf[] {
   );
 }
 
-/** Each task version's public input and hidden values, from its proposal or the drafted exam. */
 function tasksOf(events: readonly LogEvent[]) {
   const drafted = new Map((draftOf(events)?.tasks ?? []).map((task, index) => [exampleId(index), task]));
   return new Map(
@@ -267,7 +241,6 @@ function tasksOf(events: readonly LogEvent[]) {
 
 const fileText = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : null);
 
-/** The harness's guide and its own tool source, from its state beside the log; none where not kept. */
 function harnessPlaces(log: string, harness: string): Place[] {
   const state = join(dirname(log), "states", harness);
   if (!existsSync(state)) return [];
@@ -288,7 +261,6 @@ function harnessPlaces(log: string, harness: string): Place[] {
   ];
 }
 
-/** The practice the build side held before `cut`: released tasks' public input, practice measures. */
 function practicePlaces(
   events: readonly LogEvent[],
   tasks: ReturnType<typeof tasksOf>,
@@ -321,7 +293,6 @@ function practicePlaces(
   };
 }
 
-/** A solve's trace as places in log order: each call's arguments, then its output, and each turn. */
 function tracePlaces(trace: readonly (Call | Turn)[]): Place[] {
   let number = 0;
   return trace.flatMap((each): Place[] => {
@@ -346,7 +317,6 @@ function ranBy(call: Call): string {
   return programs.length === 0 ? call.tool : `${call.tool}(${[...new Set(programs)].join("+")})`;
 }
 
-/** For each answer file, the last call before the submit whose arguments name it. */
 function writersOf(answer: JsonValue | undefined, calls: readonly Call[]): Named[] {
   return Object.keys(asRecord(asRecord(answer)?.files) ?? {}).map((file) => {
     const at = calls.findLastIndex(
@@ -357,7 +327,6 @@ function writersOf(answer: JsonValue | undefined, calls: readonly Call[]): Named
   });
 }
 
-/** One leaf against the places, the public input first and the trace in order. */
 function findOf(leaf: Leaf, places: readonly Place[]): Found {
   const holding = places.flatMap((place) => {
     const precision = heldAt(place.holder, leaf);
@@ -379,7 +348,7 @@ function findOf(leaf: Leaf, places: readonly Place[]): Found {
   };
 }
 
-/** Each asked solve's leaves, found. A solve with no judged answer or no recorded task is left out. */
+/** A solve with no judged answer or no recorded task is left out. */
 function provenanceOf(events: readonly LogEvent[], log: string, asked: readonly Asked[]): Row[] {
   const verdicts = verdictsOf(events);
   const ran = new Map(ranUnder(events).map((each) => [each.id, each]));
@@ -436,15 +405,12 @@ function provenanceOf(events: readonly LogEvent[], log: string, asked: readonly 
   });
 }
 
-/** Comparison `session`'s last report, its pairs, and the pairs its new harness won, as `WINS` reads
- *  them (`wonOf`, `read.ts`); null where no report of it stands. */
 export function wonPairs(events: readonly LogEvent[], session: string) {
   const report = lastReports(events).find((each) => each.session === session);
   const found = wonOf(indexOf(events)).find((each) => each.session === session);
   return report === undefined || found === undefined ? null : { report, pairs: found.pairs, won: found.won };
 }
 
-/** The solves of the tasks comparison `session`'s new harness won, each side's (`wonPairs`). */
 function winsOf(events: readonly LogEvent[], session: string): Asked[] | null {
   return (
     wonPairs(events, session)?.won.flatMap(({ solves }) => [
@@ -457,7 +423,6 @@ function winsOf(events: readonly LogEvent[], session: string): Asked[] | null {
 const countOf = (found: readonly Found[], test: (each: Found) => boolean) =>
   String(found.filter(test).length).padStart(6);
 
-/** The column counts of a set of leaves: by first source, then by holder. */
 function countsOf(found: readonly Found[]): string {
   return [
     String(found.length).padStart(6),
@@ -481,7 +446,6 @@ const HEADER = [
   "short",
 ].join(" ");
 
-/** One line a leaf: position, kind, size, first place and precision, holders. */
 function leafLine(solve: string, { leaf, first, precision, holders, held }: Found): string {
   const kind = isString(leaf.value)
     ? `string of ${String(leaf.size)}`
@@ -491,7 +455,6 @@ function leafLine(solve: string, { leaf, first, precision, holders, held }: Foun
   return `  ${solve} ${leaf.position} ${kind}: ${at}; held by ${String(holders)} places${also === "" ? "" : ` (also ${also})`}`;
 }
 
-/** The longest prefix ending in "-" that every solve id shares, which the table leaves off. */
 export function sharedPrefix(ids: readonly string[]): string {
   const [first = ""] = ids;
   let length = first.length;
@@ -503,7 +466,6 @@ export function sharedPrefix(ids: readonly string[]): string {
 
 const numbersIn = (found: readonly Found[]) => found.filter(({ leaf }) => isNumber(leaf.value));
 
-/** The printed table: a legend, a row a solve, a total a side, and examples a first source. */
 function provenanceLines(rows: readonly Row[], leaves: "all" | "examples"): string[] {
   const unkept = new Set(rows.filter(({ kept }) => !kept).map(({ harness }) => harness.slice(0, 8)));
   const prefix = sharedPrefix(rows.map(({ solve }) => solve));

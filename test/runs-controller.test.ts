@@ -1,4 +1,3 @@
-// Controller lifecycle through fake host executables, with no network or operator checkout.
 import { afterAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
@@ -26,9 +25,8 @@ describe.concurrent("remote controller lifecycle", () => {
         const made = fixture();
         const lock = join(made.root, "git", "ana-code", `${made.commit}.lock`);
         mkdirSync(lock, { recursive: true });
-        // The holder is orphaned at once, so its exit is reaped while this process waits on the run.
-        // It touches `released` as it ends, so a run that waited for it finds the file, where a
-        // bound of seconds on the other two kinds can be overrun on a loaded host.
+        // The holder is orphaned at once and touches `released` as it ends, so a run that waited for it
+        // finds the file, where a bound of seconds could be overrun on a loaded host.
         const released = join(made.root, "released");
         const live = kind.startsWith("live");
         const holder = live

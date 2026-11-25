@@ -1,8 +1,7 @@
 /**
- * One page over every whole-run investigation, `wri.ts index`, so that the recurring constraint of
- * a domain is not read by opening each synthesis in turn. This reads every
- * folder as it stands and renders one row a folder, newest first, then each campaign group's
- * investigations in time order, so a domain's binding constraints show side by side.
+ * One page over every whole-run investigation (`wri.ts index`): one row a folder, newest first,
+ * then each campaign group's investigations in time order, so a domain's binding constraints show
+ * side by side.
  */
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
@@ -32,8 +31,6 @@ import { VERDICTS } from "./findings.ts";
 
 type Counts = Readonly<Record<string, number>>;
 
-/** How much of a folder's synthesis and vetting was read: every part, some, none of what it holds,
- *  it holds neither file, or it holds collected lanes alone. */
 type Parsed = "whole" | "part" | "unread" | "absent" | "lanes";
 
 interface Lanes {
@@ -53,7 +50,6 @@ interface Entry {
   readonly folder: string;
   readonly date: string | null;
   readonly campaigns: readonly string[];
-  /** The file that summarises the folder: its synthesis, or what stands in for one. */
   readonly summary: string | null;
   readonly constraint: string | null;
   readonly findings: Counts | null;
@@ -61,11 +57,9 @@ interface Entry {
   readonly lanes: Lanes | null;
   readonly files: readonly string[];
   readonly parsed: Parsed;
-  /** The pull request its `plan.md` names, or null. */
   readonly pull: number | null;
 }
 
-/** A run's per-run ledgers by kind, as far as it holds them, and each one two folders hold. */
 interface PerRun {
   readonly name: string;
   readonly files: Partial<Record<(typeof PER_RUN)[number], string>>;
@@ -80,8 +74,6 @@ export interface SynthesisRef {
   readonly constraint: string | null;
 }
 
-/** Where the index reads beyond the investigations: the main checkout's `notes/`, the runs the
- *  registry finds, and the clock that dates the last fourteen days. */
 interface Beyond {
   readonly notes: string;
   readonly runs: readonly Run[];
@@ -93,13 +85,11 @@ export const SYNTHESIS = "synthesis.md";
 export const WRI = "tools/wri/wri.ts";
 /** What stands in for a synthesis in folders older than the template, best first. */
 const STAND_INS = [/^ab-synthesis\.md$/u, /^review.*\.md$/u];
-/** A cycle folder's or a ledger's files, by their lower-cased names. */
 const LEDGERS: ReadonlySet<string> = new Set(["cycle.md", "predictions.md"]);
 export const VETTING = "vetting.md";
 export const REPORTS = "reports.md";
 /** The swarm manifest a verb writes into its folder for codex-gpt-swarm to launch. */
 export const LAUNCH = "launch.json";
-/** What `start` writes: the logs an investigation reads, and the instructions every lane carries. */
 export const INVESTIGATION = "investigation.json";
 export const SHARED = "shared-instructions.md";
 export const OVERVIEW = "overview.md";
@@ -114,7 +104,6 @@ const PREDICTED = new RegExp(`\\b(${PREDICTIONS.join("|")})\\b`, "u");
 const RESOLVED = /^(verdict|resolution|outcome|confirmed, refuted|held, falsified)/u;
 const RECENT_DAYS = 14;
 const DATE = /(\d{4})-?(\d{2})-?(\d{2})/u;
-/** The per-run ledgers of a cycle folder, `<kind>-<run>.md`. */
 const PER_RUN = ["predictions", "outcomes", "still-missing"] as const;
 const PER_RUN_FILE = new RegExp(`^(?:${PER_RUN.join("|")})-(.+)\\.md$`, "u");
 const NO_FILES = "no per-run files";
@@ -128,7 +117,6 @@ const PARSED_WORDS = {
 
 const textAt = (path: string): string | null => (existsSync(path) ? readFileSync(path, "utf8") : null);
 
-/** The text under the first `## ` heading `test` accepts, up to the next, comments dropped. */
 function sectionOf(markdown: string, test: (heading: string) => boolean): string | null {
   const lines = markdown.replaceAll(/<!--[\s\S]*?-->/gu, "").split("\n");
   const from = lines.findIndex((line) => line.startsWith("## ") && test(line.slice(3)));
@@ -138,7 +126,6 @@ function sectionOf(markdown: string, test: (heading: string) => boolean): string
   return (end === -1 ? rest : rest.slice(0, end)).join("\n");
 }
 
-/** The first sentence of the section's first paragraph, on one line and cut at `QUOTE`. */
 function firstSentence(section: string): string | null {
   const paragraph = section
     .split(/\n\s*\n/u)
@@ -152,8 +139,6 @@ function firstSentence(section: string): string | null {
   return cut.replaceAll("|", String.raw`\|`);
 }
 
-/** The campaigns a folder read: `investigation.json`'s `logs`, or its older `log` and `peers`, else
- *  the campaign headings of a several-campaign `overview.md`. */
 function campaignsOf(dir: string): string[] {
   const json = textAt(join(dir, INVESTIGATION));
   const read = asRecord(json === null ? null : capturedJsonParse(json));
@@ -164,8 +149,6 @@ function campaignsOf(dir: string): string[] {
   return [...overview.matchAll(/^## (\S+)$/gmu)].flatMap(([, name]) => name ?? []);
 }
 
-/** The merged findings by outcome: section 3's first table with an `outcome` column, by the first
- *  word of each row's outcome. */
 function findingsOf(synthesis: string): Counts | null {
   const section = sectionOf(synthesis, (heading) => heading.startsWith("3.")) ?? "";
   const table = tablesOf(section).find(({ header }) => header.includes("outcome"));
@@ -174,9 +157,6 @@ function findingsOf(synthesis: string): Counts | null {
   return countBy(table.rows, (row) => /[a-z-]+/u.exec((row[column] ?? "").toLowerCase())?.[0] ?? "blank");
 }
 
-/** Each row by the first of `words` its column names, over every table whose header has a column
- *  `header` accepts; a row whose cell names none of them is left out. A vetting is read by its
- *  `verdict` or `resolution` column, a ledger by `RESOLVED`. */
 function markedOf(text: string, header: RegExp, words: RegExp): string[] {
   return tablesOf(text).flatMap(({ header: cells, rows }) => {
     const column = cells.findIndex((cell) => header.test(cell));
@@ -219,11 +199,9 @@ const dateOf = (name: string): string | null => {
 
 const isDirectory = (path: string): boolean => statSync(path).isDirectory();
 
-/** A folder's row. A subfolder other than `lanes` is counted and never read: a labels folder's
- *  hold hidden values. */
+/** A subfolder other than `lanes` is counted and never read, since a labels folder holds hidden values. */
 function entryOf(root: string, folder: string): Entry {
   const dir = join(root, folder);
-  // Newest stand-in first: `review-v2.md` before `review.md`.
   const names = readdirSync(dir).toSorted((one, other) =>
     compareCodeUnits(basename(other, ".md"), basename(one, ".md")),
   );
@@ -275,7 +253,6 @@ function entryOf(root: string, folder: string): Entry {
   };
 }
 
-/** Counts as `name n`, largest first, or `none`. */
 function counted(counts: Counts | null, names?: readonly string[]): string {
   const rows = Object.entries(counts ?? {}).filter(([name]) => names?.includes(name) ?? true);
   if (rows.length === 0) return "none";
@@ -319,7 +296,6 @@ function rowOf(entry: Entry): string {
   return `| ${cells.join(" | ")} |`;
 }
 
-/** Each campaign group's investigations, oldest first, with their constraints and lane counts. */
 function groupsText(entries: readonly Entry[]): string {
   const byGroup = new Map<string, Entry[]>();
   for (const entry of entries.toReversed()) {
@@ -345,9 +321,6 @@ function groupsText(entries: readonly Entry[]): string {
     .join("\n\n");
 }
 
-/** Folders under `dir` that hold a cycle file or a prediction ledger, each with its predictions
- *  counted by resolution, `where` naming the place in a row, and the words its files hold, so a
- *  campaign the ledger names finds it whole and never by a longer name it begins. */
 function ledgersIn(dir: string, where: string): Ledger[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir).flatMap((folder) => {
@@ -373,17 +346,12 @@ function ledgersIn(dir: string, where: string): Ledger[] {
   });
 }
 
-/** Up to `NAMES_SHOWN` folders in backticks and how many more, or `none`. */
 function folderList(folders: readonly string[]): string {
   const shown = folders.slice(0, NAMES_SHOWN).map((folder) => `\`${folder}\``);
   const more = folders.length > NAMES_SHOWN ? [`+${String(folders.length - NAMES_SHOWN)}`] : [];
   return textOr([...shown, ...more].join(", "), "none");
 }
 
-/** The campaigns whose log took an event in the `RECENT_DAYS` before `now`, newest first: a log's
- *  file time sorts them out first, since a gathered copy can be newer than its last event. A log
- *  that will not read is shown so. A campaign's ending is its log's last event, as every reader
- *  takes it: one that went on after an ending has none. */
 function movedRows(
   runs: readonly Run[],
   entries: readonly Entry[],
@@ -428,7 +396,6 @@ const tableOf = (header: readonly string[], rows: readonly (readonly string[])[]
   ...rows.map((row) => `| ${row.join(" | ")} |`),
 ];
 
-/** `run`'s per-run ledgers, from the cycle folders under `root` and each of `dirs`. */
 function perRunOf(root: string, dirs: readonly string[], run: string): PerRun {
   const files: PerRun["files"] = {};
   const conflicts: string[] = [];
@@ -441,8 +408,6 @@ function perRunOf(root: string, dirs: readonly string[], run: string): PerRun {
   return { name: run, files, conflicts };
 }
 
-/** The items of a plan's or an old still-missing file's `## Intentionally opposed`: its list items, else its lines,
- *  the line `none` counting as no item; null without the section. */
 function opposedOf(text: string): number | null {
   const lines = linesUnder(text, "Intentionally opposed")?.filter((line) => /^\S/u.test(line));
   if (lines === undefined) return null;
@@ -452,7 +417,6 @@ function opposedOf(text: string): number | null {
     : lines.filter((line) => line.trim().toLowerCase() !== "none").length;
 }
 
-/** Whether `fork`'s `## Carried` names what its parents owe it, read as `wri2p2.ts next` reads it. */
 function carriedOf(fork: PerRun, parents: readonly (PerRun & { readonly plan: string })[]): string {
   if (parents.every(({ files }) => files.predictions === undefined)) return "parents: no per-run files";
   const { owed, missing } = carryOf(
@@ -471,9 +435,6 @@ function carriedOf(fork: PerRun, parents: readonly (PerRun & { readonly plan: st
   return missing.length === 0 ? named : `${named}, missing ${missing.join(", ")}`;
 }
 
-/** One row a pull request that a plan names or a fork's name carries, newest first: its forks, their
- *  outcomes counted, the predictions no outcome resolves, the items left out on purpose, and whether
- *  each fork carried what its parent investigation's runs did not hold. */
 function pullRows(root: string, entries: readonly Entry[], known: readonly string[]): string[][] {
   const pulls = [
     ...new Set([
@@ -490,7 +451,8 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
         const plan = textAt(join(root, folder, "plan.md")) ?? "";
         return campaigns.map((run) => ({ ...perRunOf(root, [root, join(root, folder)], run), plan }));
       });
-      // A fork at a child of the pull request is named by its iteration's `launch` deviation (`madeBy`).
+      // A fork at a child of the pull request is named by its iteration's `launch` deviation
+      // (`madeBy`).
       const deviated = planned.flatMap(({ folder }) =>
         launchForks(textAt(join(root, folder, "deviations.md")) ?? ""),
       );
@@ -567,9 +529,6 @@ export function synthesesByCampaign(root: string): Map<string, SynthesisRef> {
   return found;
 }
 
-/** The index of every investigation under `root`, every ledger there and in `notes`, and every
- *  campaign of `runs` that moved lately; with how many folders were read whole, in part, not at all,
- *  or hold no synthesis or vetting, and each section's row count. */
 export function investigationIndex(root: string, { notes, runs, now }: Beyond) {
   const names = readdirSync(root).filter((name) => name !== INDEX);
   const folders = names.filter((name) => isDirectory(join(root, name)));
@@ -588,7 +547,6 @@ export function investigationIndex(root: string, { notes, runs, now }: Beyond) {
   const known = [
     ...runs.filter(isCampaign).map(({ name }) => name),
     ...entries.flatMap(({ campaigns }) => campaigns),
-    // Each run a cycle folder keeps a per-run ledger for.
     ...readdirSync(root)
       .filter((entry) => /-cycle-/u.test(entry) && isDirectory(join(root, entry)))
       .flatMap((entry) =>

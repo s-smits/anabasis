@@ -11,9 +11,8 @@ import { AWAITING, countsOf, drawWords, leftOutWords, outcomeOf } from "./tasks-
 
 /*
  * One task version: what each comparison came to on it, its text where the tier shows it, and its
- * solves across comparisons and practice. A held-out task's text, its family and its hidden values
- * are the exam side's; a practice task's text crossed to the Builder already and is shown in either
- * tier.
+ * solves. A held-out task's text, family and hidden values are the exam side's; a practice task's text
+ * crossed to the Builder already and shows in either tier.
  */
 
 const STATE_TONES = {
@@ -30,7 +29,6 @@ export function TaskDetailView({
   navigation,
 }: {
   detail: TaskDetail;
-  /** The grid the task's row stands in, for what each comparison came to on it. */
   grid: TaskGrid;
   reading: CampaignReading;
   navigation: Navigation;

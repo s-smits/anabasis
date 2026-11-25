@@ -21,25 +21,18 @@ const LENGTH_FLOOR = 6;
 /** Whitespace, which in a test file makes a string prose rather than a fixture's name. */
 const PROSE = /\s/u;
 
-/** One word of letters, digits and hyphens: how this tree spells a union member. */
 const BARE_TAG = /^[A-Za-z0-9][A-Za-z0-9-]*$/u;
 
-/** Characters above which a derived constant name is worse to read than the string it replaces. */
 const NAME_CEILING = 44;
 
-/** A plain screaming-snake identifier, which is what a derived name has to be to compile. */
 const PLAIN_NAME = /^[A-Z][A-Z0-9_]*$/u;
 
-/** One value's nodes and lines in source order, with the spelling a declaration would carry. */
 interface Spelling {
   nodes: ESTree.Node[];
   lines: number[];
   raw: string;
 }
 
-/**
- * The constant a repeated value would be named, or null when naming it would not be an improvement.
- */
 function constantName(value: string, text: string): string | null {
   if (value.includes("\\")) return null;
   const name = value
@@ -50,13 +43,11 @@ function constantName(value: string, text: string): string | null {
   return new RegExp(String.raw`\b${name}\b`, "u").test(text) ? null : name;
 }
 
-/** Declare the value once after the imports, then read every copy of it back from that name. */
 function nameItOnce(fixer: Fixer, name: string, seen: Spelling, anchor: ESTree.Node): Fix[] {
   return [
     fixer.insertTextAfter(anchor, `\nconst ${name} = ${seen.raw};`),
     ...seen.nodes.map((node) => {
-      // `"x" as const` becomes the name alone: the constant already has the literal type, and
-      // `NAME as const` is not a spelling the compiler accepts.
+      // `"x" as const` becomes the name alone: the constant already has the literal type.
       const { parent } = node;
       const asConst =
         parent?.type === "TSAsExpression" &&
@@ -96,22 +87,16 @@ export const noRepeatedStringLiteralRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Every node and line each repeated value appears on, in source order, by value. */
     const spellings = new Map<string, Spelling>();
 
-    /** The spellings this file writes as a literal type, whose copies the compiler checks. */
     const typed = new Set<string>();
 
-    /** The last top-level import, which is where a fixed file's new constant goes. */
     let afterImports: ESTree.Node | null = null;
 
-    /** The repeat count this file is held to, set once per file from its job. */
     let floor = REPEAT_FLOOR.source;
 
-    /** Whether this file is a test, whose prose is not counted (`REPEAT_FLOOR`). */
     let suite = false;
 
-    /** Whether a literal's position means the module system or a shape owns it, not the code. */
     function positional(node: ESTree.Node): boolean {
       const { parent } = node;
       if (parent === null) return true;
@@ -131,9 +116,8 @@ export const noRepeatedStringLiteralRule = defineRule({
       },
 
       Literal(node) {
-        // Keyed on the source spelling rather than the value. Every literal node carries
-        // `type: "Literal"`, so the quotes are what separate a string from a number, and the
-        // copies this rule is about are copies of the characters someone typed.
+        // Keyed on the source spelling: the quotes are what separate a string from a number, and the
+        // copies are copies of the characters someone typed.
         const { raw } = node;
         if (raw === null || !raw.startsWith('"')) return;
         const value = raw.slice(1, -1);
@@ -149,9 +133,8 @@ export const noRepeatedStringLiteralRule = defineRule({
       },
 
       Program(node) {
-        // The last import of the leading block, not the last import in the file: `outcome-query`
-        // imports a helper below its first statement, and a constant inserted after *that* is a
-        // module constant declared after the first line of code, which is another rule's finding.
+        // The last import of the leading block, not of the file: a constant inserted after a later
+        // import would be declared after the first line of code, which is another rule's finding.
         afterImports = null;
         for (const statement of node.body) {
           if (statement.type !== "ImportDeclaration") break;

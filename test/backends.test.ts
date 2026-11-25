@@ -31,7 +31,6 @@ describe("the three backends", () => {
   const catalog = backends(options);
   it("serve Codex, OpenRouter and Claude Code from pi's catalogs", () => {
     expect(catalog.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
-    // pi-ai lists GPT-6.1 Terra from 1.5.0, as the entry served here before it did.
     expect(catalog.getModel("openai-codex", "gpt-6.1-terra")).toMatchObject({
       contextWindow: 500_000,
       maxTokens: 128_000,
@@ -39,8 +38,8 @@ describe("the three backends", () => {
     });
     expect(catalog.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
     expect(catalog.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
-    // The same backend on an API key is a provider of its own, with the same catalog and prices,
-    // and it compacts as the login does.
+    // On an API key the same backend is a provider of its own, with the same prices, and compacts as
+    // the login does.
     const [login_, key] = ["claude", "claude-api"].map((id) => catalog.getModel(id, "claude-sonnet-5-5"));
     expect(key).toMatchObject({ provider: "claude-api", api: "claude-agent-sdk", cost: login_?.cost });
     if (login_ === undefined || key === undefined) throw new Error("the catalog has no claude-sonnet-5-5");
@@ -61,8 +60,8 @@ describe("the three backends", () => {
       contextWindow: 1_048_576,
       maxTokens: 131_072,
     });
-    // A model nobody pinned keeps pi's own entry, routed as OpenRouter chooses.
-    // Every listing pi's collection offers holds it, as `getModel` does.
+    // A model nobody pinned keeps pi's own entry, routed as OpenRouter chooses; the chat listing holds
+    // the pinned one too.
     const chat = catalog.getModelsOfType("chat", "openrouter").map(({ id }) => id);
     expect(chat).toContain("deepseek/deepseek-v4.1-flash-1017");
     const base = catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash");

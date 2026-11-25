@@ -1,19 +1,17 @@
 /**
- * Cross-cutting run-health and anomaly diagnostics (pulse-first):
+ * Run-health checks no single table reports:
  *
  *   bun tools/wri/wri.ts reader diagnostics --log <log>
  *
- * Computes high-signal structural checks that no single-dimension table reports:
- * 1. Dead/unused Builder-written `.toolchain` programs (shipped but 0 test-solve calls).
- * 2. Compaction amnesia (compactions with no `read_opening` within the next 3 seat tool calls).
- * 3. Stop-rule patience burn (eligible no-gain comparisons since the last promotion vs `PATIENCE`).
- * 4. Validity-saturation streak (consecutive reported comparisons with 0 validity differences).
- * 5. Candidate signal-to-noise ratio (median winning `|diff|` vs median `|A/A|` on those tasks).
- * 6. Single-task step fragility (`spareOf === 0` or one task's `|diff|` > sum of all others).
- * 7. Examiner supply efficiency (`$/held-task`, `try_reference/held`, and zero-yield session rate).
+ * 1. Builder-written `.toolchain` programs no test solve called.
+ * 2. Compactions with no `read_opening` within the next 3 seat calls.
+ * 3. Stop-rule patience burnt since the last promotion, against `PATIENCE`.
+ * 4. Consecutive comparisons with no validity difference.
+ * 5. Median winning `|diff|` against median `|A/A|` on those tasks.
+ * 6. Steps resting on one task (`spareOf` 0, or one `|diff|` above all others summed).
+ * 7. Examiner supply: dollars and `try_reference` calls per held task, and zero-yield sessions.
  *
- * Wall-safe: emits only counts, ratios, session ids, and 8-char digests — never file names, task
- * text, family names, or hidden values.
+ * It prints counts, ratios, session ids and 8-character digests, never names, task text or values.
  */
 import { writtenFiles } from "#src/harness/files.ts";
 import { differenceOf, pointsOf, readsStep } from "#src/kernel/compare.ts";
@@ -207,7 +205,6 @@ function examinerEfficiencyFindings(log: Index): Finding[] {
   ];
 }
 
-/** Cross-cutting structural diagnostics for one campaign log and its `states/` directory. */
 export function diagnosticRows(events: readonly LogEvent[], statesDir: string): string[] {
   const log = indexOf(events);
   const findings = [

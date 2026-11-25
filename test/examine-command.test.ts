@@ -11,7 +11,6 @@ import { present } from "./helpers/matchers.ts";
 
 const STEM = `test-examine-command-${String(runtimeProcess.pid)}`;
 const PACK = ["--examiner", "claude/claude-opus-5-5"];
-/** A scripted session that held nothing and refused nothing. */
 const finished = () => ({ ended: "finished", puts: 0, held: [], refused: [] }) as const;
 for (const name of ["home"]) {
   layOutPack(join(REPO, ".ana", "d2", `${STEM}-${name}`), fixtureTasks(1));

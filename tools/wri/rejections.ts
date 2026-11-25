@@ -32,7 +32,6 @@ import {
   unprobedEarned,
 } from "./folds.ts";
 
-/** Who asked for a solve: a comparison, an Examiner session, or nobody (practice). */
 export type Asked = "scored" | "examiner" | "practice";
 
 const USAGE = "usage: bun tools/wri/rejections.ts <log | campaign folder | name> [--solve <id>]";
@@ -54,8 +53,6 @@ export function askedOf(log: Index): (solve: Solve) => Asked {
   };
 }
 
-/** Each scored solve's side, by its comparison's harnesses: `new` the candidate's, `reference` the
- *  other's, read from the comparison's start or, before a start held them, its report. */
 export function sideOf(log: Index): (solve: Solve) => string {
   const sides = new Map<string, JsonObject>(log.compared.map(({ session, own }) => [session, own]));
   for (const data of log.of("comparison.started")) if (isString(data.session)) sides.set(data.session, data);
@@ -70,7 +67,6 @@ export function sideOf(log: Index): (solve: Solve) => string {
   };
 }
 
-/** The probes a finding cited, and how many of those moved some check. */
 function probesOf(finding: JsonObject | undefined): string {
   if (finding === undefined) return "-";
   const cited = new Set(items(finding.probes).filter(isNumber));
@@ -82,11 +78,9 @@ function probesOf(finding: JsonObject | undefined): string {
   return `${String(cited.size)}/${String(moved)}`;
 }
 
-/** One row a rejection, then the totals and the refused verdicts on solves that ended otherwise. */
 export function rejectionRows(events: readonly LogEvent[]): string[] {
   const log = indexOf(events);
   const [asked, side, labels] = [askedOf(log), sideOf(log), labelsIn(events)];
-  // The kernel's own solves, for the ending a rejection is read from (`rejected`, `rejectionAside`).
   const kernel = new Map(solvesIn(events).map((solve) => [solve.id, solve] as const));
   const rows = log.solves.filter((solve) => rejected(kernel.get(solve.id)?.ending));
   const ending = new Set(rows.map(({ id }) => id));
@@ -132,14 +126,12 @@ export function rejectionRows(events: readonly LogEvent[]): string[] {
   ];
 }
 
-/** A verdict the log holds inside a probe row, in one line. */
 function verdictText(value: JsonValue | undefined): string {
   const record = asRecord(value);
   const verdict = record === null ? null : checkerVerdict(record);
   return verdict === null ? NOT_RECORDED : spelled(verdict);
 }
 
-/** One rejection's finding whole, and each probe row it ran, cited or not. */
 function probeLines(events: readonly LogEvent[], wanted: string): string[] {
   const log = indexOf(events);
   const solve = log.solves.find(({ id }) => id === wanted || id.endsWith(`-${wanted}`));

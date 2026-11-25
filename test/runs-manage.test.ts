@@ -1,4 +1,3 @@
-// Campaign login isolation, clean-point pausing and dry-run refusals.
 import { afterAll, describe, expect, it } from "bun:test";
 import { append, type EventKind, LOG_FILE, type LogEvent, read as readLog } from "../src/kernel/log.ts";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -8,7 +7,6 @@ import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { heldBy, loginEnv } from "../tools/runs/manage.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
-/** Driver code run as a waiting verb reaches its point, given the log and a writer of a fake's state. */
 type Meanwhile = (log: string, set: (name: string, text: string) => string) => string;
 
 const KEY = "CLAUDE_CODE_OAUTH_TOKEN";
@@ -18,14 +16,12 @@ afterAll(() => {
   for (const root of fixtures) rmSync(root, { recursive: true, force: true });
   for (const each of sleepers) each.kill();
 });
-/** A process that lives a minute, as a keeper or a writer the `ps` fake names. */
 function sleeper(cwd = ".") {
   const child = capturedSpawn(["sleep", "60"], { detached: true, cwd });
   sleepers.push(child);
   return child;
 }
 
-/** Whether a pause may stop the run: nothing holds it (`heldBy`). */
 const restsAfter = (events: readonly LogEvent[], after: string, base: number) =>
   heldBy(events, after, base).length === 0;
 
@@ -60,15 +56,12 @@ describe("going on with a campaign", () => {
       event("comparison.started", { session: "g-2" }),
       event("comparison.reported", { session: "g-2", reading: "no-step" }),
     ];
-    // The Builder's conversation is open throughout a led campaign, and a pause cuts it: the
-    // campaign run again opens a new one on its notes.
+    // A pause cuts the Builder's open conversation, so the campaign run again opens a new one on its
+    // notes.
     expect(restsAfter(reported, "reported", 0)).toBe(true);
     expect(restsAfter(reported, "reported", 1)).toBe(false);
-    // `next` joined to another point names nothing: taken as that other point it would write no
-    // pause word and rest with a solve open.
     expect(restsAfter(reported, "reported|promoted", 0)).toBe(true);
     expect(() => restsAfter(reported, "next|reported", 0)).toThrow("--after takes");
-    // An old ladder's reading left open is no comparison: no move goes on with it.
     const read = [...reported, event("comparison.started", { session: "l-1", ladder: true })];
     expect(restsAfter(read, "reported", 0)).toBe(true);
     for (const open of [
@@ -94,10 +87,9 @@ describe("going on with a campaign", () => {
     const starter = report("g-3", "s", { reading: "no-step", scored: { differences: [-1, 0] } });
     const own = report("g-2", "c", { reading: "no-step", scored: { differences: [1] } });
     const newer = [...report("g-4", "c", { reading: "step" }), event("harness.promoted", { harness: "c" })];
-    // A step promoted in the move the pause waited for is unread against the starter, which a word
-    // naming the promotion does not wait for; neither the Builder's own comparison nor a starter one
-    // that scored nothing is that read; it rests the run whatever it read, past the pause's own count;
-    // an earlier promotion's read stands for no newer one.
+    // A step promoted in the move the pause waited for is unread against the starter; neither the
+    // Builder's own comparison nor an empty starter one is that read, and an earlier promotion's read
+    // stands for no newer one.
     for (const [events, after, base, rests] of [
       [promoted.slice(0, -1), "reported", 0, false],
       [promoted, "reported", 0, false],
@@ -111,8 +103,6 @@ describe("going on with a campaign", () => {
     ] satisfies [LogEvent[], string, number, boolean][]) {
       expect(restsAfter(events, after, base)).toBe(rests);
     }
-    // The dry form names each hold apart: the unread promotion for `reported` alone, and once a read
-    // tallied, only the next report.
     const read = (held: string[]) => held.map((hold) => hold.includes("a starter comparison"));
     expect(read(heldBy(promoted, "reported", 1))).toEqual([false, true]);
     expect(read(heldBy(promoted, "promoted", 1))).toEqual([false]);
@@ -144,8 +134,6 @@ describe("going on with a campaign", () => {
     expect(readLog(join(folder, "log.jsonl")).map(({ kind }) => kind)).toEqual(["campaign.opened"]);
   });
 
-  /** A campaign a keeper holds and `verb` on `flags` waiting for its next report, which the log gains
-   *  once the verb says it waits, after the driver code `meanwhile` returns (`set` writes a fake). */
   function pointed(flags: readonly string[], meanwhile: Meanwhile = () => "", verb = "continueRun") {
     const made = fakeHosts();
     fixtures.push(made.root);
@@ -221,11 +209,9 @@ describe("going on with a campaign", () => {
     ]);
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("already waits to stop in process 99999");
-    // The name may follow the flags, as `parseArgs` takes it.
     expect(flagFirst.err).toContain("already waits to stop in process 99999");
     expect(contWait.code).toBe(1);
     expect(readLog(join(folder, "log.jsonl")).map(({ kind }) => kind)).toEqual(["campaign.ended"]);
-    // Another run's waiter, or a continue that waits for nothing, leaves this pause free.
     for (const row of [
       waiting.replace("waited", "other"),
       `99999 ${capturedExecPath} tools/runs/cli.ts continue waited --login 1 --yes`,
@@ -239,8 +225,6 @@ describe.concurrent("starting a campaign", () => {
   it("shows the dry run's own refusal, and starts nothing after it", async () => {
     const made = fakeHosts();
     fixtures.push(made.root);
-    // The install passes and a detached start would leave its call; the fake tree holds no
-    // campaign command, so its dry run refuses with Bun's own words on stderr.
     const nice = join(made.root, "bin", "nice");
     writeFileSync(
       nice,

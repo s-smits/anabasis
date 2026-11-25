@@ -1,7 +1,6 @@
-// What the run tools decide from pure state: each login's live runs counted on every host against
-// its cap, the pack a run's name reads as, and the machines a kept harness's programs run on. The
-// router's choice of check host, and a move refused for a foreign harness, are held end to end in
-// `router.test.ts` and `runs-move.test.ts`.
+// What the run tools decide from pure state: each login's live runs against its cap on every host, the
+// pack a run's name reads as, and where a kept harness's programs run. The check host choice and a
+// foreign-harness move refusal are held end to end in `router.test.ts` and `runs-move.test.ts`.
 import { describe, expect, it } from "bun:test";
 import { foreignHead, placeOf, UNAME_PLACES } from "#src/harness/place.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";

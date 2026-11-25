@@ -1,12 +1,10 @@
 /**
- * How long each promotion took and what it billed, from the log's own clock (`at`) and its `billed`
- * fields: an epoch runs from the opening, or the promotion before, to the promotion that ends it.
- * Its hours are split, by the spans `spansOf` (`tools/wri/time.ts`) reads, into the Examiner's
- * sessions, the comparisons and the Builder's own time, its sessions less the other two, since a campaign its Builder leads runs both inside
- * the Builder's span; the rest is the host's, waiting or between moves. The dollars are the tree's
- * own sum over the epoch (`billedBetween`), split by who billed each event: a solve by the session
- * or comparison its start names. A session open across a promotion bills each epoch what its turns
- * metered there.
+ * How long each promotion took and what it billed, from the log's own clock and `billed` fields: an
+ * epoch runs from the opening, or the promotion before, to the promotion that ends it. Hours are
+ * split by `spansOf` (`tools/wri/time.ts`) into the Examiner's sessions, the comparisons and the
+ * Builder's own time (its sessions less the other two), the rest being the host's. Dollars are the
+ * tree's sum over the epoch (`billedBetween`), split by who billed each event: a solve by the
+ * session or comparison its start names.
  */
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
@@ -39,10 +37,9 @@ function contextOf(tree: Tree, events: readonly LogEvent[]): EpochContext {
 }
 
 /**
- * The dollars each part billed between two events, and the tree's own sum over them. Each part is
- * billed through the tree's own fold over its events alone, so an open session or solve counts
- * what its turns metered (`unfinished`), as the total does. Summing the ending records alone would
- * read an Examiner session open at the log's end as $0.00 where the view reads what it billed.
+ * Each part is billed through the tree's own fold over its events alone, so an open session or
+ * solve counts what its turns metered (`unfinished`), as the total does; the ending records alone
+ * would read an Examiner session open at the log's end as $0.00.
  */
 function billedOf({ tree, events, ids, owners }: EpochContext, from: number, to: number) {
   const partOf = ({ data }: LogEvent) => {
@@ -70,7 +67,6 @@ function billedOf({ tree, events, ids, owners }: EpochContext, from: number, to:
   return { parts, total: tree.billedBetween(events, from, to) };
 }
 
-/** One epoch's lines: hours and dollars, each part with its sessions. */
 function epochBlock(ctx: EpochContext, bounds: readonly [number, number], title: string) {
   const { events, all } = ctx;
   const [from, to] = bounds;
@@ -98,7 +94,6 @@ function epochBlock(ctx: EpochContext, bounds: readonly [number, number], title:
   return { lines, hours: (end - start) / HOUR_MS, dollars: total };
 }
 
-/** Each epoch that ended in a promotion, and the one open since the last. */
 export function epochLines(tree: Tree, events: readonly LogEvent[], promotions: readonly number[]) {
   const ctx = contextOf(tree, events);
   const starts = [0, ...promotions];

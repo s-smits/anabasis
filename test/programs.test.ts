@@ -19,7 +19,6 @@ afterEach(() => {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A folder of its own, removed after the case. */
 function folder(): string {
   const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-programs-")));
   made.push(dir);
@@ -32,13 +31,12 @@ function program(path: string, body: string | Buffer, mode = 0o755): void {
   chmodSync(path, mode);
 }
 
-/** Each program of `tree` with its account, over a log with no solve. */
 const accounts = (tree: string | null) => programsOf(tree).map(({ name, account }) => [name, account]);
 
 describe("the programs a harness installed", () => {
   it("are the names a command's PATH runs, in its order, each once, and none without a tree", () => {
-    // The sweep's tool tree: the Builder's interpreter in `bin`, a venv beside it whose `activate` is
-    // sourced rather than run and whose `python3` repeats a name `bin` already holds.
+    // The Builder's interpreter in `bin`, and a venv beside it whose `activate` is sourced, not run,
+    // and whose `python3` repeats a name in `bin`.
     const tree = folder();
     for (const name of ["pynite-python", "python3"]) {
       program(join(tree, "bin", name), "#!/bin/sh\n");
@@ -71,7 +69,6 @@ describe("the programs a harness installed", () => {
       join(tree, "bin", "plan"),
       "#!/usr/bin/env node\n/**\n * plan <task.json>\n * Plans pins.\n */\n",
     );
-    // A launcher that says nothing of itself runs the file named as it beside its own folder.
     program(
       join(tree, "bin", "check-recipe"),
       '#!/bin/sh\nd="$(cd "$(dirname "$0")/../lib" && pwd)"\nexec python3 "$d/x"\n',
@@ -89,8 +86,8 @@ describe("the programs a harness installed", () => {
   });
 
   it("read an account only from a file inside the tree and outside the exam side's copy", () => {
-    // A program linked to a host file, or to the exam side's copy a v1 harness carries, would
-    // otherwise show that file's head on the page.
+    // A program linked to a host file, or to the exam side's copy a v1 harness carries, would otherwise
+    // show that file's head on the page.
     const tree = folder();
     const host = folder();
     program(join(host, "script"), "#!/bin/sh\n# the host's own words\n");
@@ -98,7 +95,6 @@ describe("the programs a harness installed", () => {
     mkdirSync(join(tree, "bin"), { recursive: true });
     symlinkSync(join(host, "script"), join(tree, "bin", "outside"));
     symlinkSync("../lib/plan.sh", join(tree, "bin", "plan"));
-    // A launcher whose file beside it is a link out of the tree takes no account from it.
     program(join(tree, "bin", "sneak"), "#!/bin/sh\nexec sh ../lib/sneak.sh\n");
     symlinkSync(join(host, "script"), join(tree, "lib", "sneak.sh"));
     program(join(tree, "correctness-model", "check.sh"), "#!/bin/sh\n# the hidden values\n");

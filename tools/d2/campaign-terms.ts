@@ -1,9 +1,8 @@
 /**
  * What a campaign's command and a live Builder's campaign tools share (`harness-builder.ts`,
  * `campaign-actions.ts`): the command's flags, what a campaign runs by and keeps in its opening,
- * and the flags of each move's command. Nothing here knows who makes a move.
- * A paid campaign needs a Referee before it opens, so that no rejection it counts goes unruled, as
- * every rejection of a campaign that omitted its reviewer would.
+ * and the flags of each move's command. Nothing here knows who makes a move. A paid campaign needs
+ * a Referee before it opens, so no rejection it counts goes unruled.
  */
 import { STARTED, startOf } from "#src/campaign/comparison.ts";
 import { tasksToAskFor } from "#src/campaign/decide.ts";
@@ -45,31 +44,21 @@ import {
 } from "./round.ts";
 import { SETTING_OPTIONS } from "./setting.ts";
 
-/** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
 export interface Seats {
   readonly seated: Seated;
-  /** An Examiner session: `examine`, unless a rehearsal's script stands in for it. */
   readonly examine?: Session<"write"> | undefined;
-  /** The session that drafts the exam of a campaign opened from a prompt: `examine`, or a script. */
   readonly draft?: Session<"draft"> | undefined;
-  /** The host a solve starts into (`host.ts`): the host's own unless a test stands in for it. */
   readonly host?: Host | undefined;
-  /** What takes a pack's tasks in and releases practice: `prepareCommand`, unless a test stands in
-   *  one that writes nothing. */
   readonly prepare?: typeof prepareCommand | undefined;
-  /** No reviewer, whatever the opening names: a rehearsal's, whose scripted rejections no model is
-   *  paid to rule, though its seed's source seats one. */
   readonly unreviewed?: boolean | undefined;
 }
 
-/** What every move of one turn of the loop is made with. */
 export interface Turn {
   readonly events: readonly LogEvent[];
   readonly plan: Plan;
   readonly opening: Opening;
   readonly values: Values;
   readonly seats: Seats;
-  /** Who solves, each solve held in the solve queue unless `--loaded` (`queued`). */
   readonly held: Seated;
 }
 
@@ -105,8 +94,6 @@ const OPTIONS = {
   "solve-model-turns": SETTING_OPTIONS["solve-model-turns"],
   target: COMPARISON_OPTIONS.target,
   solves: SETTING_OPTIONS.solves,
-  // With no default of their own: one no command has named is its move's to default, and one a
-  // command named is the opening's to keep (`TERMS`).
   level: { type: "string" },
   minutes: { type: "string" },
   turns: { type: "string" },
@@ -121,16 +108,11 @@ const OPTIONS = {
   "admit-judge": { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
-/** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
- *  dollars and a seat's effort. Opus solves under the 20-turn, 30-minute limits have billed at most
- *  about $3 (p99 well under $1), and a larger reserve would tell an $800 campaign's Builder at every
- *  comparison that the cap would cut its solves short. */
 const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, effort: "high" } as const;
 /**
- * Every flag of the campaign command with what it does: the one list of them, printed by
- * `--help` (`flagsHelp`). Typed by `OPTIONS`, so no flag is added without its line. A term the
- * opening keeps (`TERMS`, `src/campaign/opening.ts`) holds for the campaign once named, and a later
- * run that names nothing runs by the record.
+ * The one list of the command's flags, printed by `--help` (`flagsHelp`) and typed by `OPTIONS`, so
+ * no flag is added without its line. A term the opening keeps (`TERMS`, `src/campaign/opening.ts`)
+ * holds once named, and a later run that names nothing runs by the record.
  */
 const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   name: "the campaign, and its folder .ana/d2/<name>; required",
@@ -170,25 +152,21 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
 
 const OPENED = "campaign.opened";
 export const MOVED = "campaign.move";
-/** The Builder conversations in a row that make no campaign move before a campaign ends. A Codex
- *  goal stays active across turns until its model calls it met, or blocked once the same blocker
- *  has held for three; a climb is never met, so three conversations without a move are its block. */
+/** The Builder conversations in a row that make no campaign move before a campaign ends: a climb is
+ *  never met, so three conversations without a move are its block, as a Codex goal is blocked once
+ *  the same blocker has held for three turns. */
 export const IDLE = 3;
-/** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
- *  command wants a name, and the script is what is asked. */
 const SCRIPTED = "claude/claude-opus-5-5";
 
 export const flag = (name: string, value: string | undefined): string[] =>
   value === undefined ? [] : [`--${name}`, value];
 
-/** Record a move as it begins (`campaign.move`), so that one that throws is on record with its reason. */
 export const moved = (
   log: string,
   { move, code, why }: Pick<Decided, "move" | "code" | "why">,
   named: JsonObject = {},
 ) => append(log, MOVED, { move, code, why, ...named });
 
-/** Release practice under the campaign's terms, so what it prints of a comparison's size is the campaign's. */
 export const prepared = (
   { seats, values }: Pick<Turn, "seats" | "values">,
   practice: string | undefined,
@@ -199,7 +177,6 @@ export const prepared = (
     heldBack,
   );
 
-/** Make the promotion `owed` names, between conversations (`make`) and as the reading that names it reports. */
 export async function promoteMade(
   log: string,
   name: string | undefined,
@@ -209,7 +186,6 @@ export async function promoteMade(
   await promoteCommand([...flag("name", name), "--harness", owed.harness, "--yes"]);
 }
 
-/** Record an automatic reference revert back to the last confirmed harness (or starter). */
 export function revertMade(log: string, owed: Extract<Decided, { move: "revert" }>): void {
   const from = referenceOf(read(log, TRACE_KINDS)) ?? "starter";
   moved(log, owed, { harness: owed.harness });
@@ -224,7 +200,6 @@ export function flagsOf(args: readonly string[]) {
   return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true }).values;
 }
 
-/** The flags of the campaign command, a line each, as `--help` prints them. */
 export function flagsHelp(): string {
   const wide = Math.max(...Object.keys(EXPLAINED).map((named) => named.length));
   return Object.entries(EXPLAINED)
@@ -232,7 +207,6 @@ export function flagsHelp(): string {
     .join("\n");
 }
 
-/** The operator's prompt: what this command gives, in a flag or a file, or the record's. */
 function promptOf(values: Values, was: Opening | null): string | null {
   const file = values["prompt-file"];
   const given = (values.prompt ?? (file === undefined ? undefined : readFileSync(file, "utf8")))?.trim();
@@ -240,12 +214,10 @@ function promptOf(values: Values, was: Opening | null): string | null {
   return given ?? was?.prompt ?? null;
 }
 
-/** Refuses a count the opening keeps that is no whole number of at least one, as `what` it is. */
 function counted(count: number, what: string): void {
   if (!Number.isInteger(count) || count < 1) throw new Error(`${what} are a whole number of at least one`);
 }
 
-/** Resolve one seat from CLI flags, falling back to the recorded opening. */
 function seatOf(
   model: string | undefined,
   effort: string | undefined,
@@ -255,7 +227,6 @@ function seatOf(
   return named === undefined ? null : { model: named, effort: effort ?? kept?.effort ?? DEFAULTS.effort };
 }
 
-/** Serialise `opening` to its `campaign.opened` log payload, omitting absent optional keys. */
 function openingRecord(opening: Opening): JsonObject {
   return {
     project: opening.project,
@@ -272,7 +243,8 @@ function openingRecord(opening: Opening): JsonObject {
   };
 }
 
-/** Merge move terms from flags and prior opening, refusing any `--level` change after a comparison starts. */
+/** Merges move terms from flags and the prior opening, refusing any `--level` change after a
+ *  comparison starts. */
 function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: Values): Opening["terms"] {
   const began = events.findLast(({ kind, data }) => kind === STARTED && isNumber(data.level))?.data.level;
   if (isNumber(began) && values.level !== undefined && Number(values.level) !== began) {
@@ -290,7 +262,6 @@ function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: 
   };
 }
 
-/** Validate opening invariants (`budget`, `reviewer`, `patience`, `promotions`) before recording. */
 function validateOpening(opening: Opening, values: Values, seats: "paid" | "scripted"): void {
   if (seats === "paid" && opening.seats.reviewer === null) {
     throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
@@ -319,7 +290,6 @@ function validateOpening(opening: Opening, values: Values, seats: "paid" | "scri
   }
 }
 
-/** Resolve campaign budget from operator words, flags, and prior opening. */
 function resolveBudget(
   values: Values,
   was: Opening | null,
@@ -336,7 +306,6 @@ function resolveBudget(
   return dollars === undefined ? null : capRead(String(dollars), reserve);
 }
 
-/** Resolve all three campaign seats from flags and prior opening. */
 function resolveSeats(values: Values, was: Opening | null): Opening["seats"] {
   return {
     builder: seatOf(values.builder, values["builder-effort"], was?.seats.builder),
@@ -345,7 +314,6 @@ function resolveSeats(values: Values, was: Opening | null): Opening["seats"] {
   };
 }
 
-/** Persist `campaign.opened` when it changed or answered an operator word (unless `"dry-run"`). */
 function persistOpening(
   log: string,
   events: readonly LogEvent[],
@@ -363,7 +331,6 @@ function persistOpening(
   });
 }
 
-/** Resolve, validate, and (when changed) record `campaign.opened` for this run. */
 export function opened(
   log: string,
   values: Values,
@@ -418,18 +385,6 @@ export function opened(
   return opening;
 }
 
-/**
- * The Builder sessions in a row, the latest included, that have made no campaign move since the
- * campaign last ended: the trailing run of its moves that are Builder conversations (`build`), and
- * on an older log sessions its host made. Any other move, the host's own among them, is
- * progress. A run of the command after an ending
- * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
- * crashed or a stop killed chose nothing and is left out, so finished, crashed, finished counts
- * two. So is
- * a session of any seat that moved nothing (`cutShort`), and one the host refused before it began.
- * An Examiner session opens beside each conversation the table names one for, and counting one
- * that crashed, or was refused, every time would keep a campaign going without end.
- */
 export function idleOf(events: readonly LogEvent[]): number {
   const since = events.slice((eventsOf(events, "campaign.ended").at(-1)?.index ?? -1) + 1);
   const counts = new Map<string, number>();
@@ -438,14 +393,12 @@ export function idleOf(events: readonly LogEvent[]): number {
   }
   const cut = new Set([
     ...since.filter(cutShort).map(({ data }) => data.session),
-    // A move whose session nothing else names never started: the host's refusal (`actionTool`).
     ...[...counts].flatMap(([session, seen]) => (seen === 1 ? [session] : [])),
   ]);
   const moves = since.flatMap(({ kind, data }) => (kind === MOVED && !cut.has(data.session) ? [data] : []));
   return moves.length - 1 - moves.findLastIndex(({ move }) => move !== "build");
 }
 
-/** The next free id under `prefix`, as `b-3` after `b-1` and `b-2`. */
 export function nextId(events: readonly LogEvent[], prefix: string): string {
   const taken = events.flatMap(({ data }) => {
     const id = isString(data.session) && data.session.startsWith(`${prefix}-`) ? data.session : "";
@@ -455,7 +408,6 @@ export function nextId(events: readonly LogEvent[], prefix: string): string {
   return `${prefix}-${String(Math.max(0, ...taken) + 1)}`;
 }
 
-/** The flags of a comparison that began, as its start holds them: it goes on under its own terms. */
 function termsOf(events: readonly LogEvent[], id: string): string[] {
   const start = startOf(events, id) ?? {};
   const cap = asRecord(start.cap);
@@ -467,14 +419,10 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
   ];
 }
 
-/** The flag that names a campaign, as every command takes it. */
 export function packOf({ name }: Values): string[] {
   return flag("name", name);
 }
 
-/** The flags a move that solves shares with every other: the cap, which is what is left of the
- *  campaign's total; the reviewers; and the word past the stop rule. The setting is the log's
- *  record from the campaign's start (`startSetting`), so no move is given it as flags. */
 export function sharedOf({ plan, opening, values, seats }: Turn) {
   const reviewer = seats.unreviewed === true ? null : opening.seats.reviewer;
   return {
@@ -487,14 +435,6 @@ export function sharedOf({ plan, opening, values, seats }: Turn) {
   };
 }
 
-/** How the campaign runs Examiner session `session`: its flags, for `draft.ts` where it drafts the
- *  exam and `examine.ts` where it writes tasks, and the count of tasks a writing session is asked
- *  for. Each session reads the campaign's setting from the log, where the campaign command
- *  records it as it starts (`startSetting`, `harness-builder.ts`), and runs by its own defaults.
- *
- *  The count is what the campaign is short of, at least a sweep (`tasksToAskFor`, `decide.ts`), and none
- *  where it is short of nothing. No flag names another count: an ask above the shortfall had
- *  campaigns examine towards a target for hours before their first comparison. */
 export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
   const { opening, values, seats } = turn;
   const { examiner } = opening.seats;
@@ -520,8 +460,6 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
   };
 }
 
-/** The flags of the comparison a move names: a new one under the next free id, or one that began,
- *  under its id and its own terms. */
 export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn) {
   const { events, values } = turn;
   const { cap, reviewer, pastStop } = sharedOf(turn);
@@ -545,8 +483,6 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
   };
 }
 
-/** Reads the campaign log for a decision turn, skipping tool-call payloads unless an unanswered
- *  operator word (`stop`, `tasks`, `budget`) requires raw unfiltered indices for `pendingWords`. */
 function readForTurn(log: string): LogEvent[] {
   const events: LogEvent[] = [];
   const heard = new Set<number>();
@@ -569,8 +505,6 @@ function readForTurn(log: string): LogEvent[] {
   return words.some((at) => !heard.has(at)) ? read(log) : events;
 }
 
-/** One turn of a campaign as its log stands now: the plan the table is asked with, from the
- *  campaign's terms and what is left of its total. */
 export function turnOf(source: TurnSource): Turn {
   const { log, values, opening, seats, held, campaign } = source;
   const events = readForTurn(log);
@@ -587,7 +521,7 @@ export function turnOf(source: TurnSource): Turn {
         level: Number(values.level ?? COMPARISON_OPTIONS.level.default),
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],
-        // The checks `--admit` names, which is the operator's word for each.
+        // The checks `--admit` names, each the operator's word.
         admits: (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()])),
         practice: values.practice === undefined ? PRACTICE : Number(values.practice),
       },

@@ -1,6 +1,6 @@
 /**
- * Check route matching for Claude Code and Codex inputs, once-per-session delivery, silence
- * for unrelated calls and successful exit on unreadable input.
+ * Route matching for Claude Code and Codex inputs, once-per-session delivery, silence for unrelated
+ * calls and a clean exit on unreadable input.
  */
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../src/meta/json-runtime.ts";

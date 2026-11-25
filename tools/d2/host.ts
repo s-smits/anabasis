@@ -1,28 +1,12 @@
 /**
- * What a campaign waits for, each through one host (`Host`), so that a test stands in a host whose
- * sleeps it counts.
- *
- * - **The load, before a solve.** A solve's deadline measures elapsed time. Under load, it may run
- *   out of time on work it would finish on an idle host: one harness has answered the same tasks
- *   more than twice as slowly under a heavy load as under a light one (`docs/transfer.md`). A
- *   solve starts once the one-minute load is at or under the cores, or after `LOOKS` looks, since
- *   several campaigns on one host can hold a solve for well over an hour. The queue waits before
- *   each solve rather than at a move's start, where a comparison of hours would run on whatever came after.
- *   `--loaded` is the operator's word that the solves' times will not be compared.
- * - **The reserve, beside the solves in flight.** A solve waits while others fly and the budget
- *   holds no reserve for it (`affords`), one reserve for every kind of solve.
- * - **The solve slots, shared by every seat.** The same in-flight count holds comparison workers,
- *   and practice to the concurrency the condition records, so that no seat's solves start outside
- *   the comparison's workers and overlap far past it.
- * - **A pause's word**, which starts no further solve while the process it was left for runs, so
- *   that `runs pause` lets the open ones finish (`PAUSE`, `src/campaign/word.ts`).
- * - **A provider's named reset.** A usage limit that names when it lifts is slept out, not a crash:
- *   one login's limit, read as a crash, would end every campaign on it at once (`waitOut`,
- *   `src/solver/run.ts`, which a solve also calls).
- * - **A network that failed a session**, a minute after the first crash and five after the second:
- *   a session begun seconds after another crashed on a failed DNS lookup would only crash again
- *   (`waitCrashed`). The provider's edge, whose 403 page can end a campaign, is on that route; a
- *   refusal the provider's own API writes (credit, a login, a model) gets no wait.
+ * What a campaign waits for, each through one host (`Host`) so a test can count its sleeps: the
+ * load before a solve (a solve's deadline is elapsed time, so it starts once the one-minute load is
+ * at or under the cores, or after `LOOKS` looks; `--loaded` says the times will not be compared);
+ * the reserve beside solves in flight (`affords`); the solve slots every seat shares; a pause's
+ * word (`PAUSE`, `src/campaign/word.ts`), so `runs pause` lets open solves finish; a provider's
+ * named reset, slept out rather than read as a crash (`waitOut`, `src/solver/run.ts`); and a
+ * network that failed a session, a minute after the first crash and five after the second
+ * (`waitCrashed`). A refusal the provider's own API writes gets no wait.
  */
 import { CRASHES_IN_A_ROW } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
@@ -34,34 +18,29 @@ import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { waiting, waitOut } from "#src/solver/run.ts";
 import { type Seated, solved } from "./round.ts";
 
-/** A host as the waits read it: its one-minute load, its cores, how long a look waits, and, where a
- *  test stands one in, how it sleeps and what its clock reads. `HOST` sleeps on `waiting`'s own timer, which a cancellation
- *  clears, where `Bun.sleep` would hold the process after a cancelled wait until that sleep ran
- *  out. */
+/** `HOST` sleeps on `waiting`'s own timer, which a cancellation clears, where `Bun.sleep` would
+ *  hold the process after a cancelled wait until it ran out. */
 export interface Host {
   readonly load: () => number;
   readonly cores: number;
   readonly waitMs: number;
   readonly sleep?: ((ms: number) => Promise<void>) | undefined;
-  /** Milliseconds since the epoch, as `Date.now` reads them where it is unset. */
   readonly now?: (() => number) | undefined;
 }
 
-/** What the solve queue is put on: who solves, the host where a test stands one in, and `--loaded`. */
 interface Queue {
   readonly seated: Seated;
   readonly host?: Host | undefined;
   readonly loaded: boolean;
 }
 
-/** This host, looking at its load every half minute. */
 export const HOST: Host = {
   load: () => loadavg()[0] ?? 0,
   cores: availableParallelism(),
   waitMs: 30_000,
 };
 
-/** The looks at the load before a solve starts all the same: half an hour on `HOST`. */
+/** Half an hour at `HOST`'s 30-second look. */
 const LOOKS = 60;
 const PAUSE_POLL_MS = 5000;
 const NETWORK_WAITS_MS = [60_000, 300_000];
@@ -69,18 +48,17 @@ const NETWORK =
   /\b(?:ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|ConnectionRefused|FailedToOpenSocket|Cloudflare)\b/;
 const WAITED = "campaign.waited";
 
-// External tests and skills still import this public name.
+// `.claude/skills/compare-systems/scripts/systems.ts` imports this name.
 export { queued as gated };
 
-/** A rehearsal's host: no load, so that only the reserve, the slots and a pause's word hold its
- *  scripted solves, looked at every second. */
+/** A rehearsal's host: no load, so only the reserve, the slots and a pause's word hold its scripted
+ *  solves, looked at every second. */
 const SCRIPTED: Host = { load: () => 0, cores: 1, waitMs: 1000 };
 
 /**
- * `seated` with each solve held at the load, reserve and shared slots, and at a pause's word. A
- * rehearsal's scripts, whose times nobody compares, meet no load but still meet the queue, so that
- * a `runs pause` of a rehearsed campaign lets its open solves finish and stops, as a paid run's
- * does, rather than starting solves after its word and cutting them at its patience.
+ * A pause word left since `began`, while `paused` reads it in force. A rehearsal's scripts meet it
+ * as a paid run's solves do, so a `runs pause` of a rehearsed campaign lets its open solves finish
+ * rather than starting solves after the word.
  */
 function isPaused(log: string, began: number, now: number, wallSeconds: number): boolean {
   let hasPause = false;
@@ -113,9 +91,8 @@ function queued(
             `a solve of ${task.taskId} waits for the campaign's reserve while others are in flight`,
           );
         }
-        // The load is read at every look until the solve starts, since a solve that waited for a
-        // slot can begin at a far higher load than it first read. The wait on record is the time
-        // slept at a high load alone, without the slot and reserve waits after the load cleared.
+        // The load is read at every look, since a solve that waited for a slot can begin at a far
+        // higher load than it first read. The wait on record is the time slept at a high load alone.
         let [looks, load, ms] = [0, 0, 0];
         for (;;) {
           const [now, flown] = [loaded || looks >= LOOKS ? 0 : host.load(), inFlight(log)];
@@ -153,10 +130,9 @@ function queued(
 
 /**
  * The wait after the sessions in a row that crashed (`crashedRun`): to the provider's reset where
- * the last crash names one, counted or not, and otherwise, where the network failed it, one wait a
- * crash on record as `for: "network"`. The third ends the campaign on its environment (`CRASHES_IN_A_ROW`,
- * `decide.ts`) and is not waited for. This is asked after every move, and the minute is slept once
- * a crash, not again at each asking until a session ends whole.
+ * the last crash names one, and otherwise, for a network failure, one `for: "network"` wait per
+ * crash. The third crash ends the campaign (`CRASHES_IN_A_ROW`, `decide.ts`) and is not waited for;
+ * asked after every move, it sleeps once per crash.
  */
 export async function waitCrashed(log: string, host: Host = HOST): Promise<void> {
   const events = read(log, TRACE_KINDS);

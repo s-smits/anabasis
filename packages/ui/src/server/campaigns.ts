@@ -1,14 +1,8 @@
 /**
- * `GET /api/campaigns`: every campaign the server finds (`logs.ts`), one row each, newest first.
- *
- * The project is the one the campaign's opening names, or `NO_PROJECT` (`reading.ts`). Running is a
- * process that writes the log (`writers`,
- * `tools/runs/registry.ts`). Newest first is by the time of a log's first event. A log that cannot be
- * read is an issue beside the rows, never a missing row without a word.
- *
- * The list keeps each log's facts (`factsIn`), never its events, at the log's size and time
- * (`stampOf`), and forgets a log the listing no longer finds, a retired campaign's, since every
- * log's events kept would grow to gigabytes in a server up a few days (`logs.ts`).
+ * `GET /api/campaigns`: every campaign the server finds (`logs.ts`), one row each, newest first by
+ * a log's first event. A log that cannot be read is an issue beside the rows. The list keeps each
+ * log's facts (`factsIn`), never its events, at the log's stamp (`stampOf`), and forgets a log the
+ * listing no longer finds.
  */
 import type { CampaignList, CampaignRow, Issue, Query } from "../models.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
@@ -16,7 +10,6 @@ import type { Reading } from "./context.ts";
 import { campaignsFound, type Found, loaded, sourceOf, stampOf, writing } from "./logs.ts";
 import { campaignRow, factsIn } from "./reading.ts";
 
-/** A log's facts as the list last read them, at its stamp, or null with why it could not. */
 interface Listed {
   readonly stamp: string | null;
   readonly facts: ReturnType<typeof factsIn> | null;
@@ -25,7 +18,6 @@ interface Listed {
 
 const listed = new Map<string, Listed>();
 
-/** `found`'s facts, read again only where its stamp moved; whether they were. */
 function factsOf(found: Found): { readonly read: boolean; readonly listing: Listed } {
   const stamp = stampOf(found);
   const was = listed.get(found.path);
@@ -45,10 +37,9 @@ function factsOf(found: Found): { readonly read: boolean; readonly listing: List
   return { read: true, listing };
 }
 
-/** Every log's facts, read as `factsOf` reads them, with a turn of the event loop after each log
- *  it read again. A cold list reads gigabytes of logs over seconds, and a handler holds the one
- *  thread it runs on, so the selected campaign, asked beside the list, would wait for all of it;
- *  between two logs it is answered at once. */
+/** Every log's facts, with a turn of the event loop after each log read again: a cold list reads
+ *  gigabytes over seconds on the one thread, and between two logs the selected campaign, asked
+ *  beside it, is answered at once. */
 export async function readAll(reading: Pick<Reading, "repo" | "trees" | "now">): Promise<void> {
   for (const each of campaignsFound(reading).found) {
     if (factsOf(each).read) await Bun.sleep(0);

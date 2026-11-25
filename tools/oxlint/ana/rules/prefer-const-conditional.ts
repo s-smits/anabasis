@@ -4,10 +4,10 @@ import { holdsProse, withoutProse } from "../shared/masked.ts";
 import { everyStatementList, onlyStatement, plainAssignment } from "../shared/statements.ts";
 
 /**
- * Flags a `let` declaration immediately followed by an `if` (or `if`/`else` when declared without
- * an initialiser) whose body is a single `=` assignment to that same binding, provided no later
- * statement reassigns it and the assignment does not read the binding itself. Auto-fixes the
- * two-arm (`if`/`else`) form into a `const` ternary and reports the single-arm default form.
+ * Flags a `let` immediately followed by an `if` (or `if`/`else` when declared without an
+ * initialiser) whose body is a single `=` assignment to that binding, when no later statement
+ * reassigns it and the assignment does not read it. Auto-fixes the `if`/`else` form into a `const`
+ * ternary and reports the single-arm form.
  */
 /** Expressions binding looser than a conditional, whose text needs parentheses as a test. */
 const LOOSER_THAN_CONDITIONAL = new Set([
@@ -46,16 +46,12 @@ export const preferConstConditionalRule = defineRule({
     },
   },
   createOnce(context) {
-    /** The plain `=` assignment a statement is, or null when it assigns nothing. */
     function assignment(node: ESTree.Statement | null): { name: string; right: ESTree.Expression } | null {
       const expression = plainAssignment(node);
       if (expression?.left.type !== "Identifier") return null;
       return { name: expression.left.name, right: expression.right };
     }
 
-    /**
-     * The right-hand sides the `if` decides `name` with, or null when it decides something else.
-     */
     function decidedValues(
       next: ESTree.IfStatement,
       name: string,
@@ -72,7 +68,6 @@ export const preferConstConditionalRule = defineRule({
       return [consequent.right, alternate.right];
     }
 
-    /** Whether a later sibling, or a later sibling's single-statement branch, writes the name too. */
     function assignedAgain(body: readonly ESTree.Statement[], from: number, name: string): boolean {
       for (const statement of body.slice(from)) {
         if (assignment(statement)?.name === name) return true;
@@ -86,13 +81,11 @@ export const preferConstConditionalRule = defineRule({
       return false;
     }
 
-    /** The `if` test as it will read in the conditional's first position. */
     function asTest(node: ESTree.Expression): string {
       const text = context.sourceCode.getText(node);
       return LOOSER_THAN_CONDITIONAL.has(node.type) ? `(${text})` : text;
     }
 
-    /** Every statement list this file holds, so each declaration can see what follows it. */
     function scan(body: readonly ESTree.Statement[]): void {
       for (const [index, statement] of body.entries()) {
         if (statement.type !== "VariableDeclaration" || statement.kind !== "let") continue;
@@ -105,13 +98,12 @@ export const preferConstConditionalRule = defineRule({
         const { name } = declared.id;
         const decided = decidedValues(next, name, declared.init);
         if (decided === null) continue;
-        // A value built from the name it replaces is a refinement; one expression would need the
-        // first value twice or a second binding, so the two statements are the smaller form.
+        // A value built from the name it replaces is a refinement: one expression would need the first
+        // value twice, so the two statements are the smaller form.
         const reads = new RegExp(String.raw`(?<![.\w$])${name}(?![\w$])`, "u");
         const code = (right: ESTree.Expression): string => withoutProse(context.sourceCode.getText(right));
-        // The test joins the values here. It moves into the declaration's own initialiser, so a
-        // test reading the name would be reading the binding it is initialising: a temporal dead
-        // zone error at runtime, from a rewrite the compiler accepts.
+        // The test moves into the declaration's own initialiser, so a test reading the name would hit
+        // the temporal dead zone at runtime, from a rewrite the compiler accepts.
         if ([...decided, next.test].some((right) => reads.test(code(right)))) continue;
         if (assignedAgain(body, index + 2, name)) continue;
         const [whenTrue, whenFalse] = decided;
@@ -119,8 +111,8 @@ export const preferConstConditionalRule = defineRule({
           node: statement,
           messageId: decided.length === 1 ? "twoStatements" : "twoArms",
           data: { name },
-          // The `if` goes whole, so a line written inside an arm goes with it. The comment
-          // above the `if` sits outside both edits and stays where its author put it.
+          // The `if` goes whole with any line written inside an arm; the comment above it stays where
+          // its author put it.
           fix: (fixer) =>
             whenFalse === undefined ||
             whenTrue === undefined ||

@@ -1,7 +1,7 @@
-// The Codex launcher of the codex-gpt-swarm skill, through its command line, with a stand-in
-// `codex` passed by `--codex-bin`: no real Codex session starts. The stand-in knows a session by
-// the report path it is handed (`<out>/<name>.md`), since a resumed attempt's prompt does not carry
-// the task, and runs the next step of that session's plan on each call.
+// The Codex launcher of the codex-gpt-swarm skill, through its command line, with a stand-in `codex`
+// passed by `--codex-bin`. The stand-in knows a session by the report path it is handed, since a
+// resumed attempt's prompt does not carry the task, and runs the next step of that session's plan on
+// each call.
 import { afterAll, describe, expect, it } from "bun:test";
 import { sessionsOf } from "#skills/codex-gpt-swarm/scripts/gpt-sessions.ts";
 import {

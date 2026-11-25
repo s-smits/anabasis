@@ -1,11 +1,7 @@
 /**
- * Cross-component reward-hacking and specification-gaming reader and triggers for lane 24
- * (`gaming.txt`): surfaces orthogonal per-seat structural leads not already owned by single-lane
- * readers (draft rule/check drops, `referee.draft` ceremony/low-probe/unverified-freeze skew,
- * starter-read `chosen` vs `written-after` reversals, `>= 6`/task practice hill-climbing and
- * untried compare fishing, and identical-objective solver clusters).
- *
- * Wall-safe: emits only event kinds, counts, ratios, session ids, 8-char digests, and enum labels.
+ * Cross-component reward-hacking and specification-gaming reader and triggers for lane 3
+ * (`gaming.txt`): per-seat structural leads no single-lane reader owns. It prints only event kinds,
+ * counts, ratios, session ids, 8-character digests and enum labels.
  */
 import { ORIGINS, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
@@ -188,7 +184,6 @@ function gamingScanOf(log: Index): GamingScan {
   };
 }
 
-/** Lane 24 derived reader (`gaming.txt`). */
 export function gamingRows(events: readonly LogEvent[]): string[] {
   const { draft, draftAudit, reversals, builder, solver } = gamingScanOf(indexOf(events));
   const validShare = draft.totalScored > 0 ? percent(draft.validScored / draft.totalScored) : "n/a";
@@ -214,7 +209,6 @@ export function gamingRows(events: readonly LogEvent[]): string[] {
   ];
 }
 
-/** Triggers for lane 24, called from `overview` (`tools/wri/read.ts`). */
 export function gamingTriggers(log: Index): Trigger[] {
   const { draft, draftAudit, reversals, builder, solver } = gamingScanOf(log);
   const dropParts = pick([

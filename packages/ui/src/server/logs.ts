@@ -1,27 +1,14 @@
 /**
- * Where the server finds its campaigns, and each log read once a change.
- *
- * A campaign is one log, `.ana/d2/<name>/log.jsonl`. By default the server lists every one in the
- * repository's worktrees, as `bun run runs pulse` does (`runs`, `tools/runs/registry.ts`); started with
- * `--repo <dir>` it lists the ones under that one directory, a fixture's or another checkout's, so
- * that the page can be pointed at either.
- *
- * A seed is left out wherever it lies: a copy of another campaign cut at a recorded position and
- * rehearsed with a script in each seat (`seed.json` beside its log, `bun run runs seed`), which
- * proves a path and no climb (`AGENTS.md`, section 10, item 9). Most logs in this repository's
- * worktrees can be seeds, many of them the campaign command's own tests (`test-hb-*`), and listed
- * they would bury the real campaigns in the picker. A seed's key opens nothing.
- *
- * The list is polled every few seconds and a host may hold thirty logs of several megabytes, so a
- * log is read and folded again only where its size or its modification time moved since the last
- * read (`stampOf`). The list keeps each log's row facts alone (`campaigns.ts`), and only the `KEEP`
- * logs a detail endpoint read last keep their events (`Log`, `folds.ts`), since a list that kept
- * every log's events would hold gigabytes after a few days for the logs of every worktree, retired
- * campaigns' included. A log is read
- * whole by the kernel's reader, which refuses a line that is no event; a log whose last line is
- * torn is an append in flight, read without that line by the pulse's reader (`logEvents`), and the
- * answer says so. A log that cannot be read is an issue beside the list, never a row that vanished
- * without a word.
+ * Where the server finds its campaigns, and each log read once a change. By default it lists every
+ * `.ana/d2/<name>/log.jsonl` in the repository's worktrees, as `bun run runs pulse` does (`runs`,
+ * `tools/runs/registry.ts`); with `--repo <dir>`, those under that directory. A seed (`seed.json`
+ * beside its log) is left out wherever it lies: it proves a path and no climb, and the campaign
+ * command's own tests leave many. A log is read and folded again only where its size or
+ * modification time moved (`stampOf`); the list keeps row facts alone (`campaigns.ts`), and only
+ * the `KEEP` logs a detail endpoint read last keep their events, since keeping every log's events
+ * would hold gigabytes. A log whose last line is torn is an append in flight, read without that
+ * line (`logEvents`), and the answer says so; a log that cannot be read is an issue beside the
+ * list.
  */
 import { LOG_FILE, read } from "../../../../src/kernel/log.ts";
 import { sha256 } from "../../../../src/meta/digest.ts";
@@ -42,29 +29,23 @@ import type { Issue } from "../models.ts";
 import { type Reading, Unanswerable } from "./context.ts";
 import type { Log } from "./folds.ts";
 
-/** One campaign found: the pulse's `Run`, with the key the page names it by and the label of its
- *  worktree. */
 export interface Found extends Run {
   readonly key: string;
   readonly label: string;
 }
 
-/** A log as last read: the events, or why they could not be read, and what the reading noticed. */
 interface Loaded {
   readonly log: Log | null;
   readonly issues: readonly Issue[];
 }
 
-/** Whether a run's process is there, as the pulse names the two states. */
 export type Process = "open" | "closed";
 
-/** The campaigns one listing found, and what it could not list. */
 interface Listed {
   readonly runs: readonly Run[];
   readonly issues: readonly Issue[];
 }
 
-/** The campaigns found under one root, and when. */
 interface Looked {
   readonly at: number;
   readonly where: string;
@@ -72,43 +53,37 @@ interface Looked {
   readonly issues: readonly Issue[];
 }
 
-/** The processes that write logs, and when they were listed; null where they could not be. */
 interface Scanned {
   readonly at: number;
   readonly running: ReturnType<typeof processes> | null;
 }
 
-/** A campaign a key named, its log as read, and what the reading noticed. */
 interface Opened {
   readonly found: Found;
   readonly log: Log;
   readonly issues: readonly Issue[];
 }
 
-/** What a log was read at, so that an unchanged one is not read again. */
 interface Kept {
   readonly size: number;
   readonly mtimeMs: number;
   readonly loaded: Loaded;
 }
 
-/** The campaigns found and the processes that write logs, kept this long: the list is polled every
- *  few seconds, and a listing runs `git worktree list`, `ps` and `lsof`. */
+/** The campaigns found and the processes that write logs, kept this long: a listing runs `git
+ *  worktree list`, `ps` and `lsof`. */
 const LOOK_MS = 2000;
 const NEWLINE = 0x0a;
-/** The logs whose events are kept, the ones a detail endpoint read last: the page polls the one
- *  selected, and a few more cover a switch back. */
+/** The logs whose events are kept: the page polls the one selected, and a few more cover a switch back. */
 const KEEP = 4;
 
 const kept = new Map<string, Kept>();
 let looked: Looked | null = null;
 let scanned: Scanned | null = null;
 
-/** Where a log is said to be in an issue: its worktree's label and its path inside it. */
 export const sourceOf = ({ label, name }: Pick<Found, "label" | "name">): string =>
   `${label}/${CAMPAIGNS}/${name}/${LOG_FILE}`;
 
-/** The campaigns under one directory, as `runs` lists those of each worktree. */
 function underDirectory(tree: string): Listed {
   const d2 = join(tree, CAMPAIGNS);
   if (!existsSync(d2)) {
@@ -124,8 +99,6 @@ function underDirectory(tree: string): Listed {
   }
 }
 
-/** Every campaign's log the repository's worktrees hold. The pulse lists the worktrees of the
- *  repository the server runs in, which is the one it was started for unless it was moved. */
 function inWorktrees(repo: string): Listed {
   try {
     const listed = readable().filter(isCampaign);
@@ -155,8 +128,8 @@ function inWorktrees(repo: string): Listed {
   }
 }
 
-/** The key of each run: its worktree's folder name and its own, with a short hash of the
- *  worktree's path where two worktrees share a folder name. */
+/** Each run's key: its worktree's folder name and its own, with a short hash of the worktree's path
+ *  where two worktrees share a folder name. */
 function keyed(found: readonly Run[]): Found[] {
   const labels = new Map<string, Set<string>>();
   for (const { tree } of found) {
@@ -169,7 +142,6 @@ function keyed(found: readonly Run[]): Found[] {
   });
 }
 
-/** Every campaign the server can read, and what could not be listed. */
 export function campaignsFound(reading: Pick<Reading, "repo" | "trees" | "now">): Looked {
   const where = `${reading.trees} ${reading.repo}`;
   const now = (reading.now ?? Date.now)();
@@ -180,8 +152,8 @@ export function campaignsFound(reading: Pick<Reading, "repo" | "trees" | "now">)
   return looked;
 }
 
-/** Whether a process writes `found`'s log (`writers`): `open` while one does, as the pulse says it,
- *  and null where the processes could not be listed. */
+/** Whether a process writes `found`'s log (`writers`): `open` while one does, and null where the
+ *  processes could not be listed. */
 export function writing(found: Found): Process | null {
   const now = Date.now();
   if (scanned === null || now - scanned.at >= LOOK_MS) {
@@ -198,7 +170,6 @@ export function writing(found: Found): Process | null {
   return writers(found, scanned.running).length > 0 ? "open" : "closed";
 }
 
-/** Whether the file at `path`, of `size` bytes, ends inside a line. */
 function torn(path: string, size: number): boolean {
   if (size === 0) return false;
   const fd = openSync(path, "r");
@@ -210,8 +181,6 @@ function torn(path: string, size: number): boolean {
   }
 }
 
-/** Where `found`'s log stands, its size and modification time, as one string; null where it
- *  cannot be read. */
 export function stampOf(found: Found): string | null {
   try {
     const { size, mtimeMs } = statSync(found.path);
@@ -221,8 +190,8 @@ export function stampOf(found: Found): string | null {
   }
 }
 
-/** `found`'s log as it stands, read again only where its size or its time moved, and kept among
- *  the `KEEP` read last for a detail endpoint, never kept for the list alone. */
+/** `found`'s log, read again only where its size or time moved, and kept among the `KEEP` read last
+ *  for a detail endpoint, never for the list alone. */
 export function loaded(found: Found, use: "detail" | "list" = "detail"): Loaded {
   const source = sourceOf(found);
   let size: number;
@@ -264,8 +233,6 @@ export function loaded(found: Found, use: "detail" | "list" = "detail"): Loaded 
   return fresh;
 }
 
-/** The campaign `key` names and its log, or a 404 where none does; a log that cannot be read is
- *  refused with what was wrong. */
 export function campaignAt(reading: Reading, key: string): Opened {
   const found = campaignsFound(reading).found.find((each) => each.key === key);
   if (found === undefined) throw new Unanswerable(404, `no campaign ${key} here`);

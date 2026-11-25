@@ -1,7 +1,6 @@
 /**
- * Summarises Examiner session activity and campaign progression per log.
- *
- *   bun .claude/skills/examiner-complexity/scripts/ambition.ts <log or campaign folder>...
+ * Summarises Examiner session activity and campaign progression per log: `ambition.ts <log or
+ * campaign folder>...`.
  */
 import { campaignOf, type Handover } from "#src/campaign/handover.ts";
 import { familySizes, proposalsOf } from "#src/kernel/history.ts";
@@ -21,15 +20,13 @@ import { readingOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 
 export const STARTS = new Set<string>(["exam.started", "draft.started"]);
 
-/** The reference harness in force at `index`: the last promoted harness's short digest, or the
- *  starter, which is the first reference and stays the lower one (`AGENTS.md`, section 3). Read by
- *  the session lines here and by `exams.ts` for each draft, so an exam's drafts are read against
- *  the harness they had to leave room for. */
+/** The last promoted harness's short digest, or the starter, which is the first reference.
+ *  `exams.ts` reads it for each draft, so an exam's drafts are read against the harness they had to
+ *  leave room for. */
 export function referenceAt(events: readonly LogEvent[], index: number): string {
   return promoted(events.slice(0, index))?.slice(0, 8) ?? "starter";
 }
 
-/** The tasks a writing session's start asked for (no fold reads them), its ending, turns and hours. */
 function askedOf(start: LogEvent, step: Extract<Handover, { step: "examiner" }>, hours: number): string {
   const limits = asRecord(start.data.limits);
   const ask = isNumber(limits?.tasks) ? `asked ${String(limits.tasks)}, ` : "";
@@ -37,8 +34,8 @@ function askedOf(start: LogEvent, step: Extract<Handover, { step: "examiner" }>,
   return `${ask}${step.ended ?? (step.cut ? "cut" : "open")} at ${String(step.turns)}${limit} turns in ${hours.toFixed(1)} h`;
 }
 
-/** The hours `session` spent writing: from its start to the last event it wrote, less the provider
- *  and network waits between (a load wait is some solve's, and stays in). */
+/** The hours `session` spent writing, less the provider and network waits between (a load wait is
+ *  some solve's, and stays in). */
 function wroteHours(events: readonly LogEvent[], start: number, end: number, session: string): number {
   const mine = ({ kind, data }: LogEvent) => data.session === session && kind.startsWith("exam.");
   const closed = events.findIndex((event, at) => at > start && mine(event) && event.kind === "exam.finished");
@@ -48,8 +45,6 @@ function wroteHours(events: readonly LogEvent[], start: number, end: number, ses
   return (until - from - waitedMs(rests, from, until)) / HOUR_MS;
 }
 
-/** A session's proposals: how many, their families and the largest, and the session's own turn at
- *  each (an event's `turn` numbers the whole conversation); null where it proposed none. */
 export function proposedOf(events: readonly LogEvent[], session: string) {
   const proposals = proposalsOf(events).filter((each) => each.session === session);
   if (proposals.length === 0) return null;
@@ -64,7 +59,6 @@ export function proposedOf(events: readonly LogEvent[], session: string) {
   return { proposed: proposals.length, families: sizes.length, largest: sizes[0] ?? 0, at };
 }
 
-/** One line an Examiner session: its id, the reference in force, and its reading. */
 export function sessionLines(events: readonly LogEvent[]): string[] {
   const starts = events.flatMap((event, index) => (STARTS.has(event.kind) ? [index] : []));
   const written = campaignOf(events).steps.flatMap((step) => (step.step === "examiner" ? [step] : []));
@@ -73,7 +67,6 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
     const reading = readingOf(events.slice(0, end), start, []);
     const reference = referenceAt(events, start);
     const session = events[start]?.data.session;
-    // The window to the next start also holds the comparisons and Builder sessions between.
     const own = isString(session) ? events.slice(start, end).filter(ownedBy(events, session)) : [];
     const words = Object.entries(reading.gates)
       .map(([word, count]) => `${word} ${String(count)}`)
@@ -95,8 +88,8 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
   });
 }
 
-/** What a campaign had spent by its first event of `kind`: the hours, and beside them the solves and
- *  dollars, which the host's load does not move, so two arms read against each other by them. */
+/** Solves and dollars sit beside the hours because the host's load does not move them, so two arms
+ *  read against each other by them. */
 function reachedBy(events: readonly LogEvent[], kind: string, from: string | undefined): string {
   const at = events.findIndex((event) => event.kind === kind);
   const reached = events[at]?.at;
@@ -107,8 +100,6 @@ function reachedBy(events: readonly LogEvent[], kind: string, from: string | und
   return `${hours.toFixed(1)} h / ${String(solves)} solves / $${billedAll(upto).toFixed(0)}`;
 }
 
-/** The campaign's line: what it had spent by its first comparison and promotion, their counts, the
- *  scored tasks on which the reference was valid in every solve, and the steps won by validity. */
 export function campaignLine(events: readonly LogEvent[]): string {
   const opened = events.find((event) => event.kind === "campaign.opened")?.at;
   const count = (kind: string) => events.filter((event) => event.kind === kind).length;
@@ -118,7 +109,6 @@ export function campaignLine(events: readonly LogEvent[]): string {
   return `first comparison ${reachedBy(events, "comparison.started", opened)}${delay === null ? "" : ` (admissible ${delay.summary})`}, first promotion ${reachedBy(events, "harness.promoted", opened)}; ${String(count("comparison.started"))} compared, ${String(count("harness.promoted"))} promoted; reference valid every solve on ${String(scored - room)} of ${String(scored)} scored tasks, ${String(onValidity)} of ${String(stepped)} steps won by validity`;
 }
 
-/** The campaign's line under its name, then each session's line indented. */
 export function ambitionLines(name: string, events: readonly LogEvent[]): string[] {
   return [`${name}: ${campaignLine(events)}`, ...sessionLines(events).map((line) => `  ${line}`)];
 }

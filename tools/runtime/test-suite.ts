@@ -1,14 +1,11 @@
 /**
- * Repository test runner (`tools/runtime/test-suite.ts`): executes `bun test --parallel` ordered
- * slowest-first from `test/.test-timings.json` (`--update-timings`, `--max-concurrency=4`), sizing
- * worker count from available cores minus current one-minute load (`ANA_TEST_WORKERS` overrides,
- * capped at 4 for browser UI suites; `ANA_TEST_BAIL=1` passes `--bail`).
- *
- * Guards against wedged `--test-worker` processes with an output-idle wall (`IDLE_WALL_SECONDS = 180`,
- * scaled by external host load): if output stops for 180 s, sends SIGTERM then SIGKILL to the
- * coordinator and reruns unfinished/unreported files sequentially in a single workerless process
- * while preserving any failure already reported. Runs inside a claimed scratch directory under
- * `SUITE_SCRATCH_ROOT` cleaned up on exit or by `bun run runs retire`.
+ * Repository test runner: `bun test --parallel` ordered slowest-first from
+ * `test/.test-timings.json` (`--update-timings`, `--max-concurrency=4`), with workers sized by
+ * `workerCount` (`ANA_TEST_WORKERS` overrides; at most 4 for browser UI files; `ANA_TEST_BAIL=1`
+ * passes `--bail`). An output-idle wall (`IDLE_WALL_SECONDS`, scaled by host load) ends a wedged
+ * run with SIGTERM then SIGKILL and reruns unfinished files in one workerless process, keeping any
+ * failure already reported. Runs in a scratch directory under `SUITE_SCRATCH_ROOT`, cleaned on exit
+ * or by `bun run runs retire`.
  */
 import { boundText } from "../../src/meta/bounded-text.ts";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "../../src/meta/filesystem.ts";
@@ -26,9 +23,7 @@ import {
 } from "../../src/meta/subprocess.ts";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
-// Absolute, so a focused `--cwd` request still reads and refreshes the repository file.
 const TIMINGS = join(REPO_ROOT, "test/.test-timings.json");
-// Flags whose next argument is a path or pattern, not a test file to check.
 const OPERAND_FLAGS = new Set([
   "-t",
   "--test-name-pattern",
@@ -44,12 +39,8 @@ const OPERAND_FLAGS = new Set([
   "--cwd",
 ]);
 const IDLE_WALL_SECONDS = 180;
-/** Bun prints no `(pass)` line when any of the first three is set, as a quieter mode for agents,
- *  and `runWalled` counts a file as reported only from its result lines. Inherited from an agent's
- *  shell, every passing file read as unreported, so an idle-wall rerun took every file for
- *  unfinished. `GITHUB_ACTIONS` does the same from the other side: Bun then heads each file with
- *  `::group::` and reports a failure as an `::error` annotation, neither of which the parser reads.
- *  The suite owns the output it parses, so its child never sees them. */
+/** With any of the first three set Bun prints no `(pass)` line, so every passing file would read as
+ *  unreported; under `GITHUB_ACTIONS` it prints forms the parser does not read. */
 const AGENT_MARKERS = new Set(["CLAUDECODE", "AGENT", "REPL_ID", "GITHUB_ACTIONS"]);
 
 export const PER_TEST_WALL_MS = 60_000;
@@ -61,13 +52,6 @@ const COMMON_FLAGS = [
   ...(Bun.env.ANA_TEST_BAIL === "1" ? ["--bail"] : []),
 ];
 
-/** `reported` holds every file whose results Bun printed and `failed` those among them with a
- *  `(fail)` line; `inFlight` is the file whose block was printed last, so with one streaming
- *  worker it is the file the wall interrupted. `exitCode` is null when the wall ended the group.
- *  `errors` counts what Bun printed outside any test, which appears in no result line and so in
- *  neither set. `interrupted` holds the files Bun said it was still running when interrupted, or
- *  whose worker crashed, and `incomplete` those it said it had not started, or aborted, or had no
- *  live worker for. */
 interface WalledRun {
   exitCode: number | null;
   reported: Set<string>;
@@ -78,33 +62,22 @@ interface WalledRun {
   errors: number;
 }
 
-/** What a process printed, before its exit joins it. */
 type ProcessOutput = Omit<WalledRun, "exitCode">;
 
-/** `run` fills as `scanLine` reads each line of one process's stderr. */
 interface OutputReader {
   run: ProcessOutput;
   scanLine: (line: string) => void;
 }
 
-/** What the output relay and the wall share while one process runs: the relay resets the clock,
- *  the wall reads it, and `walled` says the wall fired. */
 interface WallState {
   lastOutputAt: number;
   walled: boolean;
 }
 
-/** How long the coordinator has between the wall's SIGTERM and the group kill: the `gracefulTimeout`
- *  of Bun's own CI runner. */
 const GRACE_MS = 15_000;
 
-/** Why the suite did what it did with a first process's result. `stands` takes that verdict with
- *  nothing to say; the rest each print one sentence naming `subject`. */
 type Reason = "stands" | "already-failed" | "none-left" | "never-finished" | "unhandled-error";
 
-/** What to do with a first process's result: run `rerun` again and take that verdict, or let the
- *  first verdict stand. `subject` is the files the reason is about, for the sentence the caller
- *  prints. */
 interface Attribution {
   rerun: readonly string[] | null;
   exitCode: number;
@@ -112,18 +85,12 @@ interface Attribution {
   subject: readonly string[];
 }
 
-/** One spelling for a file, so a name the request gave and a header Bun printed compare as the
- *  same file. Darwin reaches its temp root through a symlink -- `/var` is `/private/var` -- and Bun
- *  prints the header from the path it opened, so without this the two sides meet as different
- *  strings and every file under that root reads as never reported. A path that is gone keeps the
- *  spelling it was given. */
+/** One spelling for a file: Darwin reaches its temp root through `/var`, which is `/private/var`, and Bun
+ *  prints the header from the path it opened, so otherwise every file there reads as never reported. */
 function fileIdentity(path: string): string {
   return existsSync(path) ? realpathSync(path) : path;
 }
 
-/** The one-minute load average: the trailing count of runnable work on this machine. Its own test
- *  pins it through `ANA_TEST_HOST_LOAD`, which also lets an operator tell the suite the host is
- *  quiet when the reading is not to be believed. */
 function hostLoad(): number {
   const pinned = Bun.env.ANA_TEST_HOST_LOAD;
   if (pinned === undefined) return loadavg()[0] ?? 0;
@@ -131,23 +98,6 @@ function hostLoad(): number {
   return Number(pinned);
 }
 
-/** Two workers fewer than the cores, less half of the load the host carries beyond them, and at
- *  least two; `ANA_TEST_WORKERS` overrides. A runner carrying several CPU-bound jobs of its own
- *  can sit at a load average many times its core count, where six workers at four concurrent tests
- *  each ask for about three times the machine and the CI gate returns wall failures on a branch whose
- *  files pass alone.
- *
- *  Beyond them, because a load average equal to the cores is a machine that is busy rather than
- *  oversubscribed, and the reading counts threads blocked in the kernel as well as threads wanting
- *  a core. Halving rather than subtracting the whole reading is what lets a twelve-core laptop at
- *  a load just under its cores keep its full worker count, while a host oversubscribed threefold
- *  still reaches the floor of two.
- *
- *  The number is not the whole condition, though, and nothing here is re-tuned on one reading. A
- *  load average cannot say what the load is made of: a Spotlight reindex contends for the disk
- *  rather than for cores, and a laptop that this formula leaves on ten workers can still report
- *  none of its files before the idle wall while the same push at four workers runs green. The
- *  lever for that is the override, or a less loaded host. */
 function workerCount(override: string | undefined): number {
   if (override !== undefined) {
     if (!/^[1-9]\d*$/.test(override)) throw new Error("ANA_TEST_WORKERS must be a positive integer");
@@ -157,9 +107,7 @@ function workerCount(override: string | undefined): number {
   return Math.max(2, cores - 2 - Math.round(Math.max(0, hostLoad() - cores) / 2));
 }
 
-/** The working directory a request names and the positions of the test files it names. */
 function scanRequest(requested: readonly string[]) {
-  // Files are checked after the whole scan, so a `--cwd` given after a file still applies to it.
   let cwd = REPO_ROOT;
   const fileIndexes: number[] = [];
   let operand = false;
@@ -180,8 +128,7 @@ function scanRequest(requested: readonly string[]) {
   return { cwd, fileIndexes };
 }
 
-/** The test files a request names, checked to exist: Bun treats an unknown path as a filter and
- *  would silently run only its neighbours. Filters and flag operands stay in the request. */
+/** Bun treats an unknown path as a filter and would silently run only its neighbours. */
 function requestedFiles(requested: readonly string[]): string[] {
   const { cwd, fileIndexes } = scanRequest(requested);
   const files = requested.filter((_, index) => fileIndexes.includes(index));
@@ -191,16 +138,11 @@ function requestedFiles(requested: readonly string[]): string[] {
   return files.map((file) => fileIdentity(resolve(cwd, file)));
 }
 
-/** The one test command. An empty request runs the whole `test/` tree; a focused request runs the
- *  named files. Both order files slowest-first from the recorded timings and refresh them. */
 function testCommand(requested: readonly string[], workers: string | undefined): string[] {
   requestedFiles(requested);
-  // Inside a file, four concurrent tests at once: most of them spawn child processes. `--parallel`
-  // isolates every file by default, and a worker isolating file after file is where Bun's
-  // spawnSync loses a child's exit and spins for good (oven-sh/bun#34069), so the workers share
-  // one global per process and no test may lean on a fresh one.
-  // A browser file starts its own server and Chrome, so four of them fill a host: more workers make
-  // the UI's files slower, not faster, and a test that walks every move can hit its 60 s limit.
+  // Four tests at once a file, as most spawn children. Workers share one global, so no test may lean on a
+  // fresh one: isolating file after file is where Bun's spawnSync loses a child's exit (oven-sh/bun#34069).
+  // Browser files each start a server and Chrome, so they run on fewer workers.
   const browsers = workers === undefined && requested.some((path) => path.includes("packages/ui/test"));
   const command = [
     runtimeProcess.execPath,
@@ -214,18 +156,12 @@ function testCommand(requested: readonly string[], workers: string | undefined):
   return requested.length === 0 ? [...command, "./test"] : [...command, ...requested];
 }
 
-/** A reader for the lines Bun's parallel coordinator prints about files it did not finish: the
- *  report a SIGTERM makes it print, a heading for the files it was still running and one for those
- *  it had not started with a file indented under each, and the line for a file whose worker ended
- *  under it. Copied from the parse loop of the parallel bucket in Bun's own CI runner
- *  (`scripts/runner.node.ts` in oven-sh/bun at 73df7bb), where `interrupted` is its `failed`,
- *  since `failed` here is the files with a `(fail)` line. Returns whether the line was one. */
 function interruptReader(
   norm: (p: string) => string,
   interrupted: Set<string>,
   incomplete: Set<string>,
 ): (line: string) => boolean {
-  let list: "running" | "not-started" | null = null; // while inside an interrupt report list
+  let list: "running" | "not-started" | null = null;
   return (line) => {
     if (line.startsWith("Interrupted while still running:")) {
       list = "running";
@@ -249,10 +185,8 @@ function interruptReader(
   };
 }
 
-/** One line per descendant as the tree stood when the wall fired: pid, CPU share and command
- *  line, so a stalled log says which worker spun and what the rest of the group was running.
- *  Returns those pids: the group kill below cannot reach a descendant that started its own
- *  session, and the tree is only observable before its parent is gone. */
+/** Each descendant's pid, CPU share and command line as the wall fired. Returns the pids: the group kill
+ *  cannot reach one that started its own session, and the tree is observable only before its parent goes. */
 async function describeTree(pid: number): Promise<number[]> {
   const ps = Bun.spawn(["ps", "-axo", "pid=,ppid=,%cpu=,args="], { stdout: "pipe", stderr: "ignore" });
   const rows = (await new Response(ps.stdout).text())
@@ -270,7 +204,6 @@ async function describeTree(pid: number): Promise<number[]> {
       }
     }
   }
-  // The one reading's rows, less the parent column, so pid, share and command are of one moment.
   const lines = rows
     .filter(([child]) => descendants.has(Number(child)))
     .map((row) => boundText(row.toSpliced(1, 1).join(" "), 240).shown);
@@ -278,10 +211,6 @@ async function describeTree(pid: number): Promise<number[]> {
   return [...descendants];
 }
 
-/** End the listed descendants the group kill left behind. A Bubblewrap verifier runs with
- *  `--new-session`, so it is outside the group, and `--die-with-parent` does not end one whose
- *  wedged worker the wall has killed: it stays in `waitpid` indefinitely, holding a generated-tools
- *  worker from a suite root that no longer exists. */
 async function killStrays(pids: number[]): Promise<void> {
   const strays = pids.filter(processAnswers);
   for (const pid of strays) {
@@ -301,10 +230,6 @@ async function killStrays(pids: number[]): Promise<void> {
   if (survivors.length > 0) console.error(`idle-wall: descendants survived SIGKILL: ${survivors.join(", ")}`);
 }
 
-/** End every process whose command line names the suite's root, before the root goes. A test may
- *  start one in a process group of its own, as the UI's browser tests start `serve.ts`, and the
- *  group kill does not reach it, and such servers would otherwise pile up on a runner, each naming
- *  a root long removed. */
 function endNaming(roots: readonly string[]): void {
   for (const row of decodeOutput(runSync(["ps", "-axo", "pid=,args="]).stdout).split("\n")) {
     const [, pid = "", args = ""] = /^\s*(\d+)\s+(.*)$/.exec(row) ?? [];
@@ -317,21 +242,12 @@ function endNaming(roots: readonly string[]): void {
   }
 }
 
-/** The group under the wall right now, so an interrupt reaching the suite ends it too. */
 let active: Bun.Subprocess | null = null;
 
-/** Every second, whether the group has been silent for the whole wall, and if it has, its end:
- *  the SIGTERM, grace and reap of Bun's own CI runner, through `interruptAndReapProcessGroup`. The
- *  coordinator is not the process that wedged, and given the grace it ends its own workers and
- *  prints which files it was still running and which it had not started, for `interruptReader`. */
 function startWall(child: Bun.Subprocess, state: WallState): ReturnType<typeof setInterval> {
   const ticker = setInterval(() => {
     const busy = hostLoad();
-    // The silence a starved host earns. On a machine with more runnable threads than cores a file
-    // takes longer to print its first line, and a suite waiting for a core looks wedged. Scaling by
-    // the reading `workerCount` uses keeps the flat wall on a quiet machine. The suite's own
-    // workers cannot reach the multiplier, so a real wedge still ends at the flat wall: a laptop
-    // other work holds at a load of 30.9 on 12 cores gives its files 463 s rather than 180.
+    // Scaled by load the suite's own workers cannot reach, so a real wedge still ends at the flat wall.
     const wall = Math.round(IDLE_WALL_SECONDS * Math.max(1, busy / availableParallelism()));
     if (state.walled || performance.now() - state.lastOutputAt < wall * 1000) return;
     state.walled = true;
@@ -352,10 +268,6 @@ function startWall(child: Bun.Subprocess, state: WallState): ReturnType<typeof s
   return ticker;
 }
 
-/** What one process's stderr says, line by line: a line about a file Bun did not finish, a file
- *  header, a result line under it, or an error outside any test. Bun prints file headers relative
- *  to `cwd`, the request's working directory. `run` fills as `scanLine` reads, so the relay and a
- *  test feed it the same way. */
 function outputReader(cwd: string): OutputReader {
   const run: ProcessOutput = {
     reported: new Set<string>(),
@@ -365,7 +277,6 @@ function outputReader(cwd: string): OutputReader {
     inFlight: null,
     errors: 0,
   };
-  // Bun's `norm`, resolving to this file's spelling of a file rather than to a bucket entry.
   const norm = (p: string) =>
     fileIdentity(
       resolve(
@@ -395,10 +306,8 @@ function outputReader(cwd: string): OutputReader {
   return { run, scanLine };
 }
 
-/** One `bun test` process under the idle wall, relaying its output through `outputReader`. */
 async function runWalled(command: string[], temporaryRoot: string, cwd: string): Promise<WalledRun> {
-  // Its own process group, so the wall can end every descendant at once and a grandchild cannot
-  // outlive the kill. An interrupt reaching the suite is forwarded to the group before exiting.
+  // Its own process group, so the wall ends every descendant at once and no grandchild outlives the kill.
   const child = Bun.spawn(command, {
     cwd: REPO_ROOT,
     env: {
@@ -425,9 +334,6 @@ async function runWalled(command: string[], temporaryRoot: string, cwd: string):
       await writer.write(chunk);
       await writer.flush();
       if (holds === "output") continue;
-      // Bun prints "<path>:" on its own line, to stderr, then the file's results. With several
-      // workers the whole block arrives when the file completes; a single worker streams it, so a
-      // file counts as reported once a result line has followed its header.
       const lines = (pending + new TextDecoder().decode(chunk)).split("\n");
       pending = lines.pop() ?? "";
       for (const line of lines) scanLine(line);
@@ -438,32 +344,21 @@ async function runWalled(command: string[], temporaryRoot: string, cwd: string):
   await Promise.all([relay(child.stdout, Bun.stdout, "output"), relay(child.stderr, Bun.stderr, "results")]);
   const exitCode = await child.exited;
   clearInterval(ticker);
-  // Once the wall has fired, the group's own exit (130 after the interrupt, 137 after a kill) is not
-  // the verdict.
   return { ...run, exitCode: state.walled ? null : exitCode };
 }
 
-/** Whose verdict the suite reports. A process that ended by itself reports its own, and one the
- *  wall ended reports nothing about the files it never finished, so only those run again. */
 function attribute(first: WalledRun, asked: readonly string[]): Attribution {
-  // An error Bun printed outside any test is in its exit code and in no result line, so running
-  // those files again could return zero and take the error with it.
+  // An error Bun printed outside any test is in its exit code and in no result line, so running those
+  // files again could return zero and take the error with it.
   if (first.errors > 0) {
     return { rerun: null, exitCode: first.exitCode ?? 1, because: "unhandled-error", subject: [] };
   }
   if (first.exitCode !== null) {
     return { rerun: null, exitCode: first.exitCode, because: "stands", subject: [] };
   }
-  // The wall ended the group. A failure it had already printed is the verdict: the rerun covers
-  // the files the first process never finished, never the verdict of one it did.
   if (first.failed.size > 0) {
     return { rerun: null, exitCode: 1, because: "already-failed", subject: [...first.failed] };
   }
-  // Every file left unfinished runs again, however many: Bun's own CI runner reruns each one an
-  // interrupted batch left, uncapped, because a queue two wedges stranded says nothing about the
-  // files behind them. The files Bun named join those asked for that printed nothing, so the
-  // rerun holds when a request named a directory or the coordinator printed no report. The file
-  // printed last may be a streamed block the wall cut short, so it runs again too.
   const remaining = [
     ...new Set([
       ...first.interrupted,
@@ -476,14 +371,11 @@ function attribute(first: WalledRun, asked: readonly string[]): Attribution {
 }
 
 async function main(): Promise<number> {
-  // Repository helpers inspect siblings around their temporary fixtures. Give them one fresh
-  // parent under the host temp root without replacing TMPDIR: Darwin's compiler ignores TMPDIR,
-  // while the isolation profiles use its original value to admit the real compiler scratch.
+  // A short fresh parent, so no socket path a test makes outgrows its limit, apart from TMPDIR: Darwin's
+  // compiler ignores TMPDIR, while the isolation profiles use its original value to admit compiler scratch.
   mkdirSync(SUITE_SCRATCH_ROOT, { recursive: true });
-  // As long as the loose `ana-test-suite-XXXXXX` of before, so no socket path a test makes grows.
   const temporaryRoot = mkdtempSync(`${SUITE_SCRATCH_ROOT}/`);
   claim(temporaryRoot);
-  // A test may name the root by either spelling: Darwin's `/var` is a link to `/private/var`.
   const roots = [temporaryRoot, realpathSync(temporaryRoot)];
   const requested = Bun.argv.slice(2);
   const endOn = (signal: "SIGINT" | "SIGTERM" | "SIGHUP") => () => {
@@ -497,8 +389,6 @@ async function main(): Promise<number> {
     [...files]
       .map((file) => (file.startsWith(`${REPO_ROOT}/`) ? file.slice(REPO_ROOT.length + 1) : file))
       .join(" ");
-  /** The files this invocation asked for, resolved the way the output scanner resolves a header.
-   *  With no request that is every file Bun discovers under `test/`, which the suite keeps flat. */
   const askedFor = () =>
     requested.length === 0
       ? readdirSync(join(REPO_ROOT, "test"))
@@ -512,27 +402,17 @@ async function main(): Promise<number> {
     const asked = askedFor();
     const step = attribute(first, asked);
     if (step.because !== "stands") {
-      // The ticker printed the wall it enforced and the load that set it; repeating the flat
-      // value here would name a wall that may not be the one that fired.
       const silence = "the suite was ended by the idle wall";
       const interrupted = step.subject.filter((file) => first.interrupted.has(file)).length;
-      // A Record, so a new reason cannot be added without a sentence that names its subject.
       const said: Record<Exclude<Reason, "stands">, string> = {
         "already-failed": `idle-wall: error: ${silence}; ${String(step.subject.length)} file(s) had already failed: ${relative(step.subject)}`,
-        // Every file it can name printed its result, so there is nothing to run again, and the
-        // process that went silent afterwards left no exit code to take as the verdict.
         "none-left": `idle-wall: error: ${silence} with no file left unfinished that it can name, so nothing can run again and there is no exit code to take as the verdict.`,
-        // Bun's own CI runner's line for the same rerun, where `interrupted` is its `failed`.
         "never-finished": `idle-wall: retrying ${String(interrupted)} interrupted and ${String(step.subject.length - interrupted)} unfinished file(s) one at a time in one fresh process: ${relative(step.subject)}`,
         "unhandled-error": `test-suite: error: ${String(first.errors)} error(s) printed outside any test, which running any file again cannot clear.`,
       };
       console.error(said[step.because]);
     }
     if (step.rerun === null) return step.exitCode;
-    // One fresh process without workers over those files, keeping the request's filters, preloads,
-    // reporters and working directory and dropping its test files. It shares one global across
-    // them, as each parallel worker did, since isolating file after file is what makes Bun's
-    // spawnSync wedge.
     const { fileIndexes } = scanRequest(requested);
     const again = await runWalled(
       [
@@ -551,8 +431,8 @@ async function main(): Promise<number> {
     return again.exitCode ?? 1;
   } finally {
     endNaming(roots);
-    // A test the idle wall ended can leave something under the root its removal fails on, such as
-    // a process still writing, and a suite with no failure would otherwise exit 1 over it.
+    // A test the idle wall ended can leave something under the root its removal fails on, and a suite
+    // with no failure would otherwise exit 1 over it.
     await releaseRoot(temporaryRoot).catch(() => {
       console.error(`test-suite: ${temporaryRoot} is still in use, and is left to the daily sweep`);
     });

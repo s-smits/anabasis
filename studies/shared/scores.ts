@@ -1,8 +1,8 @@
 /**
  * Harbor trial score reader and paired arm comparison (`trials.py`, `flipP`, `readsStep`).
- * Non-results (`null` scores, provider/crash endings, non-timeout Harbor exceptions) are excluded
- * from denominators; paired comparisons require complete `streams` on both sides and report mean
- * percentage-point gaps, 95% seeded bootstrap intervals, and exact paired sign-flip p-values.
+ * Non-results (`null` scores, provider/crash endings, non-timeout Harbor exceptions) leave the
+ * denominators; a pairing needs complete `streams` on both sides and reports mean percentage-point
+ * gaps, seeded 95% bootstrap intervals and exact paired sign-flip p-values.
  */
 import { flipP, readsStep, readsStepEitherWay } from "#src/kernel/compare.ts";
 import { CALL_KINDS, read } from "#src/kernel/log.ts";
@@ -13,55 +13,43 @@ import { join } from "#src/meta/path.ts";
 import { mean } from "#src/meta/tally.ts";
 import { RESULT_FILE, TRACE_FILE } from "./pi-solve.ts";
 
-/** One trial of one task, as `trials.py` names it and its folder shows it. */
 export interface Trial {
   readonly task: string;
   readonly trial: string;
-  /** The benchmark reader's score from 0 to 1, or null for a non-result. */
   readonly score: number | null;
-  /** The container solver's ending, or null where another agent ran. */
   readonly ending: string | null;
   readonly billed: number | null;
   readonly turns: number | null;
   readonly calls: number | null;
   readonly seconds: number | null;
-  /** When Harbor started the trial (`started_at` in its `result.json`), which orders a task's
-   *  trials; null where it recorded none, which puts it after those that have one. */
+  /** `started_at` in Harbor's `result.json`, which orders a task's trials; a trial with none goes
+   *  after those that have one. */
   readonly started: string | null;
 }
 
-/** Two arms over the tasks each scored in full. */
 export interface Reading {
   readonly tasks: number;
-  /** Tasks with fewer scored trials than the streams on either side, left out of the reading. */
   readonly short: readonly string[];
   readonly streams: number;
   readonly level: number;
   readonly meanA: number;
   readonly meanB: number;
-  /** B less A, in percentage points, and its 95% bootstrap interval over tasks. */
   readonly difference: number;
   readonly interval: readonly [number, number];
   readonly won: number;
   readonly lost: number;
   readonly tied: number;
-  /** The one-sided sign-flip p that B is better, whether that clears the level, and whether
-   *  either side does, which an A/A reads. */
   readonly p: number;
   readonly step: boolean;
   readonly eitherWay: boolean;
 }
 
-/** The campaign's default level (`tools/d2/round.ts`). */
 const LEVEL = 0.02;
 
-/** The solver's endings that measured nothing (`src/kernel/solve.ts`, "non-result"). */
 const NON_RESULT = new Set(["provider", "crash"]);
 
-/** Harbor's exception for an agent that ran out of its time (`harbor/models/trial/result.py`). */
 const AGENT_TIMEOUT = "AgentTimeoutError";
 
-/** The JSON object at `path`, or null where it is missing, torn or not an object. */
 function jsonAt(path: string): JsonObject | null {
   if (!existsSync(path)) return null;
   try {
@@ -91,8 +79,8 @@ function trialOf(line: JsonObject): Trial {
       if (CALL_KINDS.has(kind)) calls += 1;
     }
   }
-  // Harbor records an agent or a verifier that threw; only the agent's own timeout is the side's
-  // fail, as `wall-ended` is in a campaign. This holds for an agent that writes no result of ours.
+  // Harbor records an agent or a verifier that threw; only the agent's own timeout is the side's fail,
+  // as `wall-ended` is in a campaign.
   const thrown = asRecord(harbor?.exception_info)?.exception_type;
   const lost = (ending !== null && NON_RESULT.has(ending)) || (isString(thrown) && thrown !== AGENT_TIMEOUT);
   return {
@@ -108,10 +96,9 @@ function trialOf(line: JsonObject): Trial {
   };
 }
 
-/** The trials `trials.py` printed, one JSON line each, in the order they started. */
 export function trialsOf(printed: string): Trial[] {
-  // A trial with no start time goes last; ties keep the printed order, which is Harness²'s run
-  // folders in name order (`_run_dirs`), since Harbor's trial names are random.
+  // Ties keep the printed order, Harness²'s run folders in name order (`_run_dirs`), since Harbor's
+  // trial names are random.
   return printed
     .split("\n")
     .filter((line) => line.trim() !== "")
@@ -123,7 +110,6 @@ export function trialsOf(printed: string): Trial[] {
     .toSorted((one, other) => (one.started ?? "\uFFFF").localeCompare(other.started ?? "\uFFFF"));
 }
 
-/** Each task's scores, in the order its trials started, of the trials the reader scored. */
 function scoresByTask(trials: readonly Trial[]): Map<string, number[]> {
   const by = new Map<string, number[]>();
   for (const { task, score } of scored(trials)) {
@@ -134,14 +120,11 @@ function scoresByTask(trials: readonly Trial[]): Map<string, number[]> {
   return by;
 }
 
-/** The trials the reader scored, in their order: what every reading counts, so a non-result
- *  retried later takes no stream's or half's place. */
+/** What every reading counts, so a non-result retried later takes no stream's or half's place. */
 function scored(trials: readonly Trial[]): (Trial & { readonly score: number })[] {
   return trials.filter((each): each is Trial & { readonly score: number } => each.score !== null);
 }
 
-/** How many more scored trials each of `tasks` needs to reach `streams`; a task at its streams is
- *  left out. */
 export function shortfall(
   trials: readonly Trial[],
   tasks: readonly string[],
@@ -156,7 +139,6 @@ export function shortfall(
   );
 }
 
-/** A small seeded generator, so that a report read again prints the same interval. */
 function seeded(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -167,8 +149,6 @@ function seeded(seed: number): () => number {
   };
 }
 
-/** Arm B against arm A over the tasks each scored `streams` times, each task's difference the
- *  summed scores of B less A's, in hundredths. */
 export function readArms(
   a: readonly Trial[],
   b: readonly Trial[],
@@ -216,8 +196,8 @@ export function readArms(
   };
 }
 
-/** One arm's scored trials split in two by the campaign's mirrored halves (`pairsOf`): within
- *  each task, in the order they started, the first and last of each four against the two between. */
+/** An arm's trials split by the campaign's mirrored halves (`pairsOf`): within each task, in the
+ *  order they started, the first and last of each four against the two between. */
 export function halves(trials: readonly Trial[]): [Trial[], Trial[]] {
   const seen = new Map<string, number>();
   const first: Trial[] = [];
@@ -230,8 +210,7 @@ export function halves(trials: readonly Trial[]): [Trial[], Trial[]] {
   return [first, last];
 }
 
-/** The `stream`th scored trial of each task, counted from 0 in the order they started: one stream of an
- *  arm whose harness changes between attempts, as Harness²'s improver's does, read alone. */
+/** One stream of an arm whose harness changes between attempts, as Harness²'s improver's does, read alone. */
 export function streamOf(trials: readonly Trial[], stream: number): Trial[] {
   return [...Map.groupBy(scored(trials), ({ task }) => task).values()].flatMap((own) =>
     own.slice(stream, stream + 1),

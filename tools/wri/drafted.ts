@@ -1,5 +1,5 @@
 /**
- * The drafted exam's structure and how it came to stand, for lane 2:
+ * The drafted exam's structure and how it came to stand (lane 11):
  *
  *   bun tools/wri/drafted.ts <log> [--siblings]
  */
@@ -94,7 +94,6 @@ function promptOf(events: readonly LogEvent[]): string | null {
   return isString(started) ? started : null;
 }
 
-/** Every row, with a first line that says what they are. */
 export function draftRows(events: readonly LogEvent[]): string[] {
   const prompt = promptOf(events);
   const drafted = eventsOf(events, "exam.drafted").at(-1)?.event.data.session;

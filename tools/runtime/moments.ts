@@ -17,14 +17,12 @@ interface Route {
   readonly also?: readonly (readonly [string, string])[];
 }
 
-/** Hook input fields: a shell command (string or argv list) and edited file paths. */
 export interface ToolInput {
   readonly command?: string | readonly string[];
   readonly file_path?: string;
   readonly notebook_path?: string;
 }
 
-/** Normalised tool call extracted from hook input: the shell command string and target file paths. */
 interface Call {
   readonly command: string;
   readonly paths: readonly string[];
@@ -196,10 +194,9 @@ const ROUTES: readonly Route[] = [
   },
 ];
 
-/** Matches file headers inside a Codex patch (`*** Add|Update|Delete File: <path>`). */
+/** File headers inside a Codex patch (`*** Add|Update|Delete File: <path>`). */
 const PATCHED = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gmu;
 
-/** Extracts the shell command and edited file paths from a hook's `tool_input` payload. */
 function callOf(input: unknown): Call {
   if (!isRecord(input)) return { command: "", paths: [] };
   const { command, file_path: file, notebook_path: notebook } = input;
@@ -214,7 +211,7 @@ function callOf(input: unknown): Call {
   return { command: shell, paths: [file, notebook, ...patched].filter(isString) };
 }
 
-/** Returns the routes entered by `input` that are not yet present in `seen`, in table order. */
+/** The routes `input` enters that `seen` lacks, in table order. */
 export function momentsOf(input: unknown, seen: ReadonlySet<string>): Route[] {
   const { command, paths } = callOf(input);
   return ROUTES.filter(
@@ -227,7 +224,7 @@ export function momentsOf(input: unknown, seen: ReadonlySet<string>): Route[] {
 function main(text: string): string {
   const hook = capturedJsonParse(text);
   if (!isRecord(hook)) return "";
-  // Remember delivered routes by session id. Unsafe ids create no state, so guidance repeats.
+  // Unsafe session ids create no state, so guidance repeats.
   const session = hook.session_id;
   const file =
     isString(session) && /^[\w-]{1,128}$/u.test(session) ? join(tmpdir(), "ana-moments", session) : null;

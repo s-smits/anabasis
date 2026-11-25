@@ -2,14 +2,10 @@ import { useState } from "react";
 import { useWaited } from "../waited.ts";
 
 /*
- * What a detail shows while the next is read. `live.ts` says that an answer to the previous request
- * is no answer to the one asked now, and a loading line put in its place at once would replace the
- * harness strip's files and the inspector by "Reading …" for a few frames on every card chosen and
- * every file opened, even on a server that answers within milliseconds. Here the last view that was
- * ready stays while the next is read, the part it stands in marked busy and closed to the pointer,
- * and the loading line comes only once the read has outlasted the page's patience (`waited.ts`), so
- * a quick answer replaces the last with no frame between, and a slow one still says that it is
- * reading. The last view is kept as the render finds it, with no effect between.
+ * What a detail shows while the next is read: the last ready view stays, marked busy and closed to the
+ * pointer, rather than a "Reading …" line flashing on every card or file chosen; the loading line comes
+ * only past the page's patience (`waited.ts`). The last view is kept as the render finds it, with no
+ * effect between.
  */
 
 /** The view to show: the one ready now, else the last that was; `stale` where it is the last, and
@@ -20,9 +16,9 @@ interface Held<View> {
   readonly slow: boolean;
 }
 
-/** `asked` names the request now, or null while none is made, which lets the last view go; `ready`
- *  is the view of its answer, or null while it is read. `ready` is compared by identity, so a caller
- *  passes an answer as `live.ts` keeps it or a view memoised on one. */
+/** `asked` names the request now, or null to let the last view go; `ready` is its answer's view, or
+ *  null while read, compared by identity, so pass an answer as `live.ts` keeps it or a view
+ *  memoised on one. */
 export function useHeld<View>(asked: string | null, ready: View | null): Held<View> {
   const [last, setLast] = useState<View | null>(ready);
   const kept = asked === null ? null : (ready ?? last);

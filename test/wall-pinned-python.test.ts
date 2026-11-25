@@ -1,7 +1,6 @@
-// The Python `bun run runs sync` keeps on a host is the first `python3` a seat's command finds, on the
-// operating system this suite runs on, and the home it lies in stays closed. Each case is a child with
-// a home of its own, since the wall reads the home as a process starts. The pin is a stand-in, as the
-// test holds no download.
+// The Python `bun run runs sync` keeps on a host is the first `python3` a seat's command finds, and the
+// home it lies in stays closed. Each case is a child with its own home, since the wall reads the home
+// as a process starts; the pin is a stand-in.
 import { afterAll, describe, expect, test } from "bun:test";
 import {
   chmodSync,
@@ -29,7 +28,6 @@ function temp(prefix: string): string {
   return dir;
 }
 
-/** What each command says in a seat on a machine whose home is `home`. */
 function inSeat(home: string, commands: readonly string[]): string[] {
   const { exitCode, stdout, stderr } = runSync(
     [
@@ -46,7 +44,6 @@ function inSeat(home: string, commands: readonly string[]): string[] {
 }
 
 describe("the pinned Python", () => {
-  /** The wall's path in a process whose home is `home`. */
   function wallPath(home: string, cwd = REPO): string[] {
     const script = `import { toolchainPathDirs } from "${join(REPO, "src/wall/policy.ts")}";
 console.log(JSON.stringify(toolchainPathDirs()));`;

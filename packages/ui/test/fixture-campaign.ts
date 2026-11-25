@@ -1,33 +1,17 @@
 /**
- * Three campaign logs written from typed events, as the repository's own tests build theirs
- * (`test/handover.test.ts`, `test/wall-practice.test.ts`, `test/climb.test.ts`): the one sample the page's
- * tests render from, through the server's handlers and so through the repository's folds, and the
- * one the page is started on to be looked at. There is no real campaign log in a container: they
- * live on the operator's host and are private.
- *
- *   bun packages/ui/test/fixture-campaign.ts <dir>
- *
- * writes `<dir>/.ana/d2/<name>/log.jsonl` for each campaign, with its kept harnesses' `agent/`
- * folders beside it, and `bun serve.ts --repo <dir>`, run in `packages/ui` (the page's `index.html`
- * names its script from there), reads them. The domains are invented and neutral. The held-out
- * tasks' hidden values, the answers to them and the one check's name carry the markers in
- * `MARKERS`, so that a test can show that no default-tier answer holds any of them.
- *
- * The main campaign, `fixture`, holds every case a pane draws: an opening from a prompt, an exam
- * drafted and frozen, four Examiner sessions, four rounds (a Builder session and the comparison
- * after it under one id, as `tools/d2/round.ts` runs them) and a Builder session open at the end,
- * practice solves, eight comparisons of which two repeat an earlier one and one is a control with an
- * A/A reading beside it, a change of setting between two comparisons, a promotion by the rule, one
- * made with `--despite` and a return to the starter, a comparison cut before its report with a
- * ruled rejection, rejections ruled earned, a check defect and unclear, one comparison settled by a
- * person's labels each way, a task waiting for a label, a disputed task, a non-result solved again,
- * and twenty-five task versions. A second campaign in the same project, `early`, holds no
- * comparison yet; a third, `units`, in another project, ended on its budget with no promotion,
- * after a control whose A/A reading the later sample lost 0 to 4.
- *
- * The reports are the comparison's own reading of its solves (`compared`,
- * `src/campaign/comparison.ts`) and the settling is `settleReading`'s, so nothing in a report is
- * typed by hand. Each event is stamped by a clock this file moves, so the moves take minutes.
+ * Three campaign logs written from typed events, as the repository's own tests build theirs: the
+ * one sample the page's tests render from, through the server's handlers and the repository's
+ * folds, and the one the page is started on to be looked at (real logs are the operator's and
+ * private). `bun packages/ui/test/fixture-campaign.ts <dir>` writes
+ * `<dir>/.ana/d2/<name>/log.jsonl` with each campaign's kept harnesses beside it, for `bun serve.ts
+ * --repo <dir>` run in `packages/ui`. Hidden values, answers and the check's name carry `MARKERS`,
+ * so a test can show no default-tier answer holds them. `fixture` holds every case a pane draws:
+ * Examiner sessions, rounds and an open Builder session, practice, repeats and a control, a change
+ * of setting, promotions by the rule, `--despite` and back to the starter, a cut comparison, every
+ * ruling kind, labels each way, a disputed task and a non-result solved again. `early` (same
+ * project) holds no comparison yet; `units` (another project) ended on its budget after a control
+ * the later sample lost 0 to 4. Reports are `compared`'s and settling is `settleReading`'s, so
+ * nothing in a report is typed by hand.
  */
 import { setSystemTime } from "bun:test";
 import { compared, fixedIn, NO_LABELS } from "../../../src/campaign/comparison.ts";
@@ -58,21 +42,18 @@ export const MARKERS = {
   check: "check-quartz-tally",
 } as const;
 
-/** How a solve ends in the fixture. */
 type Ends = "pass" | "rejected" | "no-answer" | "format" | "provider" | "faulty";
 
-/** One solve to write. */
 interface SolveAsked {
   readonly task: string;
   readonly harness: string;
   readonly ends: Ends;
   readonly comparison?: string;
-  /** Whether its task is held out, so that its answer and its trace carry the answer marker. */
   readonly heldOut: boolean;
 }
 
 /** One comparison's plan: by task id, how each side's solves end, and the rulings of the
- *  rejections, by side and solve. `cutAfter` writes that many solves and no report. */
+ *  rejections; `cutAfter` writes that many solves and no report. */
 interface Planned {
   readonly id: string;
   readonly old: string;
@@ -86,20 +67,15 @@ interface Planned {
   readonly cutAfter?: number;
 }
 
-/** A log being written, as `writer` makes one. */
 type Writer = ReturnType<typeof writer>;
 
-/** What a written fixture is: where, and the names a test asks about. */
 export interface Fixture {
   readonly root: string;
-  /** The main campaign's name, its log and its key as the server forms it. */
   readonly name: string;
   readonly log: string;
   readonly key: string;
-  /** The other two: one with no comparison yet, in the same project; one in another project. */
   readonly early: string;
   readonly units: string;
-  /** The projects their openings name: the main campaign's and `early`'s, then `units`'s. */
   readonly projects: { readonly vowels: string; readonly units: string };
   readonly harnesses: {
     readonly starter: string;
@@ -109,15 +85,12 @@ export interface Fixture {
     readonly d: string;
     readonly e: string;
   };
-  /** A held-out task waiting for a person's label, and the solves whose ruling stays hidden. */
   readonly awaiting: string;
   readonly withheld: readonly string[];
   readonly practiceSolve: string;
   readonly heldOutSolve: string;
-  /** A rejected held-out solve whose ruling stands, and the task a person's label disputed. */
   readonly ruledSolve: string;
   readonly disputed: string;
-  /** A ruled rejection of the comparison cut before its report. */
   readonly unreportedSolve: string;
 }
 
@@ -126,7 +99,6 @@ const MODEL = "faux/solver-1";
 const SEAT = { model: "faux/seat-1", effort: "high" } as const;
 const PROMPT =
   "Count the vowels in a short invented word, such as one a game might make up, and give the count as a whole number.";
-/** The projects the campaigns are opened under (`--project`). */
 const PROJECTS = { vowels: "vowel-counts", units: "unit-conversion" } as const;
 const UNITS_PROMPT =
   "Convert a length between two invented units, given the rate between them, and give the result as a whole number.";
@@ -153,7 +125,6 @@ const CONDITION = {
   host: sha256("fixture host"),
   side: "test",
 } as const;
-/** The same condition after the host's code moved: another setting id, as a new commit gives. */
 const MOVED_HOST = { ...CONDITION, host: sha256("fixture host, moved") };
 const HARNESSES = {
   starter: sha256("fixture starter"),
@@ -169,22 +140,19 @@ const UNITS = {
   b: sha256("units harness b"),
 };
 const CAP = { dollars: 12, reserve: 0.5 };
-/** The held-out tasks the reference's room solves answered at the gate, as an older `try_task`
- *  recorded them (`reference`, `task.gate`), as an Examiner's held task carries one. In the
- *  comparisons only harnesses other than the campaign's last reference, the starter, answer them,
- *  and a candidate's valid answer keeps no task out of the wait for a person's label (`poolOf`), so
- *  without this each would wait as `word-06` does. */
+/** The held-out tasks the reference's room solves answered at the gate (`task.gate`). Only
+ *  harnesses other than the campaign's last reference answer them in the comparisons, and a
+ *  candidate's valid answer keeps no task from waiting for a label (`poolOf`), so without this each
+ *  would wait as `word-06` does. */
 const ROOM_ANSWERED = new Set(["word-02", "word-07", "word-08", "word-10", "word-11", "word-12", "word-16"]);
 const range = (prefix: string, from: number, to: number): string[] =>
   Array.from({ length: to - from + 1 }, (_, at) => `${prefix}-${String(from + at).padStart(2, "0")}`);
-/** The verdict each ending's answer was given, where an answer reached the verifier. */
 const VERDICTS: Readonly<Partial<Record<Ends, JsonObject>>> = {
   pass: { kind: "pass" },
   rejected: { kind: "fail", blocking: [MARKERS.check] },
   format: { kind: "fail", fault: "count is not a whole number" },
   faulty: { kind: "faulty", check: MARKERS.check, reason: "it threw" },
 };
-/** Each ending as `solve.finished` logs it. */
 const ENDINGS: Readonly<Record<Ends, JsonObject>> = {
   pass: { outcome: "pass" },
   provider: { outcome: "non-result", kind: "provider", reason: "the provider closed the connection" },
@@ -195,8 +163,6 @@ const ENDINGS: Readonly<Record<Ends, JsonObject>> = {
 };
 const versionOf = (id: string): string => sha256(`fixture task ${id}`);
 
-/** A log being written for one campaign, the clock that stamps it and the condition its solves
- *  run under. */
 function writer(log: string, t0: string, starter: string) {
   let now = Date.parse(t0);
   let solves = 0;
@@ -210,8 +176,6 @@ function writer(log: string, t0: string, starter: string) {
     later(7);
     append(log, kind, data);
   };
-  /** A seat's turns and calls under `field`, each turn with one call, each with what it billed, the
-   *  first numbered `first`. */
   const traced = (
     seat: "build" | "exam" | "draft" | "solve",
     named: JsonObject,
@@ -241,7 +205,6 @@ function writer(log: string, t0: string, starter: string) {
       });
     }
   };
-  /** One solve: its condition, its start, its trace, its verdict and its end. */
   const solve = (asked: SolveAsked, attempt = 1): string => {
     const { task, harness, ends, comparison, heldOut } = asked;
     if (attempt === 1) solves += 1;
@@ -280,7 +243,6 @@ function writer(log: string, t0: string, starter: string) {
     // A non-result is solved again, as the runner solves it again (`solve`, src/solver/run.ts).
     return ends === "provider" || ends === "faulty" ? solve({ ...asked, ends: "pass" }, attempt + 1) : id;
   };
-  /** The Referee's finding on a rejection: a reader's, with what it billed and its probes' rows. */
   const ruled = (solveId: string, taskId: string, ruling: Ruling) =>
     record("referee.finding", {
       solve: solveId,
@@ -295,7 +257,6 @@ function writer(log: string, t0: string, starter: string) {
       turns: 3,
       billed: 0.02,
     });
-  /** The host's ruling of an answer outside the format, which meters nothing. */
   const hostRuled = (solveId: string, taskId: string) =>
     record("referee.finding", {
       solve: solveId,
@@ -318,14 +279,12 @@ function writer(log: string, t0: string, starter: string) {
     hostRuled,
     later,
     setting: () => settingId(condition),
-    /** The host's code moves: every solve from here runs under another setting id. */
     moveHost: () => {
       condition = MOVED_HOST;
     },
   };
 }
 
-/** The opening, the drafted exam, its reading and its freeze. */
 function opened(
   w: Writer,
   project: string,
@@ -377,7 +336,6 @@ function opened(
   w.record(MOVE, { move: "accept", why: "nobody has read the checker" });
 }
 
-/** An Examiner session that proposes `ids`, held out but for `refused`. */
 function examined(w: Writer, session: string, ids: readonly string[], refused: readonly string[]): void {
   w.record("exam.started", {
     session,
@@ -449,7 +407,6 @@ function examined(w: Writer, session: string, ids: readonly string[], refused: r
   });
 }
 
-/** The practice tasks released, and the setting recorded by the first command that needs it. */
 function prepared(w: Writer, practice: readonly string[]): void {
   for (const id of practice) w.record("task.state", { version: versionOf(id), state: "released" });
   w.record(MOVE, { move: "prepare", why: "no practice task is released" });
@@ -462,8 +419,6 @@ function prepared(w: Writer, practice: readonly string[]): void {
   });
 }
 
-/** A Builder session from `parent` that practises on `practice` and leaves `harness`, or is left
- *  open; a conversation's `checkpoint` is a harness it froze for a comparison on the way. */
 function built(
   w: Writer,
   session: string,
@@ -519,9 +474,6 @@ function built(
   return made;
 }
 
-/** A comparison: its start, its solves, the Referee's rulings and its own report, or as many solves
- *  as `cutAfter` names and no report. It returns each solve by task id, side and number
- *  (`word-02 fresh 0`). */
 function compare(w: Writer, planned: Planned): Map<string, string> {
   const { id, old, fresh, solves = 2 } = planned;
   const versions = Object.keys(planned.tasks).map(versionOf);
@@ -579,7 +531,6 @@ function compare(w: Writer, planned: Planned): Map<string, string> {
     setting: w.setting(),
     broken: null,
     reviewFaults: [],
-    // A report is strings, numbers and lists and records of them, as `write` in round.ts spreads it.
     ...asRecord(told),
   });
   w.record(MOVE, {
@@ -593,7 +544,6 @@ function compare(w: Writer, planned: Planned): Map<string, string> {
   return made;
 }
 
-/** The operator's promotion of `harness`, with what it rests on as `promote.ts` records it. */
 function promote(w: Writer, harness: string, from: string, despite?: string): void {
   w.record("harness.promoted", {
     harness,
@@ -604,8 +554,6 @@ function promote(w: Writer, harness: string, from: string, despite?: string): vo
   w.record(MOVE, { move: "promote", why: "a step read twice", harness });
 }
 
-/** The kept harnesses' `agent/` folders, each guide changed from its parent's, and an exam-side
- *  copy beside one that nothing may read. */
 function keptStates(dir: string, digests: readonly string[]): void {
   const lines = ["# Guide", "", "Count letter by letter, and name each one counted."];
   for (const [at, digest] of digests.entries()) {
@@ -616,7 +564,6 @@ function keptStates(dir: string, digests: readonly string[]): void {
       `${JSON.stringify({ tools: ["read", "bash", "edit", "write"] })}\n`,
     );
     if (at === 0) continue;
-    // Each version says which it is, so that a diff of two holds a line removed and a line added.
     const steps = Array.from(
       { length: at - 1 },
       (_, n) => `${String(n + 1)}. Say the count once, as a number.`,
@@ -624,7 +571,6 @@ function keptStates(dir: string, digests: readonly string[]): void {
     const guide = [...lines, `Version ${String(at)} of this guide.`, ...steps];
     writeFileSync(join(agent, "BUILT_AGENTS.md"), `${guide.join("\n")}\n`);
     if (at < digests.length - 1) continue;
-    // The latest ran its one program, which left Python's bytecode cache beside it.
     const bin = join(dir, "states", digest, ".toolchain", "bin");
     mkdirSync(join(bin, "__pycache__"), { recursive: true });
     writeFileSync(
@@ -638,7 +584,6 @@ function keptStates(dir: string, digests: readonly string[]): void {
   writeFileSync(join(model, "expected.json"), `${JSON.stringify({ expected: MARKERS.hidden })}\n`);
 }
 
-/** A campaign's folder under `root`, refused where `root` is the repository's own. */
 function folderOf(root: string, name: string): string {
   // The repository's own `.ana/` holds the operator's campaigns, and a fixture is none of them.
   if (resolve(root) === resolve(import.meta.dir, "../../..")) {
@@ -649,8 +594,6 @@ function folderOf(root: string, name: string): string {
   return dir;
 }
 
-/** The main campaign's first part: the exam, the first round, its repeat and the promotion it
- *  earned, the control after it and the second round, settled by a person's labels. */
 function firstPart(w: Writer) {
   const { starter, a, b } = HARNESSES;
   const practice = ["word-p1", "word-p2"];
@@ -750,10 +693,6 @@ function firstPart(w: Writer) {
   };
 }
 
-/** The main campaign's second part, after the host's code moved: the third round and its repeat,
- *  a promotion despite the rule, a round whose comparison was cut, a return to the starter, a
- *  comparison against it, and a Builder session open at the end. It returns the cut comparison's
- *  ruled rejection. */
 function secondPart(w: Writer): string {
   const { starter, a, b, c, d, e } = HARNESSES;
   const practice = ["word-p1", "word-p2"];
@@ -822,8 +761,6 @@ function secondPart(w: Writer): string {
   return cut.get("word-17 old 0") ?? "";
 }
 
-/** A campaign in the same project with no comparison yet, opened `--hitl`: its exam, its tasks
- *  and its practice. */
 function earlyCampaign(root: string, name: string): void {
   const dir = folderOf(root, name);
   const w = writer(join(dir, LOG_FILE), "2026-09-25T09:00:00.000Z", HARNESSES.starter);
@@ -832,9 +769,8 @@ function earlyCampaign(root: string, name: string): void {
   prepared(w, ["word-p8", "word-p9"]);
 }
 
-/** A campaign its Builder leads, written alone under `root`, whose open session `b-1` began the
- *  Examiner session `x-2` and then ran one practice solve: the window the session's solves are read
- *  over runs to its next start, as its head counts them, and not to the first move it made. */
+/** A campaign its Builder leads, whose open session `b-1` began Examiner session `x-2` and then ran
+ *  one practice solve: the session's solves are read up to its next start, not its first move. */
 export function writeLedCampaign(root: string): string {
   const name = "led";
   try {
@@ -857,8 +793,6 @@ export function writeLedCampaign(root: string): string {
   }
 }
 
-/** A campaign in another project that ended on its budget with two comparisons and no
- *  promotion. */
 function unitsCampaign(root: string, name: string): void {
   const dir = folderOf(root, name);
   const w = writer(join(dir, LOG_FILE), "2026-09-20T09:00:00.000Z", UNITS.starter);
@@ -878,9 +812,9 @@ function unitsCampaign(root: string, name: string): void {
       "unit-04": { old: ["no-answer", "no-answer"], fresh: ["no-answer", "no-answer"] },
     },
   });
-  // A control with the reference read against itself, whose second sample lost every task: 0 to 4,
-  // which a one-sided test of wins reads as nothing and is a false step all the same. The halves
-  // are mirrored in time, the first and last of a task's four solves against the two between.
+  // A control with the reference against itself whose second sample lost every task, 0 to 4: a
+  // one-sided test of wins reads nothing, yet it is a false step. The halves are mirrored in time, the
+  // first and last of four solves against the two between.
   const lostLater = {
     old: ["pass", "no-answer", "no-answer", "pass"],
     fresh: ["pass", "pass", "pass", "pass"],
@@ -911,7 +845,6 @@ function unitsCampaign(root: string, name: string): void {
   keptStates(dir, [UNITS.starter, UNITS.a, UNITS.b]);
 }
 
-/** Write the three campaigns under `root`, and say what they hold. */
 export function writeFixtureCampaign(root: string): Fixture {
   const name = "fixture";
   const dir = folderOf(root, name);
@@ -942,8 +875,8 @@ export function writeFixtureCampaign(root: string): Fixture {
   }
 }
 
-/** Every handler of the server, called directly over the campaigns under `root` in `tier`, as the
- *  router calls them (`api.ts`): what the page's tests render from. */
+/** Every handler of the server over the campaigns under `root` in `tier`, called as the router
+ *  calls them (`api.ts`). */
 export function answersOver(root: string, tier: Tier) {
   const reading: Reading = { repo: root, trees: "directory", tier };
   return {

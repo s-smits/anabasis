@@ -1,8 +1,3 @@
-/**
- * Whether a string literal is this repository's spelling or somebody else's.
- */
-
-/** Prefixes another program, registry or standard owns, where a local name reads against nothing. */
 const OTHER_OWNER = [
   "-",
   "@",
@@ -39,7 +34,6 @@ const TOOLCHAIN_FILES = new Set([
   "README.md",
 ]);
 
-/** Whether the spelling belongs to another program, registry or standard rather than to this tree. */
 export function ownedElsewhere(value: string): boolean {
   return TOOLCHAIN_FILES.has(value) || OTHER_OWNER.some((prefix) => value.startsWith(prefix));
 }

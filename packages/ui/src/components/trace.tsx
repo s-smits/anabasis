@@ -4,21 +4,15 @@ import { money } from "../views/format.ts";
 import { Badge, Button } from "./primitives.tsx";
 import { ToolCallDetail } from "./tool-call.tsx";
 
-/*
- * A trace as a reader follows it: each model turn with what it said, and under it the calls it
- * made, opened one at a time (`ToolCallDetail`). A Builder session on record ran 116 turns, so a
- * long trace shows its first turns and the rest on request, and a long turn its first lines.
- */
+// A trace as a reader follows it: each model turn with what it said and, under it, its calls, opened
+// one at a time. A Builder session on record ran 116 turns, so a long trace shows its first turns and a
+// long turn its first lines, the rest on request.
 
-/** Turns shown before the rest are asked for. */
 const FIRST_TURNS = 40;
-/** Characters of a turn's text shown before the rest are asked for. */
 const FIRST_CHARACTERS = 480;
 
-/** One turn's text, cut where it is long. */
 function TurnText({ text }: { text: string }) {
   const [whole, setWhole] = useState(false);
-  // A turn that only called tools says so by its calls, under it.
   if (text.trim() === "") return null;
   const long = text.length > FIRST_CHARACTERS;
   return (
@@ -33,7 +27,7 @@ function TurnText({ text }: { text: string }) {
   );
 }
 
-/** Every turn in order, each with its calls; calls whose turn is not on record follow at the end. */
+/** Every turn in order with its calls; calls whose turn is not on record follow at the end. */
 export function Trace({ turns, calls }: { turns: readonly Turn[]; calls: readonly ToolCall[] }) {
   const [all, setAll] = useState(false);
   if (turns.length === 0 && calls.length === 0) {

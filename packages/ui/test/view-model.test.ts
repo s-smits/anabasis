@@ -1,8 +1,7 @@
 /**
- * What the page computes before it draws, read without a browser: the address a route is written
- * as and read back from (`route.ts`), the values a pane formats (`format.ts`) and what the Campaign
- * pane reads off a comparison (`campaign-data.ts`). Each is held over a space of inputs rather than
- * one example. What a person can do with the drawn page is `browser-smoke.test.ts`.
+ * What the page computes before it draws, without a browser: a route's address both ways
+ * (`route.ts`), the values a pane formats (`format.ts`) and what the Campaign pane reads off a
+ * comparison (`campaign-data.ts`), each over a space of inputs.
  */
 import { describe, expect, test } from "bun:test";
 import { keyIfDefined } from "../../../src/meta/optional-key.ts";

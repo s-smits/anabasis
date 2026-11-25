@@ -1,6 +1,6 @@
-// `bun run runs sync` and the settings every remote verb carries, against a fake ssh that runs each
-// script in a temporary peer, with a stand-in `uv` and Python. What it must never do is the point of
-// most cases: try ssh with no host, carry a credential, or move a Python under a live campaign.
+// `bun run runs sync` and the settings every remote verb carries, against a fake ssh running each
+// script in a temporary peer, with stand-in `uv` and Python. Most cases hold what it must never do: try
+// ssh with no host, carry a credential, or move a Python under a live campaign.
 import { afterAll, describe, expect, test } from "bun:test";
 import {
   chmodSync,
@@ -17,22 +17,18 @@ import { pinnedPythonDir } from "../src/wall/policy.ts";
 import type { Host } from "../tools/runs/host-config.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
-/** What a fake peer answers (`test/helpers/fake-hosts.ts`). */
 interface Fleet {
   readonly active?: string | undefined;
   readonly offline?: boolean;
   readonly execute?: boolean;
   readonly env?: Readonly<Record<string, string>>;
 }
-/** An entry as a person may write it, a wrong type included. */
 type HostEntry = Omit<Partial<Host>, "exclude" | "settings"> & {
   readonly exclude?: readonly string[] | string;
   readonly settings?: Readonly<Record<string, string>> | string;
 };
 
-/** Built to look like a credential to the scan and no real one. */
 const SECRET = `sk-ant-oat01-${"Zx9".repeat(30)}`;
-/** A version no machine this suite runs on holds. */
 const VERSION = "3.99.1";
 
 const UV = `#!/bin/sh
@@ -81,7 +77,6 @@ function script(path: string, text: string): void {
 function fixture() {
   const fake = fakeHosts();
   fixtures.push(fake);
-  // This verb asks the real git of the tree it runs from, and no fake one.
   rmSync(join(fake.root, "bin", "git"));
   gitText(fake.main, "init", "-q");
   const peerHome = join(fake.root, "peer-home");
@@ -116,8 +111,8 @@ function fixture() {
 }
 
 describe.concurrent("settings", () => {
-  /** What a verb on the peer finds in its environment, where the peer's own value of each is
-   *  `its own`: a stand-in Bun prints it, run through the path every remote verb takes. */
+  /** What a verb on the peer finds in its environment, where the peer's own value is `its own`,
+   *  printed by a stand-in Bun through the path every remote verb takes. */
   async function sent(host: Partial<Host>, env: Record<string, string>) {
     const made = fixture();
     const bun = join(made.root, "print-env");
@@ -261,7 +256,6 @@ describe.concurrent("the table of tools", () => {
   const table = (row: Row = {}) => ({
     ANA_TOOLS: capturedJsonStringify({ mytool: { version: "2.0.0", install: INSTALL, ...row } }) ?? "",
   });
-  /** The stand-in `mytool` in `home`, at `version`. */
   const held = (home: string, version: string) =>
     script(join(home, ".local/bin/mytool"), `#!/bin/sh\necho "mytool ${version} (stand-in)"\n`);
   const version = (home: string) => readFileSync(join(home, ".local/bin/mytool"), "utf8");

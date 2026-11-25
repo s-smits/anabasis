@@ -192,7 +192,6 @@ describe("answer and file probes", () => {
     expect(JSON.stringify(moved.output)).toContain("$.span replaced with 10");
     expect(JSON.stringify(moved.output)).toContain("probe 1 of 8: 7 probes left");
     expect(tool.description).toContain("at most 8 probes");
-    // Unchanged text file value is rejected.
     const fileRows: ProbeRow[] = [];
     const fileTool = probeTool(verify, TASK, ANSWER, fileRows, {
       files: [{ path: "report.txt", base64: "YmFk", text: "bad" }],
@@ -383,7 +382,6 @@ describe("rejection adjudication and evidence gates", () => {
       replay: { kind: "fail", blocking: ["span"] },
     });
 
-    // Check with no declared answer fields needs no probe.
     const noFields = setup(
       [
         ruling({
@@ -626,7 +624,6 @@ describe("rejection adjudication and evidence gates", () => {
     expect(read(wall.log).at(-1)?.data).toMatchObject({ walled: true, ruling: "unclear" });
     expect(signals.at(-1)?.aborted).toBe(true);
 
-    // Provider error -> ruling null with error recorded.
     const limit = "the account's session limit is reached";
     const errored = setup([fauxAssistantMessage("", { stopReason: "error", errorMessage: limit })]);
     expect((await referee(errored.reader, errored.fail())).ruling).toBeNull();
@@ -636,7 +633,6 @@ describe("rejection adjudication and evidence gates", () => {
       walled: false,
     });
 
-    // External kill signal -> ruling null with error null.
     const kill = new AbortController();
     const killed = setup([callTool(PROBE, { changes: [{ path: SPAN, value: "10" }] })]);
     let killRuns = 0;
@@ -811,7 +807,6 @@ describe("adversarial draft audit", () => {
     expect(bigSetup.sent[2]).toContain(bigTail);
     expect(draftVerifiedLen).toBe(bigInputCsv.length);
 
-    // No accept controls -> skipped with 0 model calls.
     const noControls = setup([]);
     expect(
       (await reviewDraft(noControls.reader, { ...target, controls: [], log: noControls.log })).verdict,

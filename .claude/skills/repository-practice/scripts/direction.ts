@@ -1,9 +1,5 @@
 #!/usr/bin/env bun
-/**
- * Report production imports that cross into helper or test code.
- *
- *   bun .claude/skills/repository-practice/scripts/direction.ts [--file <path>]...
- */
+/** Reports production imports that cross into helper or test code: `direction.ts [--file <path>]...`. */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";
 import { join } from "#src/meta/path.ts";

@@ -1,15 +1,11 @@
 /**
- * Practice feedback discipline, coarse-band channel audit, and 2x2 starter-read family transfer
- * matrix (lanes 11 and 7):
+ * Practice discipline, the coarse-band channel and the starter-read family transfer matrix (lane 12):
  *
  *   bun tools/wri/wri.ts reader transfer --log <log>
  *
- * Implements the practised-vs-unpractised family split across starter-read task origins (`chosen`,
- * `before`, `after`) directly from production `starterReads` and `familiesOf`, plus per-Builder
- * practice concentration, edit-before-practice hygiene, diagnostic tool usage (`read_trace`,
- * `check_harness`, `preview_harness`), and pre-promotion practice release checks.
- * Wall-safe: prints only tallies, percentages, session ids, and counts — never family names, task
- * text, or raw objective values.
+ * Splits each starter read's tasks by origin (`chosen`, `before`, `after`) and by whether their family
+ * was practised, from `starterReads` and `familiesOf`, and audits each Builder's practice. It prints
+ * tallies, percentages, session ids and counts, never family names, task text or raw objective values.
  */
 import { ORIGINS, type Origin, type StarterRead, starterReads } from "#src/campaign/climb.ts";
 import { testOf, type Tally } from "#src/kernel/compare.ts";

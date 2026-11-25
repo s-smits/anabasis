@@ -11,7 +11,6 @@ const pull = (number: number, head: string, base: string, oid = head): Pull => (
   labels: [],
 });
 
-/** Ancestry over a history written as each commit's parent. */
 const history =
   (parents: Record<string, string>) =>
   (head: string, other: string): boolean => {

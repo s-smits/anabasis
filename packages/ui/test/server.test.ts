@@ -20,7 +20,6 @@ beforeAll(() => {
 });
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** A GET of `path` as a browser on the loopback sends it, with the token unless told otherwise. */
 function get(
   path: string,
   served: ServerOptions = options,

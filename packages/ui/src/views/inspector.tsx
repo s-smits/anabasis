@@ -13,22 +13,13 @@ import { useHeld } from "./held.ts";
 import { useLate } from "./late.ts";
 import { plural } from "../../../../src/meta/text.ts";
 
-/*
- * What the inspector on the right holds, as the route names it (`route.ts`): a file of a kept
- * harness (`harness` and `file`), the diff of two harnesses (`diff` to `harness`), or one
- * raw event (`event`). The Campaign pane opens the first two, the Moves pane a session's harness,
- * and the Log pane the third.
- *
- * Each is read here, and only while the route names it: the diff per file, and the event only on
- * a server in the exam tier, since in the default tier it is refused and its place is the exam
- * side's quiet line, never an error. An answer to the previous
- * file or diff is no answer to the one named now: it stays, under its own head and closed to the
- * pointer, until the next is read, and a read slower than a moment says so (`held.ts`); an answer to
- * the previous event is shown as loading. The issues an answer carries, a harness folder missing or
- * refused, a path refused, are shown with it.
- */
+// What the inspector on the right holds, as the route names it: a kept harness's file (`harness`,
+// `file`), the diff of two harnesses (`diff` to `harness`), or one raw event (`event`), read only while
+// the route names it. The event is read only in the exam tier; in the default tier its place is the
+// exam side's quiet line, never an error. An answer to the previous file or diff stays, under its own
+// head and closed to the pointer, until the next is read, and a slow read says so (`held.ts`); the
+// issues an answer carries are shown with it.
 
-/** One line of a unified diff, numbered on the side or sides it stands on. */
 interface DiffLine {
   readonly kind: "hunk" | "add" | "remove" | "same" | "note";
   readonly old: number | null;
@@ -36,7 +27,6 @@ interface DiffLine {
   readonly text: string;
 }
 
-/** A harness file or a diff as the inspector shows it: its head, and the answer it was read from. */
 type Shown = {
   readonly path: string;
   readonly digest: string;
@@ -51,7 +41,6 @@ const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u;
 const SIGNS = { hunk: "", add: "+", remove: "−", same: "", note: "" } as const;
 const CHANGE_TONES = { added: "good", removed: "bad", changed: "neutral" } as const;
 
-/** A unified diff's lines from its first hunk on, the file headers before it left out. */
 function diffLines(diff: string): DiffLine[] {
   const lines: DiffLine[] = [];
   let [old, fresh] = [0, 0];
@@ -81,9 +70,6 @@ function diffLines(diff: string): DiffLine[] {
   return lines;
 }
 
-/** A harness's files, each a link that opens it in the inspector, and what the server could
- *  not read of them. Another harness's list stays, closed to the pointer, while this one's is read
- *  (`held.ts`). */
 export function HarnessFiles({
   of,
   digest,
@@ -123,11 +109,9 @@ export function HarnessFiles({
   );
 }
 
-/** Two harnesses' files compared, one unified diff a changed file, each line signed as well as
- *  tinted so that an addition and a removal read apart without colour. The files stand in the
- *  harness's part order, the guide first, and only the first is open, so the closed heads under it
- *  index what changed, where a diff with every file open and the guide last can stand thousands of
- *  pixels tall. */
+/** Each line signed as well as tinted, so an addition and a removal read apart without colour.
+ *  Files stand in part order, guide first, with only the first open, so the closed heads index what
+ *  changed rather than standing thousands of pixels tall. */
 function DiffView({ diff }: { diff: HarnessDiff }) {
   const { listed, toggle } = useBuildFiles(diff.files);
   return (
@@ -145,7 +129,6 @@ function DiffView({ diff }: { diff: HarnessDiff }) {
   );
 }
 
-/** One changed file: its head, which opens and closes it, over its lines. */
 function DiffFile({ file, open }: { file: HarnessDiff["files"][number]; open: boolean }) {
   // A file the server could not diff in its bound has no lines, and its issue says why.
   const lines = file.diff === null ? [] : diffLines(file.diff);
@@ -184,7 +167,7 @@ function DiffFile({ file, open }: { file: HarnessDiff["files"][number]; open: bo
   );
 }
 
-/** One raw event. A page in the default tier knows the server refuses it, and does not ask. */
+/** A page in the default tier knows the server refuses a raw event, and does not ask. */
 function EventBody({ campaign, index, tier }: { campaign: string; index: number; tier: Tier }) {
   const live = useEvent(campaign, tier === "exam" ? index : null);
   // The event before stays while the next is read, and a read is said only once it is late.
@@ -206,16 +189,12 @@ function EventBody({ campaign, index, tier }: { campaign: string; index: number;
   );
 }
 
-/** A file's answer as the inspector's payload, or null for a refused path, which is answered with no
- *  value and an issue that says why: the issue, not an empty file. */
 function payloadOf(answer: HarnessFile) {
   return answer.value === null && answer.issues.length > 0
     ? null
     : { content: answer.content, value: answer.value, truncated: answer.truncated, bytes: answer.bytes };
 }
 
-/** The file or the diff the route names, read; `named` is its head, and `ready` its view once the
- *  answer to it is in. */
 function useNamed(of: Of, reading: CampaignReading | null, route: Navigation["route"]) {
   const digest = route.harness;
   const harness = harnessLabel(reading, digest);
@@ -245,9 +224,8 @@ function useNamed(of: Of, reading: CampaignReading | null, route: Navigation["ro
   return { named, ready };
 }
 
-/** The inspector the route opens, or nothing while it names none. A file or a diff that is open
- *  stays, its head with it, while the next the route names is read (`held.ts`), so that opening one
- *  file after another, or a diff after a file, paints no empty inspector between them. */
+/** The inspector the route opens, or nothing. An open file or diff stays, head and all, while the
+ *  next is read (`held.ts`), so moving between them paints no empty inspector. */
 export function Inspector({
   navigation,
   reading,
@@ -263,7 +241,6 @@ export function Inspector({
   const { view, stale, slow } = useHeld(named === null ? null : `${named.kind} ${named.path}`, ready);
   if (named !== null && route.harness !== null) {
     const shown = view;
-    // The files beside a file are the shown file's harness's, or the named one's before any is shown.
     const listing = shown ?? { ...named, digest: route.harness };
     const listed = listing.kind === "file" ? listing.digest : null;
     return (

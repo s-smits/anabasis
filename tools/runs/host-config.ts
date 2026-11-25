@@ -11,38 +11,25 @@ import { isAbsolute, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 
-/** The live campaigns a machine carries where nothing configures its capacity. */
 export const RUN_CAP = 2;
 
-/** Where in a host's home the check runner keeps its slots, one clone with its packages a sending
- *  machine and slot (`onHost`, tools/runtime/router/run.ts), which `runs retire` clears once idle. */
 export const RUNNER_SLOTS = ".cache/ana-runner";
 
 export interface Host {
   readonly name: string;
   readonly ssh: string;
-  /** Absolute, or ~/path. Its leading home marker expands; the remainder stays literal. */
   readonly tree: string;
   readonly bun: string;
-  /** The env files there, credentials and this list among them. */
   readonly envFiles?: readonly string[];
-  /** Live campaigns or simulation seats this machine may carry. */
   readonly capacity?: number;
-  /** The check tasks this machine runs at once for the runner; unset, two. */
   readonly checks?: number;
   /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
   readonly packs?: readonly string[];
-  /** This host's own values of what a verb carries, over the shared ones; an empty one sends none. */
   readonly settings?: Readonly<Record<string, string>>;
-  /** The `ANA_TOOLS` rows this machine keeps outside the table: reported, and never changed. */
   readonly exclude?: readonly string[];
-  /** A controller already prepared by code.ts, never accepted from configuration. */
   readonly prepared?: true;
 }
 
-/** One outside benchmark: the machine that rolls it (undefined for this one), its score store and
- *  sitting command there, absolute or under `~/` where it was given relative, the packs whose
- *  runs it reads, and optional minimum promotions before automatic WRI regression analysis. */
 export interface Bench {
   readonly name: string;
   readonly host: Host | undefined;
@@ -52,11 +39,8 @@ export interface Bench {
   readonly minPromo?: number;
 }
 
-/** What every remote verb carries from this machine's environment, and all an entry's `settings` may
- *  name: `ANA_HOSTS` stays here, since a peer holding it would gather every host's records. */
 export const CARRIED: readonly string[] = ["ANA_KEEP", "ANA_LOGINS", "ANA_LOGIN_RUNS", "ANA_LOGIN_SUBS"];
 
-/** An entry's `settings`: an object of strings, and only of what is carried. */
 function settingsOf(name: string, value: unknown): Readonly<Record<string, string>> | undefined {
   if (value === undefined) return undefined;
   const entries = Object.entries(asRecord(value) ?? { "": null });
@@ -69,9 +53,6 @@ function settingsOf(name: string, value: unknown): Readonly<Record<string, strin
   return Object.fromEntries(entries.flatMap(([key, one]) => (isString(one) ? [[key, one] as const] : [])));
 }
 
-/** What the list setting `name` lists (`.env.runs.example`), refused as a plain error, which the CLI
- *  reads as a refusal. Set and empty, as a copied example leaves it, is unset: nothing listed, and
- *  for `ANA_HOSTS` this machine alone. */
 function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
   if (text.trim() === "") return [];
   try {
@@ -83,20 +64,16 @@ function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
   throw new Error(`${name} takes a JSON list (.env.runs.example)`);
 }
 
-/** Whether this verb is kept to this machine: one another host sent here (`ANA_HOP`, set by
- *  `scriptCommand` in hosts.ts), or one asked for here alone (`cli.ts`). It reaches no further
- *  host, so two machines that list each other do not ask each other in a loop, rather than the
- *  sender emptying `ANA_HOSTS`, which a keeper would inherit and so count no other machine's runs
- *  against a login's cap. */
+/** Whether this verb is kept to this machine: sent here by another host (`ANA_HOP`, set by
+ *  `scriptCommand` in `hosts.ts`) or asked for here alone (`cli.ts`). It reaches no further host,
+ *  so two machines that list each other never loop; the sender does not empty `ANA_HOSTS`, since a
+ *  keeper would inherit that and count no other machine's runs against a login's cap. */
 export const isLocalOnly = (
   env: Readonly<Record<string, string | undefined>> = runtimeProcess.env,
 ): boolean => env.ANA_HOP === "1";
 
-/** Where a check runs (`auto`, `here` or a host's name), as `ANA_CHECK_HOST` says; undefined where it
- *  is unset. */
 export const checkHost = (): string | undefined => runtimeProcess.env.ANA_CHECK_HOST;
 
-/** The check tasks `host` takes at once from the check runner and a landing: its `checks`, or two. */
 export const checkSlots = (host: Host): number => host.checks ?? 2;
 
 export interface Place {
@@ -142,15 +119,6 @@ export interface Spreading<T> {
   readonly startsAlone?: (task: T) => boolean;
 }
 
-/**
- * `tasks` dealt over the slots of `places` in order: a task takes the free seat whose place has the
- * most room, the first listed among equals, and one that `startsAlone` takes the first free seat once
- * nothing runs, so no host runs two whole suites of one landing. A place `qualify` refuses takes
- * none; one whose `run` says `elsewhere` takes no more and its task goes back in order. A seat's
- * `leave` takes its place out at once where another remains and says whether it did, so of two places
- * that drop together the second keeps its task. Ends once the queue is empty, `halt` says so or no
- * place is left, after what runs has finished; `unrun` keeps the rest in order.
- */
 export async function spread<T>(
   places: readonly Place[],
   tasks: readonly T[],
@@ -219,7 +187,6 @@ export async function spread<T>(
   }
 }
 
-/** The hosts `text` lists, by default the environment's `ANA_HOSTS`: none for a verb kept here. */
 export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {
   if (isLocalOnly()) return [];
   const value = listed(text);
@@ -279,11 +246,11 @@ export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Hos
   });
 }
 
-/** The machine settings' file, `.env.runs`, which lies in the main worktree and in no other. */
 export const envRunsFile = (root: string): string => join(mainTree(root), ".env.runs");
 
-/** Reads selected keys from the main worktree's `.env.runs` via Bun's own `--env-file` parser so
- *  standalone commands (`bun run wri`, check router) share fleet/bench config without loading `.env`. */
+/** Reads selected keys from the main worktree's `.env.runs` with Bun's own `--env-file` parser, so
+ *  standalone commands (`bun run wri`, the check router) share fleet and bench config without
+ *  loading `.env`. */
 function readEnvRuns(root: string, keys: readonly string[]): Record<string, string | undefined> {
   const file = envRunsFile(root);
   if (!existsSync(file)) return {};
@@ -296,18 +263,11 @@ function readEnvRuns(root: string, keys: readonly string[]): Record<string, stri
   );
 }
 
-/**
- * The hosts for a command run in `root` that loaded no env file: the environment's `ANA_HOSTS` where
- * it holds a list, else the one in the main worktree's `.env.runs`, where the bun router finds it for
- * a check task (`tools/runtime/router/bun`).
- */
 export function hostsFor(root: string): readonly Host[] {
   if ((runtimeProcess.env.ANA_HOSTS ?? "") !== "") return hostsOf();
   return hostsOf(readEnvRuns(root, ["ANA_HOSTS"]).ANA_HOSTS ?? "");
 }
 
-/** The benchmarks for a standalone command run in `root` that loaded no env file (`bun run wri`):
- *  uses `EVAL_RUNNER`/`ANA_HOSTS` from the current environment when set, else from `.env.runs`. */
 export function benchesForRoot(root: string): readonly Bench[] {
   if ((runtimeProcess.env.EVAL_RUNNER ?? "") !== "") return benchesOf();
   const fromFile = readEnvRuns(root, ["ANA_HOSTS", "EVAL_RUNNER"]);
@@ -325,17 +285,11 @@ export function configuredRuntime(host: Host) {
     isAbsolute(path) || path.startsWith("~/") ? path : `${host.tree}/${path}`;
   return {
     bun: host.bun.includes("/") ? rooted(host.bun) : host.bun,
-    // Bun implicitly loaded the configured checkout's .env before controllers moved elsewhere.
     envFiles: [...new Set([".env", ...(host.envFiles ?? [".env.runs"])].map(rooted))],
   };
 }
-/** This machine's own name, its short hostname: what `fresh` ends a run's name with when it runs
- *  here, and what `move` reads as `here`. */
 export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
-/** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. An older value that
- *  names one machine alone, as `ABLATION_HOST` did, is refused as not JSON. A verb kept to this
- *  machine (`isLocalOnly`) reads local benchmarks alone rather than rejecting unconfigured hosts. */
 export function benchesOf(env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): Bench[] {
   const value = listed(env.EVAL_RUNNER ?? "", "EVAL_RUNNER");
   const known = hostsOf(env.ANA_HOSTS ?? "");

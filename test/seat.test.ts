@@ -25,8 +25,8 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 const look = fauxAssistantMessage([fauxToolCall("look", {})], TOOL_USE);
 
-/** A seat on the faux provider that answers `responses` in order, with one tool, `look`, whose
- *  every call is pushed to `looked` with the signal it ran under; `sent` holds each context. */
+/** A seat on the faux provider answering `responses` in order, with one tool, `look`, whose calls
+ *  are pushed to `looked` with their signal; `sent` holds each context. */
 function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}, provider = "faux") {
   const faux = fauxProvider({
     provider,
@@ -167,8 +167,8 @@ describe("durable session boundaries", () => {
     expect(read(log).map(({ kind }) => kind)).toEqual(["build.turn", "build.call", "build.turn"]);
   });
 
-  // pi-durable records every assistant entry in the conversation's `pi.usage`, an attempt it retried
-  // included, so the session's bill is that ledger's and no turn carries another's tokens or dollars.
+  // pi-durable records every assistant entry in `pi.usage`, retried attempts included, so the session's
+  // bill is that ledger's and no turn carries another's tokens or dollars.
   it("bills a retried attempt in the session's bill once, without a turn and without the next turn's dollars", async () => {
     const log = join(scratch, "retry.jsonl");
     const failed = fauxAssistantMessage("charged partial", {
@@ -189,7 +189,6 @@ describe("durable session boundaries", () => {
     if (only === undefined) throw new Error("the session took no turn");
     const own = billOf(freezePrices([s.seat.model]), ledgerOf([["openai-codex/faux-seat", only.usage]]));
     expect(only.usage.cost.total).toBeCloseTo(own, 10);
-    // pi-ai's faux provider files a session's whole prompt as cache reads and writes from 1.5.0.
     const prompt = (tokens: { input: number; cacheRead: number; cacheWrite: number }) =>
       tokens.input + tokens.cacheRead + tokens.cacheWrite;
     expect(prompt(sat.spent.tokens)).toBeGreaterThan(prompt(only.usage));
@@ -224,9 +223,9 @@ describe("durable session boundaries", () => {
 });
 
 describe("refused durable tool calls", () => {
-  // Durable runs `afterTool` on the error results it writes itself from 1.5.0, and still writes an
-  // aborted round's pending calls with no hook; the committed message is what records them, once.
-  // Each refusal is pi-ai's own text, and a malformed call reaches `prepareArguments` as `{}`.
+  // Durable runs `afterTool` on the error results it writes itself, but writes an aborted round's
+  // pending calls with no hook, so the committed message records them once. A malformed call reaches
+  // `prepareArguments` as `{}`.
   it("traces an unavailable tool and invalid arguments once each, in call order, as the model read them", async () => {
     const log = join(scratch, "refused-calls.jsonl");
     const phases: string[] = [];
@@ -239,7 +238,6 @@ describe("refused durable tool calls", () => {
       parameters: Type.Object({ key: Type.String() }),
       execute: reached,
     });
-    // A harness's own tool reaches the seat as a plain JSON Schema, which TypeBox has not marked.
     const plain = {
       ...required,
       name: "note",
@@ -281,7 +279,6 @@ describe("refused durable tool calls", () => {
     expect(phases).toEqual(
       ["look", "absent", "look", "note"].flatMap((name) => [`start ${name}`, `end ${name}`]),
     );
-    // The trace holds each result's text as the next request gave it to the model.
     const [, sent] = s.sent;
     if (sent === undefined) throw new Error("the session made no second request");
     const results = parseJsonAs<{ messages: { role: string; content: { text: string }[] }[] }>(sent)

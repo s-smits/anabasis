@@ -1,12 +1,9 @@
-// Rule 3's practice readers, checked on every small campaign rather than on a chosen pair of them;
-// the byte identity of the messages that carry them rests on test/builder.test.ts and
-// test/builder-led.test.ts. The Builder hears each comparison as its tally and reading, so whatever
-// it reads besides (the frontier
-// it compares on, the practice it is owed, the tasks a release hands it) must be the same in every
-// log that differs only in which held-out tasks the other harness answered, given that tally. Each
-// log below holds the reference's and the other harness's solves of three tasks in one or two
-// comparisons, with every outcome of two solves a side; logs with one reference record and one tally
-// are grouped, and the Builder's view must be one value in each group.
+// Rule 3's practice readers, checked on every small campaign; the byte identity of the messages
+// carrying them rests on test/builder.test.ts and test/builder-led.test.ts. The Builder hears each
+// comparison as its tally and reading, so all else it reads (the frontier, the practice owed, the tasks
+// a release hands it) must be the same in every log differing only in which held-out tasks the other
+// harness answered. Logs with one reference record and one tally are grouped, and the Builder's view
+// must be one value in each group.
 import { describe, expect, it } from "bun:test";
 import { practiceDue } from "../src/campaign/decide.ts";
 import { scored } from "../src/kernel/compare.ts";

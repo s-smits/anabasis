@@ -19,12 +19,10 @@ function isCallable(node: ESTree.Node | null | undefined): node is Callable {
   );
 }
 
-/** The written name of a property or method key, or null for a computed or literal one. */
 function keyName(key: ESTree.Node, computed: boolean): string | null {
   return !computed && key.type === "Identifier" ? key.name : null;
 }
 
-/** The constructor of a class, where it declares one. */
 function constructorOf(body: ESTree.ClassBody): Callable | null {
   for (const member of body.body) {
     if (member.type === "MethodDefinition" && member.kind === "constructor") return member.value;
@@ -32,12 +30,11 @@ function constructorOf(body: ESTree.ClassBody): Callable | null {
   return null;
 }
 
-/** A parameter's name: a plain one, one with a default, or a constructor's parameter property. */
+/** A plain parameter, one with a default, or a constructor's parameter property. */
 function parameterName(param: Callable["params"][number]): string | null {
   return bindingName(param.type === "TSParameterProperty" ? param.parameter : param);
 }
 
-/** The method `name` of the class whose body encloses `node`. */
 function methodOfClass(node: ESTree.Node, name: string): Callable | null {
   let up: ESTree.Node | null = node.parent;
   while (up !== null && up.type !== "ClassBody") up = up.parent;
@@ -48,7 +45,6 @@ function methodOfClass(node: ESTree.Node, name: string): Callable | null {
   return null;
 }
 
-/** The method `name` of an object literal. */
 function methodOfObject(object: ESTree.ObjectExpression, name: string): Callable | null {
   for (const property of object.properties) {
     if (property.type !== "Property" || keyName(property.key, property.computed) !== name) continue;
@@ -83,13 +79,11 @@ export const noTransposedArgumentRule = defineRule({
     },
   },
   createOnce(context) {
-    /** The first definition of the variable an identifier reads, where scope analysis resolves it. */
     function definitionOf(id: ESTree.Node) {
       return context.sourceCode.getScope(id).references.find((reference) => reference.identifier === id)
         ?.resolved?.defs[0];
     }
 
-    /** The function a variable reference names, where this file binds it to one. */
     function boundFunction(id: ESTree.Node): Callable | null {
       const def = definitionOf(id);
       if (def?.type === "FunctionName" && def.node.type === "FunctionDeclaration") return def.node;
@@ -97,7 +91,6 @@ export const noTransposedArgumentRule = defineRule({
       return isCallable(def.node.init) ? def.node.init : null;
     }
 
-    /** The constructor a `new` reaches, where this file declares the class. */
     function boundConstructor(id: ESTree.Node): Callable | null {
       const def = definitionOf(id);
       if (def?.type === "ClassName" && def.node.type === "ClassDeclaration") {
@@ -107,7 +100,6 @@ export const noTransposedArgumentRule = defineRule({
       return def.node.init?.type === "ClassExpression" ? constructorOf(def.node.init.body) : null;
     }
 
-    /** The function a call reaches, where this file declares it, or null. */
     function calleeOf(callee: ESTree.Node): Callable | null {
       if (callee.type === "Identifier") return boundFunction(callee);
       if (callee.type !== "MemberExpression") return null;

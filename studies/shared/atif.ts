@@ -1,26 +1,14 @@
 /**
- * A seat's trace as an ATIF trajectory: Harbor's Agent Trajectory Interchange Format, v1.8, as its
- * pydantic models define it (harbor-framework/harbor, `src/harbor/models/trajectories/`, at
- * 6c9d3d66). Benchmarks that run on Harbor read an agent's run in this shape, Harbor's viewer
- * shows it, and Harness²'s agents write it, so a trace in it can be read beside theirs by their
- * tools instead of by a reader of this log. The study's solve in a benchmark's container writes it
- * (`pi-solve.ts`); no handover reads one from the runs zip, so it is the study's alone.
- *
- * It is a view of `src/kernel/trace.ts` and reads nothing else. One step is one model turn: the
- * text it said, the calls it made, each call's result as an observation linked by the call's id,
- * and its tokens as Harbor's pi agent counts them (prompt is every input token, cache reads and
- * writes among them; cached is the reads). A call names the turn it belongs to, which an older log
- * writes after the call and a durable seat's before it, so a call joins the turn
- * logged last where their numbers match and the turn logged next otherwise; a call that names no
- * turn joins the next, as the older order had it. A compaction is a system
- * step, its summaries' dollars in `extra`, since ATIF gives metrics to agent steps alone. Calls
- * that no turn ended, where a solve was cut mid-turn, close the trajectory as an agent step
- * without metrics.
- *
- * What the log never held stays out rather than being made up: the prompts the seat was given,
- * reasoning and non-text content. A call in an older log has no provider id, and is
- * given one from its place in the log. What ATIF has no field for, a turn's stop reason and error,
- * a call's duration and whether it failed, goes in `extra` under Harbor's own snake case.
+ * A seat's trace as an ATIF trajectory (Harbor's Agent Trajectory Interchange Format, v1.8, as
+ * harbor-framework/harbor's pydantic models define it at 6c9d3d66), so Harbor's tools and
+ * Harness²'s can read it beside their own; the study's container solve writes it (`pi-solve.ts`).
+ * It is a view of `src/kernel/trace.ts` and reads nothing else. One step is one model turn: its
+ * text, its calls, each call's result as an observation linked by the call's id, and its tokens as
+ * Harbor's pi agent counts them. A call joins the turn logged last where their numbers match and
+ * the next otherwise, since older logs write the turn after the call; a compaction is a system step
+ * with its dollars in `extra`; calls no turn ended close the trajectory as an agent step without
+ * metrics. What the log never held (prompts, reasoning, non-text content) stays out; what ATIF has
+ * no field for goes in `extra` under Harbor's snake case.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { type Call, type Seat, type Turn, tracesIn } from "#src/kernel/trace.ts";
@@ -35,11 +23,9 @@ interface Agent {
   readonly model: string | null;
 }
 
-/** The fields of `object` whose value is not null. */
 const kept = (object: Record<string, JsonValue>): JsonObject =>
   Object.fromEntries(Object.entries(object).filter(([, value]) => value !== null));
 
-/** An `extra` of the fields that hold something, or null where none does. */
 function extraOf(object: Record<string, JsonValue>): JsonObject | null {
   const own = kept(object);
   return Object.keys(own).length === 0 ? null : own;
@@ -47,7 +33,6 @@ function extraOf(object: Record<string, JsonValue>): JsonObject | null {
 
 const count = (usage: JsonObject, key: string) => (isNumber(usage[key]) ? usage[key] : 0);
 
-/** A turn's usage as ATIF's metrics. */
 function metricsOf(turn: Turn): JsonObject | null {
   const { usage } = turn;
   if (usage === null) return null;

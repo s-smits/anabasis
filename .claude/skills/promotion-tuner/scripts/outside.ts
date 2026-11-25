@@ -1,8 +1,8 @@
 /**
- * The outside scores on record set beside the promotions they belong to, so that a climb read on a
- * campaign's own held-out tasks is checked against a grader the campaign never saw: promotions
- * that come faster while their harnesses score no higher outside than the Starter are fitted to
- * the campaign's comparisons (the operator's rule: "link the evals to the promotion ratio").
+ * The outside scores on record set beside the promotions they belong to, so a climb read on a
+ * campaign's own held-out tasks is checked against a grader the campaign never saw: promotions that
+ * come faster while their harnesses score no higher outside than the Starter are fitted to the
+ * campaign's comparisons.
  */
 import { MISSING, printed } from "#skills/main/print.ts";
 import type { Promotion, Run } from "#skills/main/runs.ts";
@@ -16,7 +16,6 @@ import {
   uniformRuntime,
 } from "#tools/runs/bench-store.ts";
 
-/** One judged rollout: an arm's points, criteria, spend, runtime and tier on a task. */
 export interface Score {
   readonly arm: string;
   readonly harness: string;
@@ -31,7 +30,6 @@ export interface Score {
   readonly delivered: boolean;
   /** The campaign the arm's harness was built by, or null for baselines and external arms. */
   readonly of: string | null;
-  /** Whether the judge's reader cut a file of the deliverable before the judge read it. */
   readonly cut: boolean;
 }
 
@@ -57,8 +55,9 @@ const VERDICTS = ["above", "inside", "below"] as const;
 type Verdict = (typeof VERDICTS)[number];
 
 /** Every judged rollout of a store, or those on the tasks named, since the parts of a read are never
- *  summed. A record without points (a judgement that failed) is none, and a named task no record is
- *  on is refused: left out silently, a mistyped name would place the arm on a smaller part. */
+ *  summed. A record without points (a failed judgement) is none, and
+ *  a named task no record is on is refused, so a mistyped name cannot place the arm on a smaller
+ *  part. */
 export function scoresOf(store: string, only: readonly string[] | null = null): Score[] {
   const root = join(store, "judged");
   if (!existsSync(root)) throw new Error(`${root} is not there: --bench takes a score store`);
@@ -83,14 +82,13 @@ export function scoresOf(store: string, only: readonly string[] | null = null): 
   return all.filter(({ task }) => only.includes(task));
 }
 
-/** The campaigns the arms of a store were built by, which a caller folds before `outsideLines`. */
 export const campaignsOf = (scores: readonly Score[]): string[] => [
   ...new Set(scores.flatMap(({ tier, of }) => (tier !== BUILT || of === null ? [] : [of]))),
 ];
 
 const summed = (scores: readonly Score[]) => scores.reduce((sum, { points }) => sum + points, 0);
 
-/** An arm's sum against same-runtime delivered baseline rollouts of one solver tier on the same tasks. */
+/** Against same-runtime delivered baseline rollouts of one solver tier on the same tasks. */
 function againstBaseline(arm: string, own: readonly Score[], baselines: readonly Score[]) {
   const runtime = uniformRuntime(own);
   const tasks = new Set(own.map(({ task }) => task));
@@ -134,7 +132,6 @@ function againstBaseline(arm: string, own: readonly Score[], baselines: readonly
   };
 }
 
-/** The outside block: one row an arm that is no baseline, then what the join reads. */
 export function outsideLines(scores: readonly Score[], runs: readonly Run[], format: "md" | "tsv"): string[] {
   const baselines = scores.filter(({ tier }) => tier !== BUILT);
   const arms = Map.groupBy(

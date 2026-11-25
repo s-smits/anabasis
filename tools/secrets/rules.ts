@@ -1,17 +1,13 @@
-// Credential patterns forbidden from entering Git history (ported from v1's
-// `tools/secrets/rules.ts`). Because v2 constructs child process environments from an explicit
-// allowlist rather than scrubbing inherited environments, this is the sole credential rule set.
-//
-// Rules match value shapes rather than variable names alone: name-only rules trigger false
-// positives on documentation and tests discussing credentials, eroding signal-to-noise ratio.
+// Credential patterns forbidden from entering Git history. Child process environments are built from an
+// explicit allowlist rather than scrubbed, so this is the sole credential rule set. Rules match value
+// shapes rather than variable names alone, which would fire on documentation and tests discussing
+// credentials.
 
 import { boundText } from "../../src/meta/bounded-text.ts";
 
 interface SecretRule {
   id: string;
-  /** Short noun phrase describing the matched credential class for operator output. */
   what: string;
-  /** Global regular expression so multiple hits on a single line are all reported. */
   pattern: RegExp;
   /** Capture group containing the secret value; defaults to the full match when omitted. */
   valueGroup?: number;
@@ -59,17 +55,15 @@ const RULES: readonly SecretRule[] = [
   },
 ] as const;
 
-// Heuristic filter for common fixture placeholders (including the repository's example password
-// `hunter2`). Real credentials may occasionally match these tokens, so fixtures should still use
-// obvious synthetic markers.
+// Heuristic filter for fixture placeholders (including the example password `hunter2`); real
+// credentials may occasionally match these tokens, so fixtures should still use obvious synthetic
+// markers.
 const PLACEHOLDER =
   /fake|dummy|example|sample|placeholder|redacted|scrubbed|changeme|change-me|secret|password|passwd|hunter2|deadbeef|foo|bar|baz|todo|xxx|1234|test|\bnone\b|\bnull\b|\byour\b|your[-_]|\.\.\.|\$\{|\{\{|<[A-Za-z]/i;
 
-/** Matches runs of six or more identical characters (such as `aaaaaaaa` or `00000000`), treated as placeholders. */
 const REPEATED = /(.)\1{5,}/;
 
-/** Inline waiver token that suppresses secret scanning on the containing line. Kept verbose so
- *  waivers stand out in diffs and are easy to audit with `git grep`. */
+/** Inline waiver token, verbose so waivers stand out in diffs and in `git grep`. */
 export const WAIVER = "secret-scan-allow";
 
 export interface SecretHit {
@@ -81,9 +75,9 @@ export interface SecretHit {
   masked: string;
 }
 
-/** Heuristic filter treating single-case alphabetic strings (with optional separators and no
- *  digits) as identifiers or prose rather than secrets. The 16-character length floor ensures
- *  separator-free passphrases such as `correcthorsebatterystaple` are still reported. */
+/** Single-case alphabetic strings (with optional separators and no digits) read as identifiers or
+ *  prose; the 16-character floor keeps separator-free passphrases such as
+ *  `correcthorsebatterystaple` reported. */
 function isWordy(value: string): boolean {
   if (!/^[A-Za-z][A-Za-z_\-. ]*$/.test(value)) return false;
   if (value !== value.toLowerCase() && value !== value.toUpperCase()) return false;

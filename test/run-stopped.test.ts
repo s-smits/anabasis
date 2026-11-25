@@ -109,7 +109,6 @@ describe("where a run stands, in one fold every reader shares", () => {
     });
     // A pause left before the launch that went on from it says nothing of how that launch stopped.
     expect(stateOf(log, closed, NOW, 1)).toEqual({ kind: "stopped" });
-    // A campaign that ended on its own terms reads as its ending, whatever pause was left.
     expect(stateOf([...log, event(1, "campaign.ended", { ending: "stop" })], closed, NOW)).toEqual({
       kind: "ended",
       ending: "stop",

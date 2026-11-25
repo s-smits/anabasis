@@ -1,29 +1,11 @@
 /**
- * Every committed test file sits where a gate step runs it.
- *
- * Bun discovers a `*.test` or `*.spec` file in any of the eight JavaScript and TypeScript
- * suffixes: `.mjs`, `.cjs`, `.mts` and `.cts` included, measured on 1.4.2 with one file per
- * suffix and eight passes. What it never does is descend into a directory whose name begins with
- * a dot, and a positional path is a filter over the files it already found rather than a root to
- * add: `bun test .claude`, and naming the file itself, both match nothing and say so in the same
- * words as a typo. So a suite under `.claude/skills/**` is invisible to the runner.
- *
- * One answer is a file in `test/` that does nothing but re-import a hidden suite, with a guard that
- * checks each hidden suite has one. It has two costs. A wrapper is a second place to remember, held
- * together by nothing but this test. And a wrapper is one file to Bun's scheduler: v1's
- * `claude-system-path-runners.test.js` re-imported eight process-spawning suites and was the
- * slowest file in the whole suite at 54.1 s against 18.7 s for the next one, which on a
- * slowest-first schedule is the floor for the entire run; split, its longest member takes 33.4 s
- * and the other seven go wherever there is room. The suites now live in `test/` under their own
- * names, and the wrappers are gone.
- *
- * What is left is one rule with one owner. The roots below are every place a gate step actually
- * runs, so a suite written anywhere else is named here rather than sitting green and unread.
- *
- * The subject is the candidate tree: tracked files that still exist plus untracked, non-ignored
- * ones. Reading that set through Git includes a suite added before staging while excluding the
- * ignored scratch directories a filesystem walk would enter, and it reaches into dot-directories,
- * which the corpus walk in `tools/loc/source-policy.ts` deliberately does not.
+ * Every committed test file sits where a gate step runs it. Bun discovers `*.test` and `*.spec`
+ * files in all eight JavaScript and TypeScript suffixes, but never descends into a dot-directory,
+ * and a positional path filters what it found rather than adding a root, so a suite under
+ * `.claude/skills/**` would be invisible yet green. The roots below are every place a gate step
+ * runs. The subject is the candidate tree, tracked files that exist plus untracked non-ignored
+ * ones, read through Git so it reaches dot-directories, which the corpus walk in
+ * `tools/loc/source-policy.ts` does not.
  */
 import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
@@ -32,14 +14,12 @@ import { describe, expect, it } from "bun:test";
 
 const repoRoot = join(import.meta.dir, "..");
 
-/** The roots a gate step runs, and the step that runs each. */
 const DISCOVERED_ROOTS = [
   "test/", // `bun run test`, which is the gate's last step
   "packages/ui/test/", // `bun run ui:gate`, which prepares that package's own node_modules first
 ];
 
-/** A suite by name, in any suffix Bun runs, plus the `.bun-tests` spelling the wrappers used to
- *  need so that Bun would not try to discover a file only they imported. */
+/** A suite by name in any suffix Bun runs, plus the `.bun-tests` spelling of the retired wrappers. */
 const SUITE = /(?:\.(?:test|spec)|\.bun-tests)\.(?:m|c)?[jt]sx?$/;
 
 function candidateFiles(): string[] {
@@ -56,8 +36,8 @@ function candidateFiles(): string[] {
     .filter((path) => path !== "" && existsSync(join(repoRoot, path)));
 }
 
-/** The suites among `paths` that no gate step would run. The first two cases state the rule on
- *  named paths rather than on whatever this checkout happens to contain. */
+/** The suites among `paths` that no gate step would run. The first two cases state the rule on named
+ *  paths, not on this checkout's contents. */
 function undiscovered(paths: readonly string[]): string[] {
   return paths.filter((path) => SUITE.test(path) && !DISCOVERED_ROOTS.some((root) => path.startsWith(root)));
 }
@@ -91,19 +71,11 @@ describe("repository test discovery", () => {
   });
 
   it("keeps every in-repo scratch directory inside the one ignored family", () => {
-    // A fixture whose modules must resolve against this repository's `node_modules` cannot use
-    // the system temp directory, so it makes its scratch inside the checkout. `.gitignore` is
-    // the only thing keeping that scratch away from the two readers who walk the tree: the case
-    // above, which lists untracked files, and oxlint, which honours the same file. It used to
-    // carry one pattern per fixture prefix and the list drifted: of the thirty-two live prefixes
-    // eighteen had no entry, `.ana-candidate-*` failed a push while a sibling worker held one,
-    // and `.gate-end-to-end-*` was committed by accident. One pattern covers the family, which
-    // leaves a prefix outside it invisible to the pattern. That fails here, at the fixture.
-    //
-    // A `mkdtemp` under the system temp directory or the user's home sits outside the repository
-    // and outside the rule; those three bases are named. A fourth fails closed, which asks for
-    // the family or for this list to grow, and never for silence. A prefix may end at its
-    // closing quote or at a `${`, since one fixture interpolates its own name into the template.
+    // A fixture whose modules must resolve against this repository's `node_modules` makes its scratch
+    // inside the checkout, and `.gitignore` alone keeps it from this test and oxlint. One pattern
+    // covers the family, so a prefix outside it fails here, at the fixture. A `mkdtemp` under the
+    // system temp directory or the home sits outside the rule, and those bases are named; a fourth
+    // fails closed. A prefix may end at its closing quote or at a `${`.
     const outsideRepo = /tmpdir\(|homedir\(|env\.HOME/;
     const offenders: string[] = [];
     for (const path of candidateFiles().filter((p) => p.startsWith("test/") && p.endsWith(".ts"))) {

@@ -8,9 +8,8 @@
  * - **Tools.** `ANA_TOOLS` is one table of each tool's version (`.env.runs.example`). A row with no
  *   `install` leaves drift to report. Its `run` makes the tool do its job, and failing reads as drift
  *   at any version, since a guard copied to another host can name the first host's home and fail
- *   every command while its version reads right. A host's `exclude`
- *   lists tools it keeps outside the table, reported and never changed. Until then each tool was by
- *   hand on each machine: git at three versions, and a guard installed on one of three.
+ *   every command while its version reads right.
+ *   A host's `exclude` lists tools it keeps outside the table, reported and never changed.
  * - **Python.** `ANA_PYTHON` pins a version under `pinnedPythonDir` through `uv`, which refuses in its
  *   own words a version it lacks. The packages it names pull in others, which float with the hour of
  *   each install, so every package a peer shares with this machine's pinned Python takes this
@@ -34,7 +33,6 @@ import { type Env, liveEverywhere } from "./logins.ts";
 import { type HostPython, PYTHON_PROBE, pythonIn } from "./receipt.ts";
 import { HERE } from "./registry.ts";
 
-/** A machine to keep in step; `host` is undefined for this one. */
 interface Machine {
   readonly name: string;
   readonly host: Host | undefined;
@@ -56,17 +54,14 @@ interface Options {
   readonly force: boolean;
   readonly hosts: readonly Host[];
 }
-/** What one machine answered. */
 interface Facts {
   readonly pythonPath: string;
   readonly python: HostPython | null;
   readonly uv: string;
   /** The commit its runner's receipt names, or null where it holds no runner. */
   readonly runner: string | null;
-  /** What each `Tool`'s read printed, in order; empty where it holds none. */
   readonly tools: readonly string[];
 }
-/** One thing that differs on one machine. */
 interface Finding {
   readonly line: string;
   /** Whether a solve would find this change, so that a live campaign holds it back. */
@@ -87,8 +82,8 @@ const MARK = "ana-sync-facts";
 const USERS = ["/usr/local", "/opt/homebrew", "/opt/zerobrew"];
 const BREWED = USERS.map((user) => `${user}/opt/python*/libexec/bin`).join(" ");
 const DEVELOPER = "$(xcode-select -p 2>/dev/null || :)";
-/** `toolchainPathDirs` as a shell word for any machine, each folder that is not there left to the
- *  shell; `test/runs-sync.test.ts` holds it to the real one. */
+/** `toolchainPathDirs` as a shell word for any machine, each missing folder left to the shell;
+ *  `test/runs-sync.test.ts` holds it to the real one. */
 const WALL_PATH = `"${pinnedPythonDir("$HOME")}:${USERS.map((user) => `${user}/bin`).join(":")}:$(sh -c 'ls -d ${BREWED}' 2>/dev/null | LC_ALL=C sort -r | tr '\\n' ':')${[
   ...TOOLCHAIN_HOME_ROOTS.flatMap((root) => [`$HOME/${root}/bin`, `$HOME/${root}/shims`]),
   "/usr/local/shims",
@@ -96,18 +91,16 @@ const WALL_PATH = `"${pinnedPythonDir("$HOME")}:${USERS.map((user) => `${user}/b
   `${DEVELOPER}/Toolchains/XcodeDefault.xctoolchain/usr/bin`,
   "/usr/bin:/bin:/usr/sbin:/sbin",
 ].join(":")}"`;
-/** A host's own programs first, then the wall's and its login shell's: where `uv` and an install look,
- *  and a row no seat finds. */
+/** A host's own programs first, then the wall's and its login shell's: where `uv` and an install look. */
 const TOOL_PATH = `"$HOME/.local/bin:$HOME/.bun/bin:${WALL_PATH.slice(1, -1)}:$PATH"`;
 const PYTHON_ROOT = join(pinnedPythonDir("$HOME"), "..");
 const READ_MS = 60_000;
 const APPLY_MS = 900_000;
 const INSTALL = "tools/runtime/router/install.ts";
 const TREE = join(import.meta.dir, "..", "..");
-/** How many package names a line shows before it counts the rest. */
 const SHOWN = 6;
 
-/** `ANA_TOOLS`, refused whole before anything is asked, and never quoted back. */
+/** Parses `ANA_TOOLS`, refused whole before anything is asked and never quoted back. */
 function toolsOf(text: string): Tool[] {
   if (text.trim() === "") return [];
   if (scanText("ANA_TOOLS", text).length > 0) throw new Error("ANA_TOOLS holds what looks like a credential");
@@ -138,7 +131,6 @@ function toolsOf(text: string): Tool[] {
   });
 }
 
-/** One command's output as one line, under `path`, and an empty line where it says nothing. */
 const lineOf = (command: string, path: string) =>
   `(PATH="${path}"; export PATH; ${command}) 2>/dev/null </dev/null | tr '\\n' ' '; echo`;
 
@@ -154,7 +146,7 @@ const probeOf = (tools: readonly Tool[]) =>
     ...tools.map(({ read, seats }) => lineOf(`sh -c ${quoted(read)}`, seats ? "$wall" : "$tool")),
   ].join("\n");
 
-/** The facts in a probe's stdout, or null where it holds none: a login shell's chatter comes first. */
+/** The facts in a probe's stdout, or null where it holds none; a login shell's chatter comes first. */
 function factsIn(stdout: string, tools: readonly Tool[]): Facts | null {
   const lines = stdout.split("\n");
   const at = lines.lastIndexOf(MARK);
@@ -176,7 +168,6 @@ async function factsOf(machine: Machine, tools: readonly Tool[]): Promise<Facts 
   return exitCode === 0 ? factsIn(stdout, tools) : null;
 }
 
-/** The exit of `script` on `machine`, its output said here. */
 function runOn(machine: Machine, script: string): number {
   const { exitCode, stdout, stderr } = runSync(shellOn(machine.host, script), { timeout: APPLY_MS });
   const said = `${decodeOutput(stdout)}${decodeOutput(stderr)}`.trimEnd();
@@ -225,7 +216,8 @@ function pythonLacks(python: HostPython | null, { version, packages }: Pin): str
   return lacking.length === 0 ? null : `lacks ${lacking.join(", ")}`;
 }
 
-/** Never uninstalls, and swaps the link in one rename; `uv` says itself which versions it lacks. */
+/** The install script for a pin: it never uninstalls and swaps the link in one rename; `uv` says
+ *  itself which versions it lacks. */
 function pinScript({ version, packages }: Pin): string {
   const uv = "uv --no-config";
   return [
@@ -253,10 +245,10 @@ const pythonFound = ({ python, pythonPath }: Facts) =>
     : `finds ${python.version} at ${pythonPath} with ${String(python.packages.length)} packages`;
 
 /**
- * Each package `python` shares with `reference` at another version, as `reference` holds it. The
- * packages a pin names pull in others, which resolve at each install's hour: a peer pinned two hours
- * after this machine took a newer `narwhals` beneath the same `statsmodels`. A reference holds the
- * pin, so a package the pin names already has the pin's version there.
+ * Each package `python` shares with `reference` at another version, as `reference` holds it. A
+ * pin's packages pull in others that resolve at each install's hour, so two machines pinned hours
+ * apart can differ beneath the same pin. A reference holds the pin, so a named package already has
+ * the pin's version there.
  */
 function behind(python: HostPython | null, reference: HostPython | null): string[] {
   if (python === null || reference === null) return [];
@@ -312,7 +304,6 @@ function runnerFinding(machine: Machine, facts: Facts, { hosts }: Options): Find
   };
 }
 
-/** What differs without being anything to apply. */
 function notesOf({ host }: Machine, facts: Facts, everyone: readonly Facts[], options: Options): string[] {
   // By name: a version apart is a finding, which takes this machine's.
   const common = everyone.map(({ python }) => new Set(python?.packages.map(nameOf)));
@@ -426,7 +417,6 @@ export async function outOfStep(
   return after.findings.filter(({ seats }) => seats).map(({ line }) => line);
 }
 
-/** `bun run runs sync`. */
 export async function sync(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
     args: [...args],

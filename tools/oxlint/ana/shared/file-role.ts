@@ -1,10 +1,4 @@
-/**
- * Which part of the repository a file belongs to.
- */
-
-/**
- * Paths arrive absolute; compare on the repository-relative tail so a worktree name cannot matter.
- */
+/** Paths arrive absolute; compare on the repository-relative tail so a worktree name cannot matter. */
 export function repoRelative(filename: string): string {
   // A worktree under `.claude/worktrees/<name>/` is a whole checkout, so the search starts past
   // it; otherwise `/.claude/` is the earliest root and every file there loses its own tree.
@@ -17,19 +11,17 @@ export function repoRelative(filename: string): string {
   return earliest === -1 ? posix : posix.slice(earliest + 1);
 }
 
-/** A file whose job is to be run by the test runner, including the helpers those files import. */
+/** Includes the helpers test files import. */
 export function isTestFile(filename: string): boolean {
   const path = repoRelative(filename);
   return path.startsWith("test/") || path.includes(".test.");
 }
 
-/** Exactly one of the named repository-relative paths, so an owner exemption names a file. */
 export function isOneOf(filename: string, owners: readonly string[]): boolean {
   const path = repoRelative(filename);
   return owners.includes(path);
 }
 
-/** Anywhere beneath a repository-relative directory, for a whole tree that owns something. */
 export function isUnder(filename: string, directory: string): boolean {
   return repoRelative(filename).startsWith(directory.endsWith("/") ? directory : `${directory}/`);
 }

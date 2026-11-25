@@ -1,9 +1,8 @@
 /**
  * `.githooks/pre-push` run as Git runs it, over real commits in a fixture repository, with Bun
- * replaced only at the gate's steps (`test/helpers/fake-bun.ts`). The hook, `tools/runtime/pre-push.ts`
- * and the gate's choice of steps are the real ones, so a case reads which heads were checked and
- * with which steps. Nothing is pushed anywhere: the hook is handed the ref lines Git would hand it.
- * What a pass runs beyond the hook's checks is `test/gate.test.ts`'s.
+ * replaced only at the gate's steps (`test/helpers/fake-bun.ts`), so a case reads which heads were
+ * checked with which steps. Nothing is pushed: the hook is handed the ref lines Git would hand it.
+ * What a pass runs is `test/gate.test.ts`'s.
  */
 import {
   cpSync,
@@ -61,7 +60,6 @@ const base = commit(template, "src/owner.ts", "export const owner = 1;\n", "base
 const docs = commit(template, "README.md", "two\n", "docs");
 const source = commit(template, "src/owner.ts", "export const owner = 2;\n", "source");
 const second = commit(template, "src/b.ts", "export const b = 2;\n", "second");
-// The remote holds main at `base`, as a clone's remote-tracking ref says.
 gitIn(template, "update-ref", "refs/remotes/origin/main", base);
 
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
@@ -76,8 +74,8 @@ function sandbox() {
   mkdirSync(bin, { recursive: true });
   cpSync(template, work, { recursive: true });
   const fake = fakeBun(bin, log);
-  // `gh` answers `pr list` with ANA_FAKE_PULLS, holds every commit, finds no status on one, and
-  // writes every call it gets to a log.
+  // `gh` answers `pr list` with ANA_FAKE_PULLS, holds every commit, finds no status on one, and logs
+  // every call.
   writeFileSync(
     join(bin, "gh"),
     `#!/bin/sh\necho "$*" >> "${ghLog}"\ncase "$*" in "pr list"*) printf '%s\\n' "\${ANA_FAKE_PULLS:-[]}" ;; *"/status --jq"*) echo 0 ;; esac\n`,
@@ -86,7 +84,6 @@ function sandbox() {
   const git = (...args: string[]): string => gitIn(work, ...args);
   const blob = (text: string): string =>
     execTextSync("git", ["hash-object", "-w", "--stdin"], { cwd: work, stdin: text }).trim();
-  /** A tree or commit's tree with one more file at the top, holding `text` or its own name. */
   const withFile = (from: string, name: string, text = name): string =>
     execTextSync("git", ["mktree"], {
       cwd: work,
@@ -202,8 +199,8 @@ describe.concurrent("pre-push", () => {
     const result = await push([update(second, docs)], verify);
     expect(result.status).toBe(0);
     expect(gatesRun(log)).toEqual([`${second} -`]);
-    // The install, format check and secret scan run in turn; typecheck and lint then run side by
-    // side, so they finish in either order.
+    // Typecheck and lint run side by side after the install, format check and secret scan, so they
+    // finish in either order.
     const steps = stepsOver(second);
     expect(steps.slice(0, 3)).toEqual(STATIC.slice(0, 3));
     expect(steps.slice(3).toSorted()).toEqual(STATIC.slice(3).toSorted());

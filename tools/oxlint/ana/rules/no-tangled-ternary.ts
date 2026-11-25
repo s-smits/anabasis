@@ -10,7 +10,6 @@ import type { RuleExample } from "../../rule-examples.ts";
 /** Cases one tail may hold: `a ? x : b ? y : z` is three, and three is where the shapes divide. */
 const CASE_LIMIT = 3;
 
-/** How many values this cascade can produce, counting along its tail. */
 function cases(head: ESTree.ConditionalExpression): number {
   let count = 2;
   let cursor = head;

@@ -1,8 +1,8 @@
 /**
  * Comparison archive for decision-rule replays: every reported comparison from campaigns opened
- * since a release tag or date, reduced to per-solve evaluation fields (validity, objective measure,
- * billed dollars, turns, and wall-clock seconds). Forked campaigns inherit parent comparisons, so
- * `once` deduplicates comparisons to the earliest campaign that recorded them.
+ * since a release tag or date, reduced to per-solve validity, objective, billed dollars, turns and
+ * seconds. Forked campaigns inherit parent comparisons, so `once` keeps each in the earliest
+ * campaign that recorded it.
  */
 import { epochsOf } from "#src/campaign/climb.ts";
 import { startOf } from "#src/campaign/comparison.ts";
@@ -20,7 +20,6 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { packOf } from "#tools/runs/registry.ts";
 import { campaignLogs, rehearsed } from "#skills/main/logs.ts";
 
-/** One counted solve of one side. */
 export interface Solve {
   readonly valid: boolean;
   readonly measure: number | null;
@@ -29,10 +28,8 @@ export interface Solve {
   readonly seconds: number | null;
 }
 
-/** One task of a comparison, each side's counted solves in the order they started. */
 export interface Task {
   readonly task: string;
-  /** The Examiner's label for the task's kind (`proposalsOf`); null where it gave none. */
   readonly family: string | null;
   readonly direction: "lower" | "higher" | null;
   readonly retained: boolean;
@@ -42,9 +39,7 @@ export interface Task {
 
 export interface Comparison {
   readonly campaign: string;
-  /** The campaign's pack, read from its name by `packOf`. */
   readonly pack: string;
-  /** When the campaign opened, in milliseconds. */
   readonly opened: number;
   readonly session: string;
   /** A candidate against the reference, or the reference against the starter, read the other way. */
@@ -56,19 +51,17 @@ export interface Comparison {
   readonly tasks: readonly Task[];
   /** The reference against itself on halves of its solves, empty under two solves a side. */
   readonly aa: readonly Task[];
-  /** What the campaign did after this report, for what became of a step a replay adds. */
   readonly after: { readonly promoted: readonly string[]; readonly readings: number };
-  /** Whether the promotion this comparison's step made was confirmed by its starter read (`epochsOf`);
-   *  null where the next promotion is of another harness, there is none, or no starter read reported. */
+  /** Whether the promotion this comparison's step made was confirmed by its starter read
+   *  (`epochsOf`); null where the next promotion is of another harness, there is none, or no
+   *  starter read reported. */
   readonly confirmed: boolean | null;
 }
 
-/** How a log's first line opens, before its event's time. */
 const AT = '{"at":"';
 
 const numberOr = (value: unknown) => (isNumber(value) ? value : null);
 
-/** The new side's pair as production reads it (`pointsOf`). */
 export function paired(task: Task): Paired {
   const { direction, old, fresh } = task;
   return {
@@ -88,7 +81,6 @@ export function paired(task: Task): Paired {
   };
 }
 
-/** A pair as a task of the record, with each solve's turns and seconds from its ending (`solvesIn`). */
 function taskOf(
   pair: Paired,
   retained: ReadonlySet<string>,
@@ -116,8 +108,8 @@ function taskOf(
   };
 }
 
-/** What a report's A/A read, the reference against itself (`itself`, `comparison.ts`): null at an odd
- *  count of solves. */
+/** The reference's halves mirrored as `comparison.ts` reads them (`halves: "mirrored"`); null at an
+ *  odd count of solves. */
 export function selfTerms({ session, data }: Reported) {
   const { old, setting, solves } = data;
   if (!isString(old) || !isString(setting) || !isNumber(solves) || solves % 2 !== 0) return null;
@@ -140,7 +132,6 @@ function selfPairs(events: readonly LogEvent[], report: Reported, versions: read
   return pairsOf(before, versions, terms.sides, terms.solves).pairs;
 }
 
-/** One campaign's reported comparisons that scored a task. */
 function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] {
   const finished = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
   const opened = Date.parse(events[0]?.at ?? "");
@@ -183,7 +174,6 @@ function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] 
   });
 }
 
-/** `comparisons` with a fork's copies dropped, each kept in the campaign that opened first. */
 export function once(comparisons: readonly Comparison[]): Comparison[] {
   const copies = Map.groupBy(
     comparisons.toSorted((one, other) => one.opened - other.opened),
@@ -202,7 +192,6 @@ export function timeOf(from: string): number {
   return Number.isNaN(asDate) ? Date.parse(gitText(".", "log", "-1", "--format=%cI", from)) : asDate;
 }
 
-/** The reduced record of the campaigns opened at or after `from`, and the logs it could not read. */
 async function readRecord(home: string | null, names: readonly string[], from: number) {
   const comparisons: Comparison[] = [];
   const unread: string[] = [];
@@ -222,8 +211,8 @@ async function readRecord(home: string | null, names: readonly string[], from: n
   return { comparisons, unread };
 }
 
-/** The record, from `file` where it is given and exists, and read from the logs otherwise, then kept
- *  in `file`. */
+/** The record, from `file` where it is given and exists, else read from the logs and kept in
+ *  `file`. */
 export async function recordOf({
   file,
   home,

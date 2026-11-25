@@ -1,30 +1,14 @@
 /**
- * What a campaign hands over: its reference harness as a directory that stands by itself, and a
- * closing report.
+ * What a campaign hands over. `harness/` is the reference harness copied whole with its links as
+ * links, so a link to a host file never leaves as its bytes; under `data/harnesses/` a tool tree
+ * over 100 MB is copied once to `.trees/<campaign>/` and linked to (`copyHarness`), and a copy that
+ * does not open as the kept digest leaves nothing under `--to`. `RULES.md` is the public contract;
+ * `REPORT.md` is the closing report: the ending, promotions, every comparison's tally and reading,
+ * the bars (`barLines`), false-promotion risk (`riskLines`), unadmitted checks (`unadmitted`),
+ * rulings, labels and spend.
  *
  *   bun tools/d2/close.ts --name queues --to ~/handover/queues [--harness <letter|digest>]
  *     [--solve <task id>[,<task id>...] [--solver <model> --solver-effort <level> ...]]
- *
- *   harness/     the reference harness as it then stands, the starter where no step was promoted,
- *                copied whole with its programs, except that under `data/harnesses/` a tool tree over
- *                100 MB is copied once to `.trees/<campaign>/` there and linked to (`copyHarness`).
- *                It is opened there before the command returns,
- *                and has to open as the harness it was kept as; where it does not, nothing is left
- *                under `--to`. Its links are copied as links, since followed, a link in its
- *                programs to a host file would come out as that file's bytes, in a folder written
- *                to leave the host.
- *   RULES.md     the domain's public contract: its scope, conventions, rules and answer format.
- *   REPORT.md    the closing report: how the campaign ended, each promotion and the comparisons
- *                behind it, every comparison's tally and reading, the campaign against the bars of
- *                the milestone and of economy (`barLines`), the chance of a false promotion
- *                over the whole campaign (`riskLines`), which checks their author's own computation
- *                decides (`unadmitted`), what the Referee ruled and what a person's labels
- *                settled, and what was billed. It names each harness by its letter beside its
- *                digest's head (`namesOf`, `src/campaign/names.ts`).
- *                Calculated spend stays the economy numerator; backend totals carry coverage and
- *                a residual on matching closed records, with open backend costs unknown.
- *                Comparison unit costs count scored versions in the last report; a report with
- *                none retains its bill without a unit price.
  */
 import { barLines, promotionsWorth, riskLines, starterIn, worthLine } from "#src/campaign/climb.ts";
 import { UNSETTLED } from "#src/campaign/comparison.ts";
@@ -65,8 +49,6 @@ const OPTIONS = {
 
 const row = (cells: readonly string[]): string => `| ${cells.join(" | ")} |`;
 
-/** A comparison as one row: its two harnesses as `called`, the turns its solves were held to, its
- *  reading and tally, and each harness's valid solves. */
 function comparisonRow(step: Compared, called: Called): string {
   const share = (counts: readonly number[] | undefined) => {
     if (counts === undefined) return "";
@@ -87,7 +69,6 @@ function comparisonRow(step: Compared, called: Called): string {
   ]);
 }
 
-/** The closing report of a campaign, from its log: Markdown, a view and no record. */
 function closingReport(name: string, events: readonly LogEvent[], handed: string, asked?: string): string {
   const { steps, supply } = campaignOf(events);
   const comparisons = steps.filter((step): step is Compared => step.step === "comparison");
@@ -109,7 +90,6 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   const packets = lastReports(events, "all").map(({ data }) => data.settled);
   const settled = packets.map((each) => asRecord(each)).filter((each) => each !== null);
   const unsettled = packets.filter((each) => each === UNSETTLED).length;
-  // What a person read of the answers that passed, drawn in each settled packet.
   const passes = { comparisons: 0, read: 0, sound: 0, wrong: 0, unclear: 0 };
   for (const labels of settled.map((each) => Object.values(asRecord(each.passes) ?? {}))) {
     passes.comparisons += labels.length === 0 ? 0 : 1;
@@ -120,7 +100,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     }
   }
   const sessions = steps.filter((step) => step.step === "builder").length;
-  // The checks of the last reading that no installed instrument decides, the objective among them.
+  // The checks of the last reading no installed instrument decides, the objective among them.
   const authored = unadmitted(events, []);
   const budget = opening?.budget ?? null;
   const defaulted =
@@ -187,14 +167,10 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   ].join("\n\n");
 }
 
-/** What a campaign's comparisons could win on validity: the scored tasks summed over them, those the
- *  reference did not answer validly in every solve (its room), a candidate's steps read with points
- *  and those that won any point by validity; a step with the Starter as its new side is the
- *  Starter's over the reference and none of the climb's. A step the objective carried alone
- *  answers no task the reference failed, and most step readings on record have won no point by
- *  validity, in one domain far more than half. Read by the climb line
- *  here, the Examiner's `ambition.ts`, promotion-tuner's `table.ts` and `wri.ts climb`, which hands
- *  it the reports of a log too thin for `campaignOf`. Only a comparison carries the three fields. */
+/** The scored tasks summed over the comparisons, those the reference did not answer validly in
+ *  every solve (its room), and candidate steps with points and those that won a point by validity;
+ *  a step whose new side is the Starter is none of the climb's. Read by the climb line here,
+ *  `ambition.ts`, `.claude/skills/main/runs.ts` and `tools/wri/climb.ts`. */
 export function validityOf(
   steps: readonly {
     readonly step?: string;
@@ -232,8 +208,8 @@ function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): 
     (sum, { report }) => sum + (Array.isArray(report?.versions) ? report.versions.length : 0),
     0,
   );
-  // The climb's velocity first: what a promotion cost in dollars and in hours of the log. The
-  // total is a bound, and the operator reads a campaign by how fast it climbs under it.
+  // The climb's velocity first: what a promotion cost in dollars and in hours of the log, since the
+  // operator reads a campaign by how fast it climbs under its bound.
   const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
   const hours = (Date.parse(events.at(-1)?.at ?? "") - Date.parse(events[0]?.at ?? "")) / 3_600_000;
   const spent = billedAll(events);
@@ -251,8 +227,8 @@ function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): 
   ];
 }
 
-/** A promotion a line: the comparisons that read its step, its last tally and score against the
- *  reference it was promoted over, and whether it is set-up (epoch 0) or a rung of the climb. */
+/** One line per promotion: the comparisons that read its step, its last tally and score against the
+ *  reference it beat, and whether it is set-up (epoch 0) or a rung of the climb. */
 function promotionLines(
   events: readonly LogEvent[],
   comparisons: readonly Compared[],
@@ -291,7 +267,6 @@ function promotionLines(
   });
 }
 
-/** The public contract as a solver reads it, for whoever takes the harness over. */
 function rulesOf({ contract }: Pick<Campaign, "contract">): string {
   return [
     "# Public rules",
@@ -303,7 +278,6 @@ function rulesOf({ contract }: Pick<Campaign, "contract">): string {
   ].join("\n\n");
 }
 
-/** `bun tools/d2/close.ts`. Returns where the handover was written and the harness it holds. */
 export async function closeCommand(args: readonly string[], seated: Seated = solved) {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   if (values.to === undefined) throw new Error("name --to, the folder the handover is written to");
@@ -330,10 +304,6 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
   const events = read(campaign.log);
   mkdirSync(to, { recursive: true });
   try {
-    // Links as they are, but for `.toolchain`, which names the tree kept beside the state and is
-    // replaced by a copy of that tree, as a Builder's `kept/` is laid. Under `data/harnesses/` a tree
-    // over 100 MB is copied once to `.trees/<campaign>/` there and linked to, and outside it a
-    // handover leaves the host whole.
     const shared = containsPath(to, harnessesOf(campaign.repo));
     copyHarness(kept.dir, harness, shared ? harnessesOf(campaign.repo, ".trees", pack.name) : undefined);
     const opened = await openHarness(harness);
@@ -345,8 +315,7 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
     writeFileSync(join(to, "RULES.md"), rulesOf(campaign));
     writeFileSync(join(to, "REPORT.md"), closingReport(pack.name, events, kept.digest, values.harness));
   } catch (error) {
-    // `to` held at most an earlier handover, removed above, so everything under it is this
-    // command's, and none of it is a handover.
+    // `to` held at most an earlier handover, removed above, so everything under it is this command's.
     for (const name of readdirSync(to)) rmSync(join(to, name), { recursive: true, force: true });
     throw error;
   }

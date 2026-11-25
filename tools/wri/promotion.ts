@@ -1,8 +1,7 @@
 /**
- * Lane 18's triggers: a campaign that promoted a harness, read for what the promotion rested on,
- * what it measured, what touched both sides of it, and what the campaign did after it.
- * Validity percentages require a profile with a task and solve denominator; missing measurements
- * read unmeasured, while a nonempty profile of failed solves reads zero.
+ * The promotion lane's triggers (lane 6): what each promotion rested on, what it measured, what
+ * touched both its sides, and what the campaign did after it. A validity percentage needs a task and
+ * solve denominator; a missing measurement reads unmeasured.
  */
 import { epochsOf as epochsRead, ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
@@ -47,7 +46,6 @@ const SHARED_PATH =
   /(?:^|[\s"'=:;(|&>])(\/(?:private\/)?(?:var\/)?tmp\/(?!ana-built-bash\/)[^\s"'\\;)|&<>*]+)/g;
 const MOST_PATHS = 6;
 
-/** The shared temporary paths call `call` names in its arguments. */
 export function sharedPaths({ args }: Call): string[] {
   const raw = JSON.stringify(args);
   return raw.includes("tmp/") ? [...raw.matchAll(SHARED_PATH)].map(([, path = ""]) => path) : [];
@@ -68,7 +66,6 @@ export function formatTestSummary(tested: JsonValue | undefined): string {
   return format(step) === billed ? billed : `${billed}, without the bill ${format(step)}`;
 }
 
-/** A test's p as a reading prints it. */
 export const formatPValue = (p: number) => (p < 0.001 ? p.toExponential(1) : p.toFixed(3));
 
 /** The differences a report's step was read on, each with its task where named. */
@@ -109,7 +106,6 @@ export function validOf(side: JsonValue | undefined) {
   return { none: columns[0] ?? 0, tasks, share: tasks === 0 || solves < 1 ? null : valid / (tasks * solves) };
 }
 
-/** A measured validity share as a percentage, retaining the absence of a measurement. */
 export const formatValidityRate = (value: number | null): string =>
   value === null ? "unmeasured" : `${(value * 100).toFixed(0)}%`;
 
@@ -136,8 +132,8 @@ export function untied(tested: JsonValue | undefined): string {
   return step === null ? "-" : share(step.wins + step.losses, step.wins + step.losses + step.ties);
 }
 
-/** One supporting comparison as lane 18 reads it: the tally against its own A/A noise, the tally at
- *  each budget, and the host's load while its solves started. */
+/** One supporting comparison as the promotion lane reads it: the tally against its own A/A noise,
+ *  the tally at each budget, and the host's load while its solves started. */
 function formatSupportingComparison(log: Index, { session, last }: Compared): string {
   const noise =
     asRecord(last.noise) === null
@@ -160,7 +156,6 @@ function formatSupportingComparison(log: Index, { session, last }: Compared): st
   return `${session} ${formatTestSummary(last.scored)} at level ${String(count(last.level))}, untied ${untied(last.scored)}${noise}${budgets.length > 0 ? `; by budget ${budgets.join(", ")}` : ""}${load}`;
 }
 
-/** The hours and dollars from event `from` to event `to`: what the campaign paid for a stretch. */
 export function spentTo(log: Index, from: number, to: number): string {
   const { events } = log;
   const [start, end] = [
@@ -171,7 +166,6 @@ export function spentTo(log: Index, from: number, to: number): string {
   return `${hours.toFixed(1)} h and $${billedBetween(events, from, to).toFixed(0)}`;
 }
 
-/** `PROMOTED` and `STARTER BARE`: the comparisons a promotion rests on, and what each measured. */
 function restTriggers(log: Index, { at, until, data }: Epoch, since: number, rule: string): Trigger[] {
   const harness = text(data.harness);
   const byTable = eventsOf(log.events, "campaign.move").some(
@@ -185,7 +179,7 @@ function restTriggers(log: Index, { at, until, data }: Epoch, since: number, rul
     return compared === undefined ? [] : [compared];
   });
   const summaries = rests.map((compared) => formatSupportingComparison(log, compared));
-  // The rule tests the two frontiers joined, a task both scored once (`readTwice`), which can read
+  // The rule tests the two frontiers joined, summing a task both scored (`joinedTest`), which can read
   // otherwise than either alone.
   const joined = joinedTest(rests.map(({ last }) => last));
   const [wins, losses] = [joined.filter((one) => one > 0).length, joined.filter((one) => one < 0).length];
@@ -330,7 +324,8 @@ function sharedTmpTrigger(log: Index): Trigger[] {
   return emitIf(lines.length > 0, "SHARED TEMPORARY FOLDER", lines.join("; "));
 }
 
-/** Lane 18: promotions, shared `/tmp` calls, confirmation, carriers, chain, and noise margins. */
+/** The promotion triggers: promotions, shared `/tmp` calls, confirmation, carriers, chain and noise
+ *  margins. */
 export function promotionTriggers(log: Index): Trigger[] {
   const starter = log.compared.map(({ last }) => last.starter).find(isString) ?? "";
   const epochs = epochsOf(log.events);

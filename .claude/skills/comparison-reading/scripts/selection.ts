@@ -1,20 +1,19 @@
 /**
- * Exact sign-draw enumeration for starter-read confirmation analysis (WRI lane 12).
- *
- * Omits cross-session homogeneity tests across Examiner writing sessions (lane 19): because those
- * sessions are sequential wakes of one Examiner conversation, whether they form independent draws
- * is the investigative question itself. `starter-reads.ts` reports each session slice's tally directly.
+ * Exact sign-draw enumeration for starter-read confirmation analysis (WRI lane 12). It omits
+ * homogeneity tests across Examiner writing sessions (lane 19): those sessions are sequential wakes
+ * of one conversation, so whether they are independent draws is the question itself;
+ * `starter-reads.ts` reports each session slice's tally directly.
  */
 import { readsStep, signedRanks } from "#src/kernel/compare.ts";
 
-/** Exact count of sign assignments (`confirm` out of `draws = 2^free`) that register a step at `level`. */
+/** Sign assignments (`confirm` out of `draws = 2^free`) that register a step at `level`. */
 export interface StepCount {
   readonly free: number;
   readonly draws: bigint;
   readonly confirm: bigint;
 }
 
-/** Dynamic-programming table mapping each achievable positive sum over `sizes` to its number of sign assignments. */
+/** Each achievable positive sum over `sizes` mapped to its number of sign assignments. */
 function waysTo(sizes: readonly number[]): bigint[] {
   let ways = [1n];
   for (const size of sizes) {
@@ -28,7 +27,7 @@ function waysTo(sizes: readonly number[]): bigint[] {
   return ways;
 }
 
-/** Reconstructs one signed margin vector from `sizes` whose positive entries sum to `goal`. */
+/** One signed margin vector from `sizes` whose positive entries sum to `goal`. */
 function signsFor(sizes: readonly number[], goal: number): number[] {
   const reach = [new Set([0])];
   for (const size of sizes) {
@@ -47,10 +46,9 @@ function signsFor(sizes: readonly number[], goal: number): number[] {
 }
 
 /**
- * Counts how many sign assignments to the untied `free` margins register a step at `level` when
- * combined with `fixed` under `readsStep`. Because flipping signs of `free` leaves every task's
- * unsigned rank in `[...fixed, ...free]` invariant, `readsStep` depends on `free` signs solely
- * through their positive rank sum and is monotone in that sum.
+ * How many sign assignments to the untied `free` margins register a step at `level` beside `fixed`.
+ * Flipping the signs of `free` leaves every unsigned rank in `[...fixed, ...free]` unchanged, so
+ * `readsStep` depends on those signs only through their positive rank sum, and is monotone in it.
  */
 export function stepCount(fixed: readonly number[], free: readonly number[], level: number): StepCount {
   const fixedCount = fixed.filter((one) => one !== 0).length;

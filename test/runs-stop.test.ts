@@ -20,8 +20,8 @@ const root = mkdtempSync(join(tmpdir(), "ana-runs-stop-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("a stop", () => {
-  // What a stop releases. A Builder's root named for its session id alone, left mounted, would
-  // refuse that id to every campaign on the host with a bare EEXIST.
+  // A Builder's root named for its session id alone, left mounted, would refuse that id to every
+  // campaign on the host with a bare EEXIST.
   it("names what a run's unfinished solves and sessions left, and nothing of a seed's source", () => {
     const path = join(root, "r1", "log.jsonl");
     mkdirSync(dirname(path));
@@ -50,7 +50,6 @@ describe("a stop", () => {
       "solve-exam-r1-x-2",
       "solve-s-2",
     ]);
-    // A run stopped at a rest: every ask has finished, and the root of the first still stands.
     const rested = join(root, "r2", "log.jsonl");
     mkdirSync(dirname(rested));
     append(rested, "exam.started", { session: "x-1" });
@@ -58,8 +57,6 @@ describe("a stop", () => {
     append(rested, "exam.started", { session: "x-2", conversation: "x-1" });
     append(rested, "exam.finished", { session: "x-2" });
     expect(left({ path: rested })).toEqual(["solve-exam-r2-x-1", "solve-exam-r2-x-2"]);
-    // A seed of that run where it stands. The solve and the session the run has open are still
-    // the run's, and may be live: a stop of the seed names only what the seed started.
     const copy = join(root, "sim-r1", "log.jsonl");
     seedCampaign(dirname(path), dirname(copy), {});
     expect(left({ path: copy, seed: true })).toEqual([]);
@@ -88,8 +85,6 @@ describe("a stop", () => {
     }
   });
 
-  // The campaign command is started niced, in a process group of its own, with its output in two
-  // files (`bun run runs launch`).
   it("ends a process started in a group of its own and its children, through the group", async () => {
     const child = capturedSpawn({
       cmd: ["sh", "-c", "echo up; sleep 60 & sleep 60"],
@@ -99,14 +94,12 @@ describe("a stop", () => {
       detached: true,
     });
     const ps = (...columns: string[]) => runTextSyncOrThrow(["ps", "-axo", columns.join(",")]);
-    // The shell forks its first sleep and writes its line in its own time: wait for both, to a deadline.
     const out = Bun.file(join(root, "launch-run-1.out"));
     const up = async () => family(ps("pid=", "ppid="), child.pid).length > 1 && (await out.text()) === "up\n";
     const settled = Date.now() + 10_000;
     while (!(await up()) && Date.now() < settled) await Bun.sleep(20);
     const pids = family(ps("pid=", "ppid="), child.pid);
     expect(pids.length).toBeGreaterThan(1);
-    // It leads its group, so this test's end is not its end.
     expect(
       ps("pid=", "pgid=")
         .split("\n")

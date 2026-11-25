@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Reports sample-size, power, and false-positive figures from the production comparison test.
- *
- *   bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]
- *     [--scores <s,s,...> [--unbilled <s,s,...>]]
+ * Reports sample-size, power and false-positive figures from the production comparison test:
+ * `size.ts [--level <n>] [--untied <n>] [--scores <s,s,...> [--unbilled <s,s,...>]]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";
@@ -21,7 +19,6 @@ const USAGE = `usage:
 const OPTIONS = { level: "text", untied: "int", scores: "text", unbilled: "text" } as const;
 const LEVEL = 0.02;
 
-/** What a comparison of `untied` tasks with equal margins can show at `level`. */
 export function sizeOf(untied: number, level: number) {
   // Every untied task won or lost by one margin: the sign of each plays no part at one half.
   const equal = Array.from({ length: untied }, () => 1);
@@ -33,8 +30,6 @@ export function sizeOf(untied: number, level: number) {
   };
 }
 
-/** One set of task scores read as a comparison reads them at `level`; `unbilled`, where given, the
- *  same tasks without the bill. */
 function scoresRead(scores: readonly number[], level: number, unbilled: readonly number[] | null) {
   if (unbilled !== null && unbilled.length !== scores.length) {
     throw new Error(
@@ -49,14 +44,13 @@ function scoresRead(scores: readonly number[], level: number, unbilled: readonly
   };
 }
 
-/** A share in percent to a tenth. */
 function percent(share: number): string {
   return `${String(Math.round(1000 * share) / 10)}%`;
 }
 
-/** The lines `sizeOf` is told in: the sweep and the floor, then the production's own lines for a
- *  launch (`sizeLines`), which name the three smallest tallies that read a step, the detectable
- *  share and the false rate, and every such tally that fits (`smallestSteps`). */
+/** The sweep and the floor, then the production's own launch lines (`sizeLines`): the three
+ *  smallest tallies that read a step, the detectable share, the false rate, and every such tally
+ *  that fits (`smallestSteps`). */
 function sizeTold(untied: number, level: number): string[] {
   const { sweep, floor } = sizeOf(untied, level);
   return [
@@ -71,7 +65,6 @@ function sizeTold(untied: number, level: number): string[] {
   ];
 }
 
-/** The lines `scoresRead` is printed in. */
 function scoresLines(scores: readonly number[], level: number, unbilled: readonly number[] | null): string[] {
   const read = scoresRead(scores, level, unbilled);
   const untied = read.wins + read.losses;
@@ -87,7 +80,6 @@ function scoresLines(scores: readonly number[], level: number, unbilled: readonl
   ];
 }
 
-/** A comma-separated list of numbers, or null where none is given. */
 function numbersIn(text: string | null, name: string): number[] | null {
   if (text === null) return null;
   const numbers = text.split(",").map(Number);

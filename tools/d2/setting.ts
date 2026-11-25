@@ -1,48 +1,16 @@
 /**
- * A campaign's setting: who solves, what a solve is held to, and how many tasks a comparison draws.
- * It is recorded once in the campaign's log, and every command that solves runs under the record.
+ * A campaign's setting: who solves, what a solve is held to, and how many tasks a comparison draws,
+ * recorded once in the log so every command that solves runs under the record. A command naming
+ * another setting than the record is refused, so a forgotten flag cannot change the comparison;
+ * another solver, deadline or turn limit is another campaign.
  *
- *   --solver claude/claude-sonnet-5-5   the model that solves in the stored cycle's place
- *   --solver-effort high                its effort, read beside --solver and not without it
- *   --solver-window 200000              the context its Claude Code compacts at, beside --solver
- *                                       too: 300,000 tokens where not named, which a model served
- *                                       a 200K context, such as claude-haiku-5-5, cannot hold
- *   --solve-minutes 30                  the deadline of one solve; 30 where not named
- *   --solve-model-turns 20              the model's own turns a solve is given, told to the solver; 20 where not
- *                                       named, and `unlimited` for none, as older campaigns' records
- *                                       read back
- *   --target 12                         so many of the held-out tasks, by the contract's draw
- *   --solves 4                          solves a side of each scored task; `SIZE.solves`, 2, where
- *                                       not named. An older record names none, and
- *                                       reads the count its last comparison began at, or 2
+ *   [--solver <provider/model> [--solver-effort high] [--solver-window <tokens>]] [--solve-minutes N]
+ *   [--solve-model-turns N | unlimited] [--solves N]
  *
- * The first command of a campaign that compares records what its flags name, with the defaults for
- * what they leave out: the stored cycle's own solver, the one budget every solver is held to
- * (`campaign.ts`, `LIMITS`) and `SIZE.tasks`, 24, by the draw. From then on a command that names nothing runs under the
- * record, one that names the same is the same, and one that names another is refused, since a
- * command that differed and went on with a note would let a forgotten flag change the comparison
- * without a word.
- *
- * A campaign's setting does not change, so no fold reads the log by setting (the stop rule, the
- * tasks both harnesses exhausted, the outcome an Examiner hears, the size of the next comparison):
- * another solver, another deadline or model turn limit is another campaign.
- *
- * A campaign whose solves were made before a setting was recorded, as the oldest campaigns' were,
- * has a setting all the same: the one its last test-side solves ran under. The first command to
- * record one names that setting (`firstRecord`), and is refused otherwise, since a first command
- * that left out a turn limit its solves ran under would record a campaign with no such limit, and
- * solve under it, without a word.
- *
- * The prompts a solver is given before a solve stops without an answer are v1's cap on nudges,
- * `LIMITS.turns`, the same for every solve: every finished solve of the first rounds was given
- * one, so the cap bound no solve, and no flag names it. A record that holds another count is
- * refused. The model's own
- * turns are the budget told to the solver and enforced, which seconds cannot be on a loaded host.
- *
- * What does not follow the setting is the campaign's own: a task's state and the harnesses it
- * keeps. The concurrency stays the sweep's: it is not what a harder task runs out of first, and it
- * is one more thing two comparisons could differ in. A rehearsal seats a script
- * where the solver sits and refuses `--solver`; its limits and its scored set are these.
+ * The first record takes the defaults (`SETTING_DEFAULTS`, `LIMITS`) for what its flags leave out.
+ * The window defaults to 300,000 tokens (`SWEEP_COMPACT_WINDOW`), which a model served a 200K context
+ * cannot hold. A campaign with solves and no record has the setting its last test-side solves ran
+ * under, and its first record must name that (`firstRecord`).
  */
 import { clampThinkingLevel, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema";
@@ -57,60 +25,42 @@ import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { LIMITS } from "./campaign.ts";
 
-/** What the flags name of the solver and its limits, as `openCampaign` takes it: the solver in the
- *  stored cycle's place, or none, and the limits of every solve. */
 interface NamedSetting {
   readonly solver: NamedSolver | undefined;
   readonly limits: Limits;
 }
 
-/** Who solves in the stored cycle's place, and the window its Claude Code compacts at where a
- *  command named one (`SWEEP_COMPACT_WINDOW` otherwise). */
 export interface NamedSolver {
   readonly model: string;
   readonly effort: ThinkingLevel;
   readonly window?: number;
 }
 
-/** A campaign's setting as its log records it. */
 export interface Recorded {
-  /** Who solves in the stored cycle's place; null for the cycle's own model at its effort. */
   readonly solver: { readonly model: string; readonly effort: string; readonly window?: number } | null;
   readonly minutes: number;
-  /** The model turn limit of a solve; null where they are not limited. */
   readonly modelTurns: number | null;
   readonly target: number;
-  /** The solves a side of each scored task. */
   readonly solves: number;
 }
 
-/** The flags of a setting, as a command's parsed arguments hold them. */
 type SettingFlags = Readonly<Partial<Record<keyof typeof SETTING_OPTIONS | "target", string | undefined>>>;
 
-/** What a command runs under: the solver and the limits, the size of the scored draw,
- *  and the record to keep where the campaign has none yet or takes another; null where it stands. */
 export interface AskedSetting {
   readonly named: NamedSetting;
   readonly target: number;
   readonly solves: number;
-  /** The record to keep, which is then the campaign's first: it is held to what the log's solves
-   *  ran under (`firstRecord`). */
   readonly record: Recorded | null;
 }
 
-/** Who a command solves as, where its caller knows, and what it holds a solve to. */
 interface Solving {
   readonly solver?: { readonly model: string; readonly effort: string } | undefined;
   readonly limits: Limits;
 }
 
-/** Where the refusal sends its reader. */
 const DOCUMENTED = "tools/d2/setting.ts";
 const KIND = "campaign.setting";
 
-/** The flags of a setting, as every command of a campaign takes them. None has a default here: a
- *  flag that is not given is the campaign's record, and the defaults stand behind that
- *  (`SETTING_DEFAULTS`). `--target` is a comparison's own option (`round.ts`). */
 export const SETTING_OPTIONS = {
   solver: { type: "string" },
   "solver-effort": { type: "string" },
@@ -120,19 +70,14 @@ export const SETTING_OPTIONS = {
   solves: { type: "string" },
 } as const;
 
-/** The setting of a campaign nothing has named: `LIMITS`'s deadline and model turn limit, as the flags say
- *  them. The solver is the stored cycle's own, and the scored set is `SIZE.tasks` tasks by the draw. */
 const { modelTurns: budgeted, ...UNTURNED } = LIMITS;
 const SETTING_DEFAULTS = {
   "solver-effort": "high",
   "solve-minutes": String(LIMITS.wallSeconds / 60),
   "solve-model-turns": String(budgeted),
 } as const;
-/** The model's turns of a setting that limits none, as an older record holds it. */
 const UNLIMITED = "unlimited";
 
-/** The parts of a record, each with how a refusal says it as flags, or null where the record holds
- *  none of it, and the flag it is then missing. */
 const PARTS: readonly {
   readonly of: keyof Recorded;
   readonly flag: string;
@@ -156,25 +101,17 @@ const PARTS: readonly {
   { of: "solves", flag: "--solves", said: ({ solves }) => `--solves ${String(solves)}` },
 ];
 
-/** The scored tasks `--target` asks for: a whole number of at least one. Anything else would draw
- *  a set nobody asked for: no number draws none, and a negative one all but the last. */
 export function targetNamed(flag: string): number {
   return wholeNamed("target", flag, "the tasks to score are a whole number of at least one");
 }
 
-/** A count a flag names, refused unless it is a whole number of at least one. */
 function wholeNamed(name: string, flag: string | undefined, why: string): number {
   const count = Number(flag);
   if (!Number.isInteger(count) || count < 1) throw new Error(`--${name} ${String(flag)}: ${why}`);
   return count;
 }
 
-/**
- * What the flags name of the solver and its limits, with the defaults for those not given.
- * `--solver-effort` without `--solver` names nothing, as it never did: the cycle's model solves at
- * the cycle's effort. A deadline or a model turn limit that is no whole number of at least one is refused: a
- * fraction of a minute would hash to a setting nobody could name again.
- */
+/** `--solver-effort` without `--solver` names nothing: the cycle's model solves at the cycle's effort. */
 export function settingNamed(values: SettingFlags): NamedSetting {
   const given = { ...SETTING_DEFAULTS, ...defined(values) };
   const minutes = wholeNamed(
@@ -199,9 +136,9 @@ export function settingNamed(values: SettingFlags): NamedSetting {
           given["solver-window"],
           "a solver's compaction window is a whole number of tokens",
         );
-  // pi sends an effort it does not know as the model's lowest level, so that one is refused. It sends
-  // a level the model does not serve as the next it does (`clampThinkingLevel`), and the setting
-  // records that one (DeepSeek's `medium` as `high`). A model with no reasoning gets none.
+  // pi sends an effort it does not know as the model's lowest level, so that one is refused. It sends a
+  // level the model does not serve as the next it does (`clampThinkingLevel`), and the setting records
+  // that one (DeepSeek's `medium` as `high`).
   const asked = THINKING_LEVELS.find((level) => level === given["solver-effort"]);
   if (asked === undefined) {
     throw new Error(`--solver-effort ${given["solver-effort"]}: one of ${THINKING_LEVELS.join(", ")}`);
@@ -225,13 +162,11 @@ export function settingNamed(values: SettingFlags): NamedSetting {
   };
 }
 
-/** The flags that are given, without the ones that are not: a key that holds nothing would stand
- *  over the record or the default it is spread onto. A command's other flags ride along unread. */
+/** A key that holds nothing would stand over the record or the default it is spread onto. */
 function defined(values: SettingFlags): SettingFlags {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
 }
 
-/** A record as the flags that name it. */
 function flagsOf({ solver, minutes, modelTurns, target, solves }: Recorded): SettingFlags {
   return {
     ...keyIfDefined("solver", solver?.model),
@@ -244,7 +179,6 @@ function flagsOf({ solver, minutes, modelTurns, target, solves }: Recorded): Set
   };
 }
 
-/** The flags as the record they name, with the defaults for those not given. */
 function recordOf(values: SettingFlags, named: NamedSetting): Recorded {
   const { solver, limits } = named;
   return {
@@ -260,13 +194,10 @@ function recordOf(values: SettingFlags, named: NamedSetting): Recorded {
   };
 }
 
-/** The setting a log records for its campaign: the last one kept, or null where none reads whole. */
 export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
   const { solver, minutes, turns, modelTurns, target, solves } =
     eventsOf(events, KIND).at(-1)?.event.data ?? {};
   const by = asRecord(solver);
-  // An older record holds the prompts a solve was given, which every solve is
-  // given alike since (`LIMITS.turns`); one that held another count ran under another setting.
   if (isNumber(turns) && turns !== LIMITS.turns) {
     throw new Error(
       `the campaign's setting was recorded with ${String(turns)} prompts a solve, and this source gives every solve ${String(LIMITS.turns)}: no tally on record speaks for it. Run it from the commit it was recorded at`,
@@ -295,18 +226,13 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
   };
 }
 
-/** The solves a side an older record holds, which named none: the count its last
- *  comparison began at, since another count is another campaign, and the default where none began. */
+/** An older record named no solves a side: read the count its last comparison began at, since
+ *  another count is another campaign, and the default where none began. */
 function ranAt(events: readonly LogEvent[]): number {
   const solves = eventsOf(events, STARTED).at(-1)?.event.data.solves;
   return isNumber(solves) ? solves : SIZE.solves;
 }
 
-/**
- * What a command runs under, from its flags and the campaign's record. With no record it is what
- * the flags name and the defaults for the rest, and is to be recorded. Otherwise it is the
- * record, and a flag that names another part than the record holds is refused with both.
- */
 export function settingAsked(values: SettingFlags, recorded: Recorded | null): AskedSetting {
   const flags = recorded === null ? defined(values) : { ...flagsOf(recorded), ...defined(values) };
   const named = settingNamed(flags);
@@ -331,8 +257,7 @@ export function settingAsked(values: SettingFlags, recorded: Recorded | null): A
   };
 }
 
-/** Keep the setting a command runs under as the campaign's, where it is one to record. A command
- *  calls this as it begins, past every refusal, so that a refused command leaves the record alone. */
+/** A command calls this as it begins, past every refusal, so a refused command leaves the record alone. */
 export function keepSetting(log: string, { record }: Pick<AskedSetting, "record">): void {
   if (record === null) return;
   const { solver, ...rest } = record;
@@ -342,13 +267,6 @@ export function keepSetting(log: string, { record }: Pick<AskedSetting, "record"
   });
 }
 
-/**
- * How long one command may run under a deadline: the sweep's two limits, 300 s where a command names
- * no timeout and 900 s at most, each held to a share of the deadline, a quarter and a half. So a
- * command that names nothing can be cut and returned four times in a solve, and the longest one a
- * solver may ask for leaves it half its time. From a deadline of half an hour up both are the sweep's
- * own. Each is at least a second.
- */
 export function commandSeconds(wallSeconds: number): Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds"> {
   const held = (most: number, share: number) => Math.max(1, Math.min(most, Math.floor(wallSeconds / share)));
   return {
@@ -357,15 +275,6 @@ export function commandSeconds(wallSeconds: number): Pick<Limits, "shellDefaultS
   };
 }
 
-/**
- * Why a command may not record its setting as the campaign's first, or undefined where it may. A
- * log that holds test-side solves and no record has a setting already, the one those solves ran
- * under (`solverLast`), and the first record is that one. The refusal names it as flags, so that
- * it can be typed once and is then the campaign's. `solver` is who the command solves as, where
- * the caller knows: a command that names no `--solver` solves as the stored cycle's, and the
- * solver is not compared then. Another host's code, pins or prices are another setting too, and
- * are not read here: a log's conditions hold them, and no flag names them.
- */
 export function firstRecord(
   asked: Pick<AskedSetting, "record">,
   named: Solving,

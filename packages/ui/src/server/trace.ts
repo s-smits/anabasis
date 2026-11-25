@@ -1,13 +1,10 @@
 /**
- * The solves, the turns and the calls the detail endpoints show, and what of them each tier may
- * carry.
- *
- * A solve is the kernel's join of its two events and its condition (`solvesIn`, `conditionsOf`),
- * with the calls it made since its last start. Its ruling is what stands of its rejection: a person's label where a settled report holds one, the
- * Referee's last finding otherwise. A ruling is withheld in both tiers where `withheld.ts` says so.
- *
- * Turns and calls are the kernel's reading of the trace events (`traceOf`, `src/kernel/trace.ts`),
- * the one the Builder's `read_trace` pages, with a call's result cut for the default tier.
+ * The solves, turns and calls the detail endpoints show, and what of them each tier may carry. A
+ * solve is the kernel's join of its events and its condition (`solvesIn`, `conditionsOf`) with the
+ * calls it made since its last start; its ruling is a person's label where a settled report holds
+ * one, else the Referee's last finding, withheld where `withheld.ts` says so. Turns and calls are
+ * `traceOf`'s reading, the one the Builder's `read_trace` pages, with a call's result cut for the
+ * default tier.
  */
 import { eventsOf } from "../../../../src/kernel/log.ts";
 import type { Ending } from "../../../../src/kernel/solve.ts";
@@ -27,16 +24,14 @@ import { rulingWithheld } from "./withheld.ts";
 const RESULT_CHARS = 8000;
 const FAIL_KINDS = ["rejected", "wall-ended", "turns-ended", "context-ended", "no-answer"] as const;
 const NON_RESULTS = ["provider", "sandbox-crash", "killed", "moved-files", "check", "verifier"] as const;
-/** The non-results whose reason names a check or what the verifier saw of an answer. */
 const EXAM_REASONS: ReadonlySet<string> = new Set(["check", "verifier"]);
 const RULINGS = ["earned", "check-defect", "unclear"] as const;
 const WITHHELD = "withheld in the default tier: it names what the exam side's checks saw";
 
-/** The answer is served in the exam tier. */
 export const examTier = (tier: Tier): boolean => tier === "exam";
 
-/** A logged ending as the kernel types it, or null where it holds none it can read. A reason that
- *  names a check or the verifier's view of an answer is the exam tier's. */
+/** A logged ending as the kernel types it, or null where it holds none it can read; a reason naming
+ *  a check or the verifier's view of an answer is the exam tier's. */
 function endingOf(ending: JsonObject | null, tier: Tier): Ending | null {
   if (ending === null) return null;
   const { outcome, kind, reason } = ending;
@@ -50,13 +45,11 @@ function endingOf(ending: JsonObject | null, tier: Tier): Ending | null {
   return { outcome, kind: non, reason: EXAM_REASONS.has(non) && !examTier(tier) ? WITHHELD : said };
 }
 
-/** The two harnesses of each comparison, by its id, from its handover. */
 const sidesIn = once(
   (log) =>
     new Map(movesIn(log).flatMap((move) => (move.step === "comparison" ? [[move.id, move] as const] : []))),
 );
 
-/** The labels the settled reports hold, by solve (`settledLabels`): a person's word stands over a ruling. */
 const labelsIn = once(({ events }) => settledLabels(events));
 const callsIn = once(({ events }) =>
   countBy(eventsOf(events, "solve.call"), ({ event: { data } }) => (isString(data.solve) ? data.solve : "")),
@@ -91,7 +84,6 @@ export function rulingOf(
   };
 }
 
-/** Where a solve stood: a side of the comparison its start names, practice, or neither. */
 function sideOf(
   log: Log,
   id: string,
@@ -103,7 +95,6 @@ function sideOf(
   return harness === sides.old ? "old" : "other";
 }
 
-/** One solve as a list row, in `tier`. */
 export function solveRow(log: Log, solve: Solve, tier: Tier): SolveRow {
   const under = conditionsIn(log).get(solve.condition);
   const task = under?.task ?? "";
@@ -130,7 +121,6 @@ export function solveRow(log: Log, solve: Solve, tier: Tier): SolveRow {
   };
 }
 
-/** The turns and the calls of seat `seat`'s solve or session `id`, as the page serves them. */
 function traced(log: Log, seat: Seat, id: string): { turns: Turn[]; calls: ToolCall[] } {
   const { turns, calls } = traceOf(log.events, seat, id);
   return {
@@ -157,8 +147,6 @@ function traced(log: Log, seat: Seat, id: string): { turns: Turn[]; calls: ToolC
   };
 }
 
-/** A solve's turns and calls: its own events, as the Builder's `read_trace` reads them. */
 export const solveTrace = (log: Log, solve: string) => traced(log, "solve", solve);
 
-/** A Builder's or an Examiner's session's own turns and calls. */
 export const sessionTrace = (log: Log, session: string, seat: "build" | "exam") => traced(log, seat, session);

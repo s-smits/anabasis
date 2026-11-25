@@ -1,29 +1,15 @@
 /**
  * Blind reach grades against what the reference did, grade by grade, and the ladder's worked
- * examples re-rated blind so that each rung can be overhauled on a count:
- *
- *   bun .claude/skills/examiner-complexity/scripts/grades.ts <grades.tsv> <log or campaign folder>...
- *   bun .claude/skills/examiner-complexity/scripts/grades.ts rungs packet
- *   bun .claude/skills/examiner-complexity/scripts/grades.ts rungs compare <rungs.tsv>...
- *
- * `grades.tsv` has a header and one row a task, `task<TAB>grade`, written by a grader who read the
- * task's public input and the public rules alone, on lane 14's scale (`GRADES`,
- * `src/examiner/ladder.ts`). For each grade it prints the tasks graded so, the solves that gave a
- * result under any harness, how many were valid, the tasks valid on every solve, and the median
- * turns of the valid ones. Non-results count nowhere (rule 7) and a flag is its side's fail. A grade
- * whose tasks are valid on every solve in a few turns measures nothing for this solver, which is how
- * the ladder was re-rated once nearly every solve at grades 2 to 5 was valid. Read-only;
- * the grades and the outcomes stay on the exam side and reach no seat.
- *
- * `rungs packet` prints what a grader reads: the scale (`GRADES`), who the grades are for (`SOLVER`),
- * and each field's rungs in order with their grade numbers removed, one id a rung (`<field>.<rung>`).
- * The grader writes `id<TAB>grade<TAB>place`, the place being `basin`, `model`, `bound` or `none`.
- * `rungs compare` reads one table a grader, sets each rung's grades beside the one the ladder states,
- * and flags a rung whose median (the lower of two middle grades) is below its stated grade, or not
- * above the rung before it, since such a rung shows the Examiner a picture of a grade it does not
- * reach. Two graders agreed exactly on 13 of 18 rungs and within one on the rest, so one table is a
- * lead. A blind re-rating of the first rungs against a solver with a shell moved most of them down,
- * by a median of two grades, which is why the rungs are graded this way.
+ * examples re-rated blind: `grades.ts <grades.tsv> <log or campaign folder>...`, `grades.ts rungs
+ * packet`, `grades.ts rungs compare <rungs.tsv>...`. `grades.tsv` holds `task<TAB>grade` rows from
+ * a grader who read only the public input and rules, on lane 14's scale (`GRADES`,
+ * `src/examiner/ladder.ts`); each grade prints its tasks, solves with a result, valid ones, tasks
+ * valid on every solve and the valid ones' median turns. Non-results count nowhere (rule 7), and a
+ * grade valid on every solve in a few turns measures nothing for this solver. `rungs packet` prints
+ * the scale, `SOLVER` and each field's rungs without grades, one id a rung (`<field>.<rung>`), for
+ * a grader to answer `id<TAB>grade<TAB>place` (`basin`, `model`, `bound` or `none`); `rungs
+ * compare` flags a rung whose median blind grade (the lower middle) is below its stated grade or
+ * not above the rung before it. Read-only; grades and outcomes stay on the exam side.
  */
 import { FIELDS, GRADES, SOLVER } from "#src/examiner/ladder.ts";
 import { read } from "#src/kernel/log.ts";
@@ -43,7 +29,7 @@ interface Tally {
   turns: number[];
 }
 
-/** Each task's results by its id: solves with a result, valid ones, and the valid ones' turns. */
+/** Solves with a result, valid ones, and the valid ones' turns. */
 export function outcomesOf(logs: readonly (readonly Parameters<typeof solvesIn>[0][number][])[]) {
   const tasks = new Map<string, { solves: number; valid: number; turns: number[] }>();
   for (const solve of logs.flatMap((events) => solvesIn(events))) {
@@ -61,7 +47,6 @@ export function outcomesOf(logs: readonly (readonly Parameters<typeof solvesIn>[
   return tasks;
 }
 
-/** The grade table's lines, one a grade in order. */
 export function gradeLines(
   grades: ReadonlyMap<string, string>,
   outcomes: ReturnType<typeof outcomesOf>,
@@ -87,7 +72,6 @@ export function gradeLines(
     });
 }
 
-/** What a blind grader reads: the scale, the solver, and the rungs with no grade. */
 export function packetOf(): string {
   return [
     `Reach is how hard a task is for a strong current model working in the field:\n${GRADES.map((grade) => `- ${grade}`).join("\n")}`,
@@ -100,7 +84,6 @@ export function packetOf(): string {
   ].join("\n\n");
 }
 
-/** Each rung's stated grade beside the blind one, and a closing count. */
 export function compareLines(
   blind: ReadonlyMap<string, readonly { grade: number; place: string }[]>,
 ): string[] {
@@ -143,7 +126,6 @@ export function compareLines(
   return lines;
 }
 
-/** `rungs packet`, or `rungs compare` over one grader's table each. */
 function rungsCommand([verb, ...tables]: readonly string[], die: CommandArgs["die"], usage: string): void {
   if (verb === "packet") {
     console.log(packetOf());

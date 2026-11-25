@@ -44,17 +44,16 @@ describe("Linux bubblewrap support", () => {
 });
 
 describe("the resolver an open network needs", () => {
-  // Opening egress is not the same as reaching a name. In the Lima VM the Built Harness shell
-  // could open a socket and still failed every lookup, because Ubuntu points /etc/resolv.conf
-  // into /run and the wall bound only /etc, so the resolver was a dangling symlink.
+  // Opening egress is not reaching a name: Ubuntu points /etc/resolv.conf into /run, so a wall binding
+  // only /etc leaves the resolver a dangling symlink.
   it("binds nothing extra while the network stays closed", () => {
     const args = bwrapOpenReadArgs({ network: false });
     expect(args).toContain("--unshare-net");
     expect(args.filter((arg) => arg.endsWith("resolv.conf"))).toEqual([]);
   });
 
-  // A resolver that is a file under /etc already reads through the root bind, as GitHub's Ubuntu
-  // runner's is, where an older runner's pointed into /run.
+  // A resolver that is a file under /etc already reads through the root bind, as on GitHub's Ubuntu
+  // runner.
   it.if(runtimeProcess.platform === "linux")("binds the resolved resolver when the network is open", () => {
     const args = bwrapOpenReadArgs({ network: true });
     expect(args).not.toContain("--unshare-net");
@@ -73,9 +72,9 @@ describe("the runtime prefix a wall reopens", () => {
       value: join(tmpdir(), "ana-absent-runtime", "bin", "bun"),
     });
     try {
-      // The controller launches `capturedExecPath`, captured before any generated module ran. Read
-      // from the live global instead, the reopened roots lose the runtime's own prefix and a walled
-      // command cannot start it: the substitution test/trusted-runtime.test.ts exists to refuse.
+      // The controller launches `capturedExecPath`, captured before any generated module ran; read from
+      // the live global, the reopened roots would lose the runtime's own prefix and a walled command
+      // could not start it.
       expect(nodeRuntimeReadRoots()).toEqual(honest);
     } finally {
       if (descriptor) Object.defineProperty(runtimeProcess, "execPath", descriptor);
@@ -95,8 +94,8 @@ describe("the runtime prefix a wall reopens", () => {
     symlinkSync(targetDir, dirLink);
 
     const args = bwrapTmpfsDenies([fileLink, dirLink]);
-    // Symlink to a regular file must use --ro-bind /dev/null (never --tmpfs, which fails ENOTDIR on Linux),
-    // and must also mask the canonical target outside denied roots.
+    // A symlink to a file is masked with --ro-bind /dev/null (--tmpfs fails ENOTDIR on Linux), and so
+    // is its canonical target outside denied roots.
     expect(args).toContain("/dev/null");
     expect(args.join(" ")).toContain(`--ro-bind /dev/null ${fileLink}`);
     expect(args.join(" ")).toContain(`--ro-bind /dev/null ${realpathSync.native(targetFile)}`);

@@ -1,9 +1,9 @@
 /**
- * Tracks silent model-routing degradations across campaigns, writing one TSV file per affected
- * campaign to `data/runs/degradations/<campaign>.tsv` under the main worktree (one row per session
- * or solve and served model, with turn counts and first/last timestamps). The periodic gather
- * (`runs fetch` without a name) updates these files for every fetched log and every local campaign
- * modified in the last hour, printing a summary line whenever a campaign's record changes.
+ * Tracks silent model-routing degradations, writing one TSV per affected campaign to
+ * `data/runs/degradations/<campaign>.tsv` under the main worktree (a row per session or solve and
+ * served model, with turn counts and first and last times). The periodic gather (`runs fetch`
+ * without a name) updates them for every fetched log and every local campaign modified in the last
+ * hour.
  *
  *   bun tools/runs/degradations.ts <log or campaign name>...
  */
@@ -28,11 +28,9 @@ const COLUMNS = [
   "last",
 ] as const satisfies readonly (keyof Degradation)[];
 
-/** Summarises the distinct `(served, asked)` model substitutions present in `rows`. */
 const which = (rows: readonly Degradation[]) =>
   [...new Set(rows.map(({ asked, served }) => `${served} for ${asked}`))].join("; ");
 
-/** Formats `rows` as a tab-separated table with a header line, or returns an empty string if none exist. */
 function recordOf(rows: readonly Degradation[]): string {
   if (rows.length === 0) return "";
   return [COLUMNS.join("\t"), ...rows.map((row) => COLUMNS.map((column) => String(row[column])).join("\t"))]
@@ -40,8 +38,8 @@ function recordOf(rows: readonly Degradation[]): string {
     .join("");
 }
 
-/** Updates degradation TSV records for `brought` logs and recently modified local campaigns,
- *  returning one notification line for each record that changed. */
+/** Updates the records for `brought` logs and recently modified local campaigns, returning one line
+ *  for each record that changed. */
 export function recordDegradations(brought: readonly string[], repo: string, now = Date.now()): string[] {
   const own = runs(repo)
     .filter(isCampaign)
@@ -60,8 +58,6 @@ export function recordDegradations(brought: readonly string[], repo: string, now
   });
 }
 
-/** Formats the investigation summary of model-routing degradations across all turns in `events`
- *  that record a served model. */
 export function degradationLines(events: readonly LogEvent[]): string[] {
   const rows = degradations(events);
   // Exclude Referee turns because their start events do not record a requested model (`degradations`).

@@ -146,7 +146,6 @@ describe("the clock trigger", () => {
     expect(triggerOf(early)).toBeNull();
     const turns = clockTurns(early, minute);
     expect(turns).toBe("2026-11-04T12:00:47Z");
-    // Hostile: the trigger stands at the second said and not at the one before it.
     const read = (when: number) => triggerOf(rowOf({ name: "r1", host: "here", live: true }, opened, when));
     expect(read(Date.parse(turns))).toBe("12.0 h since opening");
     expect(read(Date.parse(turns) - 1000)).toBeNull();
@@ -157,7 +156,6 @@ describe("the clock trigger", () => {
       "due at 2026-11-04T12:00Z · nothing owed · 1 run(s) live",
       `run · r1 · its clock trigger turns at ${turns}`,
     ]);
-    // A stopped run has no clock to wait for.
     expect(openingOf({ ...early, live: false }, null, [], null, turns)).toEqual(["step: run"]);
   });
 });

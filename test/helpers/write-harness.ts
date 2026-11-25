@@ -1,7 +1,6 @@
 /**
- * A harness written out from its parts, as the host reads one: the two files it requires, and a
- * guide and programs where the harness has them. Only the tests write a harness other than the
- * starter (`writeStarter`, `src/harness/starter.ts`), so this writer lives here.
+ * A harness written out from its parts, as the host reads one. Only tests write a harness other
+ * than the starter (`writeStarter`, `src/harness/starter.ts`), so this writer lives here.
  */
 import { AGENT_DIR, GUIDE_FILE, TOOLS_SPEC_FILE } from "../../src/meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../../src/meta/filesystem.ts";

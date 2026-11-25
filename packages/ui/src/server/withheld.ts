@@ -1,18 +1,11 @@
 /**
- * Which rulings are withheld from both tiers, so that a person's label is made blind, since a label
- * made beside the ruling measures nothing.
- *
- * A solve's ruling is withheld where a label of its rejection is still to come: its task waits for
- * a label as possibly infeasible (`poolOf`, as the supply counts it), or the rejection set
- * its task aside in a comparison nobody has settled (`toLabel`). And it is withheld where its
- * comparison has not reported: until the report lands nothing has said which rejections set a task
- * aside, so nothing has said what a person will be asked to label.
- *
- * A comparison's rulings by kind are withheld while any one of its rulings is: only a ruling that is
- * not `earned` sets a task aside, so the kinds beside the outcome split would give a withheld ruling
- * away. The page is then told how many rejections were ruled and no kind (`Rulings`). A rejection
- * that could merely be labelled one day with `settle.ts --all` is not withheld: with no label on
- * record that would hide every ruling for good, and whether it should is the operator's question.
+ * Which rulings are withheld from both tiers, so a person's label is made blind. A ruling is
+ * withheld where a label of its rejection is still to come (its task waits as possibly infeasible,
+ * `poolOf`, or it set its task aside in an unsettled comparison, `toLabel`), and where its
+ * comparison has not reported, since nothing has yet said what a person will be asked to label.
+ * While any is, the comparison's rulings by kind are too, since only a ruling that is not `earned`
+ * sets a task aside (`Rulings`). A rejection that could merely be labelled one day is not withheld,
+ * or every ruling would hide for good.
  */
 import { toLabel } from "../../../../src/campaign/comparison.ts";
 import type { Handover } from "../../../../src/campaign/handover.ts";
@@ -33,7 +26,6 @@ const unsettledIn = once((log) => {
   return waiting;
 });
 
-/** The solves of comparisons that have not reported, by id. */
 const unreportedIn = once((log) => {
   const reports = reportedIdsIn(log);
   return new Set(
@@ -61,11 +53,8 @@ export function rulingWithheld(log: Log, solve: string, task: string): Withheld 
   return awaitingIn(log).has(task) || unsettledIn(log).has(solve) ? "label" : null;
 }
 
-/** The rejections a person is still to label in comparisons nobody has settled, counted. */
 export const unsettledCount = (log: Log): number => unsettledIn(log).size;
 
-/** A comparison's rulings as the page may see them: by kind while none is withheld, and how many
- *  were ruled otherwise. */
 export function rulingsOf(log: Log, step: Extract<Handover, { readonly step: "comparison" }>): Rulings {
   const { rulings: kinds } = step;
   return !reportedIdsIn(log).has(step.id) || withheldComparisonsIn(log).has(step.id)

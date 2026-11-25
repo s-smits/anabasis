@@ -21,7 +21,6 @@ import {
 } from "./round.ts";
 import { keepSetting, SETTING_OPTIONS } from "./setting.ts";
 
-/** A standalone comparison's flags and their defaults. */
 const STANDALONE_OPTIONS = {
   ...PACK_OPTIONS,
   id: { type: "string" },
@@ -65,7 +64,7 @@ export async function checkpointCommand(
     refuseTerms(request, { log: campaign.log, id });
   };
   // Every refusal comes before anything is recorded, as in a round: the admission's, then the
-  // comparison's own terms, and only then the campaign's setting.
+  // comparison's own terms, then the campaign's setting.
   const notes = admitComparison(campaign.log, {
     id,
     wanted: wantedNamed(values, { setting, cap, builds: false, judged: request.judge !== undefined }),
@@ -73,7 +72,7 @@ export async function checkpointCommand(
     own,
   });
   for (const note of notes) console.log(`· ${note}`);
-  // What the caller records of the comparison once it is admitted: a led Builder's move.
+  // What the caller records once the comparison is admitted: a led Builder's move.
   admitted?.();
   keepSetting(campaign.log, setting);
   stayAwake();

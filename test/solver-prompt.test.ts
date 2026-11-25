@@ -41,7 +41,6 @@ const TOLD: Told = {
   network: "uv",
 };
 
-/** The command rule's numeric facts, independent of the prose around them. */
 function commandLimits(prompt: string): number[] {
   return (
     prompt
@@ -64,21 +63,19 @@ describe("the solver's system prompt", () => {
   it("states the role, tools, duty, working directory and wall facts under the Starter", () => {
     const prompt = systemPrompt(TOLD);
     expect(prompt).toContain("coding assistant operating inside pi");
-    // The answer's file and format, the task's files, the solve time, and the home it works in.
     for (const fact of ["answer.json", "public/answer-format.json", "public/task.json", "120 minutes"]) {
       expect(prompt).toContain(fact);
     }
     expect(prompt).toMatch(/4 files.*public\/resources\//u);
     expect(prompt).toContain(`<cwd>\n${HOME}\n</cwd>`);
-    // The wall: what commands may write, that the network was reached, and their time limits.
     expect(prompt).toContain("$TMPDIR");
     expect(prompt).toContain("Commands have network access");
     expect(commandLimits(prompt)).toEqual([300, 900, 60]);
     for (const { name, description } of TOLD.tools) expect(prompt).toContain(`- ${name}: ${description}`);
     expect(prompt).toContain("matched against the original file, not after earlier edits are applied");
     expect(prompt).toContain("as small as possible while still being unique");
-    // The edit rules leave to pi's edit description what it states: unique, non-overlapping
-    // matches, nearby changes merged, and no padding with unchanged regions.
+    // The edit rules leave to pi's edit description what it states: unique, non-overlapping matches,
+    // nearby changes merged, and no unchanged padding.
     const edit = TOLD.tools.find(({ name }) => name === "edit")?.description ?? "";
     for (const fact of [
       "unique, non-overlapping region",
@@ -158,7 +155,6 @@ describe("what a solve opens with", () => {
         family: "fixture",
         publicInput: { base: 7 },
       });
-      // One readable name a resource, and two that fold to one name keep both files.
       expect(
         JSON.parse(readFileSync(join(home, "public", "resources", "public-rules.json"), "utf8")),
       ).toEqual(rules);

@@ -1,35 +1,13 @@
 /**
- * What `.githooks/pre-push` checks before anything leaves this clone: `git diff --check` on each commit
- * a push adds, the formatter on the files it changes (`unformatted`) and the secret scan on what it adds, and, where the push asks with
- * `ANA_PUSH_VERIFY=1 git push`, every step of the CI gate with the suite replaced by the tests one
- * import away from what each pushed head changed (`--static`). It reads Git's ref lines on stdin. A
- * pushed commit is unproved until `bun run land -- <top> --sanitize` or `--merge` has run its own
- * static pass, and the whole CI gate, the full suite among it, on the top's head
- * (`tools/runtime/land.ts`). A static pass is remembered by its tree and its parent's, so `land` does
- * not run a pushed head's again.
- *
- * The hook is not that proof, since proving each pushed commit there would make a push wait many
- * minutes for a proof `bun run land` then runs again over the stack. So there are four levels, on
- * the operator's word: `--no-verify` checks nothing, a plain push the two checks that cost seconds,
- * `ANA_PUSH_VERIFY=1` the static pass, and `land --sanitize` every commit of the stack with the suite
- * at its top.
- *
- * What a push adds is the commits along each pushed head's first parents that neither a
- * remote-tracking ref of this clone nor the branch the push replaces holds (`addedLine`), so a
- * history merged in from another line is counted and left alone, where reading every commit new to
- * the remote would take in hundreds of another line's commits. Each added commit gets
- * `git diff --check` against its first parent, and the lines each pushed head that no other pushed
- * head holds adds since the remote get the secret scan (`scanAdded`), documentation included. Where
- * the push asks and one of them changes more than documentation, each such head gets the CI gate's
- * `--static` pass over a checkout of its own (`proveCommits`): the install, the UI's steps as far as
- * they are due, the format check, typecheck, strict lint, and the tests near what the head's own
- * commit changed. Once the checks pass, a detached process marks each pushed head and the open
- * pull requests stacked above it pending, as soon as GitHub holds the push (`mark`). The working tree may hold anything. A pass is remembered by content, so a push its
- * lease refused goes out again without paying twice.
- *
- * The hook keeps no push queue and does not refuse a push stacked on a base the push before it
- * replaced: the checks read one tree, whatever lies beneath it. A head that does not hold the pull
- * request beneath it is refused by `bun run land` before anything is merged.
+ * What `.githooks/pre-push` checks before anything leaves this clone, reading Git's ref lines on
+ * stdin: `git diff --check` on each added commit, the formatter on changed files (`unformatted`),
+ * the secret scan on added lines (`scanAdded`), and under `ANA_PUSH_VERIFY=1 git push` the CI
+ * gate's `--static` pass with the tests near what each head changed (`proveCommits`). Added commits
+ * are those along each head's first parents that no remote-tracking ref or replaced branch holds
+ * (`addedLine`). The hook is not the proof: `bun run land -- <top> --sanitize` or `--merge` runs it
+ * (`tools/runtime/land.ts`), and a static pass is remembered by tree so `land` does not repeat a
+ * pushed head's. Once the checks pass, a detached process marks each pushed head and the pull
+ * requests above it pending (`mark`).
  */
 import { openSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -54,8 +32,7 @@ import { api, gh, MERGEABLE_CONTEXT, openPulls, postStatus, type Pull } from "./
 /** Git names a ref that does not exist by an all-zero object name (githooks(5), pre-push). */
 const ABSENT = /^0+$/u;
 
-/** How long the mark waits for GitHub to hold the pushed heads. A push GitHub never receives, such
- *  as one its lease refused, marks nothing. */
+/** How long the mark waits for GitHub to hold the pushed heads; a push it never receives marks nothing. */
 const MARK_WAIT_MS = 120_000;
 
 /** What `format:check` reads: every file biome formats. */
@@ -63,7 +40,6 @@ const FORMATTED = /\.(?:[cm]?[jt]sx?|jsonc?|css)$/u;
 
 const say = (line: string): void => console.error(`pre-push: ${line}`);
 
-/** The commits among `line` that fail `git diff --check`, each shown as Git shows it. */
 function unclean(root: string, line: readonly string[]): string[] {
   const failing = line.filter((commit) => !diffFromParentSays(root, commit, ["--check"]));
   for (const commit of failing) {
@@ -73,7 +49,6 @@ function unclean(root: string, line: readonly string[]): string[] {
   return failing;
 }
 
-/** Whether the secret scan finds a credential-shaped literal in what each tip adds; it prints them. */
 function secretsIn(root: string, line: readonly string[], tips: readonly string[]): boolean {
   const found = tips.flatMap((tip) => {
     const first = line.find((commit) => gitSays(root, ["merge-base", "--is-ancestor", commit, tip]));
@@ -85,12 +60,11 @@ function secretsIn(root: string, line: readonly string[], tips: readonly string[
   return found.length > 0;
 }
 
-/** The files each tip changes that biome would rewrite, each as `<tip>:<path>`. The pre-commit hook
- *  checks staged files, but a rebase, a cherry-pick or `--no-verify` records a commit without it,
- *  so a stack head could reach `bun run land` with an unformatted file. Biome reads each
- *  file's bytes at the tip from stdin, so the working tree may hold anything; an excluded path such
- *  as `vendor/` comes back unchanged. A file biome could not format carries biome's last line, since
- *  a tree with no `node_modules` reads every changed file as one biome would rewrite. */
+/** The files each tip changes that biome would rewrite, each as `<tip>:<path>`. A rebase, a
+ *  cherry-pick or `--no-verify` records a commit without the pre-commit hook, so a head could reach
+ *  `bun run land` unformatted. Biome reads each file's bytes at the tip from stdin, so the working
+ *  tree may hold anything. A file biome could not format carries biome's last line, since without
+ *  `node_modules` every changed file reads as one biome would rewrite. */
 function unformatted(root: string, line: readonly string[], tips: readonly string[]): string[] {
   const biome = join(import.meta.dir, "../../node_modules/@biomejs/biome/bin/biome");
   return tips.flatMap((tip) => {
@@ -118,12 +92,10 @@ function unformatted(root: string, line: readonly string[], tips: readonly strin
   });
 }
 
-/** Marks `mergeable` pending on each pushed head, and on the head of each open pull request stacked
- *  above a pushed branch, which still carries the success a landing posted over what was beneath it.
- *  It runs after the push, detached from the hook (`main`), since GitHub takes a status only on a
- *  commit it holds. It runs here rather than as a workflow on GitHub after each push, so that GitHub
- *  runs only `ci.yml`, and a pushed pull request still shows the check (the operator's choice). A
- *  failure to mark is said and nothing more. */
+/** Marks `mergeable` pending on each pushed head and on each open pull request stacked above a
+ *  pushed branch, which still carries the success a landing posted. It runs after the push,
+ *  detached (`main`), since GitHub takes a status only on a commit it holds, and here rather than
+ *  as a GitHub workflow so GitHub runs only `ci.yml`. A failure to mark is said and nothing more. */
 async function mark(root: string, pushed: readonly { readonly branch: string; readonly sha: string }[]) {
   const deadline = Date.now() + MARK_WAIT_MS;
   while (!pushed.every(({ sha }) => gh(root, ["api", api(`commits/${sha}`), "--silent"]).ok)) {
@@ -153,8 +125,8 @@ async function mark(root: string, pushed: readonly { readonly branch: string; re
     bases = next.map((pull) => pull.headRefName);
   }
   const heads = [
-    // A landing started straight after the push may have proved a pushed head already; pending
-    // would turn its verdict back.
+    // A landing started straight after the push may have proved a pushed head already; pending would
+    // turn its verdict back.
     ...pushed
       .filter(
         ({ sha }) =>
@@ -214,7 +186,6 @@ async function main(): Promise<number> {
   return passed ? 0 : 1;
 }
 
-/** Whether what the push adds passes the checks its level asks for; each refusal is said. */
 async function checked(
   root: string,
   updates: readonly { readonly local: string; readonly remote: string }[],

@@ -1,12 +1,8 @@
-// One run of the campaign command over the fixture pack with a script in each seat, in a process of
-// its own so that `test/campaign-kill.test.ts` can end it with SIGKILL and run it again:
-//
-//   bun test/helpers/killed-campaign.ts <root> <name> <moves>
-//
-// Each script is a function of the campaign's log and of nothing the process holds, so the run after
-// a kill is seated as the first was. While `<root>/<name>.hold` exists, an Examiner session waits
-// inside its first request, as a model's answer is waited for: a scripted session otherwise ends
-// within milliseconds, and a kill aimed at it from outside landed after its tasks on a loaded runner.
+// One run of the campaign command over the fixture pack with a script in each seat, in its own process
+// so `test/campaign-kill.test.ts` can SIGKILL it and run it again: `bun test/helpers/killed-campaign.ts
+// <root> <name> <moves>`. Each script is a function of the log alone, so the run after a kill is seated
+// as the first was. While `<root>/<name>.hold` exists, an Examiner session waits inside its first
+// request, so a kill from outside lands before its tasks.
 
 import { examine } from "../../src/examiner/session.ts";
 import { existsSync } from "../../src/meta/filesystem.ts";
@@ -18,14 +14,11 @@ import { harnessBuilder } from "../../tools/d2/harness-builder.ts";
 import { scriptedSeats } from "../../tools/runs/rehearse.ts";
 import { fixtureTasks, gradedOf, layOutPack, OPENED_FROM, scriptedModel } from "./fixture-pack.ts";
 
-/** The pack's tasks: fourteen held once two are released, as `test/harness-builder.test.ts` holds. */
 export const PACK_TASKS = fixtureTasks(16);
-/** The tasks one scripted Examiner session proposes. */
 const WRITTEN = 8;
 /** The base of session `id`'s first task: a session's tasks are its own, whatever a killed one wrote. */
 const baseOf = (id: string): number => 1000 * Number(id.replaceAll(/\D/gu, ""));
 
-/** The accepted answer to each task a session up to the twelfth may write, by the id its gate gives it. */
 const written = Array.from({ length: 12 * WRITTEN }, (_, index) => {
   const [session, task] = [Math.floor(index / WRITTEN) + 1, (index % WRITTEN) + 1];
   return {
@@ -36,7 +29,6 @@ const written = Array.from({ length: 12 * WRITTEN }, (_, index) => {
 });
 if (import.meta.main) {
   const [root = "", name = "", moves = ""] = runtimeProcess.argv.slice(2);
-  // The first run finds the campaign's exam drafted; a run after a kill finds it there already.
   if (!existsSync(campaignLog(name))) layOutPack(dirname(campaignLog(name)), PACK_TASKS);
   const strayed: string[] = [];
   const seats: Seats = {

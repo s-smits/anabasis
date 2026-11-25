@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Displays the held-out task pool and the scored set that a comparison starting now would draw.
- *
- *   bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name>
- *     [--target <n>] [--level <n>]
+ * Displays the held-out task pool and the scored set a comparison starting now would draw: `draw.ts
+ * <log.jsonl | campaign name> [--target <n>] [--level <n>]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor, refusals, supplyOf } from "#src/campaign/admission.ts";
@@ -26,7 +24,6 @@ const USAGE = `usage: draw.ts <log.jsonl | campaign name> [--target <n>] [--leve
 
 The held-out pool by its parts, the set the next comparison would score, and admission's reading.`;
 
-/** What a comparison starting now on `events` would score at `target`, and the pool it draws from. */
 function drawOf(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);
   const { tasks, retained } = scoredSet(events, target, contract);
@@ -72,7 +69,6 @@ function grainLine({ sizes, unnamed }: ReturnType<typeof drawOf>["families"]): s
   }`;
 }
 
-/** The lines this script prints for `events`. */
 export function drawLines(
   events: readonly LogEvent[],
   values: { target?: number; level?: number } = {},

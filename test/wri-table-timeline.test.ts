@@ -18,7 +18,6 @@ const OPENED: JsonObject = {
   led: true,
 };
 
-/** A log under construction, one event a call, each `minutes` after the start. */
 function logOf() {
   const events: LogEvent[] = [];
   const api = {
@@ -33,7 +32,6 @@ function logOf() {
 
 describe("a first comparison held off", () => {
   it("calls a first comparison held off at 75 minutes admissible: a trigger of the time lane, and one line of a live run's look", () => {
-    // Eight tasks held at minute 10, and the log's last event at `end`.
     const waiting = (end: number, compared = false) => {
       const log = logOf().add(2, "exam.started", { session: "x-1" });
       for (const [place, version] of ["a", "b", "c", "d", "e", "f", "g", "h"].entries()) {

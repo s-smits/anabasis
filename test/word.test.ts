@@ -48,8 +48,8 @@ describe("an operator's word", () => {
   });
 
   it("is never pending as a pause or as a word no move reads, however long ago it was left", () => {
-    // An older log holds `cause`, a kind no writer leaves now: it stays readable, and the words
-    // around it are read as ever.
+    // An older log holds `cause`, a kind no writer leaves now: it stays readable, and the words around
+    // it read as ever.
     const left = [
       event("campaign.opened", {}),
       word({ word: "pause" }),

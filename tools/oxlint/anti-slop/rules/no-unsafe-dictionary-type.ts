@@ -101,12 +101,10 @@ function shouldReportType(node: ESTree.TSType, environment: TypeEnvironment): bo
 }
 
 /**
- * The representation owner's one open view: `export type OpenRecord = Record<string, unknown>;`.
- *
- * A module namespace, a TypeBox schema and an ESTree node are each read by key with every value
- * unknown until the reader checks it, and the owner names that view once for all of them. Only the
- * exported alias written exactly so is admitted: the same spelling in another file, an unexported
- * copy in the owner, or `any` or `object` as the value type is still reported.
+ * The representation owner's one open view, `export type OpenRecord = Record<string, unknown>;`,
+ * for a module namespace, a TypeBox schema or an ESTree node read by key. Only the exported alias
+ * in the owner is admitted: the same spelling elsewhere, an unexported copy, or `any` or `object`
+ * as the value type is still reported.
  */
 function isOwnedOpenRecord(node: ESTree.TSType, filename: string): boolean {
   if (node.type !== "TSTypeReference" || typeReferenceName(node) !== "Record") return false;

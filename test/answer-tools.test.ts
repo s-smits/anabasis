@@ -1,7 +1,6 @@
-// The answer side of a solve: the answer is a file in the solver's working directory, and submit
-// sends it. The host reads the file by one walled command, here a plain shell in the wall's place,
-// holds it to the contract's answer format, and refuses with the reason a file that is missing, is
-// not JSON, does not follow the format or is too large.
+// The answer side of a solve: the answer is a file in the solver's working directory, and submit sends
+// it. The host reads it by one walled command, here a plain shell in the wall's place, and refuses a
+// file that is missing, is not JSON, does not follow the format or is too large.
 import { afterAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
@@ -53,7 +52,6 @@ afterAll(() => {
   for (const home of homes) rmSync(home, { recursive: true, force: true });
 });
 
-/** A home, the commands run against it, and its submit. */
 function solving(desk: Desk = openDesk(), pathFirst?: string, warned = "") {
   const home = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-answer-")));
   homes.push(home);
@@ -250,7 +248,6 @@ describe("submit", () => {
       { path: "xl/sharedStrings.xml", text: "<t>caf\u00E9</t>" },
     ];
     const files = textFiles([{ path: "a.xlsx", entries: members }]);
-    // The archive is kept as its bytes, not as none read back with no member.
     expect(readAnswerFiles(s.log, keepAnswerFiles(s.log, files))[0]?.entries).toEqual(members);
     const book = join(s.home, "a.xlsx");
     writeFileSync(book, Buffer.from(files[0]?.base64 ?? "", "base64"));
@@ -261,7 +258,8 @@ describe("submit", () => {
       "import sys, zipfile\nz = zipfile.ZipFile(sys.argv[1])\nprint(z.testzip(), [(n.encode(), z.read(n)) for n in z.namelist()][1:])",
       book,
     ]);
-    // Every member under its checksum; the last two by name and text, each as UTF-8.
+    // `testzip` finds every member under its checksum; the last two read back by name and text, each as
+    // UTF-8.
     expect(opened.stdout.toString().trim()).toBe(
       String.raw`None [(b'docProps/caf\xc3\xa9.xml', b''), (b'xl/sharedStrings.xml', b'<t>caf\xc3\xa9</t>')]`,
     );
@@ -349,7 +347,6 @@ describe("submit", () => {
   it("reads the file's bytes as a command's output and names no part of them in the command", async () => {
     const { desk, commands, submit, answer } = solving();
     answer('{"span": 4, "note": "$(touch ran); `id`"}');
-    // The answer is taken whole, and no command the host ran spelled any part of it.
     expect((await submit()).terminate).toBe(true);
     expect(desk.submitted).toEqual({ span: 4, note: "$(touch ran); `id`" });
     expect(commands).not.toHaveLength(0);
@@ -359,7 +356,6 @@ describe("submit", () => {
   it("ends the task flagged where the solver says it is malformed, and reads no file", async () => {
     const { desk, commands, submit, answer } = solving();
     answer('{"span": 4}');
-    // A reason of nothing is no flag: the file is read as an answer.
     const blank = solving();
     const refused = await blank.submit({ malformed: "  " });
     expect(refused.terminate).toBe(false);
@@ -368,7 +364,6 @@ describe("submit", () => {
     expect((await submit({ malformed: " The span is given twice, as 4 m and 5 m. " })).terminate).toBe(true);
     expect(desk).toEqual({ submitted: undefined, flagged: "The span is given twice, as 4 m and 5 m." });
     expect(commands).toEqual([]);
-    // Once flagged, a submit sends nothing: the task has ended.
     expect((await submit()).terminate).toBe(true);
     expect(desk.submitted).toBeUndefined();
   });

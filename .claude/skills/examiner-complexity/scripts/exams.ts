@@ -1,8 +1,6 @@
 /**
- * Tabulates Examiner task proposals alongside their admission gate readings as CSV.
- *
- *   bun .claude/skills/examiner-complexity/scripts/exams.ts <log or campaign folder>... > exams.csv
- *   bun .claude/skills/examiner-complexity/scripts/exams.ts --every <log or campaign folder>...
+ * Tabulates Examiner task proposals beside their admission gate readings as CSV: `exams.ts
+ * [--every] <log or campaign folder>... > exams.csv`.
  */
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -12,21 +10,15 @@ import { referenceAt, STARTS } from "#skills/examiner-complexity/scripts/ambitio
 import { runCommand } from "#skills/main/cli.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
-/** What the gate measured on one draft (`task.gate`), read from the reference's own counts rather
- *  than from the prose it wrote the Examiner, so this reader needs no production change. */
+/** What the gate measured on one draft (`task.gate`), from the reference's own counts rather than
+ *  the prose it wrote the Examiner. */
 interface Gated {
-  /** `ungated` where the draft was still at the gate when the log was read or its campaign stopped. */
   readonly outcome: "held" | "refused" | "ungated";
-  /** The reference's valid room solves out of those it ran. Both null where the gate recorded no
-   *  reference, as a refusal before the room solves does. */
   readonly valid: number | null;
   readonly solves: number | null;
-  /** Whether an author's answer passed on the task (`task.feasible`). An older gate also wrote a
-   *  `proved` key of its own, which no reader reads. */
   readonly proved: boolean;
 }
 
-/** One draft: what the Examiner wrote and what the gate made of it. */
 interface Draft extends Gated {
   readonly session: string;
   readonly reference: string;
@@ -35,33 +27,25 @@ interface Draft extends Gated {
   readonly title: string;
 }
 
-/** One row of the CSV: a group of drafts, or a single draft under `--every`. */
 export interface DraftRow {
   readonly session: string;
   readonly reference: string;
   readonly family: string;
   readonly drafts: number;
   readonly held: number;
-  /** Drafts the gate refused; with `held` and those still at the gate they make up `drafts`. */
   readonly refused: number;
-  /** Of `refused`, those with the reference valid in every room solve it ran: the ceiling, where only
-   *  the objective could have left room (`informative`, `src/kernel/compare.ts`). This is what
-   *  starved supply looks like, so the reader states it rather than leaving it to be worked out. */
+  /** The ceiling, where only the objective could have left room (`informative`,
+   *  `src/kernel/compare.ts`): what starved supply looks like. */
   readonly noroom: number;
-  /** Drafts the reference answered validly in no room solve, the scale's other end: such a draft
-   *  leaves room only on the author's own proved answer. */
+  /** The scale's other end: such a draft leaves room only on the author's own proved answer. */
   readonly none: number;
   readonly proved: number;
-  /** The public input's length as JSON, median over the group. */
   readonly chars: number;
-  /** The first draft's `title`, where its public input states one, else its family. */
   readonly title: string;
 }
 
 const UNGATED: Gated = { outcome: "ungated", valid: null, solves: null, proved: false };
 
-/** The CSV's columns after the campaign's name, in `DraftRow`'s own terms, so the header and every
- *  line are spelled once. */
 const COLUMNS = [
   "session",
   "reference",
@@ -75,11 +59,10 @@ const COLUMNS = [
   "chars",
   "title",
 ] as const satisfies readonly (keyof DraftRow)[];
-/** The CSV's header. */
 export const EXAMS_HEADER = ["campaign", ...COLUMNS].join(",");
 
-/** What each gate said, by the version it read. A version is its content's digest
- *  (`taskVersion`), so a draft re-put to the gate after a refusal reads under the same key. */
+/** A version is its content's digest (`taskVersion`), so a draft re-put to the gate after a refusal
+ *  reads under the same key. */
 function gatesByVersion(events: readonly LogEvent[]): Map<string, Gated> {
   const feasible = new Set(
     events.flatMap(({ kind, data }) => (kind === "task.feasible" ? [data.version] : [])),
@@ -98,9 +81,8 @@ function gatesByVersion(events: readonly LogEvent[]): Map<string, Gated> {
   return gated;
 }
 
-/** Every draft an Examiner session wrote, in the order it proposed them. A pack's task, a carried
- *  one and the drafted exam's own examples (`ex-001` on) are left out: their proposals name no
- *  session and hold no content, though the gate reads the examples and `ambition.ts` counts them. */
+/** A pack's task, a carried one and the drafted exam's own examples (`ex-001` on) are left out:
+ *  their proposals name no session and hold no content. */
 function draftsOf(events: readonly LogEvent[]): Draft[] {
   const gated = gatesByVersion(events);
   const sessions = new Map(
@@ -126,8 +108,6 @@ function draftsOf(events: readonly LogEvent[]): Draft[] {
   });
 }
 
-/** One row a group of drafts, or a row a draft where `keep` is `every`. A group is one family
- *  within one session, in the order its first draft was proposed. */
 export function draftRows(events: readonly LogEvent[], keep: "grouped" | "every"): DraftRow[] {
   const groups = new Map<string, [Draft, ...Draft[]]>();
   for (const [nth, draft] of draftsOf(events).entries()) {
@@ -158,13 +138,12 @@ export function draftRows(events: readonly LogEvent[], keep: "grouped" | "every"
   });
 }
 
-/** One CSV field. A title is an Examiner's own prose, so it is quoted and its quotes doubled. */
+/** A title is an Examiner's own prose, so it is quoted and its quotes doubled. */
 function field(value: string | number): string {
   const text = String(value);
   return /[",\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-/** The CSV's lines for one campaign, without the header. */
 export function csvLines(campaign: string, rows: readonly DraftRow[]): string[] {
   return rows.map((row) => [campaign, ...COLUMNS.map((column) => row[column])].map(field).join(","));
 }

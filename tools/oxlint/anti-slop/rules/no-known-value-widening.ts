@@ -247,8 +247,7 @@ export const noKnownValueWideningRule = defineRule({
       subject: string,
     ) => {
       if (destination === null) return;
-      // An accumulator started empty: the two kinds that are filled in later, so the empty
-      // literal is the beginning of the evidence rather than the loss of it.
+      // An accumulator started empty is the beginning of the evidence rather than the loss of it.
       const accumulator = destination.kind === "open dictionary" || destination.kind === "generic container";
       if (accumulator && isEmptyObjectExpression(expression)) {
         return;

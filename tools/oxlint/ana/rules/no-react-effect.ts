@@ -12,10 +12,8 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
 /** The one file that may call an effect: the owner of `useMountEffect`. */
 const EFFECT_OWNERS = ["packages/ui/src/mount.ts"];
 
-/** The three hooks that run code after React has committed a render. */
 const EFFECTS = new Set(["useEffect", "useLayoutEffect", "useInsertionEffect"]);
 
-/** The effect hook a call names, bare or off a namespace, or null for any other call. */
 function effectCalled(callee: ESTree.Expression): string | null {
   if (callee.type === "Identifier") return EFFECTS.has(callee.name) ? callee.name : null;
   if (callee.type !== "MemberExpression" || callee.property.type !== "Identifier") return null;

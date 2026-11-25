@@ -1,18 +1,12 @@
 /**
  * The harnesses of a campaign as the page lays them out: the promotions between the bars, every
- * harness version from the starter to the latest, and the dollars billed as the moves ended.
- *
- * A promotion is where an epoch begins (`epochsOf`): the harness promoted and the place of its
- * event. What the operator saw before it is `comparedAs` over the log up to that place, which is
- * what `tools/d2/promote.ts` showed and recorded; whether it is confirmed is its epoch's (`confirmed`,
- * `src/campaign/climb.ts`), which the milestone counts (`AGENTS.md`, section 1). Its divider stands after the last comparison that
- * began before it, in the chart's order (`barsIn`), so that a comparison cut before its report
- * stands on the side of the divider it ran on. A harness version is one a Builder session left
- * (`campaignOf`), one its conversation froze for a comparison (`build.checkpoint`), or one the
- * operator imported. The frozen ones are kept, since without them a harness compared twice and
- * promoted inside one conversation would have no card, and the cards' captions would name it by a
- * digest no card held; its practice record is its practice solves
- * (`practiceRan`); its comparisons are the bars it was the new harness of.
+ * version from the starter on, and the dollars billed as moves ended. A promotion is where an epoch
+ * begins (`epochsOf`); what the operator saw before it is `comparedAs` up to its place, as
+ * `tools/d2/promote.ts` showed, and its confirmation is its epoch's (`confirmed`). Its divider
+ * stands after the last comparison begun before it (`barsIn`), so a cut comparison stands on the
+ * side it ran on. A version is one a Builder session left, one its conversation froze
+ * (`build.checkpoint`), or one the operator imported; frozen ones are kept, or a harness compared
+ * and promoted inside one conversation would have no card.
  */
 import { comparedAs } from "../../../../src/kernel/reports.ts";
 import { billedAll } from "../../../../src/kernel/meter.ts";
@@ -22,7 +16,6 @@ import type { HarnessCard, Promotion, SpendPoint } from "../models.ts";
 import { campaignIn, epochsIn, type Log, once, practiceIn, ranIn } from "./folds.ts";
 import { barsIn, endOf, movesIn, starterIn } from "./moves.ts";
 
-/** A harness kept by a session or by the operator's import, where its record ends. */
 interface Kept {
   readonly digest: string;
   readonly parent: string | null;
@@ -34,7 +27,6 @@ interface Kept {
   readonly by: "session" | "frozen" | "imported";
 }
 
-/** Every promotion, oldest first: a divider between the bars. */
 export const promotionsIn = once((log): Promotion[] => {
   const { events } = log;
   const starter = starterIn(log);
@@ -42,8 +34,8 @@ export const promotionsIn = once((log): Promotion[] => {
   return epochsIn(log)
     .slice(1)
     .map(({ reference: harness, from: index, starter_tally: againstStarter, confirmed }) => {
-      // The reference before it and the operator's reason are fields of the event alone, which no
-      // fold reads.
+      // The reference before it and the operator's reason are fields of the event alone, which no fold
+      // reads.
       const data = events[index]?.data ?? {};
       return {
         harness,
@@ -60,9 +52,9 @@ export const promotionsIn = once((log): Promotion[] => {
     });
 });
 
-/** The harnesses kept, in the order kept, each once. Derived: a Builder session's from its
- *  handover; a frozen one from `build.checkpoint` and an imported one from `harness.imported`,
- *  which no fold reads. */
+/** The harnesses kept, in the order kept, each once: a Builder session's from its handover, a
+ *  frozen one from `build.checkpoint` and an imported one from `harness.imported`, which no fold
+ *  reads. */
 function savedHarnessesIn(log: Log): Kept[] {
   const { events } = log;
   const sessions = movesIn(log).filter((move) => move.step === "builder");
@@ -97,7 +89,6 @@ function savedHarnessesIn(log: Log): Kept[] {
   return [...first.values()];
 }
 
-/** The lineage strip: the starter, then every harness kept, in the order kept. */
 export const harnessesIn = once((log): HarnessCard[] => {
   const campaign = campaignIn(log);
   const starter = starterIn(log);
@@ -139,8 +130,6 @@ export const harnessesIn = once((log): HarnessCard[] => {
   ];
 });
 
-/** The dollars billed by the end of each move, in the order the moves ended. Derived: `billedAll`
- *  over the log up to the place each move's record ends (`endOf`). */
 export const spendIn = once((log): SpendPoint[] => {
   const ended = movesIn(log)
     .map((move) => ({ move: move.id, end: endOf(log, move) }))

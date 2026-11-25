@@ -5,27 +5,12 @@
  *   bun tools/wri/calls.ts --log <log> --list (--command <re> | --output <re>) [--harness <prefix>]
  *   bun tools/wri/calls.ts --log <log> --sequences [--harness <prefix>]
  *
- * A solve under a built harness reaches the harness's programs through `bash`, so its tool names say
- * little: every pass reads `bash ... submit`. The table counts, for each harness, each side a solve
- * stood on (practice, the candidate or the reference of its comparison, an A/A control) and each
- * program, the solves that called it, its calls, the calls the host marked as errors, the calls whose
- * result says the command exited non-zero, and how the calling solves ended. A program reached through
- * a wrapper (`bash -lc "..."`, `python3 -B path`, `timeout 30 prog`, a pipe's later stage) counts once,
- * under the program (`callPrograms`, `src/kernel/call-programs.ts`), and a segment whose program the text does not name
- * (`$RUN x`, `..`) counts as not attributed instead of being dropped. Imports are not traced: a
- * library a script imports (`lib/*.js`) runs under the script's name and reads 0 here. Lane 15
- * sessions would otherwise build this table by hand, and count the solves whose command or output
- * reached a changed path, from which a finding that a version's change sat on a path no solve took
- * comes.
- *
- * `--list` prints one row a matching call (its solve, side, harness, tool and whether it erred) and
- * never the call's text: lane 18 reads which calls named a shared temporary folder. `--sequences`
- * prints, for each family and harness, the test-side passes' distinct program sequences, the
- * commonest one's share and the passes' median seconds (lane 7's recipes).
- *
- * The output holds what the log holds of a solver's own calls and stays on the exam side. It names
- * outcomes, so lane 14 reads it only after it has graded; lanes 6 and 16 only after their freeze.
- * It decides nothing: a count of calls says what ran, not whether it helped.
+ * A built harness's programs are reached through `bash`, so tool names say little. The table counts,
+ * per harness, side and program, the calling solves, the calls, host-marked errors, non-zero exits
+ * and how the solves ended; a wrapped program counts once under its own name (`callPrograms`), and
+ * imports are not traced. `--list` prints one row a matching call, never its text; `--sequences`
+ * prints each family's program sequences. The output names outcomes, so the blind grading lane
+ * reads it only after grading.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { familiesOf } from "#src/kernel/history.ts";
@@ -73,9 +58,9 @@ interface Row {
   nonzero: number;
 }
 
-/** Where a solve stood: practice; the candidate or the reference of its comparison, where the
- *  reference's solves hold its A/A control's too, since a solve's start does not tell them apart; both
- *  sides of a comparison of one harness; an Examiner session's reference solve; or none of these. */
+/** Where a solve stood: practice, the candidate or the reference of its comparison (the reference's
+ *  solves hold its A/A control's too, since a solve's start does not tell them apart), both sides
+ *  of a one-harness comparison, an Examiner session's reference solve, or none. */
 function sidesOf(events: readonly LogEvent[]): (solve: Solve) => Side {
   const sides = new Map(
     eventsOf(events, "comparison.started").flatMap(({ event: { data } }) =>
@@ -105,7 +90,6 @@ const endOf = (solve: Solve) =>
       ? "fail"
       : "non-result";
 
-/** Each solve with its calls that pass the filters, and each such call's programs. */
 function callsBySolve(index: Index, filters: Filters) {
   const solves = new Map(index.solves.map((solve) => [solve.id, solve]));
   const kept = new Map<string, { readonly call: Call; readonly ran: CallPrograms }[]>();
@@ -132,7 +116,6 @@ function callsBySolve(index: Index, filters: Filters) {
   return { solves, kept };
 }
 
-/** The table: a row a harness, side and program, with the solves under that harness and side. */
 export function callRows(events: readonly LogEvent[], filters: Filters): string[] {
   const index = indexOf(events);
   const sideOf = sidesOf(events);
@@ -224,7 +207,6 @@ function listRows(events: readonly LogEvent[], filters: Filters): string[] {
   ];
 }
 
-/** A solve's calls as one sequence, a run of one name written once with its count. */
 function sequenceOf(calls: readonly { readonly ran: CallPrograms }[]): string {
   const names = calls.flatMap(({ ran }) => ran.programs);
   const runs: { name: string; times: number }[] = [];

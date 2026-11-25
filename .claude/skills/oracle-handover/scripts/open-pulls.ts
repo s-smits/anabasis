@@ -1,15 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Package all open pull requests for external review: each pull request's title, body, and diff,
- * together with source files and tests within one import hop of the changed files.
- *
- *   bun .claude/skills/oracle-handover/scripts/open-pulls.ts <folder> [--diffs] [--max-mb 20]
- *
- * Writes `<folder>/pulls/`: a `README.md` indexing each pull-request chain bottom-first (`chains`),
- * and per pull request a `.md` summary (`pullTold`) plus a `.diff` against the preceding head in the
- * stack (so reading the diffs in order reconstructs the stack top against trunk). Unless `--diffs`
- * is passed, `code/<top>/` also snapshots the changed files, their direct imports, and nearby tests
- * (`importsOf`, `testsNear`, `tools/runtime/gate.ts`) at each chain's top commit.
+ * Packages all open pull requests for external review: `open-pulls.ts <folder> [--diffs] [--max-mb
+ * 20]`. Writes `<folder>/pulls/`: a `README.md` indexing each chain bottom-first (`chains`), and
+ * per pull request a `.md` summary (`pullTold`) and a `.diff` against the preceding head, so the
+ * diffs in order rebuild the stack top against trunk. Unless `--diffs` is passed, `code/<top>/`
+ * also snapshots the changed files, their direct imports and nearby tests (`importsOf`,
+ * `testsNear`, `tools/runtime/gate.ts`) at each chain's top commit.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import {
@@ -32,13 +28,10 @@ import { pullTold, tokensOf, webOf } from "./document.ts";
 import { fenced } from "./slice.ts";
 
 interface Told {
-  /** Where GitHub shows the repository. */
   readonly web: string;
-  /** When GitHub was read. */
   readonly at: string;
   /** Pull request `number` in words, its title on the first line (`pullTold`). */
   readonly told: (number: string) => string;
-  /** Whether the code beside the diffs is held too. */
   readonly code: boolean;
 }
 
@@ -46,10 +39,9 @@ const nameOf = (pull: Pull): string => `${String(pull.number)}-${basename(pull.h
 const hash = (pull: Pull): string => `#${String(pull.number)}`;
 const count = (n: number, noun: string): string => `${String(n)} ${noun}${n === 1 ? "" : "s"}`;
 
-/** Copies under `held` in `into`, each at its own path, the files of `sha`'s tree among `changed`,
- *  the files one of those imports and the test files near the code among them (`code`, the gate's
- *  set, which leaves the documentation out), and returns their paths in `into` with a sentence on
- *  how many of each it holds. */
+/** The files of `sha`'s tree among `changed`, the files one of those imports and the test files
+ *  near them (the gate's set, which leaves the documentation out), with a sentence on how many of
+ *  each it holds. */
 function codeBeside(
   repo: string,
   [into, held]: readonly [string, string],
@@ -76,9 +68,8 @@ function codeBeside(
   });
 }
 
-/** One chain's section of the index, after writing each of its pull requests' `.md` and `.diff`
- *  under `into`, and the code beside them where `how.code` asks, with each file's path in `into`
- *  in the order it is read. */
+/** Writes each of the chain's pull requests' `.md` and `.diff`, and the code beside them where
+ *  `how.code` asks. */
 function chainTold(repo: string, into: string, open: readonly Pull[], line: readonly Pull[], how: Told) {
   const [bottom, top] = [line[0], line.at(-1)];
   if (bottom === undefined || top === undefined) return { told: [], written: [] };
@@ -117,7 +108,6 @@ function chainTold(repo: string, into: string, open: readonly Pull[], line: read
   return { told, written: [...own, ...(beside?.written ?? [])] };
 }
 
-/** Markdown `text` with each heading outside a fenced block one level lower. */
 const lowered = (text: string): string => {
   let fence = false;
   return text
@@ -129,9 +119,8 @@ const lowered = (text: string): string => {
     .join("\n");
 };
 
-/** The folder `into` that `pullsInto` wrote as one markdown text to paste, each file of `written` in
- *  its order under a heading of its own: the index, then each pull request (its text, its headings
- *  one level lower, then its diff), then each chain's code, one file a heading. */
+/** The folder `into` as one markdown text to paste, each file of `written` under a heading of its
+ *  own and each pull request's headings one level lower. */
 export function pasted(into: string, written: readonly string[]): string {
   const parts = written.map((file, index) => {
     const text = readFileSync(join(into, file), "utf8").trim();
@@ -147,7 +136,8 @@ export function pasted(into: string, written: readonly string[]): string {
     }
     if (file === "README.md") return text;
     if (file.endsWith(".md")) return lowered(text);
-    // One heading a changed file, named by its path after the change, before that file's part of the diff.
+    // One heading a changed file, named by its path after the change, before that file's part of the
+    // diff.
     const files = text.split(/^(?=diff --git )/mu).map((part) => {
       const after = /^diff --git a\/.* b\/(.*)$/mu.exec(part)?.[1] ?? "";
       return `#### \`${after}\`\n\n${fenced(part, "diff")}`;
@@ -157,8 +147,8 @@ export function pasted(into: string, written: readonly string[]): string {
   return `${parts.join("\n\n")}\n`;
 }
 
-/** Writes the open pull requests `open` of checkout `repo` under the new folder `into`, and returns
- *  each file's path in it in the order it is read, `README.md` first. Refuses where none is open. */
+/** Writes the open pull requests under the new folder `into` and returns each file's path in the
+ *  order it is read, `README.md` first. Refuses where none is open. */
 export function pullsInto(repo: string, into: string, open: readonly Pull[], how: Told): string[] {
   if (open.length === 0) throw new CommandFailure("no pull request is open");
   mkdirSync(into, { recursive: true });

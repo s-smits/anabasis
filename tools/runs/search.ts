@@ -1,11 +1,11 @@
 /**
- * Find an old analysis without fetching campaigns or asking machines one by one.
- * `bun run runs search <pattern> [--regex] [--ignore-case] [--here] [--in logs|notes|all] [--max <chars>]`
- * searches campaign folders and the main tree's notes and docs. Each peer runs this script
- * in its configured tree through the runs transport, within its 30-second deadline.
- * Whole matches spill locally when either the line window or the output cap cuts text.
- * Every host searches with rg (`--regex` takes rg's syntax); one installed in ~/.local/bin is found
- * although a plain ssh command leaves that folder off the PATH.
+ * Finds an old analysis without fetching campaigns or asking machines one by one.
+ *
+ *   bun run runs search <pattern> [--regex] [--ignore-case] [--in logs|notes|all] [--max <chars>]
+ *
+ * It searches campaign folders and the main tree's notes and docs, here and on each peer through
+ * the runs transport within `DEADLINE`. Whole matches spill to a local file when the window or the
+ * output cap cuts text. Every host searches with rg (`--regex` takes rg's syntax).
  */
 import { existsSync, lstatSync, mkdtempSync, realpathSync } from "#src/meta/filesystem.ts";
 import { mainTree } from "#src/meta/git.ts";
@@ -203,7 +203,6 @@ async function display(
   );
 }
 
-/** The public verb keeps local and remote searches independent, including failures. */
 export async function search(args: readonly string[], dependencies: Dependencies = {}): Promise<void> {
   const { values, positionals } = parseArgs({ args: [...args], options: OPTIONS, allowPositionals: true });
   const [pattern, extra] = positionals;

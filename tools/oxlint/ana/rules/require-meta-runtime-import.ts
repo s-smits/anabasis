@@ -4,7 +4,6 @@ import type { RuleExample } from "../../rule-examples.ts";
 import { isTestFile, isUnder } from "../shared/file-role.ts";
 import { importSpecifier } from "../shared/import-fix.ts";
 
-/** The `src/meta` module that owns each host builtin. */
 const OWNER = new Map([
   ["node:fs", "filesystem.ts"],
   ["node:fs/promises", "filesystem.ts"],
@@ -15,7 +14,8 @@ const OWNER = new Map([
   ["node:assert/strict", "assert.ts"],
 ]);
 
-/** Names `src/meta/filesystem.ts` re-exports from `node:fs/promises` (not auto-fixed from `node:fs` because callback vs promise signatures differ). */
+/** Re-exported by `src/meta/filesystem.ts` from `node:fs/promises`; not auto-fixed from `node:fs`,
+ *  whose callback signatures differ. */
 const PROMISED = new Set(["mkdir", "mkdtemp", "readdir", "rm"]);
 
 /**
@@ -51,10 +51,8 @@ export const requireMetaRuntimeImportRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Value imports this file already makes from a `src/meta` module, by that module's filename. */
     const metaImports = new Map<string, ESTree.ImportDeclaration>();
 
-    /** Whether every specifier is a plain named value binding, so the names can move as written. */
     function movable(node: ESTree.ImportDeclaration): boolean {
       if (node.importKind === "type" || node.specifiers.length === 0) return false;
       return node.specifiers.every(
@@ -62,7 +60,6 @@ export const requireMetaRuntimeImportRule = defineRule({
       );
     }
 
-    /** The names as this file spells them, `readFile` or `readFile as read`, in source order. */
     function spelled(node: ESTree.ImportDeclaration): string[] {
       return node.specifiers.map((specifier) => context.sourceCode.getText(specifier));
     }
@@ -80,7 +77,6 @@ export const requireMetaRuntimeImportRule = defineRule({
       return "name" in imported ? imported.name : imported.value;
     }
 
-    /** The edit that moves this import onto its owner, or null where the shape decides something. */
     function move(fixer: Fixer, node: ESTree.ImportDeclaration, owner: string): Fix | Fix[] | null {
       if (!movable(node)) return null;
       if (node.source.value === "node:fs" && node.specifiers.some((one) => PROMISED.has(askedFor(one)))) {

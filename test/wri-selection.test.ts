@@ -25,7 +25,6 @@ function brute(fixed: readonly number[], free: readonly number[], level: number)
   return confirm;
 }
 
-/** A fixed pseudo-random sequence of whole margins, some repeated and some zero. */
 function margins(count: number, seed: number): number[] {
   let state = seed;
   return Array.from({ length: count }, () => {
@@ -84,7 +83,6 @@ const gate = (version: string, session?: string): LogEvent[] => [
   { at: AT, kind: "task.gate", data: { version, gate: 1, outcome: "passed" } },
 ];
 
-/** A comparison of `sides` whose solves `outcomes` spells, its report holding `more`. */
 function comparison(
   session: string,
   sides: readonly [string, string],

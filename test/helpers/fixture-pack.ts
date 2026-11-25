@@ -13,7 +13,6 @@ import { exampleId } from "../../tools/d2/exam.ts";
 export const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const TOOL_USE = { stopReason: "toolUse" } as const;
 
-/** The words a fixture campaign opens from, and who solves under it. */
 export const OPENED_FROM = [
   "--prompt",
   "Multiply a base by six.",
@@ -36,7 +35,6 @@ export interface FixtureTask {
   readonly hidden: null;
 }
 
-/** `count` fixture tasks, bases 2 upwards. */
 export const fixtureTasks = (count: number): FixtureTask[] =>
   Array.from({ length: count }, (_, index) => ({
     taskId: exampleId(index),
@@ -45,7 +43,6 @@ export const fixtureTasks = (count: number): FixtureTask[] =>
     hidden: null,
   }));
 
-/** The pack's controls, as a rehearsal's solves are scripted from them. */
 export const gradedOf = (tasks: readonly FixtureTask[]) =>
   tasks.map(({ taskId, publicInput }) => ({
     taskId,
@@ -53,10 +50,9 @@ export const gradedOf = (tasks: readonly FixtureTask[]) =>
     refusedBy: null,
   }));
 
-/** A model that makes `calls` in order, a turn each, and then says it holds no further call as
- *  often as `asked`: a faux provider asked past its responses waits, and a solve whose submit the
- *  harness blocked is asked again until its turns end. It takes no `rest`: a script holds no call
- *  for a later ask, so an Examiner seated on one ends where its work is done (`conversing`). */
+/** A model that makes `calls` in order, a turn each, then says it holds no further call `asked`
+ *  times: a faux provider asked past its responses waits. It takes no `rest`, so an Examiner seated
+ *  on one ends where its work is done (`conversing`). */
 export function scriptedModel(calls: readonly Step[], asked = 0) {
   const faux = fauxProvider({
     models: [
@@ -104,7 +100,6 @@ export function layOutPack(folder: string, tasks: readonly FixtureTask[], answer
   layOutDraft(folder, fixtureDraft(tasks, answered));
 }
 
-/** A campaign's folder holding `draft` as the exam its log drafted, after its opening. */
 export function layOutDraft(folder: string, draft: Draft): void {
   mkdirSync(folder, { recursive: true });
   append(join(folder, LOG_FILE), "campaign.opened", { prompt: OPENED_FROM[1], solver: SOLVER });

@@ -4,22 +4,19 @@ import type { RuleExample } from "../../rule-examples.ts";
 import { isOneOf, isTestFile, isUnder } from "../shared/file-role.ts";
 
 /**
- * The trees where a git subprocess is asked of its owner, `src/meta/git.ts`, which resolves the
- * executable through `hostTool("git")` and bounds the capture. The landing and gate commands of
- * `tools/runtime`, `tools/secrets` and `tools/oxlint` are outside: they read git's exit status,
- * feed it input and pass `cwd`, which the owner's three answers do not.
+ * The trees where a git subprocess is asked of its owner, `src/meta/git.ts`. The landing and gate
+ * commands of `tools/runtime`, `tools/secrets` and `tools/oxlint` are outside: they read git's exit
+ * status, feed it input and pass `cwd`, which the owner's three answers do not.
  */
 const TREES = [".claude/skills", "src", "tools/runs", "tools/d2"];
 const OWNER = "src/meta/git.ts";
 
-/** The spawners a bare `"git"` executable name can be handed to as their first argument. */
 const SPAWNERS = new Set(["spawn", "spawnSync", "execFile", "execFileSync", "exec", "execSync"]);
 
 function isGitLiteral(node: ESTree.Node | null | undefined): boolean {
   return node?.type === "Literal" && node.value === "git";
 }
 
-/** `hostTool("git")`, the resolved executable. */
 function isHostGit(node: ESTree.Node | null | undefined): boolean {
   return (
     node?.type === "CallExpression" &&

@@ -1,7 +1,6 @@
 // Darwin's process table as libproc reads it (`src/meta/process-table.ts`): a process's working
-// directory and its program, by their real paths, as `lsof -d cwd,txt` named them for a seat's
-// release, with its parent and process group; and a program whose file was removed after it started, which `proc_pidpath` no longer
-// names, still named by its first mapped region.
+// directory and program by their real paths, its parent and group, and a program removed after it
+// started, which `proc_pidpath` no longer names, still named by its first mapped region.
 import { describe, expect, it } from "bun:test";
 import {
   chmodSync,
@@ -19,7 +18,6 @@ import { anyOf } from "./helpers/matchers.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
 
-/** A copy of `sleep` under a fresh folder, run from another folder beside it. */
 function sleeper() {
   const folder = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-process-table-")));
   const works = join(folder, "works");
@@ -41,7 +39,6 @@ describe("the process table", () => {
   it.skipIf(!onDarwin)("reads a process's working directory and program by their real paths", async () => {
     const { works, program, row, end } = sleeper();
     try {
-      // The child stays in this process's group, as `ps` reads it.
       const group = Number(
         Bun.spawnSync(["/bin/ps", "-o", "pgid=", "-p", String(runtimeProcess.pid)]).stdout.toString(),
       );

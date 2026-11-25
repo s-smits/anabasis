@@ -1,13 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Summarises the campaign record that an Examiner opening would receive, or with `--each` reconstructs
- * what each recorded Examiner writing session was told when it began.
- *
- *   bun .claude/skills/design-and-seats/scripts/examiner-view.ts <log.jsonl | campaign name> [--each]
- *
- * Calls `heard` (`src/examiner/record.ts`) over the drafted examples plus all written tasks and
- * reports line counts per section heading, reference outcome counts from `poolOf`, the last comparison
- * summary line, and any promotion notice, omitting task prose, refusal text, and hidden values.
+ * Summarises the campaign record an Examiner opening would receive, or with `--each` reconstructs
+ * what each recorded writing session was told when it began: `examiner-view.ts <log.jsonl |
+ * campaign name> [--each]`. Calls `heard` (`src/examiner/record.ts`) over the drafted examples and
+ * written tasks and reports line counts per heading, reference outcome counts (`poolOf`), the last
+ * comparison line and any promotion notice, omitting task prose, refusal text and hidden values.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { draftOf } from "#src/examiner/draft.ts";
@@ -32,7 +29,6 @@ interface Named {
   readonly family: string;
 }
 
-/** Each task id the log names a family for: the written tasks, then the drafted exam's examples. */
 function familiesOf(events: readonly LogEvent[]): Map<string, string> {
   const drafted = draftOf(events)?.tasks ?? [];
   return new Map([
@@ -41,12 +37,10 @@ function familiesOf(events: readonly LogEvent[]): Map<string, string> {
   ]);
 }
 
-/** The tasks an ask named, in its order, each with the family the log gives it, or none. */
 function namedTasks(ids: readonly string[], families: ReadonlyMap<string, string>): Named[] {
   return ids.map((taskId) => ({ taskId, family: families.get(taskId) ?? NOT_RECORDED }));
 }
 
-/** The ids the last ask named, then every task written since, as the next ask names them. */
 function nextTasks(events: readonly LogEvent[]): Named[] {
   const last = events.findLast(({ kind }) => kind === "exam.started");
   const examples = Array.isArray(last?.data.examples) ? last.data.examples.filter(isString) : [];
@@ -54,7 +48,6 @@ function nextTasks(events: readonly LogEvent[]): Named[] {
   return namedTasks(ids, familiesOf(events));
 }
 
-/** The view `heard` gives over `events`, as counts and its two lines of counts. */
 export function examinerCounts(events: readonly LogEvent[]): string[] {
   const tasks = nextTasks(events);
   const view = heard(events, tasks);
@@ -74,7 +67,6 @@ export function examinerCounts(events: readonly LogEvent[]): string[] {
 const blocksOf = (view: ReturnType<typeof heard>) =>
   view.groups.map(({ heading, lines }) => `${String(lines.length)} under "${heading}"`).join("; ") || "none";
 
-/** The first line at which two texts part, counted from 1, or null where they are the same. */
 function partsAt(rebuilt: string, served: string): number | null {
   if (rebuilt === served) return null;
   const [mine, theirs] = [rebuilt.split("\n"), served.split("\n")];
@@ -82,8 +74,6 @@ function partsAt(rebuilt: string, served: string): number | null {
   return (at === -1 ? mine.length : at) + 1;
 }
 
-/** The wake in the first Examiner call result after event `start` that holds one, before the session
- *  it starts finishes: the resting call's result carries it after the call's own text. */
 function servedWake(events: readonly LogEvent[], start: number): string | null {
   for (const { kind, data } of events.slice(start + 1)) {
     if (kind === "exam.finished") return null;
@@ -93,7 +83,6 @@ function servedWake(events: readonly LogEvent[], start: number): string | null {
   return null;
 }
 
-/** The `read_opening` results a session received, between its start and its finish. */
 function servedOpenings(events: readonly LogEvent[], start: number, session: string): string[] {
   const end = events.findIndex(
     ({ kind, data }, index) => index > start && kind === "exam.finished" && data.session === session,
@@ -107,8 +96,8 @@ function servedOpenings(events: readonly LogEvent[], start: number, session: str
     );
 }
 
-/** One session's rows: the view rebuilt on the log before its start, and how it stands against
- *  what the log holds of what it was served. */
+/** The view rebuilt on the log before the session's start, against what the log holds of what it
+ *  was served. */
 function sessionRows(events: readonly LogEvent[], start: number): string[] {
   const data: JsonObject = events[start]?.data ?? {};
   const session = isString(data.session) ? data.session : "?";
@@ -151,7 +140,6 @@ function sessionRows(events: readonly LogEvent[], start: number): string[] {
   ];
 }
 
-/** Each writing session's rows, in the order they started, with a first line saying what they are. */
 export function examinerEach(events: readonly LogEvent[]): string[] {
   const starts = events.flatMap(({ kind }, index) => (kind === "exam.started" ? [index] : []));
   return [

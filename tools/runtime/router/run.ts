@@ -1,40 +1,10 @@
 /**
  * The check runner: `run.js <tree> <bun pin> <test|typecheck|lint|secrets|gate> [arguments...]`,
- * which the bun router (`bun` in this folder) calls for a tree's check tasks. `ANA_CHECK_HOST` says
- * where the task runs: `auto` on the first with a free slot of this machine and every unbenched host
- * `ANA_HOSTS` lists (excluding benchmark hosts named by `EVAL_RUNNER`), least loaded first by
- * one-minute load a core plus active local slot occupancy (`placesFor`); unset or empty as `auto`
- * where the list names a host, and otherwise here without a sample, as where the host list cannot be
- * read; `here` on this machine, without reading the host list; a host's name or ssh destination on
- * that host; `all` as `auto` over the places under half their cores' one-minute load (the least
- * loaded where none is), where a test task that names only test files and folders (or nothing, for
- * all of `test/`) has their files cut into chunks of like time by the running means each place's
- * runs measured (`learn`, from the timings a run rewrote, kept in the repository's common git
- * folder for every worktree; a file no place measured weighs the median), a chunk to a minute of
- * them or more and at most two a slot, each in the first free slot among the places that still
- * give verdicts, with the files that gate on Linux or on the OS wall run again as one chunk on a
- * free Linux host (`placesFor`), and exits as the first failing chunk, or as no verdict where a
- * chunk found no place (`sharded`); a test task with any other argument, such as a name pattern, runs whole, since
- * a chunk the pattern misses fails; and where the gate leads on this machine, outside any slot, so
- * that its own test, typecheck and lint steps are routed in turn. Any other value is refused with
- * the names to write. Wherever it runs, the task is `task.sh` over the working tree as it stands,
- * uncommitted bytes included, and its exit status is this command's. A task here starts without what the bun router read from the host list for this
- * command alone (`CALLER_ENV`), as one sent to a host does, so no test reaches the fleet it names.
- *
- * **What reaches a host.** Git carries the tree: the working tree becomes one commit in place of
- * `HEAD` (`snapshot`), pushed to the slot's own repository on the host, which borrows the objects
- * of the host's configured tree, so a push sends what that host has not already fetched from
- * GitHub, usually the uncommitted change alone. Git decides what a tree is, so nothing it ignores
- * travels, the dependencies among them: the slot installs those from the lockfiles it was sent,
- * once per lockfile (`task.sh`). The snapshot keeps `HEAD`'s parents, so a static gate there chooses
- * the tests it would choose here, where a parentless snapshot would read every file as changed.
- *
- * Settings, each optional, in seconds unless said: `ANA_RUNNER_WALL` (a task's deadline, 3600),
- * `ANA_RUNNER_QUEUE_WAIT` (the wait for a slot, 2400; exit 75 past it), `ANA_RUNNER_MIN_FREE_GB`
- * (free space a host must have, 3; exit 69 below it or where it does not answer),
- * `ANA_RUNNER_RETRY_DELAY` (5), `ANA_RUNNER_PICK_WAIT` (how long `auto` waits for each machine's
- * load, 5). A host needs only ssh, bash, git, curl and unzip, and gets the
- * tree's pinned Bun on its first task. `install.ts` bundles this file as the installed `run.js`.
+ * called by the bun router for a tree's check tasks. `ANA_CHECK_HOST` picks where (`placesFor`):
+ * `auto`, `here`, a host, or `all`, which also cuts a test task into timed chunks. The working tree
+ * goes to a host as one commit in place of `HEAD` (`snapshot`), keeping `HEAD`'s parents so a
+ * static gate picks the same tests. Exit 75 means the queue wait passed, exit 69 a host without
+ * free disk. The steps before a task are tried three times; the task itself is never retried.
  */
 import {
   copyFileSync,
@@ -74,7 +44,6 @@ import {
 import { minuteLoads } from "../../runs/load.ts";
 
 const TASKS = ["test", "typecheck", "lint", "secrets", "gate"];
-/** What a check reads from its caller, sent by name since ssh carries no environment. */
 const FORWARDED = [
   "ANA_LINT_STRICT",
   "ANA_LINT_PATHS",
@@ -83,7 +52,6 @@ const FORWARDED = [
   "ANA_TEST_HOST_LOAD",
   "ANA_CLIMB",
 ];
-/** Exits that say nothing about the tree (`NO_VERDICT`, tools/runs/host-config.ts), and the others. */
 const EXIT = { usage: 2, unavailable: 69, noSlot: 75, interrupted: 130, noVerdict: 255 } as const;
 const TASK_SCRIPT = join(import.meta.dir, "task.sh");
 const EPOCH = "2000-01-01T00:00:00Z";
@@ -94,7 +62,6 @@ interface Ran {
   readonly times: string;
 }
 
-/** One task: the tree it checks, the Bun that tree pins, the task with its arguments, its deadline. */
 interface Job {
   readonly root: string;
   readonly pin: string;
@@ -107,7 +74,6 @@ interface Slot {
   readonly number: number;
 }
 
-/** A place a task may run: a host, or undefined for this machine. */
 type Place = Host | undefined;
 
 class Refusal extends Error {
@@ -122,7 +88,6 @@ const heldByThisRunner = new Set<string>();
 
 const say = (line: string): void => console.error(`runner: ${line}`);
 
-/** A setting as a count, or `fallback` where it is unset. */
 function setting(name: string, fallback: number): number {
   const text = runtimeProcess.env[name] ?? "";
   if (text === "") return fallback;
@@ -132,8 +97,6 @@ function setting(name: string, fallback: number): number {
   return Number(text);
 }
 
-/** `ANA_HOSTS`, and the benchmarks `EVAL_RUNNER` rolls on them, for the `ANA_CHECK_HOST` value `choice`,
- *  refused in the runner's own words where either cannot be read and the value asked for a host. */
 function listed(choice: string): { hosts: readonly Host[]; benches: readonly Bench[] } {
   try {
     return { hosts: hostsOf(), benches: benchesOf() };
@@ -147,13 +110,6 @@ function listed(choice: string): { hosts: readonly Host[]; benches: readonly Ben
   }
 }
 
-/**
- * Whether a benchmark's arm holds `host`: an arm's rollouts are read against each other at equal
- * load, so a check beside them moves what they score, and a gate sent there during a sitting can
- * load the machine until it stops answering and the arm has to be rolled again. A
- * sitting whose `status` does not answer `idle` on its first line (`bench.ts`) holds it, a silent
- * one too. A held host is said with `then`, what the runner does about it.
- */
 async function armHolds(
   { name, ssh }: Host,
   benches: readonly Bench[],
@@ -195,7 +151,6 @@ function slotCapacity(place: Place): number {
   return place === undefined ? 1 : checkSlots(place);
 }
 
-/** Whether `path` holds a live runner slot; `"clean"` also clears stale symlinks, stray files, and dead entries. */
 function slotOccupied(path: string, mode: "read" | "clean"): boolean {
   const live = (holder: string): boolean =>
     holder === String(runtimeProcess.pid)
@@ -226,18 +181,6 @@ function slotOccupied(path: string, mode: "read" | "clean"): boolean {
   return false;
 }
 
-/**
- * Where `ANA_CHECK_HOST` lets the task run, in the order its slots are tried, and whether loads chose
- * it: this machine alone, the one host it names, or for `auto` this machine and every unbenched host
- * listed, ranked by one-minute load a core plus the fraction of local runner slots already held
- * (`slotOccupied`), so burst launches fan across free machines before 1m load reacts. Hosts named by
- * `EVAL_RUNNER` are never picked, and `auto` never reads them; `all` reads them too, so that a Linux
- * host under half load that no arm holds, benched or not, is `linux`, where the test files that gate
- * on Linux or on the OS wall run once more; naming one explicitly
- * checks `armHolds` (warning on override, or refusing with `EXIT.unavailable` under
- * `ANA_RUNNER_SPARE_HELD`). A machine that does not answer within `ANA_RUNNER_PICK_WAIT` is omitted,
- * and where none answers the task runs here.
- */
 async function placesFor(
   shards: boolean,
 ): Promise<{ places: readonly Place[]; picked: boolean; linux: Host | null }> {
@@ -312,11 +255,6 @@ async function placesFor(
   );
 }
 
-/**
- * A free slot of `count` in `folder`, taken; null where a live task holds each. A slot is a folder
- * holding one entry named by its task's process, taken by renaming a folder of the task's own onto it,
- * which the system refuses while the slot holds an entry: of two tasks at one free slot, one takes it.
- */
 function takeSlot(folder: string, count: number): Slot | null {
   const mine = String(runtimeProcess.pid);
   const claim = join(folder, `claim-${mine}`);
@@ -336,9 +274,6 @@ function takeSlot(folder: string, count: number): Slot | null {
   return null;
 }
 
-/** Waits for the first free slot among `places`, in their order, so tasks that read the same order
- *  at once spread over the places instead of queueing at the first; says so every fifteen seconds,
- *  at most the configured wait. */
 async function slotAmong(places: readonly Place[]): Promise<{ place: Place; slot: Slot }> {
   const queues = places.map((place) => {
     const folder = slotFolder(place);
@@ -360,12 +295,6 @@ async function slotAmong(places: readonly Place[]): Promise<{ place: Place; slot
   }
 }
 
-/**
- * The working tree of `root` as a commit: `HEAD` itself where nothing differs from it, else the tree
- * as git would add it whole (tracked changes, deletions and new files it does not ignore) on
- * `HEAD`'s own parents, written through a scratch index so the checkout's index and branch stay as
- * they are. An untracked env file never joins it, whatever the ignore rules say.
- */
 function snapshot(root: string): string {
   const index = join(tmpdir(), `ana-runner-index-${String(runtimeProcess.pid)}`);
   const git = (...args: string[]): string =>
@@ -380,7 +309,6 @@ function snapshot(root: string): string {
     }).trim();
   const head = gitMaybe(root, "rev-parse", "-q", "--verify", "HEAD^{commit}");
   try {
-    // The checkout's own index carries what is staged and what git already knows unchanged.
     const own = gitText(root, "rev-parse", "--path-format=absolute", "--git-path", "index");
     try {
       copyFileSync(own, index);
@@ -401,8 +329,6 @@ function snapshot(root: string): string {
   }
 }
 
-/** One step before the task, each safe to repeat, tried three times: a dropped connection looks
- *  like any other failure. The task itself is never retried. */
 async function retried(what: string, step: () => Promise<string | null>): Promise<string | null> {
   const pause = setting("ANA_RUNNER_RETRY_DELAY", 5);
   for (let attempt = 1; ; attempt++) {
@@ -413,7 +339,6 @@ async function retried(what: string, step: () => Promise<string | null>): Promis
   }
 }
 
-/** A command's trimmed stdout, or null with its stderr said where it did not exit 0. */
 async function answer(cmd: string[], env?: Record<string, string | undefined>): Promise<string | null> {
   const result = await runCaptured(cmd, env === undefined ? {} : { env });
   if (result.exitCode === 0) return result.stdout.trim();
@@ -431,11 +356,8 @@ const CALLER_ENV = (() => {
   return Object.fromEntries(Object.entries(runtimeProcess.env).filter(([name]) => !added.has(name)));
 })();
 
-/** The task's own run, its streams this command's, as its exit status. A signal to this command
- *  goes on to it, and a hang-up reaches a host through its terminal. */
 async function attached(cmd: string[], release: () => void): Promise<number> {
-  // A group of its own, so the signal reaches the task whole and this command once. No check reads
-  // its input, and a group without the terminal could not.
+  // A group of its own, so the signal reaches the task whole and this command once.
   const child = capturedSpawn(cmd, {
     detached: true,
     env: CALLER_ENV,
@@ -459,12 +381,7 @@ async function attached(cmd: string[], release: () => void): Promise<number> {
   }
 }
 
-/**
- * The shell text that makes a slot ready on `host` and prints the host's free KiB, in one exchange:
- * a repository of its own that borrows the objects of the host's tree, the task's script beside it,
- * and no status of an earlier task. A slot whose own .git is missing or broken would otherwise find
- * a repository above it.
- */
+/** A slot whose own .git is missing or broken would otherwise find a repository above it. */
 const setUp = (host: Host, dir: string): string => `set -eu
 d=${quoted(dir)}
 mkdir -p "$d"
@@ -476,8 +393,6 @@ printf '%s' ${quoted(readFileSync(TASK_SCRIPT, "utf8"))} >"$d.task.sh"
 df -Pk "$HOME" | awk 'NR == 2 { print $4 }'
 git -C "$d" rev-parse -q --verify 'refs/runner/snapshot^{commit}' 2>/dev/null || true`;
 
-/** What a check reads from its caller, as shell assignments. The clone's `ana.lintStrict` never
- *  reaches a slot, so it goes as the variable lint.ts reads. */
 function carried(root: string): string[] {
   const strict = gitMaybe(root, "config", "--type=bool", "--get", "ana.lintStrict") === "true" ? "1" : "";
   return FORWARDED.map((name) => [name, runtimeProcess.env[name] ?? ""] as const)
@@ -535,13 +450,10 @@ async function onHost(
     // --norc: a bash started straight under sshd reads ~/.bashrc, and one Mac's does not parse.
     "/bin/bash --norc",
     ...[`${dir}.task.sh`, "host", dir, pin, String(job.wall), ...remoteTask].map(quoted),
-    // Where this end is no terminal the task writes into a pipe, so its tools draw no progress bars
-    // into a log or an agent's output.
     ...(runtimeProcess.stdout.isTTY ? [] : ["2>&1 | cat"]),
   ];
-  // The forced terminal is what delivers a hang-up to the host when ssh drops. ssh reports its own
-  // failures as 255. Otherwise the verdict is the status task.sh left beside the slot, since
-  // Tailscale SSH reports 0 whatever the task did; none left is no verdict either.
+  // The forced terminal delivers a hang-up to the host when ssh drops. ssh's own failures are 255; else
+  // the verdict is the status task.sh left beside the slot, as Tailscale SSH reports 0 whatever happened.
   let status = await attached(ssh("-tt", host.ssh, words.join(" ")), release);
   let times = "";
   if (status !== EXIT.noVerdict) {

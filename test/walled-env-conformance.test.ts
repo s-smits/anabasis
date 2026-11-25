@@ -1,7 +1,6 @@
-// pi-durable's own environment conformance suite, run against the walled environment, so that the
-// file and shell operations durable's tools call behave as durable's NodeExecutionEnv does. Its
-// `watch` cases are skipped: a command on the wall lives only as long as one operation, so the
-// environment answers `not_supported`, and no durable tool or the Harness calls `env.watch`.
+// pi-durable's own environment conformance suite, run against the walled environment. Its `watch` cases
+// are skipped: a walled command lives only for one operation, so the environment answers
+// `not_supported`, and no durable tool calls `env.watch`.
 import { describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { registerEnvConformance } from "@earendil-works/pi-durable/testing";

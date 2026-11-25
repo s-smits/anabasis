@@ -4,46 +4,20 @@ import { type FocusEvent, memo, useId, useMemo, useRef, useState } from "react";
 import { Search } from "../views/controls.tsx";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 
-/*
- * A picker that uses the page's shared styles.
- *
- * The project and campaign menus were native `<select>` elements in v1, so the moment either was
- * opened the page opened an operating-system popup: system font, system colours, system row
- * height, and no room for the small label a campaign carries (its worktree, and whether it is a
- * rehearsal's copy).
- *
- * This is a listbox instead of a select: same keyboard contract (arrows move, Enter picks, Escape
- * closes, click outside closes), and the same one-way data flow, with the popup drawn in our own
- * styles. Groups carry an optional heading; a group with no heading renders its options flat. The
- * listbox holds only its groups and options, each group named by its heading, and the search box
- * stands above it in the panel, outside the listbox, which may own options alone (axe,
- * aria-required-children).
- *
- * Focus stays on the trigger while the list is open, as a combobox's does: a press inside the list
- * keeps it there, so focus leaving the picker is a press or a Tab outside it, and closes the list
- * (`onBlur`). The active option scrolls into view as it is drawn active, through its ref. Neither
- * is an effect that runs a frame after the list has drawn, nor a listener on the whole document for
- * as long as the list is open.
- *
- * A `filtered` picker narrows its list as the operator types into a search box at the top of the
- * list, which takes focus as the list opens: a key typed on the trigger opens it with that key, the
- * arrows and Enter walk and pick as on the trigger, and Escape clears the filter before it closes the
- * list. The campaign picker needs it: the repository holds hundreds of campaigns, with no other way
- * to find one but to scroll. The filter is a box rather than text typed on the trigger, which no
- * Cmd+A, paste or caret could reach. The filter forgives typos (Fuse.js, `FUZZY`) and puts the
- * closest match first: the list is a few hundred names, so a loose match costs a few extra rows and
- * a strict one would hide "stakced".
- *
- * A picker given `chosen` ticks several values: a pick toggles one and the list stays open, as a
- * filter's does, until a press or a Tab outside it or Escape closes it.
- */
+// A listbox in the page's own styles, where a native `<select>` opens a system popup with no room for a
+// campaign's small label. Same keyboard contract (arrows move, Enter picks, Escape and a click outside
+// close) and one-way data flow; a group with no heading renders flat, and the search box stands above
+// the listbox, which may own options alone (aria-required-children). Focus stays on the trigger while
+// the list is open, as a combobox's does, so focus leaving the picker closes it (`onBlur`). A
+// `filtered` picker narrows the list as the operator types into a search box that takes focus as the
+// list opens; Escape clears the filter before it closes. The filter forgives typos (Fuse.js, `FUZZY`)
+// and puts the closest match first. A picker given `chosen` ticks several values, staying open as each
+// pick toggles one.
 
 interface PickerOption {
   value: string;
   label: string;
-  /** A small label after the option's own, such as a campaign's state. */
   detail?: string;
-  /** A quieter second line under the option, such as a campaign's last reading. */
   note?: string;
 }
 
@@ -53,18 +27,16 @@ interface PickerGroup {
   options: readonly PickerOption[];
 }
 
-/** One option as the fuzzy search reads it, with its group's heading. */
 interface Entry {
   readonly group: string | null;
   readonly option: PickerOption;
 }
 
-/** Lenient: a match anywhere in a field, at most 40% of it misspelt, the option's own name weighed
- *  first, and each word of the query matched apart (extended search), so that "opus air" finds the
- *  Opus campaign on the Air and not every Opus campaign. */
 /** The option of a choice that ticks nothing, which every row passes. */
 const EVERY = "\u0000every";
 
+/** Lenient: a match anywhere, at most 40% misspelt, the label weighed first, and each word of the
+ *  query matched apart, so "opus air" finds the Opus campaign on the Air alone. */
 const FUZZY = {
   keys: [
     { name: "option.label", weight: 2 },
@@ -78,7 +50,6 @@ const FUZZY = {
   useExtendedSearch: true,
 };
 
-/** The active option, brought into view in the list as it becomes active. */
 function scrollNearest(option: HTMLButtonElement | null): void {
   option?.scrollIntoView({ block: "nearest" });
 }
@@ -89,14 +60,11 @@ function keepFocus(event: React.MouseEvent): void {
   if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
 }
 
-/** The search box takes focus as the list opens, its caret after the key that opened it. */
 function focusAtEnd(input: HTMLInputElement | null): void {
   input?.focus();
   input?.setSelectionRange(input.value.length, input.value.length);
 }
 
-/** The groups narrowed to the options `query` finds, the closest first in each group and the group
- *  of the closest first. */
 function narrowed(groups: readonly PickerGroup[], query: string): readonly PickerGroup[] {
   if (query.trim() === "") return groups;
   const entries: Entry[] = groups.flatMap((group) =>
@@ -117,7 +85,6 @@ function narrowed(groups: readonly PickerGroup[], query: string): readonly Picke
     .toSorted((one, other) => best(one) - best(other));
 }
 
-/** A key that types into the filter: one printable character, with no modifier but Shift. */
 function typed(event: React.KeyboardEvent): boolean {
   return event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
 }
@@ -138,14 +105,11 @@ function PickerInner({
   groups: readonly PickerGroup[];
   onChange: (value: string) => void;
   placeholder?: string;
-  /** Typing narrows the list. */
   filtered?: boolean;
   /** The values ticked in a list that holds several: a pick toggles one and leaves the list open
    *  until focus leaves the picker or Escape closes it. */
   chosen?: ReadonlySet<string>;
-  /** What the trigger shows for the current option, where it differs from the option's own line. */
   shown?: { readonly label: string; readonly detail?: string };
-  /** The trigger's icon, the whole trigger where the sidebar is collapsed. */
   icon?: typeof Check;
 }) {
   const [open, setOpen] = useState(false);
@@ -154,8 +118,8 @@ function PickerInner({
   const trigger = useRef<HTMLButtonElement>(null);
   const id = useId();
 
-  // Flattening the groups is what gives arrow keys one order to walk, so it is derived once per
-  // group or filter change instead of on every hover.
+  // Flattening the groups gives the arrow keys one order to walk, so it is derived once per group or
+  // filter change, not on every hover.
   const { visible, flat, indexOf } = useMemo(() => {
     const kept = narrowed(groups, query);
     const options = kept.flatMap((group) => group.options);
@@ -182,7 +146,6 @@ function PickerInner({
   }
   const ticked = (option: PickerOption) => chosen?.has(option.value) ?? option.value === value;
 
-  /** Types `next` into the filter and opens the list on its first match. */
   function filterTo(next: string) {
     setQuery(next);
     setActive(0);
@@ -190,7 +153,6 @@ function PickerInner({
   }
 
   function onBlur(event: FocusEvent<HTMLDivElement>) {
-    // Focus that leaves for nothing or for something outside the picker closes the list.
     if (
       !(event.relatedTarget instanceof globalThis.Node && event.currentTarget.contains(event.relatedTarget))
     ) {
@@ -362,14 +324,12 @@ function PickerInner({
   );
 }
 
-/** Memoised: the sidebar re-renders on every poll of the campaign list; the picker can skip
- *  rendering when its props, including the groups, current value and callback, have not changed. */
+/** Memoised: the sidebar re-renders on every poll of the campaign list, and the picker can skip it
+ *  when its props have not changed. */
 export const Picker = memo(PickerInner);
 
-/** A choice in a filter row, in the search box's style: the list opens with a box that finds a
- *  value by typing, as the campaign picker does, since a native select cannot be searched and draws
- *  in the system's style. It ticks any number of values, and a row passes where it holds one of
- *  them; the first option, `every`, clears the ticks. */
+/** A choice in a filter row, searchable as the campaign picker is: it ticks any number of values, a
+ *  row passes where it holds one of them, and the first option, `every`, clears the ticks. */
 export function Choose({
   label,
   chosen,
@@ -383,10 +343,8 @@ export function Choose({
   chosen: readonly string[];
   onChange: (chosen: readonly string[]) => void;
   values: readonly string[];
-  /** The first option in words, which passes every row, and what it stands for beside them. */
   every: { readonly label: string; readonly detail?: string };
   format?: (value: string) => string;
-  /** What a value stands for beside its words, such as how many rows hold it. */
   detail?: (value: string) => string;
 }) {
   const ticked = new Set(chosen.length === 0 ? [EVERY] : chosen);

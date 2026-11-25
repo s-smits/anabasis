@@ -19,15 +19,13 @@ import { openComparisons } from "#tools/runs/registry.ts";
 
 type Launch = Receipt & { readonly session: string };
 
-/** The session endings a stretch can hold, by the event that carries them. */
 const SESSION_ENDS = new Set(["build.finished", "exam.finished", "draft.finished"]);
 const STEP_STARTS: ReadonlySet<string> = new Set(["exam.started", "build.started"]);
 const STEP_ENDS: ReadonlySet<string> = new Set(["exam.finished", "build.finished"]);
 const KILLED = "killed";
-/** How long before its receipt a launch writes its `campaign.opened`: a few milliseconds. */
+/** A launch writes its `campaign.opened` a few milliseconds before its receipt. */
 const OPENED_MS = 1000;
 
-/** How many lines a launch's output file holds, or that it has none. */
 function linesIn(log: string, launch: Launch, extension: "out" | "err"): string {
   const file = join(dirname(log), `launch-${launch.session}.${extension}`);
   if (!existsSync(file)) return `no .${extension}`;
@@ -36,14 +34,11 @@ function linesIn(log: string, launch: Launch, extension: "out" | "err"): string 
   return `.${extension} ${plural(count, "line")}`;
 }
 
-/** Whether a launch ran as the login before it, saying neither. */
 function loginOf(launch: Launch, before: Launch | undefined): string {
   if (before === undefined) return launch.login === undefined ? "login not named" : "login named";
   return launch.login === before.login ? "login same" : "login changed";
 }
 
-/** Where a launch's stretch begins: its first event at or after `at`, from `from` on, or the
- *  opening the launch wrote just before its receipt. */
 function startOf(events: readonly LogEvent[], at: string, from: number): number {
   const time = Date.parse(at);
   const found = events.findIndex((event, index) => index >= from && Date.parse(event.at) >= time);
@@ -76,7 +71,6 @@ export function openAt(events: readonly LogEvent[]): string[] {
   ];
 }
 
-/** What one launch's stretch of the log, events `[from, to)`, holds. */
 function stretchLines(
   events: readonly LogEvent[],
   every: readonly Solve[],
@@ -106,7 +100,6 @@ function stretchLines(
   ];
 }
 
-/** One block a launch receipt beside `log`, oldest first. */
 export function launchLines(log: string, events: readonly LogEvent[]): string[] {
   const launches = receipts(log);
   if (launches.length === 0) return ["launches: no launch receipt beside the log"];

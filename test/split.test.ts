@@ -63,8 +63,8 @@ const templateOld = Object.fromEntries(
   ["cut", "one", "two"].map((name) => [name, initGit("rev-parse", name)]),
 );
 
-/** The digest of a commit's whole object but its parent lines: tree, author, committer and message,
- *  byte for byte, which text read through UTF-8 could not tell apart. */
+/** The digest of a commit's whole object but its parent lines, byte for byte, which text read
+ *  through UTF-8 could not tell apart. */
 const barParents = (repository: string, sha: string): string =>
   execTextSync("sh", [
     "-c",
@@ -131,9 +131,7 @@ function sandbox() {
     git("push", "-q", "origin", "main");
   };
   const chain = () => [pull(2, "one", "cut"), pull(3, "two", "one")];
-  /** The open stack #5, #1 (the cut), #2, #3, as GitHub lists open pull requests. */
   const whole = () => [pull(5, "five", "main"), pull(1, "cut", "five"), ...chain()];
-  /** A new branch from `from`, pushed and listed in `old`, which forks the chain or stands aside. */
   const pushBranch = (name: string, from: string): void => {
     git("checkout", "-q", "-b", name, from);
     commit(name, name);

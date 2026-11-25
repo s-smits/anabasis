@@ -1,13 +1,11 @@
 /**
- * Deliverable file-artifact capture and verification audit (lane 3):
+ * Whether deliverable files are captured and verified (lane 4):
  *
  *   bun tools/wri/wri.ts reader deliverables --log <log>
  *
- * Summarises whether the standing draft's evaluator and controls use deliverable files, per-arm
- * verdict capture rates, file counts, median and maximum byte sizes, capture-cap hits
- * (`DELIVERABLES.count` / `DELIVERABLES.bytes`), pass vs fail splits between file-carrying and
- * file-less verdicts, and Referee probes targeting `file:*` paths. Wall-safe: prints only counts,
- * byte sizes, and comparison/session identifiers — never file paths or contents.
+ * Covers the standing draft's use of files, each arm's capture rates and sizes, capture-cap hits
+ * (`DELIVERABLES`), pass and fail splits with and without files, and Referee probes of `file:*`
+ * paths. It prints counts, sizes and identifiers, never file paths or contents.
  */
 import { DELIVERABLES, manifestOf } from "#src/kernel/answer-files.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -56,7 +54,6 @@ export function draftDeliverableInfo(events: readonly LogEvent[]): {
   };
 }
 
-/** Add one verdict event's deliverable statistics into `bucket`. */
 function recordVerdict(bucket: Bucket, data: JsonObject): void {
   bucket.verdicts += 1;
   const pass = data.kind === "pass";
@@ -73,7 +70,6 @@ function recordVerdict(bucket: Bucket, data: JsonObject): void {
   if (files.length >= DELIVERABLES.count || totalBytes >= DELIVERABLES.bytes) bucket.atBound += 1;
 }
 
-/** Format one bucket into a compact wall-safe summary string. */
 function formatBucket(bucket: Bucket): string {
   const med = median(bucket.bytes);
   const max = bucket.bytes.length === 0 ? 0 : Math.max(...bucket.bytes);
@@ -100,7 +96,6 @@ function fileProbedRulings(events: readonly LogEvent[]): {
   return { total: findings.length, fileProbed };
 }
 
-/** Deliverable capture and verification audit across draft, comparisons, roles, and Referee probes. */
 export function deliverableRows(events: readonly LogEvent[]): string[] {
   const log = indexOf(events);
   const draft = draftDeliverableInfo(events);

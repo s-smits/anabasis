@@ -21,7 +21,6 @@ const task = (old: readonly Solve[], fresh: readonly Solve[], direction: Task["d
   old,
   fresh,
 });
-/** Both sides valid and equal by every answer's measure, the new one spending `fresh` to `old`. */
 const validOnlyNew = (billed: number) =>
   task([solve(1, null, false), solve(1, null, false)], [solve(billed), solve(billed)]);
 const steps = (one: Mechanism, tasks: readonly Task[]) =>

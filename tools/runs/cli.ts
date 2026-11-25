@@ -1,11 +1,8 @@
 /**
- * Command-line dispatcher for `bun run runs <verb>`, operating across all campaign logs in the
- * repository's worktrees (`registry.ts`). `GROUPS` lists one-line summaries displayed by a bare
- * `bun run runs`, followed by universal flags (`EVERY`). Detailed usage has a single authoritative
- * owner, the file header comment of each verb's module, parsed by `bun run runs <verb> --help`
- * (`usageOf`); `help <verb> ...` prints multiple verbs and `help all` prints all of them. Verbs
- * targeting a campaign held on another host are forwarded to that host (`routed`), discovered via
- * `holds`.
+ * Dispatcher for `bun run runs <verb>`, across every campaign log in the repository's worktrees
+ * (`registry.ts`). A bare `bun run runs` lists `GROUPS` and the universal flags (`EVERY`). Each
+ * verb's usage is owned by its module's header comment, which `--help` parses (`usageOf`). Verbs
+ * naming a campaign held on another host are forwarded there (`routed`, `holds`).
  */
 import { readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -24,7 +21,6 @@ interface Verb {
 
 /** Verbs whose own option parser handles `--here` beyond merely suppressing remote queries. */
 const READS_HERE: ReadonlySet<string | undefined> = new Set(["active", "hosts", "keep", "pulse"]);
-/** Tokens that trigger the verb list or per-verb help output. */
 const HELP: ReadonlySet<string> = new Set(["", "help", "--help", "-h"]);
 /** Universal flags and conventions displayed beneath the verb groups. */
 const EVERY = [
@@ -39,9 +35,8 @@ const EVERY = [
 
 const verbOf = (run: Verb["run"], file: string, says: string): Verb => ({ run, file, says });
 
-/** Registry of all CLI verbs grouped for the bare `bun run runs` summary, with their handler,
- *  usage-owning file, and one-line description. Handlers load their module lazily so invoking one
- *  verb never parses unrelated commands. */
+/** Every verb with its handler, usage-owning file and one-line description. Handlers load their
+ *  module lazily, so one verb never parses another's. */
 const GROUPS = {
   "a run's life": {
     fresh: verbOf(
@@ -195,11 +190,10 @@ const VERBS: Record<string, Verb> = Object.fromEntries(
 );
 const WIDTH = Math.max(...[...Object.keys(VERBS), ...EVERY.map(([name]) => name)].map((name) => name.length));
 
-/** Looks up a verb by exact own key so inherited `Object.prototype` names such as `toString` never match. */
+/** Looks up a verb by exact own key, so inherited names such as `toString` never match. */
 const verbNamed = (word: string | undefined): Verb | undefined =>
   Object.entries(VERBS).find(([name]) => name === word)?.[1];
 
-/** Formats two-column aligned rows with the name column padded to `WIDTH`. */
 const columns = (lines: readonly (readonly [string, string])[]): string =>
   lines.map(([name, says]) => `  ${name.padEnd(WIDTH)}  ${says}`).join("\n");
 
@@ -224,7 +218,6 @@ async function continueOn(host: Host, args: readonly string[]): Promise<number> 
   return await verbOn(own.includes("--yes") ? await preparedHost(host, commit) : host, command);
 }
 
-/** Renders the full grouped verb listing and universal options. */
 function list(): string {
   const groups = Object.entries(GROUPS).map(
     ([group, verbs]) =>
@@ -233,7 +226,7 @@ function list(): string {
   return `usage: bun run runs <verb> [<args>]\n\n${groups.join("\n\n")}\n\nevery verb:\n${columns(EVERY)}`;
 }
 
-/** Computes Levenshtein edit distance between `from` and `to` using single-row dynamic programming. */
+/** Levenshtein edit distance between `from` and `to`, single-row. */
 function edits(from: string, to: string): number {
   let row = Array.from({ length: to.length + 1 }, (_, at) => at);
   for (const [i, letter] of from.split("").entries()) {
@@ -250,8 +243,8 @@ function edits(from: string, to: string): number {
   return row.at(-1) ?? 0;
 }
 
-/** Formats suggestions for an unrecognised verb: prefix matches first, otherwise verbs within edit
- *  distance 2 (or 1 for words of four characters or fewer), falling back to the full list. */
+/** Suggestions for an unrecognised verb: prefix matches first, else verbs within edit distance 2 (1
+ *  for words of four characters or fewer), else the full list. */
 function unknown(word: string): string {
   const verbs = Object.entries(VERBS).map(([name, { says }]) => [name, says] as const);
   const begun = verbs.filter(([name]) => word !== "" && name.startsWith(word));
@@ -261,9 +254,9 @@ function unknown(word: string): string {
   return `no verb \`${word}\`; the nearest:\n${columns(near)}\n\`bun run runs\` lists every verb`;
 }
 
-/** Extracts usage lines for `verb` from its owning file's leading docblock: indented `runs <verb>`
- *  blocks (with continuation lines) and backticked `bun run runs <verb> ...` or `runs <verb> <args>`
- *  examples. Keeps the file header as the single source of truth for `--help` and misuse output. */
+/** Usage lines for `verb` from its owning file's leading docblock: indented `runs <verb>` blocks
+ *  (with continuations) and backticked `bun run runs <verb> ...` or `runs <verb> <args>` examples.
+ *  The header stays the one source for `--help` and misuse. */
 function usageOf(verb: string, file: string): string[] {
   const text = readFileSync(join(import.meta.dir, file), "utf8");
   const head = text.slice(0, text.indexOf("*/")).replaceAll(/^\s*(\/\*\*|\*)/gmu, "");
@@ -281,7 +274,6 @@ function usageOf(verb: string, file: string): string[] {
   );
 }
 
-/** Formats `--help` output for a single verb, citing the file header where options are documented. */
 const helpOf = (verb: string, { file, says }: Verb): string =>
   [
     `${verb}: ${says}`,
@@ -289,13 +281,13 @@ const helpOf = (verb: string, { file, says }: Verb): string =>
     `  why, and what each option does: the head of tools/runs/${file}`,
   ].join("\n");
 
-/** Returns true for argument or flag errors (`Misused` or Node/Bun `parseArgs` errors). */
+/** Whether `error` is an argument or flag error (`Misused`, or `parseArgs`'s). */
 const misuse = (error: Error): boolean => {
   const code = asRecord(error)?.code;
   return error instanceof Misused || (isString(code) && code.startsWith("ERR_PARSE_ARGS"));
 };
 
-/** Distinguishes expected operator refusals (plain `Error` or `Misused`) from internal defects. */
+/** Whether `error` is an expected operator refusal (plain `Error` or `Misused`), not an internal defect. */
 const refusal = (error: unknown): error is Error =>
   error instanceof Error && (error.constructor === Error || misuse(error));
 
@@ -323,7 +315,6 @@ if (HELP.has(verb)) {
     runtimeProcess.exitCode = 1;
   }
 } else if (chosen === undefined) {
-  // Unrecognised verb: suggest nearest matches or print the full listing.
   console.error(unknown(verb));
   runtimeProcess.exitCode = 1;
 } else if (own.includes("--help") || own.includes("-h")) {
@@ -345,11 +336,10 @@ if (HELP.has(verb)) {
     }
   } catch (error) {
     if (!refusal(error)) throw error;
-    // Append the verb's usage lines beneath any misuse error message.
     const usage = misuse(error) ? usageOf(verb, chosen.file).map((line) => `usage: ${line}`) : [];
     console.error([error.message, ...usage].filter((line) => line !== "").join("\n"));
     runtimeProcess.exitCode = 1;
   }
 }
-// Exit explicitly with whatever `exitCode` was set so refused verbs never return 0.
+// Exits with whatever `exitCode` was set, so a refused verb never returns 0.
 runtimeProcess.exit();

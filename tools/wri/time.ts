@@ -1,9 +1,8 @@
 /**
- * The lanes of a whole-run investigation that read the clock: the solver's deadlines, limits and load
- * (lane 22), and where the campaign's hours, dollars and silences went (lane 23).
- * Role hours are elapsed open spans and can overlap. Every recorded wait, a provider's reset
- * (its grace minute included), a network wait and a solve-queue wait, joins one union, and the hours
- * a promotion stand with and without it.
+ * The triggers that read the clock: the solver's deadlines, limits and load, and where the
+ * campaign's hours, dollars and silences went. Role hours are elapsed open spans and can overlap;
+ * every recorded wait (a provider's reset with its grace minute, a network wait, a solve-queue wait)
+ * joins one union, and a promotion's hours stand with and without it.
  */
 import { type EventKind, eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
@@ -145,7 +144,7 @@ function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigg
 const scoredOf = (log: Index) =>
   log.compared.map((each) => ({ ...each, scoring: tallied(each).filter(measured) }));
 
-/** Lane 22: misses at a limit, deadline share, host load, mirrored start order, and served model. */
+/** Misses at a limit, deadline share, host load, mirrored start order, and served model. */
 export function deadlineTriggers(log: Index): Trigger[] {
   const results = scoredOf(log);
   const deadlineShares = results.flatMap(({ session, own, scoring }) => {
@@ -292,7 +291,6 @@ export function waitsOf(events: readonly LogEvent[]): { from: number; until: num
   return waits;
 }
 
-/** The milliseconds between `from` and `to` inside the waits `waitsOf` read, each counted once. */
 export const waitedMs = (waits: readonly { from: number; until: number }[], from: number, to: number) =>
   unionMs(
     waits.flatMap((wait) =>
@@ -374,7 +372,7 @@ function causeOf(log: Index, spans: readonly Span[], index: number, gap: number)
   return open ? `before ${log.events[index]?.kind ?? ""}` : BETWEEN_MOVES;
 }
 
-/** Lane 23: the longest silences, each by what ran through it, and a role that took most of the dollars. */
+/** The longest silences, each by what ran through it, and a role that took most of the dollars. */
 export function costTriggers(log: Index): Trigger[] {
   const scaled = (median(log.solves.filter(measured).map((solve) => solve.seconds)) ?? 0) * SILENCE_SOLVES;
   const threshold = Math.max(scaled, SILENCE_FLOOR_SECONDS) * 1000;

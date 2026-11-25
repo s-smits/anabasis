@@ -1,40 +1,18 @@
 /**
- * One solve of a benchmark task by an Anabasis harness, inside the benchmark's own container: the
- * study's counterpart of `play()` (`src/solver/run.ts`), for a benchmark that grades the container's
- * state after the agent exits instead of an `answer.json` checked by a contract.
- *
- * `play()` cannot run there: it is bound to a campaign's log, to Seatbelt or Bubblewrap and to a
- * claimed seat root, and the container is itself the sandbox. So this is the same loop over the
- * same parts, with the command wall taken out:
- * - durable's coding tools as the harness's presets select them (`selectedCodingTools`), on its local
- *   operations in the container's working directory, with the harness's `.toolchain` first on PATH
- *   in the order a solve's shell has it (`toolTreeSearchDirs`);
- * - a harness that does not open ends the solve as `broken-harness`, its side's own fail, as a
- *   campaign reads it (`brokenHarness`, `src/solver/run.ts`);
- * - the study's system prompt, with the harness's guide as project context under the
- *   sentence a campaign's solver reads, and a duty that names the benchmark's deliverable;
- * - the solve wall and the model-turn cap, told on every tool result by `timed`, the nudge after a
- *   turn that stops without `submit`, durable's compaction and retries, and OpenRouter as the
- *   backends serve it (`openrouter`, `src/agent/backends/models.ts`), or with `--solver` a model of
- *   the campaign's own backends, rolled on the host (`piAgent`, `studies/harness2/score.ts`);
- * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
- *   written by `sit` (`src/agent/session.ts`) and read by `src/kernel/trace.ts`, and the spend
- *   as `sit` sums a campaign's solve, so a change to the log's format has one owner to change;
- *   the same trace as Harbor's ATIF trajectory (`trajectoryOf`, `atif.ts`), where the
- *   benchmark's tools look for an agent's run, and the ending of a solve that left no answer as a
- *   campaign's solve is read (`unanswered`, `src/kernel/solve.ts`).
- *
- * The model is reached through the benchmark's own proxy on the host (`harbor/pi_agent.py`), so the
- * provider's key stays on the host and the container holds only the token that names its route.
- * The model keeps its entry and its prices as the backends serve them, and only its URL changes.
- *
- * With `--dry-run` it does everything but call the model: it opens the harness, lists its tools,
- * composes the system prompt, runs `command -v` for each installed program through the solver's own
- * shell, asks the job's proxy for its `/health` from inside the container, and writes all four to the
- * result, so the study's check stage proves the path in the container for free.
- *
- * A harness that declares tools of its own is not refused, so a learned harness that writes any can
- * be scored.
+ * One solve of a benchmark task by an Anabasis harness inside the benchmark's own container, which
+ * grades the container's state after the agent exits: the study's counterpart of `play()`
+ * (`src/solver/run.ts`), which is bound to a campaign's log, to Seatbelt or Bubblewrap and to a
+ * claimed seat root, where here the container is the sandbox. It is the same loop over the same
+ * parts with the command wall taken out: the harness's coding tools (`selectedCodingTools`) with
+ * its `.toolchain` first on PATH; `broken-harness` for a harness that does not open; the study's
+ * system prompt with the guide as project context; the solve wall, turn cap, nudge, compaction and
+ * retries; the trace as `solve.*` events written by `sit` and read by `src/kernel/trace.ts`, plus
+ * Harbor's ATIF trajectory (`trajectoryOf`). The model is reached through the benchmark's proxy on
+ * the host (`harbor/pi_agent.py`), so the provider's key stays there, or with `--solver` through a
+ * model of the campaign's own backends. `--dry-run` does everything but call the model and writes
+ * the tools, system prompt, `command -v` of each program and the proxy's `/health` to the result,
+ * so the check stage proves the path for free. A harness that declares tools of its own is not
+ * refused, so a learned harness that writes any can be scored.
  */
 import { type AssistantMessage, createModels, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
@@ -63,10 +41,8 @@ import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { seatBackends } from "#tools/d2/campaign.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 
-/** The file names the Harbor agent reads back from the trial's log folder (`harbor/pi_agent.py`). */
 export const TRACE_FILE = "pi-log.jsonl";
 export const RESULT_FILE = "pi-result.json";
-/** A name of the environment that holds a credential, by the way such names are written. */
 const CREDENTIAL = /TOKEN|API_KEY|SECRET|PASSWORD/u;
 const CAMPAIGN_REF_RE = /\b(?:input|answer)\.json\b|public\/(?:task\.json|files\/|resources\/)/u;
 
@@ -86,13 +62,10 @@ const OPTIONS = {
   "dry-run": { type: "boolean" },
 } as const;
 
-/** How a solve ended: an answer, a crash, its dollar bound, or the kernel's word for none. */
 type Ending = "submitted" | "crash" | "budget" | ReturnType<typeof unanswered>["kind"];
 
-/** OpenRouter's model behind the benchmark's proxy, or `provider/model` on the campaign's backends. */
 type Route = Readonly<{ model: string; baseUrl: string; key: string }> | Readonly<{ solver: string }>;
 
-/** The model and the backends that serve it, as `sit` takes them. */
 type Served = Pick<Seat, "model" | "models">;
 
 interface Asked {
@@ -140,8 +113,8 @@ function asked(args: readonly string[]): Asked {
   };
 }
 
-/** The benchmark's deliverable and the solve's limits, in the words a campaign's solver reads them
- *  where they are the same (`duty`, `src/solver/prompt.ts`). */
+/** The solver's duty, in the words a campaign's solver reads where they are the same (`duty`,
+ *  `src/solver/prompt.ts`). */
 function duty(ask: Asked, guide: string | null): string {
   return [
     "Complete the task the first message gives with the available tools; the method is yours to choose.",
@@ -175,7 +148,6 @@ function submitTool(said: { submitted: boolean }): SeatTool {
   });
 }
 
-/** OpenRouter's entry for the model, served through the benchmark's proxy on its token. */
 function throughProxy(route: Extract<Route, { model: string }>): Served {
   const provider = openrouter();
   const listed = provider.getModels().find(({ id }) => id === route.model);
@@ -187,12 +159,11 @@ function throughProxy(route: Extract<Route, { model: string }>): Served {
       fileExists: async () => false,
     },
   });
-  // sit resolves the model by provider and id, including for compaction; keep the proxy URL there.
+  // The registry resolves the model by provider and id, compaction included, so keep the proxy URL there.
   models.setProvider({ ...provider, getModels: () => [model], getAllModels: () => [model] });
   return { model, models: () => models };
 }
 
-/** The environment's credentials, unset for the solver's commands, as no wall builds their env here. */
 export function keyless(names: readonly string[]): Record<string, undefined> {
   return Object.fromEntries(names.filter((name) => CREDENTIAL.test(name)).map((name) => [name, undefined]));
 }
@@ -225,7 +196,6 @@ async function solve(ask: Asked) {
     environment: `- Commands run in the task workspace with your working directory as cwd.${programLine}`,
   });
   const { route } = ask;
-  // A model of the campaign's own backends is served as a campaign's solve is (`practised`).
   const served: Served =
     "solver" in route
       ? {
@@ -309,7 +279,6 @@ async function solve(ask: Asked) {
   };
 }
 
-/** What a shell with the solver's PATH finds of each installed program, as `command -v` prints it. */
 function resolved(prefix: string | undefined, programs: readonly string[]): string {
   const each = programs.map(
     (name) => `command -v ${shellQuote(name)} || echo ${shellQuote(`missing: ${name}`)}`,
@@ -319,7 +288,6 @@ function resolved(prefix: string | undefined, programs: readonly string[]): stri
   );
 }
 
-/** How the solve ended: where it left no answer, as a campaign's solve is read (`unanswered`). */
 function endingOf(played: {
   crash: string | null;
   submitted: boolean;

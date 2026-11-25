@@ -1,13 +1,9 @@
 // The pre-commit slop gate: the whole-tree simplify scans, narrowed to the lines this commit changes.
-//
-// `bun run simplify` prints every site in the tree, a census a person reads once and finishes. At
-// commit time the question is narrower (did this change add one) and the reader is often an
-// agent that sees the hook's output and nothing else. So this prints actionable sites (excluding
-// standing registers) with a place on a changed line, numbered, each with the id `bun run not-slop --
-// answer` takes; writes the whole report, with each shape's argument, into the git directory, where
-// it is never committed; and exits 1 so new census findings are resolved or answered at commit time
-// rather than waiting for `bun run gate`. The lines are read from the working tree against HEAD, as
-// the linter before it reads the files, so a partially staged file is judged on what is on disk.
+// It prints actionable sites with a place on a changed line, each with the id `bun run not-slop --
+// answer` takes, writes the whole report into the git directory, and exits 1 so new findings are
+// resolved or answered at commit time rather than at `bun run gate`. Lines are read from the working
+// tree against HEAD, as the linter reads the files, so a partially staged file is judged on what is on
+// disk.
 
 import { boundText } from "../../src/meta/bounded-text.ts";
 import { resolve } from "../../src/meta/path.ts";
@@ -21,12 +17,10 @@ import {
   treeFindings,
 } from "./tree-findings.ts";
 
-/** Sites printed to the terminal before the rest are left to the report. */
 const PRINTED = 8;
 
 const git = (args: readonly string[]): string => runTextSyncOrThrow(["git", ...args]);
 
-/** Each changed file's changed lines in the working tree, and whether the file is new. */
 function changedLines(): Map<string, { lines: Set<number>; added: boolean }> {
   const staged = git(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]).split("\n").filter(Boolean);
   const added = new Set(git(["diff", "--cached", "--name-only", "--diff-filter=A"]).split("\n"));
@@ -43,7 +37,6 @@ function changedLines(): Map<string, { lines: Set<number>; added: boolean }> {
   return changed;
 }
 
-/** Whether a site has a place on a line this commit changes, or is about a file it adds. */
 function touches(site: TreeSite, changed: ReturnType<typeof changedLines>): boolean {
   if (site.line === 0) return changed.get(site.path)?.added === true;
   return (site.places ?? [{ path: site.path, line: site.line, end: site.line }]).some((place) =>
@@ -52,10 +45,8 @@ function touches(site: TreeSite, changed: ReturnType<typeof changedLines>): bool
 }
 
 const where = (site: TreeSite): string => `${site.path}${site.line === 0 ? "" : `:${site.line}`}`;
-/** The command that answers a site no, which writes its ledger row. */
 const answer = (site: TreeSite): string => `bun run not-slop -- answer ${site.id} "<why it is not slop>"`;
 
-/** The whole report: every touched site with its places and its shape's argument, then the rest. */
 function report(touched: readonly TreeSite[], elsewhere: readonly TreeSite[]): string {
   const head = git(["rev-parse", "--short=9", "HEAD"]).trim();
   const sites = touched.map((site, index) =>
@@ -90,13 +81,11 @@ function report(touched: readonly TreeSite[], elsewhere: readonly TreeSite[]): s
   ].join("\n");
 }
 
-/** Each scan among `sites`, once, with the pair it keeps. */
 function examplesOf(sites: readonly TreeSite[]): string[] {
   const kinds = [...new Set(sites.map((site) => site.kind))];
   return kinds.flatMap((kind) => renderedExamples(kind, TREE_FINDING_EXAMPLES[kind]));
 }
 
-/** What the agent or person committing reads: the sites, where the rest is, and the two answers. */
 function message(first: TreeSite, touched: readonly TreeSite[], log: string): string {
   const shown = touched
     .slice(0, PRINTED)

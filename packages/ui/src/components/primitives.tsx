@@ -4,7 +4,6 @@ import type { Tone } from "../models.ts";
 import { shortHash } from "../models.ts";
 import { hasText } from "../../../../src/meta/text.ts";
 
-/** How long a copied hash says so before it shows the hash again. */
 const COPIED_MS = 1400;
 
 export function Badge({
@@ -36,7 +35,6 @@ export function Code({ children }: { children: ReactNode }) {
   return <code className="ana-code">{children}</code>;
 }
 
-/** Copy the full hash on click, or reveal it when clipboard access fails. */
 export function HashValue({
   value,
   length = 20,
@@ -47,7 +45,7 @@ export function HashValue({
   absent?: string;
 }) {
   const [state, setState] = useState<"idle" | "copied" | "revealed">("idle");
-  // The copy that says "copied" sets the time it says so for; a second copy within it restarts it.
+  // A second copy within the "copied" time restarts it.
   const shown = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const copied = () => {
     clearTimeout(shown.current);
@@ -64,8 +62,8 @@ export function HashValue({
       title={value}
       aria-label={state === "revealed" ? `Copy ${value}` : `Copy full hash ${value}`}
       onClick={() => {
-        // A page served over plain HTTP, and every browser older than the API, has no clipboard.
-        // The DOM types promise one, so the fact belongs in the annotation.
+        // A page served over plain HTTP, or a browser older than the API, has no clipboard, though the
+        // DOM types promise one.
         const clipboard: Clipboard | undefined = navigator.clipboard;
         if (clipboard === undefined) {
           setState((current) => (current === "revealed" ? "idle" : "revealed"));
@@ -81,7 +79,6 @@ export function HashValue({
   );
 }
 
-/** State what is missing and explain why, where known. */
 export function NoSignal({
   title,
   children,

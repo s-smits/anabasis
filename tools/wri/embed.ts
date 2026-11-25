@@ -1,9 +1,8 @@
 /**
- * How a reader of the pulse turns a log's prose into vectors: the pinned local model, and a store that
- * a kill leaves usable. Only `tools/wri/` imports it, so its dependency stays out of every seat's reach.
- *
- * Kept from v1's investigation classifier: the pin, and two lessons. A read embeds only what no
- * earlier read embedded, and it finishes offline and with a store it cannot write.
+ * How a pulse reader turns a log's prose into vectors: the pinned local model, and a store a kill
+ * leaves usable. Only `tools/wri/` imports it, so its dependency stays out of every seat's reach. A
+ * read embeds only what no earlier read embedded, and finishes offline and with a store it cannot
+ * write.
  */
 import { sha256 } from "#src/meta/digest.ts";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -19,7 +18,6 @@ import { folderOf, storeOf } from "#tools/runs/pulse-readers.ts";
 /** Texts in, one vector out for each: tests inject one, a read loads the pinned model. */
 export type Embed = (texts: readonly string[]) => Promise<readonly Float32Array[]>;
 
-/** How a read reaches its store and its embedder. */
 export interface EmbedWays {
   readonly store: string;
   readonly load: () => Promise<Embed>;
@@ -32,15 +30,14 @@ const REVISION = "ea104dacec62c0de699686887e3f920caeb4f3e3";
  *  hub model's files at its main revision whatever revision is asked for, so offline it built a null
  *  tokenizer from a whole cache, and a folder a cut download left is not a model. */
 const MODEL_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "onnx/model.onnx"];
-/** A cut download leaves its part behind, up to 133 MB a try: `FileCache.put` (transformers.js
- *  4.2.0) writes `<file>.tmp.<pid>.<suffix>` and renames it into place, so the part is its writer's
- *  while that pid lives, a second process's download included. */
+/** A cut download's leftover part: `FileCache.put` writes `<file>.tmp.<pid>.<suffix>` and renames
+ *  it into place, so the part is its writer's while that pid lives. */
 export const CUT_PART = /\.tmp\.(\d+)\.[^/]*$/;
 
 const keyOf = (words: string) => sha256(words).slice(0, 32);
 const firstLine = (message: string) => (message.split("\n")[0] ?? "").slice(0, 200);
 
-/** One stored row, or null for a line a kill tore: a torn line never parses, so it is embedded again. */
+/** One stored row, or null for a line a kill tore, which is then embedded again. */
 function rowOf(line: string): readonly [string, Float32Array] | null {
   try {
     const row = capturedJsonParse(line);
@@ -52,7 +49,7 @@ function rowOf(line: string): readonly [string, Float32Array] | null {
   }
 }
 
-/** Write one batch, and why not where it could not: a read goes on without its store. It opens with a
+/** Writes one batch, or says why not, and a read goes on without its store. It opens with a
  *  newline, so what follows a torn line stays whole. */
 function kept(file: string, keys: readonly string[], made: readonly Float32Array[]): string | null {
   const lines = keys.map((key, at) => {
@@ -69,7 +66,6 @@ function kept(file: string, keys: readonly string[], made: readonly Float32Array
   }
 }
 
-/** Embed what `vectors` lacks of `wanted`, the shortest first, keeping each batch as it is made. */
 async function embedMissing(
   vectors: Map<string, Float32Array>,
   wanted: readonly string[],
@@ -124,7 +120,6 @@ export async function vectorLines(
   };
 }
 
-/** Cosine of two normalised vectors. */
 export const dot = (one: Float32Array, other: Float32Array) => {
   let sum = 0;
   for (let at = 0; at < one.length; at += 1) sum += (one[at] ?? 0) * (other[at] ?? 0);
@@ -148,7 +143,6 @@ export function groupsOf(vectors: readonly Float32Array[], least: number): numbe
   return vectors.map((_, at) => root(at));
 }
 
-/** The pinned model on one thread, from its folder where that holds all of it, else fetched there. */
 async function localModel(): Promise<Embed> {
   const { env, pipeline } = await import("@huggingface/transformers");
   const cache = join(homedir(), ".cache", "huggingface", "transformers.js");
@@ -168,7 +162,6 @@ async function localModel(): Promise<Embed> {
   };
 }
 
-/** A reader's command line: `bun tools/wri/<name>.ts <log> [--store <dir>]`. */
 export async function runVectorReader(
   name: string,
   readOf: (log: string, ways: EmbedWays) => Promise<readonly string[]>,

@@ -1,17 +1,11 @@
 /**
- * The `ci.yml` runs a landing reads, and the `ci-fixes` run it dispatches after a failed one.
- *
- * So the run on a new head is `ci-fixes` by default: the same workflow, dispatched with the test
- * files to run in place of the suite. Its base is the newest full run on the top's branch, or, where
- * the branch has none, the trunk's head, whose tree a full run passed before `land` merged it, since
- * a release's top is a branch no run has seen and would otherwise run the whole suite at every
- * landing. The files are those the base run failed, where it failed only in its test steps, and the
- * tests near what changed between the base's tree and the new head's, by the rule the gate's static
- * pass uses (`testsNear`, one import for the root's tests, and `uiTestsNear`, three for the UI's).
- * The diff is of trees, not of commits, since a fix goes into the commit that broke and the pull
- * requests above are replayed, so the base is seldom an ancestor of the new head. A test neither
- * near the change nor failed there passed on the base's tree. The landing's own whole gate still
- * runs the full suite on the new head, on a runner host, before anything merges.
+ * The `ci.yml` runs a landing reads, and the `ci-fixes` run it dispatches after a failed one: the
+ * same workflow, given the test files to run in place of the suite. Its base is the newest full run
+ * on the top's branch, or else the trunk's head, whose tree a full run passed before `land` merged
+ * it. The files are those the base run failed (where only its test steps failed) and the tests near
+ * what changed between the base's tree and the new head's (`testsNear`, `uiTestsNear`); trees, not
+ * commits, are diffed, since replayed stacks seldom hold the base. The landing's own whole gate
+ * still runs the full suite before anything merges.
  */
 import { mkdtempSync, realpathSync, rmSync } from "../../src/meta/filesystem.ts";
 import { tmpdir } from "../../src/meta/os.ts";
@@ -35,7 +29,8 @@ export const FIXES = "ci-fixes";
 /** The suite's steps in `ci.yml`, the only failed steps a `ci-fixes` run can stand in for. */
 const TEST_STEP = /^Run bun run test(?: -- \$?\S+)?$/u;
 /** What a non-test failure or an untaken job reads as; empty where only the suite failed. A step
- *  cut short (cancelled at a timeout) is named with its conclusion, so it reads as beyond the tests. */
+ *  cut short (cancelled at a timeout) is named with its conclusion, so it reads as beyond the
+ *  tests. */
 const NOT_TESTS = String.raw`[.jobs[] | select(.conclusion != "success") | if .conclusion == "failure" then (.steps[] | select(.conclusion != "success" and .conclusion != "skipped") | if .conclusion == "failure" then .name else "\(.name) \(.conclusion)" end) else "\(.name) \(.conclusion)" end] | join(", ")`;
 /** A change to any of these proves nothing narrower than the whole run. */
 const FULL = [
@@ -51,15 +46,14 @@ const FULL = [
   TEST_SUITE,
   "src/wall/",
 ];
-/** A test file's header in Bun's output, as `gh run view --log-failed` prints it after the job, the
- *  step and the timestamp; each `(fail)` belongs to the header before it in the same job. */
+/** A test file's header in Bun's output, as `gh run view --log-failed` prints it after the job,
+ *  step and timestamp; each `(fail)` belongs to the header before it in the same job. */
 const HEADER = /^((?:test|packages\/ui\/test)\/[^\s:]+\.test\.tsx?):$/u;
 const STAMP = /^\d{4}-\d\d-\d\dT[\d:.]+Z ?/u;
-/** Bun's closing list of every failure, which repeats them under no header of their own: in run
- *  40754653803 it followed `test/walled-env.test.ts`, whose tests had all passed. */
+/** Bun's closing list of every failure, which repeats them under the last file's header. */
 const SUMMARY = /^\d+ tests? failed:$/u;
 
-/** What a `ci-fixes` run dispatches: the root's test files and the UI's, each as one input. */
+/** The root's test files and the UI's, each as one input. */
 interface Fixes {
   readonly since: string;
   readonly tests: string;
@@ -87,8 +81,8 @@ export function ciRun(root: string, sha: string): string[] | null | undefined {
   return read.out === "" ? null : read.out.split("\t");
 }
 
-/** The test files a failed run's log reports a failed test or an error between tests in, each
- *  once, in order: a file that fails as it loads prints no `(fail)` line. */
+/** The test files a failed run's log reports a failed test or an error between tests in, each once,
+ *  in order: a file that fails as it loads prints no `(fail)` line. */
 export function failedFiles(log: string): string[] {
   const at = new Map<string, string>();
   const found = new Set<string>();
@@ -126,7 +120,7 @@ function failedOf(root: string, id: string, sha: string, full: (why: string) => 
   return failed.length === 0 ? full(`run ${id}'s failed log names no test file`) : failed;
 }
 
-/** The `ci-fixes` run for `top`'s head, or null where a full run is due; `say` names why not. */
+/** The `ci-fixes` run for `top`'s head, or null where a full run is due; `say` names why. */
 export function fixesFor(root: string, top: Pull, say: (line: string) => void): Fixes | null {
   const read = gh(root, [
     "run",
@@ -147,9 +141,8 @@ export function fixesFor(root: string, top: Pull, say: (line: string) => void): 
     return null;
   };
   if (ran === top.headRefOid) return full(`its last full run was on this head`);
-  // With no full run on the branch, the trunk's head stands for one: `land` merges only a tree
-  // whose full run passed, so the trunk holds that tree (on the operator's word: "only test the
-  // things we need").
+  // With no full run on the branch, the trunk's head stands for one: `land` merges only a tree whose
+  // full run passed.
   const trunk = ran === "" ? trunkHead(root) : undefined;
   if (ran === "" && trunk === undefined) return full("the trunk's head could not be read");
   const sha = trunk ?? ran;
@@ -185,9 +178,8 @@ export function fixesFor(root: string, top: Pull, say: (line: string) => void): 
   };
 }
 
-/** What `read` makes of a scratch checkout of `sha`, which is removed after it. Its real path, since
- *  imports resolve to real paths and macOS's temporary folder is a link: from the link every import
- *  read as outside the tree. */
+/** What `read` makes of a scratch checkout of `sha`, removed after. It reads the checkout's real
+ *  path, since imports resolve to real paths and macOS's temporary folder is a link. */
 export function onCheckout<T>(root: string, sha: string, read: (tree: string) => T): T {
   const tree = realpathSync(mkdtempSync(join(tmpdir(), "ana-checkout-")));
   rmSync(tree, { recursive: true, force: true });

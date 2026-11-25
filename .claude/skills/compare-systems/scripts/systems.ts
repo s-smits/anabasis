@@ -1,23 +1,14 @@
 /**
  * Two or more solving systems, each a solver inside a harness, read against each other on one
- * campaign's held-out tasks. A campaign cannot make this reading: its setting fixes the solver, and
- * every comparison it makes sets two harnesses under that one solver (`tools/d2/setting.ts`). The
- * operator's question is whether a built system with a cheap solver reaches what a bare system with
- * a dear solver reaches, as `gpt-6.1-terra` at high inside the truss campaign's harness against
- * `claude-opus-5-5` at medium inside the starter. That is the point of building a harness; a
- * reading of one solver in the starter against itself in the built harness answers a campaign's
- * question instead. The operator asked for one solve of every held-out task a system, so a reading
- * is one run per task and system unless `--solves` names more.
- * `--login N` puts the login `CLAUDE_CODE_OAUTH_TOKEN<N>` in the plain token's place for a Claude
- * solver, as `runs launch --login` does (`loginEnv`).
- *
- * Everything here is a production primitive, and this file only joins them. Each system opens a seed
- * of the campaign with its own solver and its own trial log (`openCampaign`, the path
- * `close.ts --solve` takes). It solves through the campaign's paid seat held at the host's load
- * (`solved`, `gated`), so a solve is a campaign's solve under that campaign's checks, limits and
- * wall. Its log is read back by the log's own folds (`ranUnder`, `verdictsOf`, `billedAll`). Two
- * systems are scored as a comparison scores its pairs (`scored`, `readsStep`, `detectable`,
- * `carriedBy`, `src/kernel/compare.ts`).
+ * campaign's held-out tasks. A campaign cannot make this reading: its setting fixes the solver
+ * (`tools/d2/setting.ts`). The question is whether a built system with a cheap solver reaches what
+ * a bare system with a dear solver reaches. A reading is one solve per task and system unless
+ * `--solves` names more; `--login N` puts `CLAUDE_CODE_OAUTH_TOKEN<N>` in the plain token's place
+ * for a Claude solver (`loginEnv`). This file only joins production primitives: each system opens a
+ * seed of the campaign with its own solver and trial log (`openCampaign`), solves through the
+ * campaign's paid seat at the host's load (`solved`, `gated`), is read back by the log's folds
+ * (`ranUnder`, `verdictsOf`, `billedAll`), and two systems are scored as a comparison scores its
+ * pairs (`scored`, `readsStep`, `detectable`, `carriedBy`).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import {
@@ -80,19 +71,15 @@ interface System {
   readonly harness: string;
 }
 
-/** One system's counted solves of one task, a pass or a fail, in the order they started. */
 interface Solved {
   readonly valid: boolean[];
   readonly measure: (number | null)[];
   readonly billed: (number | null)[];
-  /** The solve's wall seconds and its model turns, as its ending records them. */
   readonly seconds: (number | null)[];
   readonly turns: (number | null)[];
-  /** A rejection not ruled earned, which sets its task aside (`rejectionAside`). */
   readonly aside: boolean[];
 }
 
-/** One system opened for solving: its log, its kept harness, its seat and its Referee. */
 interface Opened {
   readonly system: System;
   readonly log: string;
@@ -102,7 +89,6 @@ interface Opened {
   readonly trial: () => LogEvent[];
 }
 
-/** What the solves are drawn from: the seed, its drawn tasks, the solves a task and the dollar cap. */
 interface Solving {
   readonly source: Campaign;
   readonly seed: string;
@@ -112,8 +98,8 @@ interface Solving {
 }
 
 function systemOf(flag: string, die: CommandArgs["die"]): System {
-  // Each part is checked by its owner: the name is a folder, the model must be served and the effort
-  // a level (`settingNamed`), and the harness kept and reopening under its digest (`keptAs`).
+  // Each part is checked by its owner: the model must be served and the effort a level
+  // (`settingNamed`), and the harness kept and reopening under its digest (`keptAs`).
   const [name = "", system = "", ...more] = flag.split("=");
   const [solver = "", harness = "", ...after] = system.split("@");
   const [model = "", effort = "", ...extra] = solver.split(":");
@@ -129,7 +115,6 @@ function systemOf(flag: string, die: CommandArgs["die"]): System {
   return { name, model, effort, harness };
 }
 
-/** Every task's counted solves in one system's log. A non-result is no measurement and is left out. */
 function solvedIn(events: readonly LogEvent[]): Map<string, Solved> {
   const verdicts = verdictsOf(events);
   const out = new Map<string, Solved>();
@@ -156,10 +141,9 @@ function solvedIn(events: readonly LogEvent[]): Map<string, Solved> {
   return out;
 }
 
-/** The systems side by side, each on the average of its counted solves. The cost is the log's whole
- *  bill over those solves, the Referee's rulings included, so it runs a little over the solves' own;
- *  the time is a solve's wall, which a harness's own programs can fill (`improve-truss` searched to
- *  a deadline in every solve of one truss reading). */
+/** The cost is the log's whole bill over the counted solves, the Referee's rulings included, so it
+ *  runs a little over the solves' own; the time is a solve's wall, which a harness's own programs
+ *  can fill. */
 function tableLines(
   rows: readonly { system: System; own: Map<string, Solved>; billed: number; count: number }[],
 ): string[] {
@@ -177,7 +161,6 @@ function tableLines(
   ];
 }
 
-/** What one system did on the tasks, on its own. */
 function systemLines(system: System, digest: string, own: Map<string, Solved>): string[] {
   const rows = [...own.values()];
   const valid = rows.flatMap((row) => row.valid).filter(Boolean).length;
@@ -192,8 +175,7 @@ function systemLines(system: System, digest: string, own: Map<string, Solved>): 
   ];
 }
 
-/** A candidate read against the baseline over the tasks both solved `solves` times: the comparison's tally and
- *  its step rule, read both ways. */
+/** The comparison's tally and its step rule, read both ways, over the tasks both solved `solves` times. */
 export function pairLines(
   [baseline, old]: readonly [System, Map<string, Solved>],
   [candidate, fresh]: readonly [System, Map<string, Solved>],
@@ -247,10 +229,9 @@ export function pairLines(
   ];
 }
 
-/** The baseline against itself on halves of its solves mirrored in time, the A/A every comparison of
- *  two solves a side carries: it should read no step. The mirror runs on from one task to the next
- *  as `pairsOf` reads the campaign's A/A, so at four solves the first and last stand against the two
- *  between, and at two the earlier solve is the first half on every other task. */
+/** The A/A every comparison of two solves a side carries: it should read no step. The mirror runs
+ *  on from one task to the next as `pairsOf` reads the campaign's A/A, so at four solves the first
+ *  and last stand against the two between. */
 export function itself(
   baseline: System,
   own: Map<string, Solved>,
@@ -285,9 +266,9 @@ export function itself(
 }
 
 /**
- * The solves each system is still short of, read from its own log, then the Referee on every
- * rejection no finding answers yet, this run's and an earlier one's; `--read` skips both. Solves are
- * interleaved by solve, task and system, so every system meets the host's load alike.
+ * The solves each system is still short of, then the Referee on every rejection no finding answers
+ * yet; `--read` skips both. Solves interleave by solve, task and system, so every system meets the
+ * host's load alike.
  */
 async function solveAll(opened: readonly Opened[], { source, seed, tasks, solves, cap }: Solving) {
   const counted = opened.map(({ trial }) => solvedIn(trial()));

@@ -35,7 +35,6 @@ export const noInlineBlockReducerRule = defineRule({
   createOnce(context) {
     return {
       CallExpression(node) {
-        // `<something>.reduce(...)`, with or without an explicit type argument.
         const { callee } = node;
         if (!isNamedMember(callee) || identifierName(callee.property) !== "reduce") return;
         const [reducer] = node.arguments;

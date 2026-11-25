@@ -13,11 +13,8 @@ import { fixtureDraft, fixtureTasks, layOutDraft } from "./helpers/fixture-pack.
 import { anyOf, matching, objectWith } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
-/** A campaign's log, by its name in the campaign's folder. */
 const LOG = "log.jsonl";
-/** The fixture's one check is its author's own computation, which stands on the operator's word. */
 const ADMIT = { admit: "check-product" };
-/** An answer format whose pattern the empty answer misses. */
 const DIGITS = {
   type: "object",
   properties: { answer: { type: "string", pattern: "^[0-9]+$" } },
@@ -25,15 +22,12 @@ const DIGITS = {
 };
 const NAME = `test-check-${String(runtimeProcess.pid)}`;
 const TASKS = fixtureTasks(2);
-/** The campaign whose checker reading is recorded. */
 const ACCEPTED = `${NAME}-accepted`;
 /** Campaigns whose drafts hold something wrong: a reject control that is a right answer, and an
  *  accept control gone stale. */
 const MISLABELLED = `${NAME}-mislabelled`;
 const STALE = `${NAME}-stale`;
-/** A campaign whose answer format holds a pattern the smallest value its schema yields misses. */
 const UNFORMED = `${NAME}-unformed`;
-/** The campaign a rehearsal is seeded from, and the seed it walks. */
 const SOURCE = `${NAME}-source`;
 const SEED = `sim-${NAME}`;
 const NAMES = [ACCEPTED, MISLABELLED, STALE, UNFORMED, SOURCE, SEED];
@@ -79,7 +73,6 @@ async function command(file: string, flags: Record<string, string>, ...bare: str
 
 const accept = (name: string, flags: Record<string, string> = ADMIT, ...bare: string[]) =>
   command("tools/c/accept.ts", { name, ...flags }, ...bare);
-/** What a campaign's log holds of one kind. */
 const held = (name: string, kind: string) =>
   read(join(folder(name), LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
 
@@ -90,7 +83,6 @@ suite("acceptance and freezing over a drafted exam", () => {
       accept(MISLABELLED, ADMIT, "--freeze"),
     ]);
     expect(sound.said).toContain("check-product\tauthor\t2\t1\t1 of 1");
-    // The smallest answer the format allows is put to both tasks, and the check rejects it on each.
     expect(sound.said).toMatch(/\{"answer":""\}.*rejected.*2 of 2/u);
     expect(sound.code).toBe(0);
     expect(held(ACCEPTED, "checker.read")).toMatchObject([
@@ -103,7 +95,6 @@ suite("acceptance and freezing over a drafted exam", () => {
       },
     ]);
 
-    // Without the operator's word the same check is a fault, and a check nobody wrote is no word.
     const unadmitted = await accept(ACCEPTED, {});
     expect(unadmitted.said).toMatch(/fault: check-product.*--admit check-product/u);
     expect(unadmitted.code).toBe(1);
@@ -157,7 +148,6 @@ suite("rehearsal over a drafted exam", () => {
   // script sits in every seat.
   it.concurrent("rehearses two sessions and then one checkpoint over a seed", async () => {
     const seeded = folder(SEED);
-    // One of the exam's two tasks is released for practice, by the contract's draw, and one held out.
     const taken = await command("tools/d2/prepare.ts", { name: SOURCE, practice: "1" });
     expect(taken.code).toBe(0);
     expect(taskSets(read(join(folder(SOURCE), LOG)))).toMatchObject({
@@ -181,8 +171,7 @@ suite("rehearsal over a drafted exam", () => {
     const rehearse = (...more: string[]) => cli("rehearse", "--name", SEED, ...more);
     const of = (kind: string) => held(SEED, kind);
 
-    // A comparison refused on its own terms leaves the log as it was. Were it to record the campaign's
-    // setting first, a mistyped flag would go with it, and the corrected command would then be
+    // A comparison refused on its own terms leaves the log as it was, so a corrected command is not
     // refused as another setting.
     const lines = () => read(join(seeded, LOG)).length;
     const before = lines();
@@ -193,24 +182,19 @@ suite("rehearsal over a drafted exam", () => {
     for (const session of ["b-1", "b-2"]) {
       expect((await rehearse("--no-comparison", "--session", session)).code).toBe(0);
     }
-    // Two sessions are on record, the second from what the first left, and nothing is compared.
     const [one, two] = of("build.finished");
     expect(of("build.started")).toMatchObject([{ session: "b-1" }, { session: "b-2", parent: one?.harness }]);
     expect([one?.changed, two?.changed]).toEqual([true, true]);
     expect(two?.harness).not.toBe(one?.harness);
     expect(of("comparison.started")).toEqual([]);
     expect(of("solve.started")).toEqual([]);
-    // The first command of the campaign recorded its setting, and the second ran under the record.
     expect(of("campaign.setting")).toHaveLength(1);
 
-    // Then the one comparison: the harness the last session left against the reference harness,
-    // which is the starter. One held-out task reads no step; what is proven is the join.
     const compared = await rehearse("--id", "g-1", "--new", "latest");
     expect(compared.code).toBe(0);
     expect(of("comparison.reported")).toMatchObject([
       { session: "g-1", fresh: two?.harness, reading: "no-step", scored: { wins: 1, losses: 0, ties: 0 } },
     ]);
-    // A session that ended says what it left when it is asked for again, and runs nothing.
     const again = await rehearse("--no-comparison", "--session", "b-2");
     expect(again.code).toBe(0);
     expect(again.said).toContain("b-2");
@@ -223,14 +207,11 @@ suite("rehearsal over a drafted exam", () => {
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session (finished): from")),
     ).toHaveLength(2);
-    // Two rollouts per arm, fixed, and alpha 0.02 where nothing names another (`SIZE`).
     expect(viewed).toMatch(/1 task.*2 rollouts per arm.*0\.02.*1 won.*0 lost.*0 tied.*no-step/u);
     expect(viewed).not.toContain("  a round");
     expect((await cli("view", SEED, "--cap", "100")).said).toContain("Unknown option '--cap'");
-    // Fix row F26: the view's last line is the one move the decision table names, and the
-    // campaign's own command, rehearsed and asked what it would do next, names the same. The move is
-    // the line after the heading alone: a view run from an unpushed head warns after it which
-    // published ancestor its remote reads use.
+    // The view's last line is the move the decision table names, and the rehearsed campaign command
+    // names the same; a view from an unpushed head warns after it.
     const tabled = (
       viewed
         .slice(viewed.indexOf("Recommended next action\n") + "Recommended next action\n".length)
@@ -238,7 +219,6 @@ suite("rehearsal over a drafted exam", () => {
         .split("\n")[0] ?? ""
     ).trim();
     expect(tabled).toContain(": ");
-    // At 0.02 the default patience holds the bound an opening may risk (`openingLines`).
     const terms = ["--project", "fixture", "--level", "0.02"];
     expect((await rehearse(...terms, "--dry-run")).said).toContain(`next · ${tabled}`);
   });

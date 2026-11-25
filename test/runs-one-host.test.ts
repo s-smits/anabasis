@@ -1,6 +1,6 @@
-// An untouched clone is one host. Each case starts from what a person holds on the first day: their
-// Bun, an empty home, a repository of their own, and an ssh that would record any attempt to use it.
-// Nothing here is told `--here`, since an empty list of hosts already means this machine alone.
+// An untouched clone is one host: each case starts from a person's first day (their Bun, an empty home,
+// their own repository, an ssh that records any use). An empty list of hosts already means this machine
+// alone, so nothing is told `--here`.
 import { afterAll, describe, expect, test } from "bun:test";
 import {
   chmodSync,
@@ -31,8 +31,8 @@ writeFileSync(join(bin, "ssh"), `#!/bin/sh\necho "$*" >> "${calls}"\nexit 255\n`
 chmodSync(join(bin, "ssh"), 0o755);
 const scrubbed = {
   HOME: home,
-  // A child's own temporary root, as the suite gives each test file: without it a child resolves
-  // the machine's, and a sweep reads the scratch real runs left there.
+  // A child's own temporary root, as the suite gives each test file, so a sweep does not read the
+  // scratch real runs left in the machine's.
   ANA_TEST_TMPDIR: root,
   PATH: `${bin}:${dirname(capturedExecPath)}:/usr/bin:/bin`,
 };
@@ -74,8 +74,8 @@ describe("a clone with no hosts", () => {
   });
 
   test("a named fetch that can ask no host refuses, though a copy of that campaign is held", () => {
-    // Hostile: a reader takes a peer's copy as it stands where no host is listed, but a named fetch
-    // must not, printing the copy's path and exiting 0 with nothing brought.
+    // A reader takes a peer's copy as it stands where no host is listed, but a named fetch must not: it
+    // prints the copy's path and exits 0 with nothing brought.
     const copy = join(clone, "data/runs/peer/held");
     mkdirSync(copy, { recursive: true });
     const opened = { at: "2026-11-15T00:00:00.000Z", kind: "campaign.opened", data: { project: "held" } };
@@ -84,7 +84,6 @@ describe("a clone with no hosts", () => {
       const result = runs(["fetch", "held"]);
       expect([result.code, result.out]).toEqual([1, ""]);
       expect(result.err).toContain("ANA_HOSTS lists no host");
-      // The gather with no name still reads the copies it cannot refresh.
       expect(runs(["fetch"]).code).toBe(0);
     } finally {
       rmSync(join(clone, "data"), { recursive: true, force: true });

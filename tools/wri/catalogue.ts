@@ -1,10 +1,8 @@
 /**
- * Parser for the whole-run investigation lane catalogue
- * (`.claude/skills/whole-run-investigation/references/lanes.md`). Extracts each lane's number,
- * title, trigger names, area label, packing importance, execution flags (`Marks:` line:
- * `standing`, `alone`, `blind`, `side-by-side`), and prompt body, as well as the valid finding
- * owners from the catalogue's owner table. Verified against `TRIGGERS` (`tools/wri/folds.ts`) by
- * `test/wri-readers.test.ts`.
+ * Parses the whole-run investigation lane catalogue
+ * (`.claude/skills/whole-run-investigation/references/lanes.md`): each lane's number, title,
+ * triggers, area label, importance, `Marks:` flags and body, and the owners a finding may name.
+ * `test/wri-readers.test.ts` checks it against `TRIGGERS` (`folds.ts`).
  */
 import { readFileSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
@@ -12,9 +10,7 @@ import { join, resolve } from "#src/meta/path.ts";
 export interface Lane {
   readonly number: number;
   readonly title: string;
-  /** The paragraph that names the reader's triggers. */
   readonly startsFrom: string;
-  /** The triggers that paragraph names for this lane. */
   readonly triggers: readonly string[];
   /** Opens on every campaign that holds a report, triggered or not. */
   readonly standing: boolean;
@@ -24,17 +20,15 @@ export interface Lane {
   readonly blind: boolean;
   /** Is given every campaign under review side by side, in lane 18's columns. */
   readonly sideBySide: boolean;
-  /** The area label of the pull requests that change what the lane reads. */
   readonly label: string;
   /** How much the lane weighs when lanes are packed into sessions, from 0 to 1. */
   readonly importance: number;
-  /** The lane whole, as a session is given it. */
   readonly body: string;
 }
 
 const SKILL = resolve(import.meta.dir, "..", "..", ".claude", "skills", "whole-run-investigation");
 export const REFERENCES = join(SKILL, "references");
-/** File name of a WRI lane catalogue (core or per-domain extension). */
+/** Is given every campaign under review side by side. */
 export const LANES_FILE = "lanes.md";
 
 const HEADING = /^\*\*(\d+)\. (.+)\.\*\*$/;
@@ -58,7 +52,6 @@ export function catalogueText(): string {
   return readFileSync(join(REFERENCES, LANES_FILE), "utf8");
 }
 
-/** The text under one `## ` heading, up to the next. */
 export function section(markdown: string, heading: string): string {
   const lines = markdown.split("\n");
   const from = lines.indexOf(`## ${heading}`);
@@ -68,9 +61,8 @@ export function section(markdown: string, heading: string): string {
   return (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
 }
 
-/** The lanes, in the catalogue's order, each with its own label, importance and marks. A lane with
- *  no `Starts from` paragraph, no label, no importance or no marks line is a fault of the catalogue
- *  and is named. The label, importance and marks lines are left out of the body a session is given. */
+/** The lanes in catalogue order. A lane missing its `Starts from` paragraph, label, importance or
+ *  marks line is named as a fault; those three lines are left out of the body a session is given. */
 export function lanesOf(markdown: string): Lane[] {
   const blocks: string[][] = [];
   for (const line of markdown.split("\n")) {

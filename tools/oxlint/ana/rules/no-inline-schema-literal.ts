@@ -12,7 +12,7 @@ import { isConstDeclaration, isNamedMember } from "../shared/statements.ts";
 /** Entries below which an inline literal is one argument written out, not a table. */
 const ENTRY_FLOOR = 3;
 
-/** Methods that write to their receiver. A call to one is a write to the binding. */
+/** Methods that write to their receiver: a call to one is a write to the binding. */
 const MUTATING = new Set([
   "push",
   "pop",
@@ -29,14 +29,12 @@ const MUTATING = new Set([
   "clear",
 ]);
 
-/** `{…} as const` declares the same table; the assertion is not what is being declared. */
 function unwrapAssertion(node: ESTree.Node): ESTree.Node {
   let value = node;
   while (value.type === "TSAsExpression" || value.type === "TSSatisfiesExpression") value = value.expression;
   return value;
 }
 
-/** Whether the value is a primitive written as a constant, which nothing can write through. */
 function primitiveConstant(node: ESTree.Node): boolean {
   if (node.type === "Literal") return true;
   if (node.type === "TemplateLiteral") return node.expressions.length === 0;
@@ -44,7 +42,6 @@ function primitiveConstant(node: ESTree.Node): boolean {
   return false;
 }
 
-/** Whether every entry of the table is one of those, so no entry can be aliased out of it. */
 function flatConstantTable(node: ESTree.Node): boolean {
   if (node.type === "ArrayExpression") {
     return node.elements.every((element) => element !== null && primitiveConstant(element));
@@ -55,13 +52,11 @@ function flatConstantTable(node: ESTree.Node): boolean {
   );
 }
 
-/** How many entries the literal states, or zero for anything that is not one. */
 function entryCount(node: ESTree.Node): number {
   if (node.type === "ArrayExpression") return node.elements.length;
   return node.type === "ObjectExpression" ? node.properties.length : 0;
 }
 
-/** Whether the declaration sits inside a function rather than at module scope. */
 function insideFunction(node: ESTree.Node): boolean {
   for (let walk = node.parent; walk !== null; walk = walk.parent) {
     if (walk.type === "FunctionDeclaration" || walk.type === "FunctionExpression") return true;
@@ -70,7 +65,6 @@ function insideFunction(node: ESTree.Node): boolean {
   return false;
 }
 
-/** Whether a property read of the binding writes through it: `t.x = 1`, `t.rows.push(…)`, `delete t.x`. */
 function writesThrough(member: ESTree.Node): boolean {
   const { parent } = member;
   if (parent === null) return false;
@@ -112,10 +106,8 @@ export const noInlineSchemaLiteralRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Declarations that passed the syntactic test, by name, in source order. */
     const candidates = new Map<string, ESTree.VariableDeclarator[]>();
 
-    /** Names this file does anything with other than read a property of. */
     const escaped = new Set<string>();
 
     return {
@@ -137,7 +129,6 @@ export const noInlineSchemaLiteralRule = defineRule({
 
       Identifier(node) {
         const { parent } = node;
-        // The declaration itself, and a property name that happens to match, say nothing.
         if (parent.type === "VariableDeclarator" && parent.id === node) return;
         if (parent.type === "Property" && parent.key === node && parent.value !== node) return;
         if (isNamedMember(parent) && parent.property === node) return;

@@ -1,41 +1,19 @@
 #!/usr/bin/env bun
 /**
- * One live seat on a seed, and the reading of what it wrote. `start` runs a campaign command on a
- * seed in a worktree, on one login, niced and in a process group of its own; it watches the dollars
- * the log bills from where the seat began, ends the group at the seat's cap or its minutes, and
- * prints the reading once the group is gone. `read` is that reading of any stretch of a log. `watch`
- * and `due` tell an agent what a seat wrote as it lands (`newsOf`): `watch` one line an event for a
- * line reader such as Claude Code's Monitor, `due` what is unread since it last looked, and with
- * `--hook` an exit of 2 that a Claude Code Stop hook turns into a turn the agent must take. `stop`
- * ends seats whose question is answered, and `start` says so in its reading; a seat it names that is
- * not seated yet is closed, so a seating script still waiting to seat it is refused. `compare` sets the
- * readings of several seats side by side, each cut at the same count of task admissions where `--gates` names
- * one, since two arms admit drafts at different paces. `pairs` reads several pairs of seats, a control and an
- * arm each, each pair at the shorter arm's count of task admissions, and counts over the pairs of one Examiner
- * model which way the arm moved, leaving out a pair thinner than `THIN` task admissions. `calls` counts the
- * Examiner's tool calls and their failures over any logs, a seed's from its cut, each call once
- * however many logs hold it. `prompt` prints what an Examiner session would be told, composed by a
- * tree's own code with no model, so two arms' prompts are diffed before either is paid.
- *
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree <worktree> --name sim-<what>
- *     --out <prefix> --cap <dollars> --minutes <n> [--login N] [--mention <text>]... -- <command> <its flags>
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <prefix>
- *     | --log <path> --from <event> [--mention <text>]... [--json]
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts watch --seat <prefix>
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts due <prefix>... [--hook]
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts stop <prefix>...
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts compare <prefix>... [--gates N]
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts pairs <control>,<arm>... [--gates N]
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts calls <log or campaign folder>...
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts prompt --tree <worktree> --name sim-<what>
- *     -- tools/d1b/examine.ts <its flags>
- *
- * Run `start` under `bun --env-file=<file>` and as one background command: it ends when the seat
- * does, so its end is the one notice to wait for, and the 30-minute monitor a watcher re-arms is not
- * needed. `<prefix>.json` keeps where the seat began, `<prefix>.out` and `.err` its command's output,
- * each emptied at a start, since a relaunch under one prefix that writes nothing to stderr would
- * otherwise leave the error that ended the launch before it in its `.err`.
- * `--mention` counts the Examiner's calls whose arguments name the text, such as a folder of its home.
+ * One live seat on a seed, and the reading of what it wrote (usage in `USAGE`). `start` runs a
+ * campaign command on a seed in a worktree, on one login, niced and in its own process group, ends
+ * the group at the seat's dollar cap or minutes, and prints the reading; run it under `bun
+ * --env-file=<file>` as one background command, since its end is the one notice to wait for. `read`
+ * reads any stretch of a log; `watch` (one line an event, for a line reader such as Monitor) and
+ * `due` (what is unread since it last looked; `--hook` exits 2 for a Stop hook) report what a seat
+ * wrote as it lands (`newsOf`); `stop` ends seats, closing any not yet seated. `compare` sets seats
+ * side by side, cut at the same count of task admissions under `--gates`; `pairs` reads control/arm
+ * pairs at the shorter arm's count and signs them per Examiner model, leaving out pairs thinner
+ * than `THIN`; `calls` counts the Examiner's tool calls and failures, each once however many logs
+ * hold it; `prompt` prints what an Examiner session would be told, composed by a tree's own code
+ * with no model. `<prefix>.json` keeps where the seat began, and `<prefix>.out` and `.err` its
+ * output, each emptied at a start; `--mention` counts the Examiner's calls whose arguments name the
+ * text.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
@@ -103,22 +81,18 @@ const OPTIONS = {
   hook: "flag",
   gates: "int",
 } as const;
-/** How often the watch reads the log, and how often it says so when nothing new was admitted. */
 const TICK_MS = 30_000;
 const QUIET_TICKS = 10;
-/** The task admissions where the author's answer beat the reference's best by at least the objective gap floor. */
+/** Task admissions where the author's answer beat the reference's best by at least the objective
+ *  gap floor. */
 const GAP = `gap >= ${String(GAP_FLOOR * 100)}%`;
-/** A line of a failed call's text that names its error. */
 const ERROR_LINE = /error|denied|not found|no such|not permitted|timed out|refused|invalid|cannot|failed/iu;
 /** The flags that say who sits in an Examiner seat: a pair is read only within one of them. */
 const SEATED = ["--examiner", "--examiner-effort", "--reviewer", "--reviewer-effort"] as const;
-/** Fewer task admissions than this leave a pair thin: shown, and left out of the sign over pairs. Round 8's GPT
- *  pairs reached 2 and 8 task admissions with nothing held on either side, against its Opus pair's 14. */
+/** Fewer task admissions than this leave a pair thin: shown, and left out of the sign over pairs. */
 const THIN = 6;
-/** How long `stop` gives a seat's `start` to print its reading once the group is gone. */
 const WRAPPER_GRACE_MS = 30_000;
 
-/** A log, and the event a seat began at in it. */
 interface Stretch {
   readonly log: string;
   readonly from: number;
@@ -131,29 +105,27 @@ interface Reading {
   readonly sessions: readonly string[];
   readonly ended: readonly string[];
   readonly proposed: number;
-  /** Each task admission by what the reference's solves of its draft did, `every`, `some`, `none`, `none,
-   *  proved` (its author's answer passes), `package` (refused on its package before a solve) or `unread`. */
+  /** Each task admission by what the reference's solves of its draft did: `every`, `some`, `none`,
+   *  `none, proved` (its author's answer passes), `package` (refused on its package before a solve)
+   *  or `unread`. */
   readonly gates: Readonly<Record<string, number>>;
   readonly held: number;
-  /** The solves the reference ran at each task admission that solved its draft: `ran`, or the solves it read
-   *  where an older task admission, from before one solve at a time, did not say. */
   readonly ran: readonly number[];
-  /** The author's gain by the objective over the reference's best valid answer at each task admission that
-   *  measured both (`reference.gap`): a graded loss where held drafts are too few to read. */
+  /** The author's gain by the objective over the reference's best valid answer at each task
+   *  admission that measured both (`reference.gap`): a graded loss where held drafts are too few to
+   *  read. */
   readonly gaps: readonly number[];
-  /** The solver's own turns of each valid room-solve answer, least, median and most. */
   readonly turns: readonly [number, number, number] | null;
   readonly calls: Readonly<Record<string, number>>;
   readonly mentions: Readonly<Record<string, number>>;
 }
 
-/** How many of a reading's task admissions measured the author's answer at least the objective gap floor ahead. */
 const objectiveGaps = (gaps: readonly number[]) => gaps.filter((gap) => gap >= GAP_FLOOR).length;
 
-/** What a pair is read on, each a count where the arm doing more is the Examiner doing better: drafts
- *  held, task admissions whose draft the reference answered in some solves or in none while its author's answer
- *  passed, the author ahead of the reference's best by the objective gap floor, and the median turns of the
- *  reference's valid room-solve answers, which a round would otherwise read by hand. */
+/** What a pair is read on, each a count where the arm doing more is the Examiner doing better:
+ *  drafts held, admissions the reference answered in some solves or in none while its author's
+ *  answer passed, the author ahead by the gap floor, and the median turns of the reference's valid
+ *  room-solve answers. */
 const MEASURES: readonly (readonly [string, (reading: Reading) => number | null])[] = [
   ["held", ({ held }) => held],
   ["room on validity", ({ gates }) => (gates.some ?? 0) + (gates["none, proved"] ?? 0)],
@@ -161,7 +133,6 @@ const MEASURES: readonly (readonly [string, (reading: Reading) => number | null]
   ["median turns", ({ turns }) => turns?.[1] ?? null],
 ];
 
-/** What one task admission's reading of its draft comes to, as one word. */
 function admissionWord(data: JsonObject): string {
   if (!measuredGate(data)) return "unread";
   const reference = asRecord(data.reference);
@@ -179,10 +150,8 @@ function spread(values: readonly number[]): readonly [number, number, number] | 
   return [sorted[0] ?? 0, sorted[Math.floor((sorted.length - 1) / 2)] ?? 0, sorted.at(-1) ?? 0];
 }
 
-/** The Examiner's tool calls among `events`, as the trace reader reads them. */
 const examCalls = (events: readonly LogEvent[]) => callsOf(tracesIn(events), "exam");
 
-/** What the log holds from event `from` on: the stretch one seat wrote, read by the owners above. */
 export function readingOf(events: readonly LogEvent[], from: number, mentions: readonly string[]): Reading {
   const stretch = events.slice(from);
   const of = (kind: string) => stretch.flatMap((event) => (event.kind === kind ? [event.data] : []));
@@ -227,7 +196,6 @@ const listed = (counts: Readonly<Record<string, number>>) =>
     .map(([word, count]) => `${word} ${String(count)}`)
     .join(", ") || "none";
 
-/** The reading as the lines a person reads. */
 export function told(reading: Reading): string[] {
   const { turns } = reading;
   return [
@@ -241,8 +209,6 @@ export function told(reading: Reading): string[] {
   ];
 }
 
-/** The events of a stretch an agent should read as they land, one line each: a task admission's word with the
- *  solves it ran, a Referee's ruling or refusal, and a session's end. */
 export function newsOf(events: readonly LogEvent[], from: number): string[] {
   const text = (value: unknown) => (isString(value) ? value : JSON.stringify(value));
   return events.slice(from).flatMap(({ kind, data }) => {
@@ -261,9 +227,9 @@ export function newsOf(events: readonly LogEvent[], from: number): string[] {
   });
 }
 
-/** Every Examiner call in `logs`, once each: a seed copies its source's events as they stand, so one
- *  call is one time at one place in a log however many copies hold it. A `finish` the session went
- *  on after was declined by the host, refused, or left drafts at the task admission. */
+/** A seed copies its source's events as they stand, so one call is one time at one place in a log
+ *  however many copies hold it. A `finish` the session went on after was declined by the host,
+ *  refused, or left drafts at the task admission. */
 export function censusOf(logs: readonly (readonly LogEvent[])[]) {
   const calls = new Map<string, Call>();
   const wentOn = new Set<string>();
@@ -303,15 +269,14 @@ export function censusOf(logs: readonly (readonly LogEvent[])[]) {
   };
 }
 
-/** The log of a seed: rule 4 of the skill, a seat writes only to a seed, and the name and seed.json
- *  are the guard. */
+/** A seat writes only to a seed (the skill's rule 4), and the name and `seed.json` are the guard. */
 function seedLog(tree: string, name: string, die: CommandArgs["die"]): string {
   const folder = join(tree, ".ana", "d2", name);
   if (!name.startsWith("sim-") || !existsSync(join(folder, SEED_FILE))) {
     die(`${folder} is no seed: a seat runs on sim-<what> with ${SEED_FILE} beside its log`);
   }
-  // A seed's exam and its kept harnesses' tool trees hold links; copied to another host as links,
-  // they point at nothing, and a seat there crashes on the missing file.
+  // A seed's exam and its kept harnesses' tool trees hold links; copied to another host as links, they
+  // point at nothing, and a seat there crashes on the missing file.
   const broken = ["checks", "exams", "states"].flatMap((part) =>
     existsSync(join(folder, part))
       ? readdirSync(join(folder, part), { recursive: true, withFileTypes: true }).flatMap((entry) => {
@@ -395,15 +360,14 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   return stopped === null ? 0 : 1;
 }
 
-/** Where a seed's own events begin in its log, which opens with its source's; null outside a seed. */
 const cutOf = (log: string) => (existsSync(join(dirname(log), SEED_FILE)) ? seedCut(dirname(log)) : null);
 
-/** The log and the event a reading starts at: as `start` kept them beside a seat's output, or named. */
 function stretchOf(args: CommandArgs): Stretch {
   const seat = args.value("seat");
   if (seat === null) {
     const log = args.required("log");
-    // A seed's log begins with its source's events, whose task admissions are no seat's: read from its cut.
+    // A seed's log begins with its source's events, whose task admissions are no seat's: read from its
+    // cut.
     const from =
       args.int("from") ??
       cutOf(log) ??
@@ -416,8 +380,6 @@ function stretchOf(args: CommandArgs): Stretch {
   return keptSeat(seat, args.die);
 }
 
-/** What `start` kept of a seat: its log and first event, the process that leads its group, the
- *  tree's commit and the command it seated. */
 function keptSeat(seat: string, die: CommandArgs["die"]) {
   const kept = asRecord(capturedJsonParse(readFileSync(`${seat}.json`, "utf8")));
   const { tree, name, from, pid, wrapper, commit, command } = kept ?? {};
@@ -432,8 +394,6 @@ function keptSeat(seat: string, die: CommandArgs["die"]) {
   };
 }
 
-/** Each line worth reading as the seat writes it, then its reading once its process is gone: what a
- *  Monitor in Claude Code, or any agent reading a command's lines, waits on. */
 async function watch(args: CommandArgs): Promise<number> {
   const { log, from, pid } = keptSeat(args.required("seat"), args.die);
   let upTo = from;
@@ -449,7 +409,8 @@ async function watch(args: CommandArgs): Promise<number> {
 }
 
 /** What landed in each seat since `due` last looked, kept as an event count in `<prefix>.seen`. An
- *  agent's hook runs it between turns, so what a seat wrote is read before the agent stops waiting. */
+ *  agent's hook runs it between turns, so what a seat wrote is read before the agent stops waiting.
+ */
 function due(args: CommandArgs, seats: readonly string[]): number {
   if (seats.length === 0) args.die("name the seats' prefixes");
   const lines = seats.flatMap((seat) => {
@@ -468,9 +429,8 @@ function due(args: CommandArgs, seats: readonly string[]): number {
   return 2;
 }
 
-/** Ends seats this host started, as a cap would, and leaves each `start` the word that it was
- *  stopped. A prefix nothing has seated yet is closed with the same word, which `start` refuses, so a
- *  round read and stopped takes the seats its scripts still wait to seat with it. */
+/** A prefix nothing has seated yet is closed with the same word, which `start` refuses, so a round
+ *  read and stopped takes the seats its scripts still wait to seat with it. */
 async function stop(args: CommandArgs, seats: readonly string[]): Promise<number> {
   if (seats.length === 0) args.die("name the seats' prefixes");
   let missed = 0;
@@ -490,7 +450,6 @@ async function stop(args: CommandArgs, seats: readonly string[]): Promise<number
     }
     writeFileSync(`${seat}.stopped`, "live-seat stop");
     await terminateAndReapProcessGroupId(pid);
-    // Its start reads the log once more and prints the reading; one that outlives that is ended.
     const starter = wrapper ?? 0;
     for (let waited = 0; waited < WRAPPER_GRACE_MS && processGroupExists(starter); waited += 1000) {
       await Bun.sleep(1000);
@@ -504,11 +463,9 @@ async function stop(args: CommandArgs, seats: readonly string[]): Promise<number
   return missed === 0 ? 0 : 1;
 }
 
-/** Where each task admission from event `from` on stands in the log. */
 const admissionsFrom = (events: readonly LogEvent[], from: number) =>
   events.flatMap((event, index) => (index >= from && event.kind === "task.gate" ? [index] : []));
 
-/** A log's events up to its `admissionLimit`th task admission from event `from` on, or all of them where it has fewer. */
 function cutAt(
   events: readonly LogEvent[],
   from: number,
@@ -518,7 +475,6 @@ function cutAt(
   return last === undefined ? events : events.slice(0, last + 1);
 }
 
-/** Rows of cells as lines, each column as wide as its widest cell. */
 function columns(rows: readonly (readonly string[])[]): string[] {
   const widths: number[] = [];
   for (const row of rows) {
@@ -532,7 +488,6 @@ function columns(rows: readonly (readonly string[])[]): string[] {
   );
 }
 
-/** Each seat's counts in a column of its own: the arms of one round, read at one count of task admissions. */
 function compare(args: CommandArgs, seats: readonly string[]): number {
   if (seats.length < 2) args.die("name two seats' prefixes or more");
   const admissionLimit = args.int("gates");
@@ -576,9 +531,8 @@ function compare(args: CommandArgs, seats: readonly string[]): number {
   return 0;
 }
 
-/** The pair `spec` names, `<control>,<arm>`, each read at the shorter one's count of task admissions or at
- *  `admissionLimit`. The two must be one seat on one position: the same Examiner and Referee at the same
- *  efforts, from seeds cut at the same event of the same campaign, so the trees are the one variable. */
+/** The two must be one seat on one position: the same Examiner and Referee at the same efforts,
+ *  from seeds cut at the same event of the same campaign, so the trees are the one variable. */
 function pairOf(spec: string, admissionLimit: number | null, die: CommandArgs["die"]) {
   const [first, second, ...rest] = spec.split(",");
   if (first === undefined || second === undefined || rest.length > 0) die(`${spec} is no <control>,<arm>`);
@@ -615,8 +569,7 @@ function pairOf(spec: string, admissionLimit: number | null, die: CommandArgs["d
   };
 }
 
-/** Each pair at equal task admissions in a row, then for each Examiner model the sign over its pairs on each
- *  measure, and what an admitted draft cost each side: GPT is read only against GPT, Opus against Opus. */
+/** GPT is read only against GPT, Opus against Opus. */
 function pairs(args: CommandArgs, specs: readonly string[]): number {
   if (specs.length === 0) args.die("name each pair as <control>,<arm>");
   const readPairs = specs.map((spec) => pairOf(spec, args.int("gates"), args.die));
@@ -659,10 +612,9 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
   return 0;
 }
 
-/** What the Examiner session of `command` would be told, composed by `tree`'s own code: the session
- *  stands in for `examine`, prints its mode, and exits before any turn, gate or event. The engines
- *  in its shell are left out. It is composed as `try_task`; an older tree composes `propose_tasks`
- *  here, as it did where no room solve was seated. */
+/** The session stands in for `examine`, prints its mode, and exits before any turn, gate or event;
+ *  the engines in its shell are left out. It is composed as `try_task`; an older tree composes
+ *  `propose_tasks` here. */
 async function prompt(args: CommandArgs, command: readonly string[]): Promise<number> {
   const tree = args.required("tree");
   const name = args.required("name");
@@ -672,7 +624,6 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   }
   const log = seedLog(tree, name, args.die);
   const before = read(log).length;
-  // The tree's own modules, so a tree at another commit composes its own prompt.
   // SAFETY: both paths are modules of an Anabasis tree, which export these two functions; a tree whose
   // signatures differ fails the call below with the tree's own error.
   const { examineCommand } = (await import(join(tree, script))) as { examineCommand: typeof ExamineCommand };
@@ -682,8 +633,8 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   const { solved } = (await import(join(tree, ROUND))) as { solved: typeof Solved };
   runtimeProcess.chdir(tree);
   const composed: Parameters<typeof ExamineCommand>[1] = (request) => {
-    // An older tree takes a third argument, whether its home holds the
-    // reference's copy, which every campaign of it did; it is printed without the copy here.
+    // An older tree takes a third argument, whether its home holds the reference's copy, which every
+    // campaign of it did; it is printed without the copy here.
     const mode = writing(request, undefined);
     console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
     for (const tool of mode.tools) console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
@@ -702,15 +653,14 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   return 0;
 }
 
-/** The census of the logs or campaign folders named, each read where `logAcross` finds it. */
 async function census(args: CommandArgs, named: readonly string[]): Promise<number> {
   if (named.length === 0) args.die("name the logs or campaign folders to count");
   const logs: LogEvent[][] = [];
   for (const each of named) {
     const log = await logAcross(each);
     if (!existsSync(log)) args.die(`${log} does not exist`);
-    // A seed's history before its cut is its source's, and counted whole it would credit the seat
-    // with several times the calls it made.
+    // A seed's history before its cut is its source's, and counted whole it would credit the seat with
+    // several times the calls it made.
     logs.push(read(log).slice(cutOf(log) ?? 0));
   }
   const found = censusOf(logs);

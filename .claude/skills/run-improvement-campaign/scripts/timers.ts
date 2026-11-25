@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 /**
- * What each session timer did, counted from the session's own transcripts instead of from a
- * firing's account of itself.
- *
- *   bun .claude/skills/run-improvement-campaign/scripts/timers.ts <transcript.jsonl | folder> ... [--since <ISO time>]
+ * What each session timer did, counted from the session's own transcripts instead of a firing's
+ * account of itself: `timers.ts <transcript.jsonl | folder>... [--since <ISO time>]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } from "#src/meta/filesystem.ts";
@@ -15,10 +13,8 @@ const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/timers.ts";
 const USAGE = `usage: bun ${SCRIPT} <transcript.jsonl | folder> ... [--since <ISO time>]`;
 const CHUNK = 1 << 20;
 const QUIET_CHARS = 400;
-/** A shell command that moves a run, a pull request, an investigation or a file. */
 const CHANGE =
   /runs (?:on \S+ )?(?:fresh|pause|stop|continue|move|keep|retire)\b|git (?:commit|push)|gh pr (?:create|edit|merge|ready|comment)|land -- |wri2p2\.ts open|wri\.ts (?:start|lanes|collect|synthesis)|nohup|(?<!\d)>>|tee -a/u;
-/** The tools whose call is itself a change. */
 const ACTS = new Set([
   "Edit",
   "Write",
@@ -31,11 +27,9 @@ const ACTS = new Set([
 ]);
 const MADE = /Scheduled (?<kind>recurring job|one-shot task) (?<id>[0-9a-f]{8})/u;
 
-/** One timer: what made it, and how each of its firings ended. */
 export interface Timer {
   readonly id: string;
   readonly cron: string;
-  /** Null where the transcripts hold no creation of it. */
   readonly recurring: boolean | null;
   readonly prompt: string;
   readonly firings: number;
@@ -49,7 +43,6 @@ interface Turn {
   said: number;
 }
 
-/** The parts of a transcript line's message: its tool calls, their results and its text. */
 const partsOf = (row: JsonObject): JsonObject[] => {
   const content = asRecord(row.message)?.content;
   return Array.isArray(content)
@@ -60,7 +53,6 @@ const partsOf = (row: JsonObject): JsonObject[] => {
     : [];
 };
 
-/** The text of a tool result, which is a string or a list of text parts. */
 function textOf(value: JsonValue | undefined): string {
   if (isString(value)) return value;
   if (!Array.isArray(value)) return "";
@@ -71,9 +63,8 @@ function textOf(value: JsonValue | undefined): string {
 }
 
 /**
- * Every timer made or fired from `since` on in the transcripts `files`, each given as its lines, in
- * the order first seen. A creation is read from any time, so that a timer made before `since` keeps
- * its kind, and a firing's turn ends at the next prompt or at the end of its file.
+ * A creation is read from any time, so a timer made before `since` keeps its kind; a firing's turn
+ * ends at the next prompt or at the end of its file.
  */
 function timersIn(files: Iterable<Iterable<string>>, since = ""): Timer[] {
   const from = since === "" ? -Infinity : Date.parse(since);
@@ -98,8 +89,8 @@ function timersIn(files: Iterable<Iterable<string>>, since = ""): Timer[] {
     turn = null;
   };
   const take = (line: string): void => {
-    // A transcript line is often megabytes of one tool's output, so only a line that can name a
-    // timer, or that belongs to a firing's turn, is parsed.
+    // A transcript line is often megabytes of one tool's output, so only a line that can name a timer,
+    // or that belongs to a firing's turn, is parsed.
     const named = line.includes('"CronCreate"') || line.includes('"scheduledTaskId"');
     if (!(named || turn !== null || (asked.size > 0 && line.includes('"tool_result"')))) return;
     let parsed: JsonValue;
@@ -154,7 +145,6 @@ function timersIn(files: Iterable<Iterable<string>>, since = ""): Timer[] {
 const share = (part: number, whole: number) =>
   whole === 0 ? "" : ` (${String(Math.round((100 * part) / whole))}%)`;
 
-/** One line a timer that fired, the most firings first, then the counts of each kind. */
 function timerLines(timers: readonly Timer[]): string[] {
   const total = (kind: "recurring" | "one-shot") => {
     const own = timers.filter((each) => each.recurring === (kind === "recurring"));
@@ -176,7 +166,8 @@ function timerLines(timers: readonly Timer[]): string[] {
   ];
 }
 
-/** Each line of the file `path`, read a chunk at a time: one session's transcript can hold a gigabyte. */
+/** Each line of the file `path`, read a chunk at a time: one session's transcript can hold a
+ *  gigabyte. */
 function* linesOf(path: string): Generator<string> {
   const fd = openSync(path, "r");
   const chunk = new Uint8Array(CHUNK);
@@ -195,8 +186,8 @@ function* linesOf(path: string): Generator<string> {
 }
 
 /** The transcripts `path` names: itself, or every `.jsonl` beneath it. A link is followed, but a
- *  folder already walked (by its real path) is not walked again, and an entry that cannot be read,
- *  such as a broken link, is passed over. */
+ *  folder already walked (by its real path) is not walked again, and an unreadable entry such as a
+ *  broken link is passed over. */
 function transcripts(path: string, walked: Set<string>): string[] {
   let real: string;
   let folder: boolean;

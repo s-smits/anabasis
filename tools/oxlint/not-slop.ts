@@ -1,14 +1,9 @@
 /**
  * `bun run not-slop`: answer a slop finding no, and keep the ledger to findings that still exist.
- *
- *     bun run not-slop                            every row, and each one no finding bears out
- *     bun run not-slop -- answer <id> <reason…>   answer a site lint, simplify or the pre-commit
- *                                                 report printed, in a reviewer's sentence
- *     bun run not-slop -- prune                   remove every row no finding bears out
- *
- * `prune` judges a tree row against a fresh scan and a lint row against a fresh lint of its file,
- * which `bun run lint` (for plugin rows) and `bun run simplify -- --gate` (for tree rows) also
- * enforce; this is the one command that answers that failure.
+ * With no command it prints every row and each one no finding bears out; `-- answer <id> <reason…>`
+ * answers a site lint, simplify or the pre-commit report printed; `-- prune` removes every row no
+ * finding bears out, the failure `bun run lint` (plugin rows) and `bun run simplify -- --gate`
+ * (tree rows) also enforce.
  */
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
@@ -24,7 +19,6 @@ import {
 } from "./not-slop-ledger.ts";
 import { type TreeSite, treeSites } from "./tree-findings.ts";
 
-/** Each command, by the word that names it; none is the status. */
 const COMMANDS = new Map<string, (rest: readonly string[]) => Promise<number>>([
   ["", status],
   ["answer", writeAnswer],
@@ -33,13 +27,11 @@ const COMMANDS = new Map<string, (rest: readonly string[]) => Promise<number>>([
 
 const isTree = (row: Pick<Answer, "rule">): boolean => row.rule.startsWith(TREE_RULE_PREFIX);
 
-/** Print why the command did nothing, and fail. */
 function refuse(message: string): number {
   console.error(`not-slop: ${message}`);
   return 1;
 }
 
-/** A whole-tree site as a row names it: every file it spans. */
 function treeSite(site: TreeSite): Pick<Answer, "id" | "rule" | "path" | "excerpt"> {
   const paths = [...new Set((site.places ?? [site]).map((place) => place.path))].toSorted();
   return {
@@ -50,15 +42,14 @@ function treeSite(site: TreeSite): Pick<Answer, "id" | "rule" | "path" | "excerp
   };
 }
 
-/** The sites the last `bun run lint` in this worktree printed, or none before the first. */
 async function lastLintSites(): Promise<LintSite[]> {
   const path = sitesCachePath();
   const file = path === null ? null : Bun.file(path);
   return file !== null && (await file.exists()) ? parseJsonAs<LintSite[]>(await file.text()) : [];
 }
 
-/** The rows no current finding bears out: a tree row against a fresh scan, a lint row against a
- *  fresh lint of its file. A file that is gone bears out nothing. */
+/** A tree row is judged against a fresh scan and a lint row against a fresh lint of its file; a
+ *  file that is gone bears out nothing. */
 async function staleAnswers(answers: readonly Answer[]): Promise<Answer[]> {
   const trees = answers.some(isTree) ? treeSites().map((site) => site.id) : [];
   const files = [...new Set(answers.flatMap((row) => (isTree(row) ? [] : [row.path])))];
@@ -74,7 +65,7 @@ async function staleAnswers(answers: readonly Answer[]): Promise<Answer[]> {
   return answers.filter((row) => !live.has(row.id));
 }
 
-/** Why the ledger cannot be rewritten: a row it cannot read would be dropped by the rewrite. */
+/** A row the ledger cannot read would be dropped by the rewrite. */
 function unwritable(ledger: Ledger): string | null {
   if (ledger.unread.length === 0) return null;
   return [`${NOT_SLOP_LEDGER} has rows it cannot read; fix them first:`, ...ledger.unread].join("\n  ");

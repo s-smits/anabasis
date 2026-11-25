@@ -1,34 +1,16 @@
 /**
- * `bun run runs fresh <pack>`: a measured campaign from a blank project in one command. It names
- * the run and its project, makes the worktree kept for that run alone, detached at a published
- * commit, and starts the campaign there by `launch` (`manage.ts`), which installs, runs the dry run
- * and refuses what it refuses.
+ * A measured campaign from a blank project in one command. It names the run
+ * `<pack>-fresh-<model>[-<suffix>]-<host>` (`-r<n>` where taken) and the project `<pack>-fresh`,
+ * makes a worktree kept for that run alone at `--at` (default `HEAD`), and starts it by `launch`
+ * (`manage.ts`). The prompt is `<pack>-prompt.txt` in `ANA_PROMPTS`. `--effort` is four letters of
+ * `lmhx`: Builder, Examiner, Referee, solver. Without `--host`, placement picks the machine
+ * (`leastOccupied`, `placement.ts`); a peer's own `fresh` is told `--placed` so it does not place
+ * the run again over itself alone. Several packs are planned as one (`plan`), and nothing launches
+ * while a login it takes is missing from its host. A solve's limits are the campaign's (`LIMITS`,
+ * `tools/d2/campaign.ts`) unless flags after `--` name others.
  *
  *   bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800]
  *     [--at <commit>] [--as <suffix>] [--host <host> | --placed] [--yes] [-- <more of the campaign command's flags>]
- *
- * The prompt is the operator's, `<pack>-prompt.txt` in the folder `ANA_PROMPTS` names, by default
- * `anabasis-prompts` beside the checkout, and the verb opens nothing else of it. The name is
- * `<pack>-fresh-<model>[-<suffix>]-<host>`, with `-r<n>` where a worktree holds that name or its folder,
- * and the project `<pack>-fresh`. `--effort` is four letters of `lmhx`, for the Builder, the Examiner,
- * the Referee and the solver. The worktree is `anabasis-<name>` beside the checkout, at `--at`, by
- * default this checkout's commit. Without `--host`, placement takes a machine below its configured
- * cap that carries the fewest live runs on the chosen login, then the least one-minute load a core,
- * halved where a machine carries no live run, then a pack's prior machine, then the fewest live
- * campaigns and simulation seats (`leastOccupied`, `placement.ts`). An explicit
- * `--host here` or peer overrides placement. Remote source is prepared by `code.ts` before launch,
- * and the peer's own `fresh` is told `--placed`, the caller's word that it placed the run there and
- * named it with the peer's `ANA_HOSTS` name: without it the peer would place the run again over
- * itself alone, and could refuse a named host at its cap. A run placed here ends with this
- * machine's own name (`ownName`), so that every name says where it runs, as the operator asked.
- * `launch` leaves the run its keeper on the machine it runs on, unless `ANA_KEEP=off` (`keepsItself`).
- * Several packs are planned as one (`plan`): each pack's login and host are reserved in the counts
- * before the next is placed, the whole plan is printed, and nothing launches while a login it takes
- * is missing from its host.
- *
- * A solve's limits are the campaign's one budget (`LIMITS`, `tools/d2/campaign.ts`), unless the
- * flags after `--` name others, so that a solve's budget is held in one place, not two that
- * disagree.
  */
 import { existsSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
@@ -69,7 +51,6 @@ interface Planned {
   readonly login: string | undefined;
 }
 
-/** What a planned pack launches with: the verb's own values, the seats' flags and the commit. */
 interface Start extends Values {
   readonly label: string;
   readonly seated: readonly string[];
@@ -85,7 +66,6 @@ const NAMED = {
 } as const;
 const LEVELS = { l: "low", m: "medium", h: "high", x: "xhigh" } as const;
 
-/** The verb's own words, those before `--`. */
 function parsed(own: readonly string[]) {
   return parseArgs({
     args: [...own],
@@ -106,9 +86,8 @@ function parsed(own: readonly string[]) {
 }
 
 /**
- * `--model`: a named condition, or any model a backend serves as `<provider>/<id>`, at high in every
- * seat and named by its id. A served model is refused here, before a worktree is made, where no
- * backend serves it.
+ * `--model`: a named condition, or any model a backend serves as `<provider>/<id>`, at high in
+ * every seat and named by its id; refused before a worktree is made where no backend serves it.
  */
 function modelOf(model: string): { id: string; effort: string; label: string } {
   const named = Object.entries(NAMED).find(([one]) => one === model);
@@ -136,7 +115,6 @@ export function seats(id: string, letters: string): string[] {
   ];
 }
 
-/** `bun run runs fresh`. */
 export async function fresh(args: readonly string[], read: typeof readLogins = readLogins): Promise<void> {
   const own = ownArgs(args);
   const more = args.slice(own.length + 1);
@@ -173,8 +151,8 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   }
 }
 
-/** Every pack's host and login, each reserved in the counts before the next is placed, so that a
- *  batch reads the fleet, the hosts' catalogues and the logins' windows once. */
+/** Every pack's host and login, each reserved in the counts before the next is placed, so a batch
+ *  reads the fleet, catalogues and login windows once. */
 async function plan(packs: readonly string[], o: Planning): Promise<Planned[]> {
   const fleet = [...(await freshFleet())];
   const allowed = loginPool(o.logins);
@@ -209,8 +187,8 @@ async function carried(host: Host, login: string): Promise<boolean> {
   return false;
 }
 
-/** Print a batch's whole plan, and whether it may launch: with `--yes`, and with every login it takes
- *  already on the host it goes to, so that a missing one stops every launch. */
+/** Prints a batch's whole plan, and whether it may launch: with `--yes`, and with every login it
+ *  takes already on its host, so one missing stops every launch. */
 async function announced(planned: readonly Planned[], yes: boolean): Promise<boolean> {
   console.log("fresh batch plan");
   for (const [index, { pack, host, login }] of planned.entries()) {
@@ -229,7 +207,7 @@ async function announced(planned: readonly Planned[], yes: boolean): Promise<boo
   return yes;
 }
 
-/** Launch one planned pack: here in a worktree of its own, or on its host through a controller
+/** Launches one planned pack: here in a worktree of its own, or on its host through a controller
  *  prepared at the commit, whose own `fresh` is told `--placed`. */
 async function startPlanned({ pack, host, login }: Planned, start: Start): Promise<void> {
   if (host === undefined) return await startFresh(pack, login, start);
@@ -259,8 +237,8 @@ async function startPlanned({ pack, host, login }: Planned, start: Start): Promi
   runtimeProcess.exitCode = await verbOn(await preparedHost(host, start.commit), forwarded);
 }
 
-/** Make and launch the local worktree after fleet admission. A run placed here by this machine ends
- *  with its own name; one a caller placed here carries the caller's suffix. */
+/** Makes and launches the local worktree after fleet admission. A run placed here by this machine
+ *  ends with its own name; one a caller placed here carries the caller's suffix. */
 async function startFresh(pack: string, login: string | undefined, start: Start): Promise<void> {
   const here = runtimeProcess.cwd();
   const beside = dirname(mainTree(here));

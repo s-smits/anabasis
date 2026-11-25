@@ -1,7 +1,7 @@
 /**
- * Event formatting and checkpoint triggers shared across `pulse.ts`, `alerts.ts`, and `wri2p2.ts`.
- * Translates raw campaign log events into concise status lines, promotion summaries, and decision
- * triggers without requiring separate log scans.
+ * Event formatting and checkpoint triggers shared by `pulse.ts`, `alerts.ts` and `wri2p2.ts`:
+ * status lines, promotion summaries and decision triggers from a campaign log, without a scan of
+ * their own.
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
@@ -19,11 +19,9 @@ export const PROMOTED = "harness.promoted";
 export const ENDED = "campaign.ended";
 const DIGEST_CHARS = 8;
 
-/** Per-promotion decision points (`1` through `ceilingPromotions = 5`) and non-promoting clock
- *  bound (`12 h`). Each promotion opens a prediction-backtracking decision; promotion 5 is the
- *  iteration ceiling. */
+/** Decision points: each promotion from the first opens a prediction backtrack, up to the ceiling
+ *  of five, and a run that has not promoted is looked at after twelve hours. */
 export const TRIGGER_AT = { firstPromotion: 1, ceilingPromotions: 5, hours: 12 } as const;
-/** Path to the improvement-loop driver invoked when an investigation opens. */
 export const DRIVER = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 
 /** One promotion in a campaign and its first scored starter confirmation comparison (`epochsOf`). */
@@ -32,19 +30,18 @@ export interface Promotion {
   readonly read: {
     readonly session: string;
     readonly tally: Tally;
-    /** True when the reference cleared the significance level against the starter (unbilled). */
+    /** Whether the reference cleared the significance level against the starter (unbilled). */
     readonly confirmed: boolean;
-    /** Tally restricted to tasks written after the promotion (absent on older peer logs). */
+    /** The tally over tasks written after the promotion (absent on older peer logs). */
     readonly writtenAfter?: Tally;
   } | null;
 }
 
-/** High-level progress counters folded from a campaign log. */
 export interface Progress {
   readonly live: boolean;
   readonly promotions: number;
   readonly compared: number;
-  /** True if any scored comparison ended with every task tied. */
+  /** Whether any scored comparison ended with every task tied. */
   readonly allTied: boolean;
   readonly ending: string | null;
   readonly hours: number;
@@ -53,18 +50,15 @@ export interface Progress {
 export const minutes = (ms: number) => `${String(Math.round(ms / 60_000))}m`;
 export const dollars = (value: number) => `$${value.toFixed(2)}`;
 export const short = (value: unknown) => (isString(value) ? value.replaceAll(/\s+/g, " ").slice(0, 160) : "");
-/** Render a string or numeric field, falling back to `"?"` when absent. */
 export const word = (value: unknown) => (isString(value) || isNumber(value) ? String(value) : "?");
 const sized = (value: unknown) => (Array.isArray(value) ? value.length : 0);
 
-/** Format duration and billed cost from a `.finished` event payload. */
 const cost = (data: JsonObject) =>
   `${isNumber(data.seconds) ? ` in ${minutes(data.seconds * 1000)}` : ""}${isNumber(data.billed) ? `, ${dollars(data.billed)}` : ""}`;
 
 /**
- * Format the four factor summaries and supply floor from a `comparison.reported` payload, and
- * return `flag: true` when supply drops below floor, an A/A control triggers a false positive, or
- * epoch attempts exceed the economy threshold.
+ * The supply, A/A and epoch-attempt parts of a `comparison.reported` line, flagged where supply is
+ * below its floor, the A/A control clears, or the epoch's attempts are over budget.
  */
 function factorsOf(data: JsonObject): { text: string; flag: boolean } {
   const informative = asRecord(asRecord(data.valid)?.informative)?.old;
@@ -110,14 +104,12 @@ function reportHead(data: JsonObject): string {
   return `${data.reading === "not-scored" ? "⚠" : "◆"} reported ${word(data.reading)}`;
 }
 
-/** Format a `comparison.reported` line, upgrading `◆` to `⚠` when any factor or cap warrants inspection. */
 function reportLine(data: JsonObject): string {
   const head = reportHead(data);
   const { text, flag } = factorsOf(data);
   return `${flag ? head.replace(/^◆/, "⚠") : head}${text}`;
 }
 
-/** Format a `comparison.started` line with rollout count, retained tasks, and minimum step size. */
 function startLine(data: JsonObject): string {
   const head = `comparison ${word(data.session)} started`;
   if (!isNumber(data.level) || !isNumber(data.solves)) return `· ${head}`;
@@ -182,7 +174,6 @@ export const EVENT_FORMATTERS: Partial<Record<EventKind, (data: JsonObject) => s
   [REPORTED]: reportLine,
 };
 
-/** Extract campaign promotions and their first starter confirmation comparisons, oldest first. */
 export function promotionsOf(events: readonly LogEvent[]): Promotion[] {
   const reads = starterReads(events);
   return epochsOf(events)
@@ -200,8 +191,8 @@ export function promotionsOf(events: readonly LogEvent[]): Promotion[] {
 }
 
 /**
- * Format newly reported promotions and starter confirmation results beyond `seen`, flagging
- * unconfirmed promotions and completed confirmation checkpoints ready for backtracking or pause.
+ * Lines for promotions and starter confirmations beyond `seen`, flagging unconfirmed promotions and
+ * checkpoints ready for backtracking or pause.
  */
 export function climbed(
   row: { readonly name: string; readonly promotions: readonly Promotion[] },
@@ -238,7 +229,6 @@ export function climbed(
   return [...lines, { line: `${action}: bun run runs pause ${row.name} --yes`, look: true }];
 }
 
-/** Map log indices from `from` onward to their newly generated promotion and confirmation lines. */
 export function climbAt(name: string, log: readonly LogEvent[], from: number): Map<number, string[]> {
   const found = new Map<number, string[]>();
   let before: Promotion[] | null = null;
@@ -263,7 +253,6 @@ export function climbAt(name: string, log: readonly LogEvent[], from: number): M
   return found;
 }
 
-/** Compute live or final campaign progress counters at timestamp `now`. */
 export function progressOf<Run extends { readonly live: boolean }>(
   seen: Run,
   events: readonly LogEvent[],
@@ -287,8 +276,8 @@ export function progressOf<Run extends { readonly live: boolean }>(
 }
 
 /**
- * Determine whether `row` has reached a decision point or investigation trigger, returning the
- * reason or `null` if the run should continue unattended.
+ * The reason `row` has reached a decision point or investigation trigger, or null while it should
+ * go on unattended.
  */
 export function triggerOf(row: Progress): string | null {
   if (row.promotions >= TRIGGER_AT.firstPromotion) return plural(row.promotions, "promotion");
@@ -298,12 +287,12 @@ export function triggerOf(row: Progress): string | null {
   return null;
 }
 
-/** Return the UTC timestamp (rounded up to the second) when a live run reaches its 12 h clock bound. */
+/** The UTC time (rounded up to the second) at which a live run reaches its 12 h clock bound. */
 export const clockTurns = (row: Pick<Progress, "hours">, now: number): string =>
   new Date(Math.ceil((now + (TRIGGER_AT.hours - row.hours) * HOUR_MS) / 1000) * 1000)
     .toISOString()
     .replace(".000Z", "Z");
 
-/** Return the CLI command that advances a triggered run (pause if live, open investigation if stopped). */
+/** The command that advances a triggered run: pause if live, open an investigation if stopped. */
 export const openingCommand = (run: { readonly name: string; readonly live: boolean }, on = ""): string =>
   run.live ? `bun run runs ${on}pause ${run.name} --after reported --yes` : `bun ${DRIVER} open ${run.name}`;

@@ -58,8 +58,8 @@ export function complete(value: "ok" | "failed"): void {
         {
           cwd: dir,
           timeout: 30_000,
-          // The same escape from the `node` shim that `bun run lint` takes; without it this test
-          // passes or fails on whether the shell that started it happens to carry a Node binary.
+          // The same escape from the `node` shim that `bun run lint` takes, or the result would hang on
+          // whether the shell carries a Node binary.
           env: { ...Bun.env, OXLINT_TSGOLINT_PATH: tsgolintPath() },
         },
       );

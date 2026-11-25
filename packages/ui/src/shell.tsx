@@ -14,38 +14,26 @@ import { MovesPane } from "./views/moves.tsx";
 import { TasksPane } from "./views/tasks.tsx";
 import { useWaited } from "./waited.ts";
 
-/*
- * The page around the panes: the sidebar with its campaign picker and the four panes, the line that
- * says which tier the server answers in and which worktree the campaign is in, the selected pane,
- * and the inspector on the right. It holds no data of its own: `App` in `main.tsx` reads the campaign list
- * and the campaign and hands their answers here, so the whole shell renders from plain values; a
- * pane's own name stands in its header, not here.
- *
- * A pane and the inspector are keyed by the campaign, so that nothing a pane held for one campaign,
- * a page of the log or its filters, is asked of the next. While the campaign's answer is the
- * previous campaign's, the previous pane stays on screen as it was drawn, inert and marked busy, so
- * that no click acts on the old campaign under the new name; past the page's patience (`waited.ts`) it gives way to the
- * placeholder that says the campaign is being read. Replacing the whole
- * pane at once instead, a switch of project or campaign would paint it for a few frames before the
- * new campaign drew: DESIGN.md keeps the previous content
- * until its replacement is ready.
- */
+// The page around the panes: the sidebar with its picker and panes, the tier and worktree line, the
+// selected pane and the inspector. It holds no data of its own: `App` in `main.tsx` reads the list and
+// the campaign and hands their answers here. A pane and the inspector are keyed by the campaign, so
+// nothing held for one campaign is asked of the next. While the campaign's answer is the previous
+// one's, the previous pane stays as drawn, inert and marked busy, until the page's patience runs out
+// (`waited.ts`): DESIGN.md keeps content until its replacement is ready.
 
-/** The project and the campaign the page shows. */
 interface Selection {
   readonly project: string | null;
   readonly campaign: string | null;
 }
 
-/** What a campaign's pane was last drawn from. */
 interface Drawn {
   readonly reading: CampaignReading;
   readonly navigation: Navigation;
 }
 
-/** The issues this browser dismissed, one `source: message` a line. The warning that the server runs
- *  in another checkout would otherwise stand over every pane; an issue of another
- *  worktree names another source, so it shows. */
+/** The issues this browser dismissed, one `source: message` a line, so the warning that the server
+ *  runs in another checkout does not stand over every pane; another worktree's issue names another
+ *  source, so it shows. */
 const DISMISSED = "ana.dismissed";
 
 const PANES: Readonly<Record<Pane, ComponentType<PaneProps>>> = {
@@ -57,10 +45,9 @@ const PANES: Readonly<Record<Pane, ComponentType<PaneProps>>> = {
 
 const TIER_LABEL = { default: "default tier", exam: "exam side" } as const;
 
-/** The selection a route names, or the newest where it names none the list holds. The route's
- *  campaign decides the project; a route that names a project alone selects its newest campaign.
- *  Before the list is read the route's campaign stands as it is, so the campaign a link names is
- *  read at once rather than after the whole list, which can hold hundreds of campaigns. */
+/** The selection a route names, or the newest the list holds where it names none; a route naming a
+ *  project alone selects its newest campaign. Before the list is read the route's campaign stands
+ *  as it is, so a linked campaign is read at once. */
 export function selectionOf(list: CampaignList | null, route: Route): Selection {
   if (list === null) return { project: route.project, campaign: route.campaign };
   const rows = list.campaigns;
@@ -83,7 +70,7 @@ function Issues({ issues }: { issues: readonly Issue[] }) {
   });
 }
 
-/** The pane of one campaign's reading, with the tier and the issues above it. Memoised, so that the
+/** The pane of one campaign's reading, with the tier and the issues above it. Memoised, so the
  *  previous campaign's pane, kept while the next is read, is not drawn again under the new route. */
 const CampaignView = memo(function CampaignView({
   reading,
@@ -105,7 +92,6 @@ const CampaignView = memo(function CampaignView({
   );
 });
 
-/** The pane, or what stands in its place while the campaign has not been read. */
 function Page({
   navigation,
   campaigns,
@@ -165,7 +151,6 @@ export function Shell({
   const [collapsed, setCollapsed] = useKept("sidebar.collapsed", false, "every-view");
   const { route, push } = navigation;
   const selection = selectionOf(campaigns.data, route);
-  // The address names what is shown, in its one spelling (`spelling.ts`), once the list is read.
   const spelled = { project: selection.project, campaign: selection.campaign, navigation };
   const respelling = campaigns.data === null ? null : respelled(spelled);
   const spell = respelling === null ? null : <SpelledAddress key={respelling} {...spelled} />;
@@ -183,7 +168,6 @@ export function Shell({
   }
   const error = reading.error ?? campaigns.error;
   const shown = reading.current ? reading.data : null;
-  // The inspector stands open on what it can show: a harness's file or diff, or an event.
   const inspecting = (route.harness !== null && (route.file ?? route.diff) !== null) || route.event !== null;
   return (
     <div className={`ana-shell ${collapsed ? "is-collapsed" : ""} ${inspecting ? "has-inspector" : ""}`}>

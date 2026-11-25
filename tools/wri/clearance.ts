@@ -9,7 +9,6 @@ import { smallestSteps } from "#src/kernel/size.ts";
 /** A bound past which no equal-margin tally is looked for: far beyond any comparison on record. */
 const MOST_TASKS = 4096;
 
-/** The task scores' largest first among those of `sign`. */
 function largestOf(scores: readonly number[], sign: 1 | -1): number[] {
   return scores
     .filter((one) => Math.sign(one) === sign)

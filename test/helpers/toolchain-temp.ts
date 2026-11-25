@@ -1,9 +1,8 @@
 /**
- * A folder directly in the host's per-user temporary directory named as `mktemp` names one: a
- * prefix, a dot and ten letters or digits. The Darwin command wall closes that directory but for
- * what a toolchain makes there in that shape (`userTempRules`, `src/wall/policy.ts`), and a
- * suite's own temporary root lies inside it under another name, so a fixture a test means a walled
- * command to reach without a policy naming it is made here. Elsewhere it is the suite's root.
+ * A folder in the host's per-user temporary directory named as `mktemp` names one. The Darwin
+ * command wall closes that directory but for toolchain folders of that shape (`userTempRules`,
+ * `src/wall/policy.ts`), so a fixture a walled command must reach without a policy naming it is
+ * made here; elsewhere it is the suite's root.
  */
 import { mkdirSync, realpathSync } from "../../src/meta/filesystem.ts";
 import { tmpdir } from "../../src/meta/os.ts";

@@ -1,6 +1,6 @@
 /**
- * Unified solver execution, tool friction, route diversity, wait share, and resource-limit reader
- * (lane 17), replacing the separate `budget`, `waits`, and `routes` readers in one `Index` pass:
+ * Solver execution, tool friction, route diversity, wait share and resource limits, in one `Index`
+ * pass (lane 19):
  *
  *   bun tools/wri/wri.ts reader execution --log <log>
  */

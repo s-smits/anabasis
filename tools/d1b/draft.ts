@@ -1,7 +1,8 @@
 /**
- * Runs one Examiner drafting session (`bun tools/d1b/draft.ts`), validates each draft offline
- * (`draftReading`), runs up to two bounded Adversarial Judge Referee audits (`reviewDraft`) on
- * mechanically clean drafts when a reviewer is configured, and records `checker.read` / `contract.frozen`.
+ * One Examiner drafting session (`bun tools/d1b/draft.ts`): each draft is read offline
+ * (`draftReading`), a mechanically clean one gets up to `MAX_DRAFT_AUDITS` Adversarial Judge audits
+ * (`reviewDraft`) when a reviewer is named, and an accepted draft records `checker.read` /
+ * `contract.frozen`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { openingOf } from "#src/campaign/opening.ts";
@@ -24,10 +25,9 @@ import { draftReading } from "../d2/exam.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
-/** Optional adversarial audit over a mechanically clean draft (`reviewDraft`). */
 type DraftAuditor = (reader: Reader, target: DraftAuditCase) => Promise<DraftAuditFinding>;
 
-/** Maximum adversarial draft audits per drafting session (initial audit + verify-after-fix pass). */
+/** The initial audit and one verify-after-fix pass. */
 const MAX_DRAFT_AUDITS = 2;
 
 const OPTIONS = {
@@ -39,16 +39,16 @@ const OPTIONS = {
   minutes: { type: "string", default: "60" },
   turns: { type: "string", default: "40" },
   jobs: { type: "string", default: "4" },
-  /** Campaign setting flags used when none is yet recorded in the log, supplying the solve budget
-   *  reported to the drafting Examiner. */
+  /** The setting flags, read when the log records no setting yet, for the solve budget shown to the
+   *  drafting Examiner. */
   ...SETTING_OPTIONS,
   target: { type: "string" },
 } as const;
 
 type DraftSeen = NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
 
-/** Stateful Adversarial Judge gate over mechanically clean drafts: replays prior defect probes at
- *  zero model cost before spending an audit pass or accepting a revision past `MAX_DRAFT_AUDITS`. */
+/** Replays prior defect probes at no model cost before spending an audit pass, and still replays
+ *  them past `MAX_DRAFT_AUDITS`. */
 function draftAuditGate(given: {
   readonly session: string;
   readonly prompt: string;
@@ -101,8 +101,7 @@ function draftAuditGate(given: {
   };
 }
 
-/** CLI entry point for `bun tools/d1b/draft.ts`. Accepts a `session` runner (defaulting to
- *  `examine`) and optional `audit` runner so tests can substitute model-free stubs. */
+/** `session` and `audit` are injectable so tests can pass model-free stubs. */
 export async function draftCommand(
   args: readonly string[],
   session: Session<"draft"> = examine,
@@ -136,8 +135,7 @@ export async function draftCommand(
         };
   const setting = settingAsked(values, recordedSetting(events));
   const { wallSeconds, modelTurns } = setting.named.limits;
-  /** Validation readings for each draft submitted in this session; the final entry corresponds to
-   *  the accepted draft. */
+  /** The last entry is the accepted draft's reading. */
   const readings: (DraftSeen | undefined)[] = [];
   const auditClean = draftAuditGate({ session: id, prompt, log, auditor, reader: auditReader });
   stayAwake();
@@ -164,13 +162,12 @@ export async function draftCommand(
       models: examinerSession,
       log,
     },
-    // Persist the Examiner home beside the log so subsequent task-writing sessions inherit the
-    // generators and environment created during drafting.
+    // Kept beside the log so later task-writing sessions inherit the generators and environment made
+    // while drafting.
     { repoRoot: REPO, otherTrees: worktreesOf(REPO), keep: join(dirname(log), "examiner-home") },
   );
-  // Record the acceptance reading for an accepted draft (`keepReading`). In unattended runs (without
-  // `--hitl`), admit author-computed checks and freeze the contract immediately to avoid repeating
-  // the same offline acceptance pass.
+  // Unattended runs (without `--hitl`) admit author-computed checks and freeze at once, so the same
+  // offline acceptance pass is not repeated.
   const after = read(log);
   const stood = after.some(({ kind, data }) => kind === "exam.drafted" && data.session === id);
   const last = readings.at(-1);

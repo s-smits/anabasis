@@ -26,7 +26,6 @@ function tree(files: Readonly<Record<string, string>>): string {
   return at;
 }
 
-/** A graph given as a table, for the reach without a tree. */
 const graph =
   (edges: Readonly<Record<string, readonly string[]>>) =>
   (file: string): readonly string[] =>

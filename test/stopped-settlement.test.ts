@@ -1,6 +1,5 @@
-// Stopped comparisons retain their observed coverage and blind review packets without acquiring
-// a test when labels arrive. Scripted prefixes include both defect and cap stops with winning
-// completed tasks; later solves cannot enlarge the original experiment.
+// Stopped comparisons keep their observed coverage and blind review packets without acquiring a test
+// when labels arrive; later solves cannot enlarge the original experiment.
 import { afterAll, expect, it, spyOn } from "bun:test";
 import * as comparison from "../src/campaign/comparison.ts";
 import { epochsOf } from "../src/campaign/climb.ts";
@@ -58,7 +57,6 @@ afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
 });
 
-/** Script the recorded prefix through the same condition and ending events as a live solve. */
 function fixture(outcomes: Outcomes = PREFIX, stop: "defect" | "cap" = "defect") {
   const root = mkdtempSync(join(tmpdir(), "ana-stopped-"));
   scratches.push(root);
@@ -211,7 +209,6 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
   expect(() => settleReading(s.log, ID, new Map(), passes)).toThrow("settled already");
   expect(await checkpoint(s.request)).toEqual(settled);
   expect(read(s.log)).toHaveLength(length);
-  // Another comparison's solves cannot change the first report's coverage.
   append(s.log, "solve.started", {
     solve: "later",
     condition: recordCondition(s.log, conditionOf("ex-008", "old")),
@@ -275,7 +272,7 @@ it("keeps a winning completed prefix unscored after earned labels for both defec
     const first = await checkpoint(s.request);
     const fixed = present(comparison.fixedIn(read(s.log), ID));
     const labels = new Map([...s.labels.keys()].map((solve) => [solve, "earned"] as const));
-    // This is the dangerous counterfactual: the selected prefix would clear the fixed level.
+    // The dangerous counterfactual: the selected prefix would clear the fixed level.
     expect(comparison.compared(read(s.log), fixed, labels).reading).toBe("step");
     const settled = settleReading(s.log, ID, labels);
     unscored(settled, stop === "cap" ? "not-scored" : STOPPED, stop === "cap");
@@ -333,8 +330,8 @@ it("uses the promotion reader's settled wrong passes in safeguard nine", async (
       .solvesUnder(read(s.log), present(comparison.fixedIn(read(s.log), ID)))
       .flatMap(({ id, under }) => (under.harness === "old" ? [id] : [])),
   );
-  // Every answer is valid, and the new harness's measure a fifth of the reference's: the step is the
-  // objective's alone, and outweighs the one wrong pass.
+  // Every answer is valid and the new harness's measure a fifth of the reference's, so the step is the
+  // objective's alone and outweighs the one wrong pass.
   const billed = read(s.log).map((event) =>
     event.kind === comparison.STARTED
       ? { ...event, data: { ...event.data, objective: { direction: "lower" } } }
@@ -387,7 +384,6 @@ it("draws and settles the stopped comparison through the blind packet command", 
   const name = `test-stopped-settle-${String(runtimeProcess.pid)}`;
   const folder = join(REPO, ".ana", "d2", name);
   scratches.push(root, folder);
-  // The opening and its draft first, then the stopped comparison, in the order a campaign logs them.
   layOutPack(folder, fixtureTasks(10));
   appendFileSync(join(folder, "log.jsonl"), readFileSync(s.log));
   const args = ["--name", name, "--session", ID];

@@ -8,10 +8,8 @@ import { identifierName, inlineFunctionArgument, isNamedMember } from "../shared
  * `clear`). There is no fix.
  */
 
-/** The six array methods whose argument is a predicate: a question, asked once per element. */
 const PREDICATE_METHODS = new Set(["filter", "find", "findLast", "findIndex", "some", "every"]);
 
-/** Methods whose receiver is changed by the call, so a predicate holding one has an effect. */
 const MUTATIONS = new Set(["add", "set", "delete", "push", "unshift", "clear"]);
 
 export const noSideEffectInPredicateRule = defineRule({

@@ -52,7 +52,6 @@ function multisets(alphabet: readonly number[], length: number): number[][] {
   return found;
 }
 
-/** Every vector up to `most` long, as multisets over `alphabet`. */
 const upTo = (alphabet: readonly number[], most: number) =>
   Array.from({ length: most + 1 }, (_, length) => multisets(alphabet, length)).flat();
 
@@ -193,7 +192,6 @@ describe("the test's power", () => {
 
   it("equals the weighed share of stepping sign patterns, and never passes the level at a share of one half", () => {
     for (const scores of upTo([-3, -1, 0, 2, 4], 7)) {
-      // Every pattern's own p, each the share of patterns whose sum is at least its sum.
       const all = patterns(scores);
       const sums = all.map(({ flipped }) => sum(flipped));
       const drawn = all.map(({ wins, untied }, at) => ({
@@ -245,7 +243,6 @@ describe("the test's power", () => {
 });
 
 describe("a task's score", () => {
-  /** Every list of `count` validities. */
   const lists = (count: number): boolean[][] =>
     Array.from({ length: 2 ** count }, (_, bits) =>
       Array.from({ length: count }, (_v, at) => ((bits >> at) & 1) === 1),
@@ -559,7 +556,6 @@ describe("a comparison's size, said before it runs", () => {
         expect(smallestSteps(tasks, level)).toEqual(expected);
       }
     }
-    // The plan's figures at its level.
     expect(smallestSteps(24, 0.02).slice(0, 4)).toEqual([
       { wins: 6, losses: 0 },
       { wins: 8, losses: 1 },

@@ -17,53 +17,39 @@ import { roomFor } from "./keep.ts";
 import { allowedLogins, asGathered, type Env, liveEverywhere } from "./logins.ts";
 import { logEvents, Misused, packOf, readNamed, runs } from "./registry.ts";
 
-/** A single stage of a benchmark evaluation: its human-readable description and argv. */
 interface Step {
   readonly says: string;
   readonly command: readonly string[];
 }
 
-/** Fully resolved benchmark evaluation plan. An `undefined` host refers to the local machine. */
 export interface Plan {
   readonly run: string;
   readonly label: string;
-  /** Kept harness identifier, either a single letter or a 64-character digest. */
   readonly harness: string;
   readonly login: string;
-  /** Host holding the campaign, along with the checkout path and Bun executable used for export. */
   readonly holder: Host | undefined;
   readonly tree: string;
   readonly bun: string;
-  /** Benchmark name, runner host, and shell-escaped store path and sitting command on that host. */
   readonly bench: string;
   readonly runner: Host | undefined;
   readonly store: string;
   readonly sitting: string;
-  /** Target platform token passed to `score.ts tree --for`. */
   readonly place: string;
-  /** Minor version of the `python3` interpreter on the runner host, reported by `<sitting> python`. */
   readonly python: string;
-  /** Digest of the harness already stored under `label`, or null if not yet exported. */
   readonly held: string | null;
-  /** Whether to wait for the runner host to become idle rather than failing immediately if busy. */
   readonly wait: boolean;
-  /** Baseline arm paired beside the built harness on native `pi-durable`: `base` (bareSolver) or `starter` (baseStarter). */
   readonly baseline: "base" | "starter";
 }
 
-/** Options governing duplicate-export detection in `heldAs`. */
 interface HeldAsOptions {
   readonly as?: string | undefined;
   readonly modes?: ReadonlyMap<string, "claude" | "pi"> | undefined;
 }
 
-/** Shell expression selecting `sha256sum` (coreutils) when present, falling back to `shasum -a 256`
- *  so checksum output matches across Linux hosts without Perl and macOS hosts. */
+/** `sha256sum` where present, else `shasum -a 256`, so checksums match across Linux hosts without
+ *  Perl and macOS hosts. */
 const SUMS = "$(command -v sha256sum || echo shasum -a 256)";
 
-/** Returns configured benchmarks (`EVAL_RUNNER`) applicable to `run`, or the single benchmark named
- *  by `named`. A configured pack matches both itself and hyphenated variants (for example `jobstat`
- *  matches `jobstat-v2`). */
 function benchesFor(run: string, env: Env, named?: string): Bench[] {
   const pack = packOf(run);
   const reads = ({ name, packs }: Bench) =>
@@ -71,7 +57,6 @@ function benchesFor(run: string, env: Env, named?: string): Bench[] {
   return benchesOf(env).filter(reads);
 }
 
-/** Resolves the unique benchmark configuration for `run`, throwing if zero or multiple benchmarks match. */
 export function settingsOf(
   run: string,
   env: Env,
@@ -94,15 +79,15 @@ export function settingsOf(
   };
 }
 
-/** Sender-side shell command for streaming an exported tree: computes SHA-256 checksums for all
- *  files (needed because `bsdtar` does not verify gzip CRCs on extraction), then tars the tree,
- *  build record, and checksums to stdout while stripping macOS extended attributes and `.DS_Store`. */
+/** The sender's command for an exported tree: SHA-256 sums for every file (since `bsdtar` does not
+ *  verify gzip CRCs on extraction), then a tar of the tree, build record and sums to stdout,
+ *  without macOS extended attributes or `.DS_Store`. */
 const sealed = (from: string, label: string) =>
   `cd ${from} && find ${quoted(label)} ${quoted(`${label}.build.json`)} -type f ! -name .DS_Store -exec ${SUMS} {} + > ${quoted(`${label}.sha256`)} && COPYFILE_DISABLE=1 tar -czf - --no-xattrs --exclude .DS_Store ${quoted(label)} ${quoted(`${label}.build.json`)} ${quoted(`${label}.sha256`)}`;
 
-/** Receiver-side shell command on the benchmark host: extracts into a staging directory, verifies
- *  every SHA-256 checksum, rejects symlinks pointing to absolute paths on the build machine, and
- *  moves the tree into place atomically without overwriting an existing label. */
+/** The receiver's command on the benchmark host: extracts into a staging directory, verifies every
+ *  checksum, refuses symlinks to absolute paths on the build machine, and moves the tree into place
+ *  atomically without overwriting an existing label. */
 function opened(trees: string, label: string): string {
   const tree = `${trees}/${quoted(label)}`;
   const part = `${trees}/${quoted(`.part-${label}`)}`;
@@ -115,8 +100,6 @@ function baselineAsked(asked: string | undefined): "base" | "starter" {
   return asked;
 }
 
-/** Builds the ordered shell steps for `plan`. Ensures the runner host is idle before loading it and
- *  completes both dry runs before spending compute on rollouts. */
 export function stepsOf(plan: Plan): Step[] {
   const { run, label, login, holder, runner, sitting, baseline } = plan;
   const baselineLabel = `${baseline}-${label}`;
@@ -162,14 +145,9 @@ export function stepsOf(plan: Plan): Step[] {
   ];
 }
 
-/** Remote probe script executed before planning: reports platform (`uname -sm`), the sitting's
- *  Python minor version, and existing exported harness digests in `store`. Exits immediately if
- *  `uname` or `<sitting> python` fails so missing interpreter output cannot be misread; an empty
- *  store without trees is allowed. */
 export const probed = ({ sitting, store }: Pick<Plan, "sitting" | "store">): string =>
   `uname -sm && ${sitting} python || exit; grep -EH '"(harness|mode)"' ${store}/trees/*/export.json; true`;
 
-/** Executes `steps` sequentially via `spawn`, printing each description and throwing on the first non-zero exit. */
 export async function walk(
   steps: readonly Step[],
   spawn: (command: readonly string[]) => Promise<number>,
@@ -185,10 +163,6 @@ export async function walk(
   }
 }
 
-/** Checks `store` for existing exports matching `label` or `harness`. Throws if `label` already
- *  binds a different 64-character digest or a legacy Claude Code export; returns other native `pi`
- *  labels holding `harness` (`again`) and any legacy Claude Code labels (`legacy`) unless `--as`
- *  explicitly requested a new label. */
 export function heldAs(
   store: ReadonlyMap<string, string>,
   harness: string,
@@ -214,9 +188,6 @@ export function heldAs(
   return { again, held, legacy };
 }
 
-/** Strips `--eval` from `pause` arguments and computes the follow-up `bench --wait` commands owed
- *  once the pause completes. Resolved upfront so missing or misconfigured benchmarks fail before
- *  the pause hook runs. */
 export function evalOf(
   args: readonly string[],
   env: Env = runtimeProcess.env,
@@ -233,9 +204,6 @@ export function evalOf(
   return { passed, reads: benches.map(({ name }) => [run, "--bench", name, "--wait", ...yes]) };
 }
 
-/** Runs each deferred benchmark evaluation from `evalOf` after a pause completes. Dry-run plans
- *  print inline; live `--yes` invocations spawn detached processes so waiting for an idle benchmark
- *  host does not keep the pause process alive and block a subsequent `continue`. */
 export async function readEach(reads: readonly (readonly string[])[]): Promise<void> {
   for (const words of reads) {
     if (!words.includes("--yes")) {
@@ -254,7 +222,6 @@ export async function readEach(reads: readonly (readonly string[])[]): Promise<v
   }
 }
 
-/** Locates the host, checkout path, and Bun executable from which to export `run`. */
 async function exporterOf(run: string): Promise<Pick<Plan, "holder" | "tree" | "bun">> {
   const here = new Set(runs().map(({ name }) => name));
   if (here.has(run)) return { holder: undefined, tree: runtimeProcess.cwd(), bun: "bun" };
@@ -269,7 +236,6 @@ async function exporterOf(run: string): Promise<Pick<Plan, "holder" | "tree" | "
   return { holder, tree: controller.tree, bun: treeBun(controller.bun) };
 }
 
-/** Resolves a complete `Plan` for `run`, or returns null if the harness is already evaluated under another label. */
 async function planOf(
   run: string,
   values: {
@@ -286,7 +252,7 @@ async function planOf(
   const settings = settingsOf(run, env, values.bench);
   const harness = values.harness ?? promoted(logEvents(readNamed(run).path));
   if (harness === null) throw new Error(`${run} has promoted no harness: there is nothing to read outside`);
-  // Single-letter harness identifiers are only meaningful alongside `view`, so require an explicit `--as` label.
+  // A single-letter harness means something only beside `view`, so it needs an explicit `--as` label.
   const defaultLabel = harness.length === 64 ? `pi-${harness.slice(0, 8)}` : "";
   const label = values.as ?? defaultLabel;
   if (!isSafePathSegment(label)) throw new Misused();

@@ -1,6 +1,10 @@
 /**
- * The whole-run investigation of one campaign, a verb a step. It reads a log and writes only under
- * the investigation's own directory, which belongs under the ignored `.ana/wri/`.
+ * The whole-run investigation of one or more campaigns, a verb a step. It reads logs and writes only
+ * under the investigation's own directory, which belongs under the ignored `.ana/wri/`. `start`
+ * refuses a log a campaign may still write unless `--snapshot` freezes a copy, which every later verb
+ * reads; `collect` and `record` exit 1 until every report or read is there and valid. `lanes
+ * --regroup` launches the prompts with no report yet again, so stop every session still on them
+ * first. Each verb's owner is the module it imports.
  *
  *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl      (or `read <log | campaign folder | name>`)
  *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl[,<log>,<log>]
@@ -8,7 +12,7 @@
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
  *   bun tools/wri/wri.ts packets --out <dir> --join
  *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss [--snapshot]
- *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3] [--regroup]
+ *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3] [--high K] [--regroup] [--min-promo N] [--with-evals]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts record --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
@@ -19,66 +23,6 @@
  *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force] [--no-embed]
  *   bun tools/wri/wri.ts reader <name> --log <log>
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
- *
- * - `climb` prints lane 18's columns for every log `--log` names, one row each, and the paths
- *   under the host's `/tmp` one campaign named before another's solve ran them. It reads the logs as they stand, so it can be run on campaigns still running.
- * - `trajectory` prints how far each campaign had got at each work hour, on the rulers its runs
- *   share (`tools/wri/trajectory.ts`), with lane 14's blind grades where `--grades` names them.
- * - `packets` writes lane 14's blind packets for several graders across campaigns, and with
- *   `--join` reads their reports into `grades.tsv` for `trajectory --grades`
- *   (`tools/wri/packets.ts`).
- * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
- *   the host hash of the last condition beside this checkout's, and beside the campaign's own
- *   tree's when this checkout's differs.
- * - `start` writes that as `overview.md`, and the shared instructions with each campaign's row
- *   filled in and three sections left for the primary to write. `--log` names one campaign or several,
- *   which the investigation reads as equals: every lane reads every one, and opens where a trigger
- *   fired on any of them (`tools/wri/investigation.ts`). It refuses a log a campaign may still
- *   write; with `--snapshot` it reads a frozen copy of each such log instead, under
- *   `<out>/snapshot/<name>/` (`snapshotCampaign`, `tools/runs/seed.ts`), and every later verb reads
- *   that copy.
- * - `lanes` builds one prompt per lane, and `launch.json`, the manifest codex-gpt-swarm's launcher
- *   reads: the lanes it built packed into `--agents N` sessions (4 by default, one a lane where
- *   fewer), each lane in exactly one, a label kept whole unless the lightest session would weigh
- *   under three quarters of the heaviest, and each isolated lane a session of its own. With no `--lanes` it opens the lanes a trigger
- *   started and the standing ones; an isolated lane is built only when named. A prompt built before
- *   is kept and launched again by nobody: `launch.json` holds only what this call built. With
- *   `--regroup` the lanes built before whose report is not yet written are packed again with the
- *   new ones into a new manifest, their prompts unchanged, for a new `--agents N`; the caller must
- *   first stop every session still working on those prompts, since the new manifest starts them
- *   again. With `--high K` the K heaviest sessions carry `"effort": "high"` and the rest `"medium"`,
- *   which the launcher takes over its `--reasoning-effort`. `lanes` creates `<out>/lanes` where it is missing.
- * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
- *   every report is there and valid.
- * - `record` runs the baseline read commands while lane sessions work (`checkedStepsOf`,
- *   `tools/wri/record.ts`) and writes each under its command in `<out>/record.md`, with when it ran,
- *   how many lane reports stood written then and its exit code. A read already made is kept, and it
- *   exits 1 while one failed. It runs each command with this process's environment, so start it as
- *   the skill says where the reads span hosts.
- * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
- * - `findings` prints the ledger of every investigation's vetted findings under `--root`
- *   (`findingsLedger`, `tools/wri/findings.ts`): the `--window` days up to `--until` beside the
- *   window before, by verdict, standing finding, importance, fate and lane, as counts and keys.
- * - `derive` runs every deterministic reader of one log over it (`READERS`, `tools/wri/derive.ts`)
- *   into the main worktree's `data/derived/<campaign>@<path>/`, one folder a log path and one file
- *   a reader, replacing the folder whole where the log or the reading commit moved. It prints one line; `--verbose` prints every
- *   file as well, for a session that wants to read them all. `--all` takes every campaign this
- *   machine reads (`readable`, `tools/runs/registry.ts`), which is how a job keeps them current.
- *   `start` derives its logs the same way, quietly, and names the folders in the instructions.
- * - `reader` prints what one of those readers says of one log, the text `derive` writes to its
- *   file, and exits 1 where it failed.
- * - `index` reads every investigation under `--root` (the main worktree's `.ana/wri/` by default)
- *   and writes one page over them to `--out` (`<root>/INDEX.md`): a row a folder, newest first,
- *   then each campaign group's binding constraints in time order, each cycle folder and prediction
- *   ledger there and in the main checkout's `notes/`, and each campaign whose log moved in the last
- *   fourteen days, then each pull request a `plan.md` or a fork's `forkedPR<N>` names, with its forks'
- *   per-run ledgers read (`tools/wri/index.ts`). It prints each section's row count and how many
- *   folders it read whole, in part or not at all, and never the page, which holds hidden values.
- * - `grade` puts answers to the campaign's own checker and prints each verdict in one line, with the
- *   command that repeats it: one file against `--task`, the answer a solve's verdict holds (`--solve`,
- *   beside the recorded verdict), either with fields replaced (`--set`, which refuses a path the answer
- *   lacks and a change of JSON type), or every file of a folder (`--answers`) with each one's sha256
- *   (`tools/wri/grade.ts`). It writes nothing and logs nothing.
  */
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -185,8 +129,6 @@ const { values, positionals } = parseArgs({
   },
 });
 
-/** Every log `--log` names, comma-separated, or the ones written after the verb where it names
- *  none, as the other readers take them; `reader`'s own positional is the reader's name. */
 const namedLogs = values.log ?? (positionals[0] === "reader" ? "" : positionals.slice(1).join(","));
 const resolvedLogs = await Promise.all(
   namedLogs
@@ -213,7 +155,6 @@ function needed(name: "log" | "out"): string {
   return value;
 }
 
-/** The folders `derive` keeps for `logs`, written or kept as they stand, and the line it prints. */
 async function derived(logs: readonly string[]): Promise<{ done: Derived[]; line: string }> {
   const root = derivedOf(REPO);
   const done: Derived[] = [];
@@ -239,7 +180,6 @@ async function deriveStep(): Promise<number> {
   return done.some(({ failed }) => failed.length > 0) ? 1 : 0;
 }
 
-/** What the reader `name` says of the one log `--log` names, as `derive` writes it to its file. */
 async function oneReader(name: string | undefined): Promise<number> {
   const reader = READERS.find((each) => each.name === name);
   if (reader === undefined) {
@@ -250,8 +190,6 @@ async function oneReader(name: string | undefined): Promise<number> {
   return ok ? 0 : 1;
 }
 
-/** The logs among `logs` that a campaign may still write: a log the registry does not list has no
- *  campaign command writing it. */
 function liveOf(logs: readonly string[], running: readonly Running[]): string[] {
   const known = readable(REPO);
   return logs.filter((log) => {
@@ -260,11 +198,7 @@ function liveOf(logs: readonly string[], running: readonly Running[]): string[] 
   });
 }
 
-/**
- * Refuse an investigation of a campaign that may still write its log. The operator's rule: every
- * lane reads one sheet, so no finding is about events that arrived after another lane read the
- * log. `start --snapshot` reads a frozen copy of each live one instead.
- */
+/** Refuse an investigation of a campaign that may still write its log, so every lane reads one sheet. */
 function refuseRunning(logs: readonly string[], running = processes()): void {
   const live = liveOf(logs, running);
   if (live.length === 0) return;
@@ -274,7 +208,6 @@ function refuseRunning(logs: readonly string[], running = processes()): void {
   );
 }
 
-/** Each log, a live one replaced by its frozen copy under `<out>/snapshot/<name>/` (`snapshotCampaign`). */
 function frozen(logs: readonly string[], out: string, running: readonly Running[]): string[] {
   const live = new Set(liveOf(logs, running));
   return logs.map((log) => {
@@ -289,8 +222,7 @@ function frozen(logs: readonly string[], out: string, running: readonly Running[
 async function start(): Promise<number> {
   needed("log");
   const out = resolve(needed("out"));
-  // Every refusal before anything is written, since a snapshot is a copy of the run's folder, and a
-  // log named twice would otherwise be refused only after it was made.
+  // Every refusal before anything is written, since a snapshot copies the run's folder.
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
   if (new Set(resolvedLogs.map((log) => nameOf(log))).size < resolvedLogs.length) {
     throw new Error("--log names a log twice");
@@ -300,8 +232,6 @@ async function start(): Promise<number> {
   refuseRunning(logs, running);
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
-  // Each launch's tree first, so that the host line can name it: a tree at the commit the last
-  // launch ran (`treeAt`), where this checkout's code differs from the code the campaign last ran.
   const here = hostOf(REPO);
   const trees = logs.flatMap((log) => {
     const commit = receipts(log).at(-1)?.commit;
@@ -404,7 +334,6 @@ function allLanesFor(catalogue: string, campaigns: readonly Campaign[]): Lane[] 
   return merged;
 }
 
-/** The investigation `start` wrote, each campaign read as its log stands now. */
 function opened(): Investigation {
   const out = resolve(needed("out"));
   const { logs } = parseJsonAs<{ logs: string[] }>(readFileSync(join(out, INVESTIGATION), "utf8"));
@@ -413,7 +342,6 @@ function opened(): Investigation {
     if (log !== stored) console.log(`${nameOf(stored, logs)}: its stored log is gone, read from ${log}`);
     return { name: nameOf(stored, logs), log, overview: overview(read(log), receipts(log)) };
   });
-  // The instructions name each log where `start` found it; a prompt built now names where it stands.
   const shared = campaigns.reduce(
     (text, { log }, index) => text.replaceAll(logs[index] ?? log, log),
     readFileSync(join(out, SHARED), "utf8"),
@@ -421,7 +349,7 @@ function opened(): Investigation {
   return { out, shared, campaigns };
 }
 
-/** The campaigns of `logs` side by side in lane 18's columns (`tools/wri/climb.ts`). */
+/** The campaigns of `logs` side by side in the climb lanes' columns (`tools/wri/climb.ts`). */
 const climbOf = (logs: readonly string[]) =>
   climbText(logs.map((log) => ({ name: nameOf(log), events: read(log) })));
 
@@ -441,10 +369,9 @@ function lanes(): number {
     campaigns.flatMap(({ overview: { triggers } }) => triggers),
     named,
   );
-  // A prompt already built is kept: a report may have been written against it, and `collect` reads
-  // the report and never the prompt, so a rebuilt one would change under it unseen. With
-  // `--regroup` a kept prompt with no report yet is launched again, its bytes untouched, so that the
-  // number of groups can change after a build without a sibling folder.
+  // A prompt already built is kept: `collect` reads the report and never the prompt, so a rebuilt one
+  // would change under it unseen. With `--regroup` a kept prompt with no report yet is launched again,
+  // its bytes untouched.
   const asked = [...open, ...isolated];
   const kept = asked.filter(
     (lane) =>
@@ -453,20 +380,14 @@ function lanes(): number {
   );
   const launched = asked.filter((lane) => !kept.includes(lane));
   const built = launched.filter((lane) => !existsSync(promptPath(out, lane.number)));
-  // The lanes launched go to `--agents N` sessions of `launch.json`, four by default, packed by
-  // importance (`sessionsOf`), each session reading its prompts in turn and writing their reports
-  // itself. Nothing kept is in it, so its count is the spend (SKILL.md, step 3) and no session is
-  // started twice against one prompt, where a regroup's caller stopped the old ones.
   const count = Number(values.agents ?? 4);
   if (!Number.isInteger(count) || count < 1) {
     throw new Error(`--agents ${String(values.agents)}: name a whole number from 1`);
   }
   mkdirSync(join(out, "lanes"), { recursive: true });
-  // What `start` derived for each log, as the folders stand now.
   const root = derivedOf(REPO);
   const files = derivedMap(campaigns.map(({ name, log }) => ({ name, dir: folderOf(root, log) })));
-  // What every open lane shares is one file, named by its bytes: a later build under edited
-  // instructions writes another beside it, and no prompt built before points at text that moved.
+  // Shared text is one file named by its bytes, so no prompt built before points at text that moved.
   const parts = { shared, campaigns, catalogue, owners, derived: files };
   const every = `${sharedPrompt(parts)}\n`;
   const common = join(out, "lanes", `shared-${hashJsonValue(every).slice(0, 8)}.md`);
@@ -476,8 +397,6 @@ function lanes(): number {
     writeFileSync(promptPath(out, lane.number), `${lanePrompt({ ...parts, lane, report, climb, common })}\n`);
   }
   const groups = sessionsOf(launched, count);
-  // `--high K` gives the K heaviest sessions high reasoning and the rest medium (the operator's
-  // choice: "medium or high based on complexity of the group"); without it the launch's effort holds.
   const high = values.high === undefined ? null : Number(values.high);
   if (high !== null && (!Number.isInteger(high) || high < 0 || high > groups.length)) {
     throw new Error(`--high ${String(values.high)}: name a whole number from 0 to ${String(groups.length)}`);
@@ -497,17 +416,13 @@ function lanes(): number {
       task:
         group.length === 1
           ? `Read ${prompts} and do exactly what it says.`
-          : // One lane at a time: the skill's "Sizing" gives what reading them together lost.
-            `Read ${prompts}, one at a time, and do exactly what each says: read a lane's evidence and write its report before you open the next prompt.`,
+          : `Read ${prompts}, one at a time, and do exactly what each says: read a lane's evidence and write its report before you open the next prompt.`,
       ownedPaths: group.map((lane) => reportPath(out, lane.number)),
       ...effortOf(group),
     };
   });
-  // A lane reads campaign logs, which hold hidden values, so its sessions search nothing: a query
-  // leaves the machine (`AGENTS.md`, section 5). Every other Codex launch searches by default.
-  // Every build after the first has a manifest of its own beside the first's, named by its lanes, so
-  // no session a manifest launched loses the manifest that owes its report, as a later build of one
-  // lane would otherwise write over the grouped sessions of `launch.json`.
+  // A lane reads campaign logs, which hold hidden values, so its sessions search nothing. Each later
+  // build writes its own manifest, so no session loses the manifest that owes its report.
   const first = join(out, LAUNCH);
   const launch = existsSync(first)
     ? join(out, `launch-${launched.map((lane) => stem(lane.number)).join("-")}.json`)
@@ -530,7 +445,6 @@ function lanes(): number {
       `lane ${String(lane.number)} has its trigger and runs alone: read what it waits on, then build it with --lanes ${String(lane.number)}`,
     );
   }
-  // With the sessions, the primary's own work while they are out.
   console.log(
     sessions.length === 0
       ? "nothing to launch"
@@ -566,7 +480,6 @@ function collect(): number {
   return open === 0 && reports.length > 0 ? 0 : 1;
 }
 
-/** The reads of the record across runs that the investigation still owes, made and written. */
 function record(): number {
   const investigation = opened();
   const path = join(investigation.out, RECORD);
@@ -737,8 +650,8 @@ async function main(): Promise<number> {
   return await step();
 }
 
-// A plain `Error` is a verb's refusal, said in one line with exit 2 as in `tools/runs/cli.ts`;
-// anything else is a defect and keeps its stack.
+// A plain `Error` is a verb's refusal, said in one line with exit 2; anything else is a defect and
+// keeps its stack.
 try {
   runtimeProcess.exitCode = await main();
 } catch (error) {

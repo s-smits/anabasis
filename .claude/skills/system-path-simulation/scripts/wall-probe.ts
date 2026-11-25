@@ -2,10 +2,8 @@
 /**
  * What a seat's shell may do under a tree's command wall, without a model: each command of a
  * battery runs as a seat's commands run (`runWalled`, `src/tools/command.ts`) in a seat root of its
- * own, and one tree's answers are set beside another's.
- *
- *   bun .claude/skills/system-path-simulation/scripts/wall-probe.ts <tree>
- *   bun .claude/skills/system-path-simulation/scripts/wall-probe.ts <before> <after> [--battery <file.ts>]
+ * own, and one tree's answers are set beside another's: `wall-probe.ts <tree>` or `wall-probe.ts
+ * <before> <after> [--battery <file.ts>]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { rmSync } from "#src/meta/filesystem.ts";
@@ -46,8 +44,8 @@ const BATTERY: readonly Probe[] = [
   },
   { label: "bun", run: "bun -e 'console.log(1+1)' 2>&1 | tail -n 1" },
   {
-    // The registry is asked first, so an install that hangs is told from a network that does: an
-    // alarm ends the install inside the wall's own limit, and the row then reads `install=142`.
+    // The registry is asked first, so an install that hangs is told from a network that does: an alarm
+    // ends the install inside the wall's own limit, and the row then reads `install=142`.
     label: "npm install",
     run: `command -v npm >/dev/null || { echo absent; exit 0; }; curl -s -m 15 -o /dev/null -w 'registry=%{http_code} ' https://registry.npmjs.org/is-number; mkdir -p "$HOME/n" && cd "$HOME/n" && echo '{"name":"n","version":"1.0.0"}' > package.json && { perl -e 'alarm shift; exec @ARGV' 40 npm install --no-audit --no-fund --silent is-number >/dev/null; } 2>/dev/null; echo "install=$?"; node -e "try { require('is-number'); console.log('ok') } catch { console.log('missing') }"`,
   },
@@ -129,7 +127,6 @@ const BATTERY: readonly Probe[] = [
   },
 ];
 
-/** The commands of `before` that `after` answers with another exit code or other words. */
 export function differing(
   before: readonly Answer[],
   after: readonly Answer[],

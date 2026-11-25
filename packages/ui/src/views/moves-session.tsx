@@ -12,18 +12,13 @@ import { HarnessFiles } from "./inspector.tsx";
 import { standingOf } from "./moves-list.tsx";
 import { SolveTable } from "./solve-rows.tsx";
 
-/*
- * One Builder or Examiner session: what it handed over, the harness a Builder session left with the
- * way to its files and its diff, its practice solves, and its own turns and calls. An Examiner
- * session's turns are the exam side's: it reads the checks
- * through `try_answer`, so the default tier says where they are instead.
- */
+// One Builder or Examiner session: its handover, a Builder session's harness with the way to its files
+// and diff, its practice solves, and its own turns and calls. An Examiner session reads the checks
+// through `try_answer`, so its turns are the exam side's.
 
 const NO_AWAITING: ReadonlySet<string> = new Set();
-/** The one fact in prose, which takes half the row, since in a sixth it runs to many lines. */
 const WIDE = "Table row";
 
-/** The handover's fields, as facts in a row. */
 function factsOf(detail: SessionDetail, reading: CampaignReading): (readonly [string, ReactNode])[] {
   const { move } = detail;
   const common = [

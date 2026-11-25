@@ -1,13 +1,8 @@
 /**
- * What one look of the pulse adds from the deterministic readers (`READERS`, `tools/wri/derive.ts`), by
- * moment: a comparison's report, a promotion, an Examiner's or Builder's end, a campaign's opening or
- * ending. Each reader names the moments its answer serves (`at`), a pass runs it on a log only once
- * one lies past what it read (`tools/wri/pass.ts`), and a look says, under the event, the lines of its
- * text that name the moment's session or harness (or its `gist` where none does). A reader's answer
- * between moments repeats what a look said with another count, and running every reader on every log
- * that moved would take many times as long as a pass on the largest logs.
- *
- * Three limits shape it, and each is measured or tested rather than assumed.
+ * What one look of the pulse adds from the deterministic readers (`READERS`,
+ * `tools/wri/derive.ts`), by moment. A pass runs a reader on a log only once a moment it serves
+ * lies past what it read (`tools/wri/pass.ts`), since running every reader on every moved log would
+ * take many times as long.
  */
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { sha256 } from "#src/meta/digest.ts";
@@ -30,37 +25,28 @@ import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { dropCutWrites, held, hold, release } from "#src/meta/holder.ts";
 
-/** How long a look waits for the pass. The hook kills a look at 40 s, a peer's answer is awaited for
- *  30 s, and a look has its own 2 to 4 s of reading besides. */
+/** The hook kills a look at 40 s, a peer's answer is awaited for 30 s, and a look reads for 2 to 4
+ *  s besides. */
 const WAIT_MS = 20_000;
-/** The most one pass runs. A reader's collector takes about 1.5 cores, so at most 0.6 is added to the
- *  one-minute load. */
+/** A reader's collector takes about 1.5 cores, so at most 0.6 is added to the one-minute load. */
 const PASS_MS = 30_000;
-/** The least between one pass's end and the next one's start on a host. Below the wake's 290 s, so
- *  one observer has a pass at every look, and several share one. */
+/** Below the wake's 290 s, so one observer has a pass at every look. */
 const GAP_MS = 240_000;
-/** A store folder or an observer's files untouched this long go. */
 const STALE_MS = 7 * 24 * 60 * 60_000;
-/** What `remember` writes an observer's file through, named by its writer's pid. */
 const CUT_OBSERVER = /\.json(?:\.pending)?\.(\d+)\.tmp$/;
 const POLL_MS = 200;
 const LOCK = "pass.lock";
 const LAST = "pass.json";
 const ERRORS = "pass.err";
 const LIST = "readers.json";
-/** Number of emitted reader line hashes retained per observer across polls. */
 const MAX_LOGGED_LINES = 400;
 
-/** The most lines a look says of one reader on a moment, of one run and of one host. */
 const PER_READER = 3;
 const PER_RUN = 12;
 export const PER_LOOK = 30;
 
-/** How the one reason for an unread moment that is something to look at begins. */
 const FAILED = "the last pass failed";
 
-/** What the store holds of one reader on one log. `size` is the log's bytes it read, -1 where none
- *  finished, and `at` when it last ran. */
 interface ReaderResult {
   readonly size: number;
   readonly at: number;
@@ -73,16 +59,12 @@ interface PassEnding {
   readonly ended: "finished" | "budget" | "load";
 }
 
-/** A reader as the pass lists it for the looks, which read no helper. */
 interface Listed {
   readonly name: string;
   readonly at?: readonly EventKind[];
   readonly gist?: RegExp;
 }
 
-/** An event a reader answers, as an observer remembers it until its readers have read it: `size` is
- *  the log's bytes at the look that saw it, and `left` the readers that had not, all of its kind's
- *  where no list was on record. */
 export interface Moment {
   readonly kind: EventKind;
   readonly session?: string;
@@ -91,7 +73,6 @@ export interface Moment {
   readonly left?: readonly string[];
 }
 
-/** One look's ask of the pass: a log, its bytes now, its new events and the moments still owed. */
 interface Ask {
   readonly log: string;
   readonly size: number;
@@ -101,18 +82,12 @@ interface Ask {
 
 interface ReadersAsked extends Ask {
   readonly store: string;
-  /** The hashes of the lines this observer has said. */
   readonly said: readonly string[] | undefined;
-  /** Where this observer's copies of the full text go, one folder a run. */
   readonly files: string;
-  /** How many more lines this look may say of the readers. */
   readonly spare: number;
-  /** The triggers the look says itself, by name. */
   readonly watched: ReadonlySet<string>;
 }
 
-/** One line a reader has for a moment; `at` is its event's place among the new ones, null for an
- *  owed moment. */
 interface Found {
   readonly reader: string;
   readonly at: number | null;
@@ -121,19 +96,14 @@ interface Found {
   readonly hash: string;
 }
 
-/** One of the investigation's triggers as its command prints it: `NAME (lane N): detail`. */
 const TRIGGER_LINE = /^([A-Z][A-Z0-9 -]*[A-Z0-9]) \(lane (\d+)\): (.*)$/;
 
 export const storeOf = (cwd: string): string => join(mainTree(cwd), ".ana", "pulse", "moments");
 export const folderOf = (store: string, log: string) => join(store, sha256(log).slice(0, 16));
-/** A reader's line with its columns one space apart, cut at 200 characters: a rejection's row under
- *  a campaign name of 53 runs to 167, and its last column says whether the task is set aside. */
 const short = (line: string) => line.replaceAll(/\s+/g, " ").trim().slice(0, 200);
 const loadNow = () => loadavg()[0] ?? 0;
-/** A stored file's JSON, `null` where there is none. */
 const jsonIn = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "null");
 
-/** One reader's stored result on `log`, or null where it never ran. */
 export const resultOf = (store: string, log: string, reader: string) =>
   parseJsonAs<ReaderResult | null>(jsonIn(join(folderOf(store, log), `${reader}.json`)));
 
@@ -142,18 +112,14 @@ const lastPass = (store: string) => parseJsonAs<PassEnding | null>(jsonIn(join(s
 const textOf = (store: string, log: string, reader: string) =>
   readFileSync(join(folderOf(store, log), `${reader}.txt`), "utf8");
 
-/** Written beside its place and renamed, through a file of this process's own, so a reader, a kill
- *  or a second writer never finds half of it, as two looks sharing one file would rename each
- *  other's half-written one into place. */
+/** Through a file of this process's own, so a reader, a kill or a second writer never finds half of it. */
 export function remember(file: string, text: string): void {
-  // A checkout no campaign ran in has no `.ana/`, as a check runner's may not.
   mkdirSync(dirname(file), { recursive: true });
   const beside = `${file}.${String(runtimeProcess.pid)}.tmp`;
   writeFileSync(beside, text);
   renameSync(beside, file);
 }
 
-/** Keep what a reader said of `log`: its text only where it finished, since a cut says nothing. */
 export function keepResult(
   store: string,
   log: string,
@@ -167,7 +133,6 @@ export function keepResult(
   remember(join(folder, `${reader}.json`), capturedJsonStringify(result));
 }
 
-/** The readers a pass runs, with their moments and gists, kept for the looks. */
 export function keepReaders(store: string, listed: readonly Listed[]): void {
   const named = listed.flatMap(({ name, at, gist }) =>
     at === undefined ? [] : [{ name, at, gist: gist?.source ?? null }],
@@ -186,11 +151,10 @@ function readersIn(store: string): readonly Listed[] {
   }));
 }
 
-/** Whether another reader may start: the host stays a core under the line where a solve waits
- *  (`tools/d2/host.ts`), since a reader may take one. */
+/** The host stays a core under the line where a solve waits (`tools/d2/host.ts`), since a reader
+ *  may take one. */
 export const room = (load = loadNow(), cores = availableParallelism()): boolean => load + 1 <= cores;
 
-/** Record how a pass ended, and drop the results of logs no look has moved for a week. */
 export function endPass(store: string, ended: PassEnding["ended"]): void {
   remember(join(store, LAST), capturedJsonStringify({ at: Date.now(), ended } satisfies PassEnding));
   for (const entry of readdirSync(store, { withFileTypes: true })) {
@@ -201,8 +165,6 @@ export function endPass(store: string, ended: PassEnding["ended"]): void {
   }
 }
 
-/** What `run` answers under the host's lock, held while this process lives however long it reads, or
- *  null where another holds it. */
 export async function underLock<T>(store: string, run: () => Promise<T>): Promise<T | null> {
   mkdirSync(store, { recursive: true });
   const lock = join(store, LOCK);
@@ -214,8 +176,7 @@ export async function underLock<T>(store: string, run: () => Promise<T>): Promis
   }
 }
 
-/** What `ask` answers within `ms`, and null after that. The timer goes with the answer, since one left
- *  running would hold a finished look's process until it fired. */
+/** The timer goes with the answer, since one left running would hold a finished look's process open. */
 export async function withinDeadline<T>(ask: Promise<T>, ms: number): Promise<T | null> {
   const late = Promise.withResolvers<null>();
   const timer = setTimeout(
@@ -231,8 +192,6 @@ export async function withinDeadline<T>(ask: Promise<T>, ms: number): Promise<T 
   }
 }
 
-/** The moments among `fresh`, read at `size` bytes: every event of a kind a listed reader names, and
- *  with no list on record yet the last event, which the first pass then names. */
 function momentsIn(fresh: readonly LogEvent[], size: number, listed: readonly Listed[]) {
   const kinds = new Set(listed.flatMap(({ at }) => at ?? []));
   const chosen =
@@ -252,14 +211,12 @@ function momentsIn(fresh: readonly LogEvent[], size: number, listed: readonly Li
   });
 }
 
-/** The listed readers a moment waits on: those of its kind that have not read to its size. */
 function leftOf(store: string, log: string, moment: Moment, listed: readonly Listed[]): string[] {
   const asked =
     moment.left ?? listed.flatMap(({ name, at }) => (at?.includes(moment.kind) === true ? [name] : []));
   return asked.filter((name) => (resultOf(store, log, name)?.size ?? -1) < moment.size);
 }
 
-/** Whether `ask` holds a moment some reader has not read. With no list on record, any moment does. */
 function unread(store: string, ask: Ask, listed: readonly Listed[]): boolean {
   const moments = [
     ...momentsIn(ask.fresh, ask.size, listed).map(({ moment }) => moment),
@@ -269,11 +226,6 @@ function unread(store: string, ask: Ask, listed: readonly Listed[]): boolean {
   return moments.some((moment) => leftOf(store, ask.log, moment, listed).length > 0);
 }
 
-/**
- * Start a pass over the logs whose asks hold a moment not yet read, in a session of its own, and wait
- * for it, or for the host's running one, at most `waitMs`; with no such moment, neither. It is
- * `tools/wri/pass.ts` by its command: production imports no helper (`AGENTS.md`, section 12).
- */
 export async function startPass(
   store: string,
   asks: readonly Ask[],
@@ -311,24 +263,18 @@ export async function startPass(
       },
     );
     pass.unref();
-    // Until it holds the lock, which a loaded host may take a moment over, only its ending says.
     await withinDeadline(pass.exited, waitMs);
   }
   while (held(join(store, LOCK)) && performance.now() < deadline) await Bun.sleep(POLL_MS);
 }
 
-/** Why a moment's readers are behind, in the terms of what a look can see now. */
 function whyNot(store: string): string {
-  // What a pass printed on stderr is what is left of one that could not run, until a later pass
-  // ends: a pass that prints nothing leaves the file as it was, so that a look does not name an
-  // old pass the last one for hours after others have ended.
   const errors = join(store, ERRORS);
   const last = lastPass(store);
   const standing = existsSync(errors) && statSync(errors).mtimeMs > (last?.at ?? 0);
   const failed = standing ? readFileSync(errors, "utf8").trim().split("\n").at(-1) : "";
   if (failed !== undefined && failed !== "") return `${FAILED}: ${short(failed)}`;
   if (held(join(store, LOCK))) return "a pass is still reading, and what it finishes comes to the next look";
-  // The load before the rest: with room a look starts a pass, so one that started none had none.
   if (!room()) return `shed for the load, ${loadNow().toFixed(1)} of ${String(availableParallelism())} cores`;
   if (last === null) return "no pass has finished on this host";
   const at = new Date(last.at).toISOString().slice(11, 16);
@@ -339,9 +285,6 @@ function whyNot(store: string): string {
 
 const labelOf = ({ kind, session, harness }: Moment) => [kind, session, harness].filter(Boolean).join(" ");
 
-/** Of a trigger's line that counts every session of a kind in turn (`g-1: ...; g-2: ...`), the parts
- *  naming this one behind the line's head: the others were said at their own moments, and a line cut
- *  at its width loses its newest part first. A line whose parts do not each open on a session is whole. */
 function ownPart(line: string, named: RegExp): string {
   const parts = (TRIGGER_LINE.exec(line)?.[3] ?? "").split(/(?:; | · )(?=[a-z]-\d+\b)/);
   const mine = parts.filter((part) => named.test(part));
@@ -349,9 +292,6 @@ function ownPart(line: string, named: RegExp): string {
   return counted && mine.length > 0 ? `${line.slice(0, line.indexOf("): ") + 3)}${mine.join("; ")}` : line;
 }
 
-/** The lines of `reader`'s text on `moment`: a failure's last line, else those naming its session or
- *  harness (of a line that counts every session, its own part), else those its gist picks, leaving
- *  out a trigger the look says itself. */
 function linesOf(asked: ReadersAsked, reader: Listed, moment: Moment): string[] {
   const result = resultOf(asked.store, asked.log, reader.name);
   const lines = textOf(asked.store, asked.log, reader.name)
@@ -372,7 +312,6 @@ function linesOf(asked: ReadersAsked, reader: Listed, moment: Moment): string[] 
   return picked.map((line) => `◆ ${reader.name}: ${short(ownPart(line, named))}`);
 }
 
-/** What each reader that has read `moment` says of it, at most `PER_READER` each, and who has not. */
 function foundOf(asked: ReadersAsked, moment: Moment, at: number | null, listed: readonly Listed[]) {
   const left = leftOf(asked.store, asked.log, moment, listed);
   const label = labelOf(moment);
@@ -392,8 +331,6 @@ function foundOf(asked: ReadersAsked, moment: Moment, at: number | null, listed:
   return { found, left };
 }
 
-/** The lines `found` may say: each once to this observer, at most `PER_READER` a reader on a moment,
- *  failures first, at most `most` in all; and the rest. */
 function bounded(found: readonly Found[], said: ReadonlySet<string>, most: number) {
   const fresh = found.filter(
     ({ hash }, at) => !said.has(hash) && found.findIndex((other) => other.hash === hash) === at,
@@ -411,12 +348,6 @@ function bounded(found: readonly Found[], said: ReadonlySet<string>, most: numbe
   return { shown, over };
 }
 
-/**
- * What the readers add to one look at one run: under each new moment the lines of the readers that
- * have read it, after them those of moments owed from earlier looks that a reader has now read, the
- * folder that holds the full text, and the moments not read yet, named once. A line is said once to an
- * observer, whichever moment asks for it again.
- */
 export function formatReaderLines(asked: ReadersAsked) {
   const { store, log, size, files } = asked;
   const listed = readersIn(store);
@@ -426,8 +357,8 @@ export function formatReaderLines(asked: ReadersAsked) {
   const owed: Moment[] = [];
   const earlier = (asked.owed ?? []).map((moment) => ({ moment, at: null }));
   const moments = [...momentsIn(asked.fresh, size, listed), ...earlier];
-  // A gist picks from what a reader read last, which is the log as the newest moment of a kind
-  // left it, so an owed `comparison.started` could otherwise say the next comparison's draw as its own.
+  // A gist picks from what a reader read last, so an overtaken moment reads without `at`: an owed
+  // `comparison.started` would otherwise say the next comparison's draw as its own.
   const plain = listed.map(({ name, at }) => ({ name, ...keyIfDefined("at", at) }));
   const overtaken = (one: Moment) =>
     moments.some(({ moment }) => moment.kind === one.kind && moment.size > one.size);
@@ -456,8 +387,6 @@ export function formatReaderLines(asked: ReadersAsked) {
   const missing = named.map(
     (moment) => `${moment.left === undefined ? "the readers" : moment.left.join(", ")} of ${labelOf(moment)}`,
   );
-  // A moment waiting for its pass is routine, and a pass that failed is the one reason to look:
-  // a warning for every unread moment would repeat at each report of every run on every host.
   const why = missing.length > 0 ? whyNot(store) : "";
   const lines = [
     ...late,
@@ -473,8 +402,6 @@ export function formatReaderLines(asked: ReadersAsked) {
   return { placed, lines, owed, said: remembered };
 }
 
-/** The investigation's triggers, where the rows have read further than `rowsAt`, and the size they
- *  read to. */
 export function alarmsMoved(store: string, log: string, rowsAt: number | undefined) {
   const result = resultOf(store, log, "rows");
   if (result?.ok !== true || result.size <= (rowsAt ?? -1)) return null;
@@ -487,8 +414,8 @@ export function alarmsMoved(store: string, log: string, rowsAt: number | undefin
   return { alarms, size: result.size };
 }
 
-/** Drop the files of observers gone for a week, beside a peer's `--state`, and each that `remember`
- *  left half written when a kill took its writer. */
+/** Drops the files of observers gone for a week, beside a peer's `--state`, and each that
+ *  `remember` left half written when a kill took its writer. */
 export function pruneObservers(state: string, now = Date.now()): void {
   const folder = dirname(resolve(state));
   if (!existsSync(folder)) return;

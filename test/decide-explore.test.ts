@@ -1,10 +1,8 @@
-// The decision table searched rather than sampled. An environment answers each move the production
-// `decide` returns with every outcome a seat or a comparison could give it, and a breadth-first
-// search from seeds placed at each stage of a campaign asks the table of every log it reaches
-// whether the invariants below hold. There is no second model of the table: the environment invents
-// only what seats and comparisons write, and the search must reach every row and ending, so it
-// cannot pass by exploring nothing. The invariants span moves (the reference's lineage, no second
-// draw of one pair, an end within the patience) rather than restating one row.
+// The decision table searched rather than sampled: an environment answers each move the production
+// `decide` returns with every outcome a seat or a comparison could give, and a breadth-first search
+// from seeds at each campaign stage checks the invariants below on every log it reaches. The
+// environment invents only what seats and comparisons write, and the search must reach every row and
+// ending, so it cannot pass by exploring nothing.
 import { describe, expect, it } from "bun:test";
 import { stopRule } from "../src/campaign/admission.ts";
 import { epochsOf } from "../src/campaign/climb.ts";
@@ -71,7 +69,6 @@ const CONFIRMED_STARTER: Reading = {
   old: [0, 2, 6],
   fresh: [3, 3, 2],
 };
-/** The comparison a led Builder asks for: its latest harness against the reference. */
 const BUILDER_COMPARES = {
   move: "compare",
   fresh: "latest",
@@ -90,7 +87,6 @@ const heldOut = (version: string) => [
 const heldVersions = (events: readonly LogEvent[]) =>
   events.flatMap(({ kind, data }) => (kind === "task.gate" && isString(data.version) ? [data.version] : []));
 
-/** The harnesses a comparison move names, as the host resolves them. */
 function sidesOf(events: readonly LogEvent[], move: Extract<Decided, { move: "compare" }>) {
   const reference = referenceOf(events) ?? STARTER;
   const resolve = (named: string) =>
@@ -129,7 +125,6 @@ function compared(
   ]);
 }
 
-/** Every log a seat or a comparison could write in answer to `move`. */
 function answers(events: readonly LogEvent[], move: Decided, plan: Plan): LogEvent[][] {
   const id = `s${String(events.length)}`;
   switch (move.move) {
@@ -216,7 +211,6 @@ const roomFor = (data: JsonObject) => {
   return !isNumber(informative) || informative > 0;
 };
 
-/** The sentence an invariant breaks on this log and move, or null where all hold. */
 function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): string | null {
   const reference = referenceOf(events) ?? STARTER;
   const reports = reportsOf(events);
@@ -319,7 +313,6 @@ function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): stri
   return null;
 }
 
-/** Every log reachable from `start` within `depth` moves, with the move the table chose on each. */
 function explore(start: readonly LogEvent[], plan: Plan, depth: number): State[] {
   const seen: State[] = [];
   // The host opens every campaign with its terms, so the stop rule reads the plan's patience.

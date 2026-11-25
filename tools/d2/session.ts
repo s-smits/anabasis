@@ -1,14 +1,9 @@
 /**
- * One Builder session over a campaign, with no comparison after it.
+ * One Builder session over a campaign, with no comparison after it. `admitSession` refuses it on an
+ * unread checker or after the stop rule stopped the campaign, unless `--past-stop "<why>"`. A
+ * rehearsal runs the same command with scripted seats (`bun run runs rehearse --no-comparison`).
  *
  *   bun tools/d2/session.ts --name truss --session b-2 --builder claude/claude-opus-5-5 --cap 150
- *
- * Before its first event the session asks whether it may start (`admitSession`,
- * `src/campaign/admission.ts`): on a checker nobody has read, or after the stop rule has
- * stopped the campaign, it starts nothing. `--past-stop "<why>"` goes on past the stop rule.
- *
- * A simulation runs this same command with a script in its seats
- * (`bun run runs rehearse --no-comparison`).
  */
 import { admitSession } from "#src/campaign/admission.ts";
 import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";
@@ -27,9 +22,8 @@ import {
 } from "./round.ts";
 import { keepSetting } from "./setting.ts";
 
-/** `bun tools/d2/session.ts`, and under a simulation's `seated` the same session with its seats
- *  scripted. Returns what the session left: the harness it froze, or null where it left the one it
- *  started from. */
+/** `bun tools/d2/session.ts`, and under a simulation's `seated` the same session with scripted
+ *  seats. Returns the harness it froze, or null where it left its parent. */
 export async function sessionCommand(
   args: readonly string[],
   seated: Seated = solved,
@@ -41,8 +35,7 @@ export async function sessionCommand(
   if (session === undefined) throw new Error("name --session, the id the session takes in the log");
   const { cap, setting, campaign } = await campaignFor(values, pack, seated);
   const parent = await parentNamed(campaign, { ...values, session });
-  // A scripted solve is told from its harness which side of a comparison it stands on, and a
-  // practice solve stands on none: it is seated against the campaign's reference harness.
+  // A practice solve stands on no side of a comparison, so it is seated against the reference harness.
   const reference = await keptAs(campaign, "--reference", PROMOTED);
   const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
   const request = sessionNamed(

@@ -13,21 +13,12 @@ import { time } from "./format.ts";
 import { PART_NAMES, partOf, useHarnessFiles } from "./harness-parts.tsx";
 
 /*
- * The lineage strip: every harness version in the order kept,
- * starter first, at one size in one row that scrolls sideways when it outgrows the page. The card
- * the route names is marked, and its detail stands in one panel under the row at the row's width:
- * who made it, its parent, its practice and the comparisons it was the new harness of. Every card
- * keeps its closed height, with no scaling, no perspective and no motion, since the strip is read
- * and not browsed; a card that opened inside the row made the row as tall as its detail and left
- * empty space under the others. Each card's figure names its own comparison, so two cards' tallies
- * never stand as if measured together.
- *
- * The route names a card by its digest, or the starter by `starter`, which holds before any
- * comparison has named the starter's digest. Left and right move the selection and replace the
- * history entry, so that walking the strip with the keys leaves one entry for the back button; a
- * click pushes one. The key that moves the selection moves focus with it, in its own handler; the
- * selected card brings itself into the strip's view through its ref as it becomes selected, which
- * a poll that keeps the selection does not repeat.
+ * The lineage strip: every harness version in the order kept, starter first, in one row that scrolls
+ * sideways. The selected card's detail stands in one panel under the row; every card keeps its closed
+ * height, since a card opening inside the row made the row as tall as its detail. Each card's figure
+ * names its own comparison, so two cards' tallies never read as measured together. The route names a
+ * card by digest, or the starter by `starter`. Left and right replace the history entry, so walking the
+ * strip leaves one entry for the back button; a click pushes one.
  */
 
 const KEYS = { ArrowLeft: -1, ArrowRight: 1 } as const;
@@ -35,11 +26,10 @@ const KEYS = { ArrowLeft: -1, ArrowRight: 1 } as const;
 const STARTER = "starter";
 const PANEL_ID = "ana-harness-panel";
 /** A file list longer than this gets a search: a harness that vendors a Python package lists
- *  hundreds of files under Programs, each a line of the page. The count is this view's choice. */
+ *  hundreds of files. */
 const SEARCHED_FROM = 12;
 type Names = CampaignReading["names"];
 
-/** How the route names a card. */
 const routeName = (card: HarnessCard): string => (card.by === "starter" ? STARTER : (card.digest ?? STARTER));
 
 /** The selected card scrolled into its strip's view, sideways only: the page never moves for it. */
@@ -63,9 +53,9 @@ function selectedIndex(cards: readonly HarnessCard[], harness: string | null): n
   return latest === -1 ? cards.length - 1 : latest;
 }
 
-/** The kept files of the selected harness, each opening the inspector, and what the server
- *  could not read of them. The previous card's files stay, closed to the pointer, while the next
- *  card's are read (`held.ts`). */
+/** The kept files of the selected harness, each opening the inspector, and what the server could
+ *  not read of them; the previous card's stay, closed to the pointer, while the next are read
+ *  (`held.ts`). */
 function Files({ of, digest, navigation }: { of: Of; digest: string; navigation: Navigation }) {
   const { files, view, stale, slow, listed, toggle } = useHarnessFiles(of, digest);
   const [query, setQuery] = useKept("harness-files.search", "");
@@ -106,7 +96,6 @@ function Files({ of, digest, navigation }: { of: Of; digest: string; navigation:
   );
 }
 
-/** The selected card's detail, in the panel under the row. */
 function Detail({
   card,
   names,
@@ -199,8 +188,6 @@ function Detail({
   );
 }
 
-/** One card's closed face: its name, the letter the log gives it with its digest's head beneath,
- *  its roles, and the tally of the last comparison it was in. */
 function Face({ card, names }: { card: HarnessCard; names: Names }) {
   const last = card.comparedIn.at(-1);
   const letter = card.digest === null ? undefined : names[card.digest];
@@ -243,9 +230,6 @@ function Face({ card, names }: { card: HarnessCard; names: Names }) {
   );
 }
 
-/** The strip of versions over the selected one's detail, with `beside` (the pane's small charts) in a
- *  second column on a wide page: below the detail, the charts would sit under a panel as wide as
- *  the page that holds five short facts. */
 export function HarnessStrip({ reading, navigation, beside }: PaneProps & { readonly beside: ReactNode }) {
   const cards = reading.harnesses;
   const selected = selectedIndex(cards, navigation.route.harness);

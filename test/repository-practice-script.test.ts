@@ -21,7 +21,6 @@ function write(repo: string, files: Readonly<Record<string, string>>): void {
   }
 }
 
-/** A repository whose first commit holds two modules, each with the test that imports it. */
 function repository(): string {
   const repo = mkdtempSync(join(root, "repo-"));
   git(repo, "init", "-q", "-b", "main");

@@ -20,7 +20,6 @@ export async function rsync(from: string, to: string, ...flags: readonly string[
  */
 export const sshCommand = (destination: string) => ["ssh", ...sshOptions(destination)].map(quoted).join(" ");
 
-/** `path` as rsync names it: as it is on this machine, where `host` is undefined, else on `host`. */
 export const sideOf = (host: Host | undefined, path: string) =>
   host === undefined ? path : `${host.ssh}:${quoted(path)}`;
 
@@ -34,18 +33,15 @@ export const shellPath = (path: string) =>
  * The Bun that runs a tree's code on a host, as shell text evaluated in that tree: the release its
  * `package.json` pins where the host holds it under `~/.bun/releases`, as the check runner picks
  * one, else the configured Bun. A campaign runs under the Bun of the verb that launched it, so a
- * fork made through `fresh --host` must not run its verb on that host's default Bun while its tree
- * pins another.
+ * fork made through `fresh --host` must not run on the host's default Bun while its tree pins
+ * another.
  */
 export const treeBun = (configured: string) =>
   `"$(p=$(grep -o '"packageManager": *"bun@[^"]*"' package.json 2>/dev/null | sed 's/.*bun@//; s/"$//'); if test -n "$p" && test -x "$HOME/.bun/releases/$p/bin/bun"; then echo "$HOME/.bun/releases/$p/bin/bun"; else echo ${shellPath(configured)}; fi)"`;
 
-/** The ssh command that runs the shell text `script` on `host`, under a login shell there. */
 export function sshScript(host: Host, script: string): string[] {
   return ["ssh", ...sshOptions(host.ssh), host.ssh, `exec "$SHELL" -lc ${quoted(script)}`];
 }
 
-/** The command that runs the shell text `script` on this machine where `host` is undefined, else on
- *  `host` (`sshScript`). */
 export const shellOn = (host: Host | undefined, script: string): string[] =>
   host === undefined ? ["/bin/sh", "-c", script] : sshScript(host, script);

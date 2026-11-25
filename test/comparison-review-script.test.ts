@@ -64,7 +64,6 @@ grade("built", "h/task1", [[20, 0, 0, 5]]);
 grade("bare", "h/task1", [[20, 0, 4, 5]]);
 grade("built", "h/task2", [[2, 2, 1, 1]]);
 
-/** One attempt's trajectory: each command as a shell call, after one call that is no command. */
 function attempt(arm: string, task: string, name: string, commands: readonly string[]) {
   const [group, last] = task.split("/");
   const folder = join(root, String(group), String(last), "model_traj", `${arm}__${group}__${last}`);
@@ -80,9 +79,8 @@ function attempt(arm: string, task: string, name: string, commands: readonly str
   );
 }
 
-// The task was rolled twice. The first rolling took two attempts, and the second, whose one attempt
-// left the graded deliverable, is the newest by its stamp and not by its name. It looks at the
-// folder twice, and reaches its programs in each form a shell line gives.
+// Rolled twice: the second rolling's one attempt is the newest by its stamp, not its name. It looks at
+// the folder twice and reaches its programs in each form a shell line gives.
 attempt("built", "g/task1", "roll_built_attempt1_20261116_010000", [
   "scripts/toolchain/bin/estimate data.csv",
 ]);

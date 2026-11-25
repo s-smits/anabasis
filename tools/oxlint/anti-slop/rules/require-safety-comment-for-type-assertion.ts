@@ -53,12 +53,10 @@ function hasSafetyJustificationBefore(
 }
 
 /**
- * `(/* SAFETY *\/ x as T)` and `/* SAFETY *\/ (x as T)` put the justification in the same place and
- * say the same thing; only the parenthesis falls on the other side of it. `getCommentsBefore` stops
- * at that parenthesis, so the second spelling reads as an unjustified assertion unless this walk
- * allows it, and the second spelling is what `biome format` produces, by moving the comment out of
- * parentheses nobody asked it to keep. Nothing but whitespace and opening parentheses may
- * separate the comment from the assertion, so no neighbouring expression can borrow the sentence.
+ * `(/* SAFETY *\/ x as T)` and `/* SAFETY *\/ (x as T)` say the same thing, and `biome format`
+ * produces the second by moving the comment out of the parentheses, where `getCommentsBefore`
+ * stops. Only whitespace and opening parentheses may separate the comment from the assertion, so no
+ * neighbouring expression can borrow the sentence.
  */
 function justifiedAcrossParentheses(
   sourceCode: SourceCode,

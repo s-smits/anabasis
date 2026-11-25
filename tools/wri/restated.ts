@@ -1,14 +1,12 @@
 /**
- * Cluster a log's Referee rationale strings by embedding cosine similarity (`SAME_COMPLAINT` = 0.93)
- * to surface recurring check complaints and self-contradictory rulings:
+ * Groups a log's Referee rationales by embedding cosine similarity (`SAME_COMPLAINT`) to surface
+ * recurring check complaints and rulings that went two ways:
  *
  *   bun tools/wri/restated.ts <log> [--store <dir>]
  *
- * Whereas `REFUSALS BY CHECK` tallies rulings by check name alone, `restated` groups `referee.finding`
- * reasons at the v1 `reviewSlot` cosine threshold (0.93) and highlights clusters of size >= 3 or
- * clusters containing conflicting rulings (`ruled two ways`). Diagnostic lead only (`AGENTS.md`
- * section 9); prints aggregate cluster counts, ruling breakdowns, and check names without emitting
- * raw exam-side rationale text.
+ * Where `REFUSALS BY CHECK` tallies rulings by check name alone, this names groups of at least
+ * `NAMED_FROM` and any group ruled two ways. A diagnostic lead only; it prints counts, rulings and
+ * check names, never the rationale text.
  */
 import { read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { blockingOf } from "#src/kernel/verify.ts";
@@ -16,9 +14,8 @@ import { countBy } from "#src/meta/tally.ts";
 import { type EmbedWays, groupsOf, runVectorReader, vectorLines } from "./embed.ts";
 import { indexOf, text } from "./folds.ts";
 
-/** v1's line, kept for the reason above. */
 const SAME_COMPLAINT = 0.93;
-/** Two can be chance wording, and a pair ruled two ways is named whatever its size. */
+/** Two can be chance wording; a pair ruled two ways is named whatever its size. */
 const NAMED_FROM = 3;
 const NAMED_CHECKS = 2;
 
@@ -38,7 +35,6 @@ function checksIn(ruled: readonly Ruled[]): string {
 
 const twoWays = (ruled: readonly Ruled[]) => new Set(ruled.map(({ ruling }) => ruling)).size > 1;
 
-/** One group's row, with its size and rulings before its checks, as a look cuts a line (`short`). */
 function rowOf(ruled: readonly Ruled[]): string {
   const tasks = new Set(ruled.map(({ task }) => task)).size;
   const head = twoWays(ruled) ? "ruled two ways" : "restated";
@@ -49,7 +45,6 @@ function rowOf(ruled: readonly Ruled[]): string {
   return `${head}: ${String(ruled.length)} rulings on ${String(tasks)} tasks, ${rulings}; ${checksIn(ruled)}`;
 }
 
-/** One read of `log`: a head line and the groups worth naming, or one line where there is nothing. */
 async function restatedOf(log: string, ways: EmbedWays): Promise<string[]> {
   const index = indexOf(read(log, TRACE_KINDS));
   const said = [...index.rulings].flatMap(([solve, data]): Ruled[] => {

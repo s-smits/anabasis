@@ -1,4 +1,3 @@
-// Moving a campaign or a seed whole between hosts, with recovery paths after interrupted copies.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   existsSync,
@@ -88,7 +87,6 @@ describe.concurrent("moving a campaign to another machine", () => {
       cores: 2,
       login: "3",
     });
-    // The fake host's environment holds no login, and its own `active --here --login` says so.
     const refused = await made.move([]);
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("login 3 must be carried");
@@ -117,7 +115,6 @@ describe.concurrent("moving a campaign to another machine", () => {
     expect(refused.err).toContain("tool (a Mach-O binary)");
     expect(existsSync(made.folder)).toBe(true);
     expect(existsSync(made.into)).toBe(false);
-    // The same harness moves to a machine of its own system.
     const same = { [made.host.ssh]: { env: { FAKE_UNAME: "Darwin arm64" } } };
     expect((await made.move(["--hold"], { FAKE_FLEET: JSON.stringify(same) })).err).not.toContain(
       "cannot run",

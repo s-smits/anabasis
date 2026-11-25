@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Prints the campaign-history sections that a Builder session opening now would receive.
- *
- *   bun .claude/skills/design-and-seats/scripts/builder-view.ts <log.jsonl | campaign name>
- *     [--parent <digest>]
+ * Prints the campaign-history sections a Builder session opening now would receive:
+ * `builder-view.ts <log.jsonl | campaign name> [--parent <digest>]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatComparisonHistory, formatPracticeFailures, formatSessionStart } from "#src/builder/past.ts";
@@ -43,7 +41,6 @@ function releasedIds(events: readonly LogEvent[]): Map<string, string> {
   );
 }
 
-/** The lines a session opening now would read of the past, under the headings its message gives. */
 export function formatBuilderView(
   events: readonly LogEvent[],
   parent: string | null = parentOf(events),

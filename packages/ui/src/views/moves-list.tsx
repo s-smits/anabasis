@@ -5,12 +5,9 @@ import { harnessLabel, type Toned } from "./drill.tsx";
 import { duration, money, time } from "./format.ts";
 import { plural } from "../../../../src/meta/text.ts";
 
-/*
- * Every move of a campaign in the order it started, one row each, with what it handed over in the
- * handover's own fields (`Handover`, `src/campaign/handover.ts`): what it is, how it stands, what it
- * left, its cost and how long it ran. A promotion is no move, but the reference changes there, so
- * it stands between the rows as a divider, as it does between the Campaign pane's bars.
- */
+// Every move of a campaign in the order it started, one row each, in the handover's own fields
+// (`Handover`). A promotion is no move, but the reference changes there, so it stands between the rows
+// as a divider, as between the Campaign pane's bars.
 
 type Kind = Move["step"];
 
@@ -25,9 +22,8 @@ const FILTER_LABELS = new Map([
   ["comparison", "Comparisons"],
 ]);
 /** Why a move was made, in words, by the code of the table's row that named it (`ROWS`,
- *  `src/campaign/decide.ts`), or of who chose it: a Builder that leads its campaign asked for it,
- *  or it is that Builder's conversation, rather than "row" and the code, a name only the table's
- *  source explains; the code stays in the row's title. */
+ *  `src/campaign/decide.ts`) or of a leading Builder's ask or conversation; the code stays in the
+ *  row's title. */
 const ROW_WORD = new Map([
   ["stop", "the operator stopped it"],
   ["exam", "the exam does not stand"],
@@ -53,8 +49,8 @@ const READING_TONES = new Map<string, Toned["tone"]>([
   ["no-change", "neutral"],
 ]);
 
-/** The session endings that broke off, so that not every ending but `finished` reads as a warning:
- *  an Examiner session that `supplied` its tasks has reached its ordinary end, not a fault. */
+/** The session endings that broke off, so not every ending but `finished` reads as a warning: an
+ *  Examiner session that `supplied` its tasks ended as it should. */
 const BROKE: ReadonlySet<string> = new Set(["crashed", "killed"]);
 
 /** How a move stands: its ending or reading; cut, where the campaign went past it; or open. */
@@ -77,7 +73,6 @@ export function standingOf(move: Move): Toned & { readonly detail: string } {
     : { label: "open", tone: "info", detail: `${turns} so far` };
 }
 
-/** What a move handed over, in one line. */
 function handedOver(move: Move, reading: CampaignReading): string {
   if (move.step === "examiner") {
     return `${String(move.proposed)} proposed · ${String(move.held)} held out · ${String(move.refused)} refused`;
@@ -90,7 +85,6 @@ function handedOver(move: Move, reading: CampaignReading): string {
   }
   const sides = `${harnessLabel(reading, move.fresh)} against ${harnessLabel(reading, move.old)}`;
   const size = `${plural(move.tasks, "task")} × ${String(move.solves)}`;
-  // The tally the step is read on, as its bar holds it (`tally`, `models.ts`).
   const bar = reading.comparisons.find((each) => each.id === move.id);
   const stepped = bar?.tally ?? move.tally;
   const tally =
@@ -101,7 +95,6 @@ function handedOver(move: Move, reading: CampaignReading): string {
   return `${sides} · ${size} · ${tally}${aside}`;
 }
 
-/** The kind of a move as its row names it; a comparison says which of the three it is. */
 export function kindOf(move: Move, reading: CampaignReading): string {
   if (move.step !== "comparison") return KINDS[move.step];
   const bar = reading.comparisons.find((each) => each.id === move.id);
@@ -132,10 +125,9 @@ function PromotionRow({ promotion, reading }: { promotion: Promotion; reading: C
   );
 }
 
-/** The list of moves, sorted, searched and narrowed by kind and standing (`Table`). A move is named
- *  by its place in the log, since a round's Builder session and comparison share an id. A
- *  promotion stands before the first move that started after it, in the list as recorded only:
- *  a sorted or narrowed one has lost the order that places it. */
+/** The list of moves, sorted, searched and narrowed by kind and standing (`Table`), each named by
+ *  its place in the log. A promotion stands before the first move that started after it, in the
+ *  list as recorded only: a sorted or narrowed one has lost that order. */
 export function MovesList({
   reading,
   onOpen,

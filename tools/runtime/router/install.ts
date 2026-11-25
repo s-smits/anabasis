@@ -1,14 +1,12 @@
 /**
- * Install the local Bun router (`~/.local/bin/bun`) and check-runner bundle (`~/.local/share/ana-runner/`).
+ * Installs the local Bun router (`~/.local/bin/bun`) and the check-runner bundle
+ * (`~/.local/share/ana-runner/`). The router runs the Bun the active worktree pins and routes
+ * checks locally or across `ANA_HOSTS` (`run.ts`); one install serves every worktree. It installs
+ * by directory rename so running tasks are undisturbed, refreshes only the `INSTALLED` receipt when
+ * the bytes already match, backs up unmanaged files as `<path>.before-router-<time>`, and warns
+ * where a login shell resolves `bun` elsewhere.
  *
  *   bun tools/runtime/router/install.ts
- *
- * The router dispatches to the Bun version pinned by the active worktree and routes check tasks
- * locally or across `ANA_HOSTS` (`run.ts`). A single installation serves all worktrees regardless
- * of commit. Installation is atomic via directory rename so active tasks are not disrupted; when
- * all installed bytes already match, only the `INSTALLED` receipt is refreshed. Pre-existing
- * unmanaged files are backed up as `<path>.before-router-<time>`. Does not modify shell startup
- * files, and warns if a login shell resolves `bun` to a different path.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import {
@@ -43,7 +41,6 @@ function textAt(path: string): string | null {
   return present(path) ? readFileSync(path, "utf8") : null;
 }
 
-/** Every file of the runner's folder, by name, as this tree makes it. */
 async function payload(): Promise<Map<string, string>> {
   const built = await Bun.build({ entrypoints: [join(import.meta.dir, "run.ts")], target: "bun" });
   const [bundle] = built.outputs;
@@ -56,7 +53,6 @@ async function payload(): Promise<Map<string, string>> {
   ]);
 }
 
-/** Says so where a login shell does not find the router as `bun`. */
 function warnOfPath(shim: string): void {
   const shell = runtimeProcess.env.SHELL ?? "/bin/sh";
   const found = decodeOutput(runSync([shell, "-lic", "command -v bun"], { timeout: 30_000 }).stdout)
@@ -90,7 +86,8 @@ async function main(): Promise<void> {
     textAt(shim) === router &&
     [...files].every(([name, text]) => textAt(join(dir, name)) === text)
   ) {
-    // The bytes match, so the receipt names this commit: else `runs sync` reads a lag no install clears.
+    // The bytes match, so the receipt names this commit: else `runs sync` reads a lag no install
+    // clears.
     const next = join(dir, `${RECEIPT}.new-${String(runtimeProcess.pid)}`);
     writeFileSync(next, receipt);
     renameSync(next, join(dir, RECEIPT));

@@ -1,7 +1,5 @@
-// A seat's root, executed: claimed once, refused to a second claim, and released with whatever its
-// commands left working in it. On Linux a seat's leftovers end with its pid namespace, so only the
-// claim and the removal are read there (`src/wall/seat-root.ts`). Then what a killed claimant
-// leaves: a sweep releases it by its claim, and never a root a live process holds.
+// A seat's root: claimed once, refused a second claim, and released with its commands' leftovers ended;
+// a sweep never releases a root a live process holds (`src/wall/seat-root.ts`).
 import { describe, expect, it } from "bun:test";
 import {
   chmodSync,
@@ -30,14 +28,10 @@ import {
 
 const onDarwin = runtimeProcess.platform === "darwin";
 const DAY = 86_400_000;
-/** Whether `path` is there, as a claim whose link points nowhere is too. */
 const there = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined;
-/** Where the claim on `root` is written. */
 const claimOf = (root: string): string => `${root}.owner`;
 const quoted = (...parts: string[]): string => JSON.stringify(join(...parts));
 
-/** A process of its own that claims `root`, as a campaign claims a solve's, makes its host folder
- *  and a home, and waits to be killed. */
 function claimant(root: string) {
   const source = [
     `const { claimRoot, hostFolder } = await import(${quoted(import.meta.dir, "..", "src", "wall", "seat-root.ts")});`,
@@ -50,13 +44,11 @@ function claimant(root: string) {
   return Bun.spawn([capturedExecPath, "-e", source.join("\n")], { stdio: ["ignore", "ignore", "inherit"] });
 }
 
-/** `paths` as last written `days` ago, deepest first: a folder made in another moves that one's time. */
 function aged(days: number, ...paths: string[]): void {
   const then = new Date(Date.now() - days * DAY);
   for (const path of paths) utimesSync(path, then, then);
 }
 
-/** A root under a fresh parent, not yet claimed, and the parent to remove after. */
 function unclaimed(): { parent: string; root: string } {
   const parent = mkdtempSync(join(tmpdir(), "ana-seat-root-"));
   return { parent, root: join(parent, "solve") };
@@ -69,8 +61,7 @@ async function ready(check: () => boolean): Promise<void> {
 }
 
 describe("a seat's root", () => {
-  // Two rounds once ran a Builder session under one id: the second claim's cleanup removed the
-  // first's command profiles under it.
+  // A second claim's cleanup must not remove the first's command profiles under one session id.
   it("is claimed once, refused to a second claim before anything in it is touched, and free again once released", async () => {
     const { parent, root } = unclaimed();
     const release = await claimRoot(root);
@@ -79,7 +70,6 @@ describe("a seat's root", () => {
     expect(existsSync(join(root, "home"))).toBe(true);
     await release();
     expect(existsSync(root)).toBe(false);
-    // Released, it can be claimed again, as a session run again under its id claims it.
     await (await claimRoot(root))();
     rmSync(parent, { recursive: true, force: true });
   });
@@ -137,7 +127,6 @@ describe("a seat's root", () => {
     20_000,
   );
 
-  // A process may leave the root as its working directory and still run a program the seat built.
   it.skipIf(!onDarwin)(
     "ends a process running a program from it, wherever that process works",
     async () => {
@@ -166,9 +155,8 @@ describe("a seat's root", () => {
     20_000,
   );
 
-  // A killed parent can finish a fork between a pass's listing and the pass's read of it: it then
-  // reads as gone, and its child is in no listing until the next. The listing here keeps the second
-  // process back until the pass after the one that read the first as gone.
+  // A killed parent can finish a fork between a pass's listing and its read, so its child shows up a
+  // pass later.
   it.skipIf(!onDarwin)(
     "ends a child no listing held until its parent read as gone",
     async () => {
@@ -203,8 +191,6 @@ describe("a seat's root", () => {
     20_000,
   );
 
-  // The release's passes run a few milliseconds apart since the listing became libproc's, where each
-  // waited 240 ms on lsof: a child forked between a pass's listing and its kill is the next pass's.
   it.skipIf(!onDarwin)(
     "ends a loop that forks children which live on, and every child it forked",
     async () => {
@@ -260,20 +246,18 @@ describe("what a seat left", () => {
     expect([folder, claimOf(folder)].map(there)).toEqual([false, false]);
   });
 
-  // A campaign that was killed released nothing, and nothing said whose its roots were, so roots
-  // and verifier cells would pile up on a host.
+  // A killed campaign releases nothing and says nothing of whose its roots were, so roots and verifier
+  // cells would pile up on a host.
   it("is released by a sweep once its claimant is gone, and never while that process lives", async () => {
     const { parent, root } = unclaimed();
     const holder = claimant(root);
     try {
       await ready(() => existsSync(join(root, "home")));
-      // Whatever the bound for an unclaimed root, and however old the root: a live claim holds.
       aged(30, join(root, "home"), root, hostFolder(root));
       expect(await releaseLeft([parent], Date.now() + DAY, "release")).toEqual([]);
       expect(existsSync(join(root, "home"))).toBe(true);
       holder.kill("SIGKILL");
       await holder.exited;
-      // Written this instant, and released all the same: a dead claimant releases nothing itself.
       mkdirSync(join(root, "tmp"));
       expect(await releaseLeft([parent], 0, "describe")).toEqual([root]);
       expect(existsSync(join(root, "home"))).toBe(true);
@@ -286,8 +270,8 @@ describe("what a seat left", () => {
     }
   }, 20_000);
 
-  // A drafting seat stopped and seeded afresh under its name was refused its root at every restart,
-  // until the daily sweep, by the root its killed predecessor left.
+  // A drafting seat stopped and seeded afresh under its name must not be refused its root by the one
+  // its killed predecessor left.
   it("is released by the next claim of it once its claimant is gone, and refused to it while that process lives", async () => {
     const { parent, root } = unclaimed();
     const holder = claimant(root);
@@ -318,15 +302,14 @@ describe("what a seat left", () => {
     }
   }, 20_000);
 
-  // What a tree from before the claim left: nothing names its owner, so only its age speaks, and a
-  // root a run still names is its caller's to hold.
+  // A tree from before the claim names no owner, so only its age speaks, and a root a run still names
+  // is its caller's to hold.
   it("takes an unclaimed root only once nothing has written it since the bound, and none it is told to spare", async () => {
     const parent = mkdtempSync(join(tmpdir(), "ana-seat-root-"));
     const at = (name: string) => join(parent, name);
     for (const name of ["old", "fresh", "named", "written"]) {
       mkdirSync(join(at(name), "home"), { recursive: true });
     }
-    // A host's folder whose root went long ago, as 19,697 stood on one host that day.
     mkdirSync(hostFolder(at("orphan")));
     mkdirSync(hostFolder(at("written")));
     aged(
@@ -337,7 +320,6 @@ describe("what a seat left", () => {
       at("named"),
       hostFolder(at("orphan")),
     );
-    // Old but for the one folder a seat wrote yesterday.
     aged(8, at("written"), hostFolder(at("written")));
     aged(1, join(at("written"), "home"));
     const released = await releaseLeft(
@@ -353,8 +335,8 @@ describe("what a seat left", () => {
     rmSync(parent, { recursive: true, force: true });
   });
 
-  // Claude Code works in its home in the host's folder and lives on after its query closes: it
-  // wrote its state into a folder already removed, behind 19,697 solves that had ended well.
+  // Claude Code works in its home in the host's folder and outlives its query's close, writing its
+  // state into a folder already removed.
   it.skipIf(!onDarwin)(
     "ends a process working in the host's folder, so nothing is written back after the release",
     async () => {

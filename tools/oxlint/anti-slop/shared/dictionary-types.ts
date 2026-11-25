@@ -9,8 +9,8 @@ import {
 } from "./type-alias-resolution.ts";
 
 /**
- * What a written type denotes, for the three anti-slop rules that ask whether a type
- * still carries evidence.
+ * What a written type denotes, for the three anti-slop rules that ask whether a type still carries
+ * evidence.
  */
 
 const BUILT_INS = new Set([
@@ -49,13 +49,11 @@ export interface WideningTarget {
   readonly kind: WideningTargetKind;
 }
 
-/** The kind three of the producers below return and `generic` reads back. Written once so the
- *  four uses cannot drift from each other or from the union member above. */
 const OPEN_DICTIONARY: WideningTargetKind = "open dictionary";
 
 /**
- * The keywords that give everything away by themselves, whatever encloses them. They
- * are both a widening target and an unsafe value type, and they name themselves.
+ * Keywords that give everything away whatever encloses them: both a widening target and an unsafe
+ * value type.
  */
 const keywordEscapes = new Map<string, "any" | "object" | "unknown">([
   ["TSAnyKeyword", "any"],
@@ -68,16 +66,11 @@ export interface TypeEnvironment {
   readonly typeAliases: LexicalTypeAliasEnvironment;
 }
 
-// --- the walk ------------------------------------------------------------------
-
-/** Where the walk stands: the type in hand, and what has been followed to reach it. */
 interface Step {
   readonly type: ESTree.TSType;
   readonly substitutions: TypeAliasEnvironment;
   readonly visited: ReadonlySet<string>;
-  /** This step passed through a named alias rather than a wrapper or a parameter. */
   readonly aliasFollowed: boolean;
-  /** ...and that alias declares type parameters, so the container is generic. */
   readonly aliasGeneric: boolean;
 }
 
@@ -89,10 +82,8 @@ type Resolution =
 
 const opaque: Resolution = { kind: "opaque" };
 
-/** The key keywords that admit keys the author never wrote down. */
 const broadKeyKeywords = new Set(["TSStringKeyword", "TSNumberKeyword", "TSSymbolKeyword", "TSAnyKeyword"]);
 
-/** The expressions whose written form already states what they denote. */
 const evidenceExpressions = new Set([
   "ArrayExpression",
   "ArrowFunctionExpression",
@@ -105,7 +96,6 @@ const evidenceExpressions = new Set([
   "UnaryExpression",
 ]);
 
-/** The written types that denote an object at runtime without following anything. */
 const certainObjectTypes = new Set([
   "TSArrayType",
   "TSConstructorType",
@@ -182,7 +172,6 @@ function resolvedSubstitutionArgument(
   return resolvedSubstitutionArgument(substitution, base, nextResolving);
 }
 
-/** Bind an alias's parameters to the arguments written at this use, or refuse. */
 function aliasSubstitution(
   alias: ESTree.TSTypeAliasDeclaration,
   type: ESTree.TSTypeReference,
@@ -200,9 +189,8 @@ function aliasSubstitution(
 }
 
 /**
- * One step past a type reference: to the type it stands for, or to the reason the walk
- * stops there. A reference the walk cannot see through (an unapplied parameter, a
- * wrong-arity application, a name nothing in scope declares, a cycle) is `opaque`.
+ * One step past a type reference, or `opaque` where the walk cannot see through it: an unapplied
+ * parameter, a missing argument, an undeclared name, a cycle.
  */
 function resolveReference(
   reference: ESTree.TSTypeReference,
@@ -239,11 +227,9 @@ function resolveReference(
   };
 }
 
-// --- is this key broad? ---------------------------------------------------------
-
 /**
- * A mapped or `Record` key is broad when it admits keys the author never wrote down.
- * `"a" | "b"` and `keyof Money` pin a shape; `string` and `PropertyKey` do not.
+ * A key is broad when it admits keys the author never wrote: `string` and `PropertyKey`, not `"a" |
+ * "b"` or `keyof Money`.
  */
 function isBroadMappedKey(
   type: ESTree.TSType | null,
@@ -265,8 +251,6 @@ function isBroadMappedKey(
     state = resolution.step;
   }
 }
-
-// --- is this value type an escape hatch? ----------------------------------------
 
 function isNeverType(type: ESTree.TSType): boolean {
   return unwrapTransparentType(type).type === "TSNeverKeyword";
@@ -324,8 +308,6 @@ function unsafeDirectValue(
   }
 }
 
-// --- what value types does this dictionary hold? --------------------------------
-
 function indexSignatureValues(
   type: ESTree.TSTypeLiteral,
   substitutions: TypeAliasEnvironment,
@@ -349,11 +331,7 @@ function builtinValues(
   return source === undefined ? [] : [{ type: source, substitutions: state.substitutions }];
 }
 
-/**
- * The value types a written type offers behind an open key. A mapped type counts only
- * when its key is broad: `{ [K in "id"]: unknown }` is the shape `{ id: unknown }`,
- * which this rule admits, and `{ [K in string]: unknown }` is a dictionary.
- */
+/** A mapped type counts only with a broad key: `{ [K in "id"]: unknown }` is the shape `{ id: unknown }`. */
 function dictionaryValueTypes(
   type: ESTree.TSType,
   environment: TypeEnvironment,
@@ -404,14 +382,9 @@ export function classifyUnsafeDictionary(
   return null;
 }
 
-// --- is this target broader than the value that flows into it? ------------------
-
 /**
- * An unnamed shape gives evidence away only through a member that does: `{ payload: unknown }`
- * over `{ payload: "eur" }` throws the payload's type away, where `{ log: string; from: number }`
- * over `{ log, from }` states each member's type as the value does and only adds a contract. So
- * "anonymous object" is reported where a written member, or a mapped value, is itself a widening
- * target, and it is produced before the walk follows a name and never after: the same members
+ * An unnamed shape gives evidence away only through a member that is itself a widening target.
+ * "anonymous object" is produced before the walk follows a name, never after: the same members
  * behind an alias are that alias's contract.
  */
 function memberEscapes(type: ESTree.TSTypeLiteral, environment: TypeEnvironment): boolean {
@@ -451,9 +424,8 @@ function mappedWideningTarget(
 }
 
 /**
- * What a target type gives away, or `null` when it keeps the value's evidence. A
- * generic alias that resolves to an open container is reported as that container
- * rather than as the alias, since the alias is only a name for it.
+ * What a target type gives away, or `null` when it keeps the value's evidence. A generic alias over
+ * an open container reports as that container.
  */
 export function classifyWideningTarget(
   type: ESTree.TSType,
@@ -494,14 +466,9 @@ function generic(target: WideningTarget | null, firstAliasGeneric: boolean | nul
   return target?.kind === OPEN_DICTIONARY ? { kind: "generic container" } : null;
 }
 
-// --- does this expression state its own type? -----------------------------------
-
 /**
- * Whether an object literal's own key set is knowable. A spread of anything but another such
- * literal, or a computed key that is not a literal, opens it: the literal then states no complete
- * shape, so a dictionary annotation over it discards nothing. `prepareEnvironment` returning
- * `{ HOME, PATH, ...slotEnvironment(condition) }` as `Record<string, string | undefined>` is the
- * truth about an environment map, not evidence thrown away.
+ * A spread of anything but another such literal, or a computed non-literal key, leaves the key set
+ * unknown, so a dictionary annotation over it discards nothing.
  */
 function hasKnownKeys(expression: ESTree.ObjectExpression): boolean {
   return expression.properties.every((property) =>
@@ -526,13 +493,9 @@ export function isKnownEvidenceExpression(expression: ESTree.Expression): boolea
   return evidenceExpressions.has(current.type);
 }
 
-// --- is this certainly an object? -----------------------------------------------
-
 /**
- * True when `type` certainly denotes an object at runtime, following aliases, interfaces
- * and the transparent wrappers. `no-widen-then-assert` asks this to tell a narrowing
- * (`object` back to a real shape) from a change of kind (`object` to `string`), which is a
- * different defect and not this rule's.
+ * `no-widen-then-assert` asks this to tell a narrowing (`object` back to a real shape) from a
+ * change of kind (`object` to `string`).
  */
 export function isCertainlyObjectType(type: ESTree.TSType, environment: TypeEnvironment): boolean {
   let state = start(type);

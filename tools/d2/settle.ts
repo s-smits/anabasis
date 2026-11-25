@@ -39,13 +39,11 @@ const OPTIONS = {
   ...PACK_OPTIONS,
   session: { type: "string" },
 } as const;
-/** The most a packet draws of the rejections ruled earned, and of the answers that passed. */
 const SAMPLED = 3;
 
 /**
- * What comparison `session`'s packet holds: every rejection that set its task aside, and three
- * rejections ruled earned and three passes, each drawn uniformly by the comparison's id from what
- * the comparison holds of it, so the same draw comes back whenever it is asked for.
+ * Every rejection that set its task aside, plus up to `SAMPLED` earned rejections and passes, drawn
+ * by the comparison's id so the same draw comes back whenever asked.
  */
 export function packetOf(
   { aside, others }: ReturnType<typeof toLabel>,
@@ -57,8 +55,7 @@ export function packetOf(
   return { rejections: [...aside, ...of(others, "earned")], passes: of(passed, "passes") };
 }
 
-/** Draw comparison `session`'s packet into `dir`, a packet a drawn answer and `labels.json` with an
- *  empty entry each, and say what was drawn (`packetOf`). */
+/** Writes one file per drawn answer and `labels.json` with an empty entry each. */
 function drawPacket(campaign: Campaign, events: readonly LogEvent[], session: string, dir: string) {
   const { rejections, passes } = packetOf(toLabel(events, session), passesIn(events, session), session);
   if (rejections.length + passes.length === 0) return { rejections, passes };
@@ -75,7 +72,6 @@ function drawPacket(campaign: Campaign, events: readonly LogEvent[], session: st
       contract: campaign.contract,
       answer: verdict?.answer ?? null,
       ...keyIfDefined("files", verdict?.files && shownFiles(campaign.log, verdict.files)),
-      // None where the answer passed.
       refusedBy: blockingOf(verdict?.checker),
     };
     writeFileSync(join(dir, `${solve}.json`), `${capturedJsonStringify(packet, null, 2)}\n`);
@@ -86,8 +82,8 @@ function drawPacket(campaign: Campaign, events: readonly LogEvent[], session: st
   return { rejections, passes };
 }
 
-/** The labels one kind of a packet's file holds: refused where an entry is neither empty nor a
- *  known word, and null where one is still empty, since nothing is recorded until none is. */
+/** Refused where an entry is neither empty nor a known word; null while one is still empty, since
+ *  nothing is recorded until none is. */
 function labelsIn<Word extends string>(
   file: string,
   entries: JsonValue | undefined,
@@ -104,8 +100,8 @@ function labelsIn<Word extends string>(
   return open.length > 0 ? null : labels;
 }
 
-/** What a campaign's settled packets say: the Referee's agreement with their labels, and each
- *  settled comparison's decision read again with the verdicts its labels overturned swapped in. */
+/** The Referee's agreement with the labels, and each settled comparison's decision read again with
+ *  the overturned verdicts swapped in. */
 export function labelLines(events: readonly LogEvent[]): string[] {
   const labels = settledLabels(events);
   const measured = agreement(events, labels);

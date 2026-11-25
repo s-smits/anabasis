@@ -1,18 +1,13 @@
 /**
  * One task of Harness²'s k=1 parallel recursion on JobBench, and one profession's stream of them
- * (`run_parallel` and `_run_stage` of `harness2/core/recursion.py`, `trivial_selection`,
- * `reflect_adoption` and `_distil` of `selection.py`, `run_task`, `_run_one_mode` and
- * `run_domain` of `schedule.py`, and `ledger.py`; Apache-2.0, Google LLC, at 1cfe254 with the fork's
- * Claude Code commits). A task rolls the base harness once (base1), runs an INVARIANT and a DOMAIN
- * editor side by side on that evidence (inv1, dom1) and rolls each, lets one aggregator compose a
- * final from both (agg1) and rolls it, delivers agg1 without a selector, and has one experience
- * session write the lesson the profession's library keeps: R = 4 rollouts and P = 3 sessions.
- *
- * Local changes: each rollout's dollars enter the ledger (Harness² records 0); a task whose summary
- * reads `ok` is skipped on a second sweep instead of Harness²'s per-mode resume, and the summary is
- * written whole instead of merged into an old one; `inputs` and `harness_fingerprint` are sha256
- * digests instead of `runmark`'s sha1, so they never equal a recorded value; no rollout is reused
- * from a completion mark.
+ * (`recursion.py`, `selection.py`, `schedule.py` and `ledger.py`; Apache-2.0, Google LLC, at
+ * 1cfe254 with the fork's Claude Code commits). A task rolls the base harness (base1), runs an
+ * INVARIANT and a DOMAIN editor side by side on that evidence (inv1, dom1), lets one aggregator
+ * compose a final from both (agg1), delivers agg1 without a selector, and has one experience
+ * session write the library's lesson: R = 4 rollouts and P = 3 sessions. Local changes: each
+ * rollout's dollars enter the ledger; a task whose summary reads `ok` is skipped on a second sweep,
+ * and the summary is written whole; `inputs` and `harness_fingerprint` are sha256 digests, never
+ * equal to a recorded sha1; no rollout is reused from a completion mark.
  */
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -38,7 +33,6 @@ import { prompt, type Job, type Sections } from "./prompts.ts";
 import { pyDumps, pySlice, pyStrip, splitLines, walkFiles } from "./py.ts";
 import { autotrigger, changedFrom, readTree, validate, writeTree, type Tree } from "./tree.ts";
 
-/** One improver call as a stage or the experience writer makes it. */
 interface Call {
   readonly mission: string;
   readonly contextDir: string;
@@ -46,12 +40,10 @@ interface Call {
   readonly harvest: string | null;
 }
 
-/** What a task needs from the benchmark: its evidence, base harness, prompts, rollouts and improver. */
 export interface Bench {
   readonly evidence: Evidence;
   readonly baseHarness: string;
   readonly sections: Sections;
-  /** One rollout of a harness (the base when null): its run directory and dollars, or a throw. */
   execute: (
     task: string,
     harnessDir: string | null,
@@ -70,7 +62,7 @@ interface Stage {
   readonly label: string;
   readonly dim: "INV" | "DOM" | "AGG";
   readonly tree: Tree;
-  /** Whether the edit stood (`kept-base` where it changed nothing); the other two fall back to the base. */
+  /** `kept-base` where the edit changed nothing; the other two fall back to the base. */
   readonly outcome: "edited" | "kept-base" | "fell-back" | "execution-failed";
   readonly error: string;
   readonly usd: number;
@@ -85,7 +77,6 @@ interface Entry {
   readonly attempts: number;
 }
 
-/** `Selection`, with what a trivial k=1 pool leaves to vary. */
 interface Selection {
   ok: boolean;
   chosenLabel: string;
@@ -96,14 +87,12 @@ interface Selection {
   experience: Experience;
 }
 
-/** What a task's summary gathers as it goes. */
 interface Summary {
   readonly modes: Record<string, JsonValue>;
   readonly selections: Record<string, JsonValue>;
   readonly errors: string[];
 }
 
-/** A rollout that left no deliverable, with what it billed on the way. */
 export class DeadRollout extends Error {
   readonly usd: number;
 
@@ -167,7 +156,6 @@ function accept(tree: Tree, fallback: Tree): [boolean, string] {
   return [kept, ""];
 }
 
-/** Why a returned workspace cannot stand as the stage's tree, writing it back for the retry. */
 function refusalOf(
   workspace: string | null,
   root: string,
@@ -268,7 +256,7 @@ async function runStage(
   return { ...base, error: pySlice(error, 0, 400), usd, attempts };
 }
 
-/** `_roll`: write a harness and roll it once; a dead rollout is recorded, never thrown. */
+/** `_roll`: a dead rollout is recorded, never thrown. */
 async function roll(
   bench: Bench,
   task: string,
@@ -321,7 +309,6 @@ function stageRecord(stage: Stage): JsonObject {
 const decisionsOf = (stages: readonly Stage[]): Map<string, string> =>
   new Map(stages.map((stage) => [stage.label, stage.notes || stage.error]));
 
-/** `run_parallel` at k=1, from a base rollout that produced something. */
 async function runParallel(
   bench: Bench,
   task: string,
@@ -368,7 +355,6 @@ async function runParallel(
   return { record, stages, agg, final, rollouts: [base[0], ...rolled.map(([run]) => run), final], baseTree };
 }
 
-/** `Selection.to_dict`, in its field order. */
 function selectionRecord(task: string, selection: Selection): JsonObject {
   const label = selection.chosenLabel;
   return {
@@ -444,7 +430,6 @@ function lessonOf(reply: string, root: string): Experience {
   return out;
 }
 
-/** `reflect_adoption` then `_distil`: the record of the round, and the lesson one session draws from it. */
 async function reflect(
   bench: Bench,
   task: string,
@@ -499,14 +484,12 @@ function digestOf(parts: readonly (readonly [name: string, content: string | Uin
   return sha256(parts.map(([name, content]) => `${name}\0${sha256(content)}\0`).join("")).slice(0, 16);
 }
 
-/** The files `runmark` digests: a tree's own, without bytecode or Finder litter. */
 function treeParts(dir: string): [string, Uint8Array][] {
   return walkFiles(dir, ["__pycache__"])
     .filter((rel) => !rel.endsWith(".pyc") && !rel.endsWith(".DS_Store") && rel !== ".adapt_complete")
     .map((rel) => [rel, readFileSync(join(dir, rel))]);
 }
 
-/** `_run_one_mode`: the recursion, the trivial selection, the reflection and the library entry. */
 async function runMode(
   bench: Bench,
   { task, workDir }: { task: string; workDir: string },
@@ -565,7 +548,6 @@ function mergedStatus(summary: Summary): string {
 const workDirOf = (runsRoot: string, task: string): string =>
   join(runsRoot, NAMESPACE, task.replaceAll("/", "__"));
 
-/** `run_task`: base1, the recursion, the selection and the summary; the summary's status and errors. */
 async function runTask(
   bench: Bench,
   task: string,
@@ -614,7 +596,7 @@ async function runTask(
   return { status, errors: summary.errors };
 }
 
-/** `run_domain`: one profession's tasks in order, each reading only the library of those before it. */
+/** `run_domain`: each task reads only the library of those before it. */
 export async function runDomain(
   bench: Bench,
   domain: string,

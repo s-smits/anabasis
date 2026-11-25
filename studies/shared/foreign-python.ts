@@ -1,36 +1,19 @@
 /**
- * A tool tree a campaign built on one machine, made to run on another. A Builder that wants Python
- * packages copies an interpreter and installs wheels into its `.toolchain`, so a tree built on a Mac
- * holds a CPython and compiled extension modules for the Mac, and on a Linux machine its programs
- * die at the first exec or import. A promoted reference can hold a python-build-standalone CPython
- * (its executable, shared libraries of `libpython` and Tcl/Tk, and `lib-dynload` modules) and
- * hundreds of extension modules of numpy, scipy, pandas and the like, beside thousands of Python
- * files that run anywhere.
- *
- * Each program `foreignFiles` names (`foreignHead`, the rollout's own test) is put down to its owner:
- * - a file a distribution's `RECORD` lists: that distribution is installed again for this machine,
- *   the same name at the same version, without its dependencies, over its foreign files;
- * - otherwise a file inside a CPython prefix (one holding `lib/pythonX.Y/os.py`, or a virtual
- *   environment's `pyvenv.cfg`, the tree's own root included): that interpreter
- *   is replaced by the place's CPython of the same version, each executable by the one of its name
- *   and each foreign shared library dropped, and what that CPython's `lib` holds that the tree
- *   lacks (its own `libpython`, `lib-dynload` and `_sysconfigdata`) is added, its `site-packages`
- *   left out.
- * A compiled distribution in a folder that names no minor (a flat `--target`) is read by the place's
- * own `python3` where the tree carries no CPython of its minor, so where the place's minor is known
- * (`Place.python`) it is installed again for that minor, since wheels of 3.14 import only some of
- * their modules under a Linux benchmark's 3.12. Nothing else
- * changes: pure-Python distributions, the harness's own programs and its data keep their bytes. A
- * program no owner accounts for, a
- * version with no CPython for the place, a distribution with no build for it, and a compiled file
- * no reinstall puts back (a module no `RECORD` lists among an interpreter's packages, a
- * distribution's program under `bin` or outside its folder) is refused whole (`PlatformRefusal`),
- * before anything moves.
- *
- * The place is the machine that will roll the tree, which need not be the one that exports it: a
- * campaign stays on its own host, so a reference built on a Mac is exported there for the Linux
- * machine and the tree carried over. `uv` does both jobs (`uvPython`), as it pins a host's own
- * Python (`pinScript`, `tools/runs/sync.ts`); a test stands in for it through `PythonFor`.
+ * A tool tree a campaign built on one machine, made to run on another: a tree built on a Mac holds
+ * a CPython and compiled extension modules for the Mac, whose programs die at the first exec or
+ * import on Linux. Each foreign program `foreignFiles` names is put down to its owner. A file a
+ * distribution's `RECORD` lists: that distribution is installed again for this machine, same name
+ * and version, without dependencies. Otherwise a file inside a CPython prefix (one holding
+ * `lib/pythonX.Y/os.py` or a `pyvenv.cfg`, the tree's root included): that interpreter is replaced
+ * by the place's CPython of the same version, foreign shared libraries dropped and its missing
+ * `libpython`, `lib-dynload` and `_sysconfigdata` added. A compiled distribution in a flat
+ * `--target` folder is reinstalled for the place's minor (`Place.python`), since wheels of 3.14
+ * import only some of their modules under 3.12. Pure-Python distributions and the harness's own
+ * programs keep their bytes. A program no owner accounts for, a version or distribution with no
+ * build for the place, or a compiled file no reinstall puts back is refused whole
+ * (`PlatformRefusal`) before anything moves. The place is the machine that will roll the tree, not
+ * the exporter; `uv` does both jobs (`uvPython`), as it pins a host's Python (`pinScript`,
+ * `tools/runs/sync.ts`), and a test stands in for it through `PythonFor`.
  */
 import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { hostTool } from "#src/meta/host-tool.ts";
@@ -41,43 +24,33 @@ import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { pinnedPythonDir } from "#src/wall/policy.ts";
 import { AARCH64, foreignFiles, foreignPrograms, type Place } from "#src/harness/place.ts";
 
-/** What stands in, on one machine, for Python built for another. */
 export interface PythonFor {
-  /** The prefix of a CPython at `version` (`3.12.15`, or `3.12`) built for the place, or null. */
   readonly interpreter: (version: string) => string | null;
-  /** Installs `requirement` (`name==version`) for Python `python` (`3.12`) into `target`, without
-   *  its dependencies. Returns why it could not, or null once installed. */
+  /** Installs `requirement` for Python `python` into `target` without its dependencies; returns why
+   *  it could not, or null once installed. */
   readonly install: (target: string, requirement: string, python: string) => string | null;
 }
 
-/** What `rebuildForeignPython` replaced: each interpreter's prefix and version, and each
- *  distribution as `name==version`. */
 interface Rebuilt {
   readonly interpreters: readonly string[];
   readonly distributions: readonly string[];
 }
 
-/** One installed distribution, from its `.dist-info` folder. */
 interface Distribution {
-  /** The folder it is installed into, relative to the tree. */
   readonly site: string;
   readonly requirement: string;
-  /** Its Python's minor version, or null where neither its folder nor its wheel tag names one. */
   readonly python: string | null;
-  /** Whether its folder names that minor (`lib/python3.14/site-packages`), not its wheel alone. */
   readonly named: boolean;
 }
 
-/** A shared library, which no machine loads under another's suffix, so one dropped breaks nothing. */
+/** No machine loads a shared library under another's suffix, so one dropped breaks nothing. */
 const SHARED_LIBRARY = /\.(?:so(?:\.\d+)*|dylib|dll|pyd)$/u;
 
-/** A `RECORD` row's path: quoted, with doubled quotes, where it holds a comma. */
 const RECORD_PATH = /^(?:"((?:[^"]|"")*)"|([^,]*))/u;
 
-/** The refusal of a tree that would not run here, naming what stands in the way. */
 export class PlatformRefusal extends Error {}
 
-/** Makes the tool tree `tree` run on `place`, in place. Returns what it replaced, or null where
+/** Makes the tool tree `tree` run on `place`, in place; returns what it replaced, or null where
  *  nothing needed it. */
 export async function rebuildForeignPython(
   tree: string,
@@ -161,16 +134,15 @@ export async function rebuildForeignPython(
   }
 }
 
-/** Whether `path` lies in the package folders of `site`, which a reinstall writes: inside it, and
- *  not under its `bin`. `site` is `.` for a folder at the tree's root. */
+/** Whether `path` lies in the package folders of `site`, which a reinstall writes: inside it and not
+ *  under its `bin`. `site` is `.` for a folder at the tree's root. */
 function inFolder(path: string, { site }: Distribution) {
   const inside = relative(site, path);
   return !inside.startsWith("../") && !inside.startsWith("bin/");
 }
 
-/** Each folder of `tree` that distributions are installed into, relative to the tree, with the
- *  Python minors they were built for: what an export tells a solver whose own interpreter reads
- *  none of them. */
+/** The tree's package folders with the Python minors they were built for: what an export tells a
+ *  solver whose own interpreter reads none of them. */
 export async function packageFolders(tree: string) {
   const folders = new Map<string, Set<string>>();
   for (const { site, python } of new Set((await distributionsIn(tree)).values())) {
@@ -183,7 +155,6 @@ export async function packageFolders(tree: string) {
     .toSorted((a, b) => a.site.localeCompare(b.site));
 }
 
-/** Every file a `RECORD` in `tree` lists, relative to the tree, with the distribution that owns it. */
 async function distributionsIn(tree: string): Promise<Map<string, Distribution>> {
   const owners = new Map<string, Distribution>();
   for await (const record of new Bun.Glob("**/*.dist-info/RECORD").scan({ cwd: tree, dot: true })) {
@@ -211,7 +182,6 @@ async function distributionsIn(tree: string): Promise<Map<string, Distribution>>
   return owners;
 }
 
-/** The nearest folder above `path` in `tree` that is a CPython prefix, relative to the tree, or null. */
 function prefixOf(tree: string, path: string): string | null {
   // The tree's own root among them: a Builder's `python -m venv .toolchain` makes it one.
   for (let dir = dirname(path); ; dir = dirname(dir)) {
@@ -220,21 +190,18 @@ function prefixOf(tree: string, path: string): string | null {
   }
 }
 
-/** The Python version a virtual environment at `prefix` was made with (`version_info` as uv writes
- *  it, `version` as `venv` does), or null where `prefix` is none. */
+/** `version_info` as uv writes it, `version` as `venv` does. */
 function venvOf(prefix: string): string | null {
   const cfg = join(prefix, "pyvenv.cfg");
   if (!existsSync(cfg)) return null;
   return /^version(?:_info)?\s*=\s*(\d+(?:\.\d+)+)/mu.exec(readFileSync(cfg, "utf8"))?.[1] ?? null;
 }
 
-/** The `lib/pythonX.Y` folder name of a CPython prefix, or null where `prefix` is none. */
 function libraryOf(prefix: string): string | null {
   const [os] = new Bun.Glob("lib/python[0-9].*/os.py").scanSync({ cwd: prefix });
   return os === undefined ? null : basename(dirname(os));
 }
 
-/** How the foreign interpreter at `prefix` is replaced from this machine's own, or why it cannot be. */
 function interpreterFor(tree: string, prefix: string, files: readonly string[], python: PythonFor) {
   const at = join(tree, prefix);
   // A virtual environment (uv's or `venv`'s) links its interpreter to the machine it was made on;
@@ -258,8 +225,7 @@ function interpreterFor(tree: string, prefix: string, files: readonly string[], 
     };
   }
   // Each foreign file's stand-in is the host's executable of its name, or none, which only the
-  // interpreter's own shared libraries may lack: those beside its `lib` and in `lib-dynload`. One
-  // among its modules is a package, and dropping it would leave an import that fails.
+  // interpreter's own shared libraries may lack: those beside its `lib` and in `lib-dynload`.
   const modules = `${join(prefix, "lib", library)}/`;
   const own = (file: string) =>
     SHARED_LIBRARY.test(file) && (!file.startsWith(modules) || file.startsWith(`${modules}lib-dynload/`));
@@ -299,13 +265,12 @@ function refusal(place: Place, reasons: readonly string[]): PlatformRefusal {
   );
 }
 
-/** `uv` as `place`'s stand-in: a CPython and wheels built for the place's platform. */
 export function uvPython(place: Place): PythonFor {
   const uv = hostTool("uv");
   const arch = place.machine === AARCH64 ? "aarch64" : "x86_64";
   const platform = `${arch}-${place.mac ? "apple-darwin" : "unknown-linux-gnu"}`;
-  // Beside the Python a host is pinned to (`pinScript`), one folder a build. Installed by its key
-  // and taken by its folder, since `uv python find` returns no interpreter this machine cannot run.
+  // Beside the Python a host is pinned to (`pinScript`), one folder a build. Taken by its folder, since
+  // `uv python find` returns no interpreter this machine cannot run.
   const store = join(pinnedPythonDir(homedir()), "..", "versions");
   return {
     interpreter: (version) => {

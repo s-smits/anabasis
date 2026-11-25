@@ -1,4 +1,3 @@
-// The fleet boundary through executable command fakes, with a hostile case beside each behaviour.
 import { afterAll, describe, expect, it } from "bun:test";
 import { append, LOG_FILE } from "../src/kernel/log.ts";
 import {
@@ -30,7 +29,6 @@ const fixture = () => {
   fixtures.push(made.root);
   return made;
 };
-/** A remote campaign fixture, its events written by the log's owner. */
 function campaign() {
   const made = fixture();
   const folder = join(made.root, "remote", "distant");
@@ -202,8 +200,6 @@ describe.concurrent("campaign snapshots", () => {
     const archive = join(made.main, "data", "runs", "runner");
     const lock = join(archive, ".fetch-distant.lock");
     const copied = join(archive, "distant", LOG_FILE);
-    // A whole refresh killed between setting the copy aside and publishing the new one, and a record
-    // refresh after it that keeps what that copy held.
     mkdirSync(join(lock, "stage", "previous"), { recursive: true });
     writeFileSync(join(lock, "stage", "previous", "artefact.txt"), "kept");
     mkdirSync(join(lock, "stage", "campaign"), { recursive: true });
@@ -262,7 +258,6 @@ describe.concurrent("campaign snapshots", () => {
     ]);
     expect(dupRes.code).toBe(1);
     expect(escRes.code).toBe(1);
-    // A host that answers with an entry this tree cannot read refuses the read, as an unsafe path does.
     expect(misshapen.code).toBe(1);
     expect(misshapen.err).toContain("runner: invalid campaign catalogue");
     expect(silent.code).toBe(0);
@@ -290,7 +285,7 @@ describe.concurrent("campaign snapshots", () => {
         .length;
     const sealedKept = here("runner", "sealed", "own/kept.py");
     const sealedModules = here("runner", "sealed", "node_modules");
-    // Batch the five same-env syncRuns calls in one process to avoid redundant Bun cold starts.
+    // The five same-env `syncRuns` calls run in one process, to spare Bun cold starts.
     const batch = `
 import { existsSync, readFileSync } from "node:fs";
 import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";
@@ -353,9 +348,6 @@ console.log(JSON.stringify({ afterRecord, keptAfterWhole, modulesAfterWhole, rep
   });
 });
 
-/** A host kept for ablations: where a campaign its retire archived lies there, where one still in
- *  its worktree does, where a copy lies here, and a campaign with one artefact as the catalogue
- *  lists it. */
 function ablation() {
   const made = fixture();
   const there = (name: string, file = "") =>
@@ -381,7 +373,6 @@ describe.concurrent("the daily retire's host step", () => {
         listed("over", there),
         listed("resting", resting),
         listed("kept", there, { kept: true }),
-        // The log there is longer than its catalogue said, as one gone on with since would be.
         { ...ahead, bytes: ahead.bytes - 1 },
       ]),
     };
@@ -390,8 +381,6 @@ describe.concurrent("the daily retire's host step", () => {
         ...env,
         ...extra,
       });
-    // A sweep that only describes copies nothing first, so it names no take-over of a campaign it
-    // has yet to copy, and says that one with --yes can take more.
     const dry = await made.runAsync(
       'import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire([]);',
       { ...env, EVAL_RUNNER: benchOn("runner") },
@@ -400,18 +389,14 @@ describe.concurrent("the daily retire's host step", () => {
     expect(dry.out).not.toContain("over: held in");
     expect(dry.out).toContain("can take more");
     expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([true, false]);
-    // With no benchmark rolled on a peer, a sweep copies every campaign and deletes none, and a
-    // host the list does not hold is refused.
     expect((await sweep({ EVAL_RUNNER: benchOn(undefined) })).code).toBe(0);
     expect([existsSync(there("over")), existsSync(here("runner", "over", LOG_FILE))]).toEqual([true, true]);
     const unknown = await sweep({ EVAL_RUNNER: benchOn("nowhere") });
     expect([unknown.code, unknown.err.includes("no host nowhere")]).toEqual([1, true]);
 
     const taken = await sweep({ EVAL_RUNNER: benchOn("runner") });
-    // The archived campaign is this machine's own now, whole, and gone from the host.
     expect(readFileSync(here("here", "over", "memory/note.txt"), "utf8")).toBe("kept");
     expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([false, false]);
-    // One still in its worktree, one a keeper holds and one that went on stay where they are.
     for (const [name, at] of [
       ["resting", resting],
       ["kept", there],
@@ -489,7 +474,6 @@ describe.concurrent("a take-over of a campaign that installed packages", () => {
   });
 });
 
-/** `EVAL_RUNNER` naming one benchmark, rolled on `host` (this machine where undefined). */
 const benchOn = (host: string | undefined) =>
   JSON.stringify([
     {

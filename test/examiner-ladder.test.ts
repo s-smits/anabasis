@@ -1,7 +1,7 @@
 /**
  * The Examiner's difficulty ladder: one scale with lane 14's, shown to both of the Examiner's
  * modes, and drawn from no field a campaign examines, since an example from an exam in use would
- * hand its author a task shape to copy (the operator's rule).
+ * hand its author a task shape to copy.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "../src/meta/filesystem.ts";
@@ -10,7 +10,6 @@ import { FIELDS, GRADES, LADDER, REACH } from "../src/examiner/ladder.ts";
 import { systemPrompt } from "../src/examiner/prompt.ts";
 import { GAP_FLOOR } from "../src/kernel/compare.ts";
 
-/** A drafting session's system prompt. */
 const DRAFTING = drafting(
   {
     limits: { wallSeconds: 60, turns: 1, puts: 1 },
@@ -23,12 +22,8 @@ const DRAFTING = drafting(
   async (action) => await action(),
 ).system;
 
-/** The domains campaigns have examined, and the field beside each, by the words that name them:
- *  buffer formulation, business records, statistical work products, trusses, ESP32 pin maps,
- *  C memory safety and event seating, and structural frames, chemistry, circuit hardware and
- *  timetabling beside them. Seating replaced codon recoding, which left with its neighbour
- *  molecular biology, and statistics is listed so that the drafting prompt holds no word of that
- *  field. */
+/** The domains campaigns have examined, and the field beside each, by the words that name them;
+ *  statistics is listed so that the drafting prompt holds no word of that field. */
 const EXAMINED =
   /buffer|ledger|invoice|reconcil|statist|regress|cohort|survey|codebook|truss|beam|column|esp32|gpio|pin map|microcontroller|kernel|memory.safety|overflow|double.free|C11|chemi|reaction|circuit|impedance|seating|guest|timetabl|roster/i;
 

@@ -11,26 +11,22 @@ import {
 } from "../shared/statements.ts";
 
 /**
- * Flags a `const` object literal immediately followed by `if (x !== undefined) o.k = x;` (or
- * `!= null` / `!== null`) guards, folding them into the literal via `...keyIfDefined("k", x)` or
- * `...keyIfNotNull("k", x)` from `src/meta/optional-key.ts`. Auto-fixes `!== undefined` and
- * `!= null` / `!= undefined` guards; strict `!== null` guards are reported without a fix because
- * folding omits `undefined`.
+ * Flags a `const` object literal immediately followed by `if (x !== undefined) o.k = x;` (or `!=
+ * null` / `!== null`) guards, folding them into the literal via `...keyIfDefined("k", x)` or
+ * `...keyIfNotNull("k", x)` from `src/meta/optional-key.ts`. A strict `!== null` guard is reported
+ * without a fix, because folding also omits `undefined`.
  */
 const OWNER = "src/meta/optional-key.ts";
 
 type Helper = "keyIfDefined" | "keyIfNotNull";
 
-/** One folded guard: the key it wrote, the value expression as source, and the helper that omits it. */
 interface Fold {
   readonly key: string;
   readonly value: string;
   readonly helper: Helper;
-  /** A strict `!== null` guard, whose fold also omits an undefined the guard assigned. */
   readonly nullOnly: boolean;
 }
 
-/** Whether `node` only reads: a name, a member chain, `this`, or a cast over one of those. */
 function isRead(node: ESTree.Expression): boolean {
   if (node.type === "Identifier" || node.type === "ThisExpression") return true;
   if (node.type === "MemberExpression") {
@@ -43,7 +39,6 @@ function isRead(node: ESTree.Expression): boolean {
   return false;
 }
 
-/** The helper a `!== undefined` / `!= null` test names, and the side it guards; null otherwise. */
 function guardTest(
   test: ESTree.Expression,
 ): { helper: Helper; guarded: ESTree.Expression; nullOnly: boolean } | null {
@@ -93,7 +88,6 @@ export const preferKeyIfDefinedRule = defineRule({
     const reads = (name: string, source: string): boolean =>
       new RegExp(String.raw`(?<![.\w$])${name}(?![\w$])`, "u").test(withoutProse(source));
 
-    /** The fold an `if` over `name.k` is, or null when the statement is anything else. */
     function foldOf(node: ESTree.Statement, name: string): Fold | null {
       if (node.type !== "IfStatement" || node.alternate !== null) return null;
       const test = guardTest(node.test);
@@ -118,7 +112,6 @@ export const preferKeyIfDefinedRule = defineRule({
       };
     }
 
-    /** The start of `node`'s line through its newline, when the line holds nothing else. */
     function wholeLine(node: ESTree.Node): [number, number] {
       const { text } = context.sourceCode;
       const lineStart = text.lastIndexOf("\n", node.start - 1) + 1;
@@ -128,10 +121,7 @@ export const preferKeyIfDefinedRule = defineRule({
       return [start, end];
     }
 
-    /**
-     * The guards below `body[index]` that fold into its literal, with the inlined consts among
-     * them. Stops at the first statement that is neither.
-     */
+    /** Stops at the first statement that is neither a folding guard nor an inlined const. */
     function runBelow(body: readonly ESTree.Statement[], index: number, name: string) {
       const folds: Fold[] = [];
       const removed: ESTree.Statement[] = [];

@@ -18,7 +18,6 @@ export interface Detail {
   readonly model: string;
   /** The efficiency and performance cores, in that order among `perCore`, where the machine has both. */
   readonly clusters: { readonly efficiency: number; readonly performance: number } | null;
-  /** The one-, five- and fifteen-minute load averages. */
   readonly loads: readonly [number, number, number];
   /** The whole CPU over the last interval, in percent. */
   readonly cpu: { readonly user: number; readonly system: number; readonly idle: number };
@@ -26,7 +25,6 @@ export interface Detail {
   readonly perCore: readonly number[];
   /** The busiest processes, refreshed every five seconds or so, busiest first. */
   readonly top: readonly { readonly pid: number; readonly cpu: number; readonly name: string }[];
-  /** When this reading arrived, in milliseconds since the epoch. */
   readonly at: number;
 }
 

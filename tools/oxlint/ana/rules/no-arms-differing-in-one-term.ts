@@ -12,7 +12,7 @@ import { blockBody, onlyStatement } from "../shared/statements.ts";
 /** A token: an identifier/keyword, number, string/template, or single punctuation character. */
 const TOKEN = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z_$][\w$]*|\d[\w.]*|\S/gu;
 
-/** The longest arm this catcher will ask to merge. Beyond it the one expression needs wrapping. */
+/** The longest arm this rule will ask to merge; beyond it the one expression needs wrapping. */
 const ARM_LIMIT = 200;
 
 /** Minimum word tokens per arm before a single-token difference is reported. */
@@ -22,7 +22,6 @@ const ARM_WORD_FLOOR = 3;
 const DISPATCHED_AFTER = new Set([".", "new", "<"]);
 const DISPATCHES_BEFORE = new Set(["(", ".", "["]);
 
-/** A word: an identifier, a keyword, a number, a string or a template. The rest is punctuation. */
 function isWord(token: string): boolean {
   return /^[\dA-Za-z_$"'`]/u.test(token);
 }
@@ -32,7 +31,6 @@ function isName(token: string): boolean {
   return /^[\dA-Za-z_$]/u.test(token);
 }
 
-/** Whether the token at `index` is written to: `x = 1`, `x += 1`, `x++`. `x === y` is not. */
 function assignedAt(tokens: readonly string[], index: number): boolean {
   const next = tokens[index + 1] ?? "";
   const after = tokens[index + 2];
@@ -40,7 +38,6 @@ function assignedAt(tokens: readonly string[], index: number): boolean {
   return next.length === 1 && "+-*/%&|^".includes(next) && (after === "=" || after === next);
 }
 
-/** Whether the differing token names what the line does rather than what it does it to. */
 function dispatchedAt(tokens: readonly string[], index: number): boolean {
   if (DISPATCHED_AFTER.has(tokens[index - 1] ?? "")) return true;
   if (DISPATCHES_BEFORE.has(tokens[index + 1] ?? "")) return true;
@@ -71,7 +68,6 @@ export const noArmsDifferingInOneTermRule = defineRule({
     },
   },
   createOnce(context) {
-    /** The one differing token pair, or null when the arms differ anywhere else than one token. */
     function singleDifference(left: string, right: string): { left: string; right: string } | null {
       const a = left.match(TOKEN) ?? [];
       const b = right.match(TOKEN) ?? [];
@@ -87,9 +83,6 @@ export const noArmsDifferingInOneTermRule = defineRule({
       return { left: found, right: b[at] ?? "" };
     }
 
-    /**
-     * The second arm of a guard written without an `else`.
-     */
     function falling(node: ESTree.IfStatement): ESTree.Statement | null {
       const consequent = onlyStatement(node.consequent);
       if (consequent?.type !== "ReturnStatement") return null;
@@ -99,7 +92,6 @@ export const noArmsDifferingInOneTermRule = defineRule({
       return next?.type === "ReturnStatement" ? next : null;
     }
 
-    /** Report the pair when the two arms hold no comment, fit the limit and differ once. */
     function compare(node: ESTree.Node, left: ESTree.Node, right: ESTree.Node): void {
       if (context.sourceCode.getCommentsInside(left).length > 0) return;
       if (context.sourceCode.getCommentsInside(right).length > 0) return;
@@ -122,7 +114,6 @@ export const noArmsDifferingInOneTermRule = defineRule({
       },
 
       ConditionalExpression(node) {
-        // A nested ternary is the same three-arm case as an `else if` chain.
         if (
           node.consequent.type === "ConditionalExpression" ||
           node.alternate.type === "ConditionalExpression"

@@ -1,8 +1,6 @@
-// The Claude backend replayed against Claude Code streams pi-claude-bridge recorded (e870bc89, MIT:
-// tests/fixtures/sdk-streams/, copied verbatim into test/fixtures/claude-sdk-streams/). The recording
-// served its tools as `mcp__custom-tools__*`, as v1 and this backend do. Each test is its own solve,
-// whose shutdown signal ends the query it left open. The real Agent SDK runs; the binary it launches is test/fixtures/fake-claude-cli.ts, passed the way
-// the host passes the real one, which plays the stream back and records what the SDK launched it with.
+// The Claude backend replayed against Claude Code streams pi-claude-bridge recorded (MIT, verbatim in
+// `test/fixtures/claude-sdk-streams/`). The real Agent SDK launches `test/fixtures/fake-claude-cli.ts`,
+// which plays a stream back and records its launch.
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   type Api,
@@ -38,7 +36,6 @@ import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { claimed } from "../src/wall/seat-root.ts";
 
-/** What one launch of the CLI saw: its arguments, its environment and the SDK's lines to it. */
 interface Launch {
   argv: string[];
   env: JsonObject;
@@ -46,18 +43,15 @@ interface Launch {
   cwd: string;
 }
 
-/** A recorded stream of one turn that answers in text. */
 const TEXT = "text.jsonl";
 const FIXTURES = join(import.meta.dir, "fixtures", "claude-sdk-streams");
 const read = { name: "read", description: "Read a file", parameters: Type.Object({ path: Type.String() }) };
 const opening: Message = { role: "user", content: "Read the three files.", timestamp: 0 };
 const home = mkdtempSync(join(tmpdir(), "ana-claude-backend-"));
-// The binary the SDK launches: a launcher that runs the fake under this Bun, since the `bun` on PATH may
-// be a shim that looks under HOME, which here is the solve's own.
+// Runs the fake under this Bun: the `bun` on PATH may be a shim that looks under HOME, the solve's own.
 const executable = join(home, "claude");
 const fake = join(import.meta.dir, "fixtures", "fake-claude-cli.ts");
 writeFileSync(executable, `#!/bin/sh\nexec '${runtimeProcess.execPath}' '${fake}' "$@"\n`, { mode: 0o755 });
-/** One model's line of a result's `modelUsage`, every count zero, as Claude Code writes it. */
 const USAGE = {
   inputTokens: 0,
   outputTokens: 0,
@@ -71,7 +65,6 @@ const USAGE = {
 };
 let shutdown = new AbortController();
 let sweep = claudeProvider({ executable, compaction: { window: SWEEP_COMPACT_WINDOW }, home });
-// The model the fixtures were recorded on, so its list prices are the ones Claude Code billed.
 const haiku = sweep.getModels().find((entry) => entry.id === "claude-haiku-4-5");
 if (haiku === undefined) throw new Error("pi's Anthropic catalog has no claude-haiku-4-5");
 const recorded: Model<Api> = haiku;
@@ -95,7 +88,6 @@ afterEach(() => {
   shutdown.abort();
 });
 
-/** The options of one turn of this test's solve. */
 function solveOptions() {
   return { sessionId: `solve-${String(solves)}`, apiKey: "token", signal: solve.signal };
 }
@@ -104,7 +96,6 @@ afterAll(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-/** A recording whose closing `result` reports `total` dollars and `modelUsage`. */
 function resulting(text: string, total: number, modelUsage: JsonObject): string {
   const lines = text.trim().split("\n");
   const result = asRecord(capturedJsonParse(lines.pop() ?? ""));
@@ -117,8 +108,7 @@ function replay(name: string, edit: (text: string) => string = (text) => text): 
   writeFileSync(join(home, "replay.jsonl"), edit(text));
 }
 
-/** The one launch since the test began: the last to start, since the launch of the test before may
- *  still be writing what its close sent it. */
+/** The last launch to start: the test before's launch may still be writing what its close sent. */
 function launched(): Launch {
   const launch: Launch = { argv: [], env: {}, stdin: [], cwd: "" };
   const entries = readFileSync(join(home, "launch.jsonl"), "utf8")
@@ -137,7 +127,6 @@ function launched(): Launch {
   return launch;
 }
 
-/** A flag's value, given as `--name value` or, as the SDK has spelled it since 0.3.306, `--name=value`. */
 function flag(launch: Launch, name: string): string | undefined {
   const at = launch.argv.indexOf(name);
   if (at !== -1) return launch.argv[at + 1];
@@ -153,31 +142,26 @@ function turn(messages: Message[], reasoning?: ThinkingLevel): Promise<Assistant
     .result();
 }
 
-/** A solver's context over `messages`, with the one tool the recordings call. */
 function solverContext(messages: Message[]) {
   return normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
 }
 
-/** How many times this test launched Claude Code. */
 function launches(): number {
   return readFileSync(join(home, "launch.jsonl"), "utf8")
     .split("\n")
     .filter((line) => line.includes('"argv"')).length;
 }
 
-/** The fake's answer to the next usage request: the query has served `input` tokens for `dollars`. */
 function usageAnswer(input: number, dollars: number): void {
   const used = { ...USAGE, inputTokens: input, costUSD: dollars, canonicalModel: "claude-haiku-4-5" };
   const session = { total_cost_usd: dollars, model_usage: { "claude-haiku-4-5-20251001": used } };
   writeFileSync(join(home, "usage.jsonl"), `${JSON.stringify({ session })}\n`);
 }
 
-/** Whether Claude Code was sent an interrupt. */
 function interrupted(): boolean {
   return launched().stdin.some((sent) => asRecord(sent.request)?.subtype === "interrupt");
 }
 
-/** The tool results pi sends back for every call in `message`. */
 function answered(message: AssistantMessage): Message[] {
   return message.content
     .filter((block) => block.type === "toolCall")
@@ -215,19 +199,14 @@ describe("the Claude backend", () => {
     const launch = launched();
     expect(flag(launch, "--model")).toBe("claude-haiku-4-5");
     expect(flag(launch, "--effort")).toBe("high");
-    // v1's options (provider.ts:384-450 at 7af7315): WebSearch beside the pi tools, permissions
-    // bypassed, thinking summarized under an effort.
     expect(flag(launch, "--tools")).toBe("WebSearch");
     expect(flag(launch, "--allowedTools")).toBeUndefined();
     expect(flag(launch, "--permission-mode")).toBe("bypassPermissions");
     expect(launch.argv).toContain("--allow-dangerously-skip-permissions");
     expect(flag(launch, "--thinking-display")).toBe("summarized");
-    // Claude Code writes its cwd and git state into its prompt; its home is outside any repository.
     expect(realpathSync.native(launch.cwd)).toBe(realpathSync.native(home));
     expect(launch.argv).toContain("--strict-mcp-config");
     expect(launch.argv).toContain("--setting-sources=");
-    // The session's prompt is the whole prompt: Claude Code's own, which the sweep's solver read
-    // first, describes tools no session here has.
     const init = asRecord(
       launch.stdin.find((line) => asRecord(line.request)?.subtype === "initialize")?.request,
     );
@@ -245,8 +224,6 @@ describe("the Claude backend", () => {
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
-  // An Examiner and a reviewer run on the host's tools alone; a solver and a Builder keep the CLI's
-  // search beside them.
   it("sends a session no built-in tool when the options say so", async () => {
     const context = normalizeContext({
       systemPrompt: "You are the Examiner.",
@@ -280,9 +257,7 @@ describe("the Claude backend", () => {
     }
   });
 
-  // Which account spends is the operator's to name. An API key is a provider of its own, so the
-  // name is on the command line and in every condition, and a key in the host's environment never
-  // reaches a solve asked of the login.
+  // An API key is its own provider, so a host key never reaches a solve asked of the login.
   it("hands Claude Code the one credential of the account its provider names", async () => {
     const onKey = claudeProvider(
       { executable, compaction: { window: 300_000 }, home, shutdown: shutdown.signal },
@@ -298,7 +273,6 @@ describe("the Claude backend", () => {
     const { env } = launched();
     expect(env.ANTHROPIC_API_KEY).toBe("key");
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
-    // The rest of the CLI's environment is the login's: its own configuration, its compaction.
     expect(env.CLAUDE_CONFIG_DIR).toBe(join(home, "claude-config"));
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("300000");
     expect(() => claudeProvider({ executable, compaction: "off", home }, "claude-max")).toThrow("claude-max");
@@ -350,7 +324,6 @@ describe("the Claude backend", () => {
   });
 
   it("interrupts an active request and takes a later prompt in the same query", async () => {
-    // Hold the result until an interrupt, so cancellation happens while the request is reading.
     const script = join(home, "interrupt-cli.ts");
     writeFileSync(
       script,
@@ -400,8 +373,6 @@ describe("the Claude backend", () => {
     expect(launches()).toBe(1);
   });
 
-  // Claude Code's `result` carries `modelUsage`, the whole query's tokens by the model that served
-  // them, its own compactions and its calls on other models included, which no turn shows.
   it("reads a query's ledger by served model from its last result, side calls and hour-long writes included", async () => {
     replay(TEXT, (text) =>
       resulting(text, 0.75, {
@@ -446,9 +417,6 @@ describe("the Claude backend", () => {
     expect(await claudeLedger(options.sessionId)).toBeNull();
   });
 
-  // A session that ends on its own call, `finish` or `submit`, leaves the query's `result` to come
-  // after its last turn, so most billed dollars would have no figure of Claude Code's beside them
-  // if the result were read from the turns alone.
   it("takes the ledger from the result the close brings after a session's last call, and none for a session no query served", async () => {
     replay("parallel-tools.jsonl");
     const options = solveOptions();
@@ -469,7 +437,6 @@ describe("the Claude backend", () => {
     expect(await claudeLedger("solve-elsewhere")).toBeNull();
   });
 
-  // A result read before a later turn holds none of that turn, so it is no ledger of the session.
   it("drops a result once a later turn begins, and takes the next one", async () => {
     replay(TEXT, (text) =>
       resulting(text, 0.1, { "claude-haiku-4-5": { ...USAGE, inputTokens: 1, costUSD: 0.1 } }),
@@ -485,8 +452,6 @@ describe("the Claude backend", () => {
     expect((await claudeLedger(options.sessionId))?.reported).toBe(0.3);
   });
 
-  // Claude Code's compactions, retries and side calls show in no turn, and a conversation's `result`
-  // comes only at its end; its usage count is the same ledger, read while the query lives.
   it("reads a live query's spend so far from Claude Code's own count", async () => {
     usageAnswer(41_000, 0.75);
     await turn([opening]);
@@ -520,11 +485,8 @@ describe("the Claude backend", () => {
     expect(await claudeSpendNow(solveOptions().sessionId)).toBeNull();
   });
 
-  // The seat's meter prices Claude Code's ledger at the host's list price, so an Examiner's ask
-  // closed at a rest bills what its turns alone do not show.
   it("hands a seat what its session has spent so far, priced from the backend's own count", async () => {
     usageAnswer(41_000, 0.75);
-    // A stand-in login, read where `claudeProvider` reads its token, so the fake CLI is reached.
     const models = createModels({
       authContext: {
         env: async (name) => (name === "CLAUDE_CODE_OAUTH_TOKEN" ? "token" : undefined),
@@ -556,8 +518,6 @@ describe("the Claude backend", () => {
     expect(soFar?.billed).toBeCloseTo((recorded.cost.input * 41_000) / 1_000_000, 10);
   });
 
-  /** One session, on the fake, of a seat with no home of its own, where Claude Code may `outlive` its
-   *  close: the home the host made for it, and whether a live process claimed it while it sat. */
   async function seated(outlive: boolean): Promise<{ made: string; held: boolean }> {
     let made = "";
     let held = false;
@@ -600,8 +560,6 @@ describe("the Claude backend", () => {
   }
   const there = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined;
 
-  // A reviewer's or the Examiner's Claude Code keeps what it read in a home of the host's scratch.
-  // Nothing said whose such a home was, so one a killed campaign left stood for good.
   it("claims the home it makes for a seat that has none, and lets it go with the claim once the seat has sat", async () => {
     const { made, held } = await seated(false);
     expect(made).not.toBe("");
@@ -609,22 +567,19 @@ describe("the Claude backend", () => {
     expect([made, `${made}.owner`].map(there)).toEqual([false, false]);
   });
 
-  // Claude Code lives on for up to three seconds after its query closes and writes its state as it
-  // goes. The home goes only after the ledger is read, or what Claude Code wrote after would stand
-  // and homes would pile up on a host. Linux ends no process by the folder it works in.
+  // Claude Code lives on up to three seconds after its query closes, so the home goes after the ledger
+  // is read. Linux ends no process by its folder.
   it.skipIf(runtimeProcess.platform !== "darwin")(
     "leaves nothing of a Claude Code that outlives its close and writes into its home on the way out",
     async () => {
       const { made } = await seated(true);
-      // Longer than the fake writes on after its input closes.
       await Bun.sleep(1500);
       expect(there(made)).toBe(false);
     },
     20_000,
   );
 
-  // An abort listener never fires for a signal that has already aborted, so a turn asked under one
-  // launched Claude Code and ran its query to the end.
+  // An abort listener never fires for a signal that has already aborted.
   it("starts no query for a turn whose signal has already aborted", async () => {
     replay(TEXT);
     solve.abort();
@@ -633,8 +588,7 @@ describe("the Claude backend", () => {
     expect(launches()).toBe(0);
   });
 
-  // A Builder's Claude Code can send nothing after its tool results for hours, and only the
-  // session's wall, which stops while host actions run, would end the turn.
+  // A Builder's Claude Code can be silent for hours, and the session's wall stops during host actions.
   it("fails a turn whose Claude Code falls silent for the quiet bound, and closes its query", async () => {
     replay(TEXT, (text) => `${text.trim().split("\n").slice(0, -1).join("\n")}\n`);
     sweep = claudeProvider({ executable, compaction: "off", home, shutdown: shutdown.signal, quiet: 300 });

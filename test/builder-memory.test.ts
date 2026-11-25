@@ -17,7 +17,6 @@ import { join } from "../src/meta/path.ts";
 
 const scratch = (name: string) => mkdtempSync(join(tmpdir(), `ana-builder-memory-${name}-`));
 
-/** A campaign's store, and a session of it that writes `notes` to its home and ends. */
 function campaign() {
   const root = join(scratch("campaign"), "memory");
   const end = (session: string, notes: string) => {
@@ -37,7 +36,6 @@ describe("the notes a campaign keeps", () => {
     expect(block).toStartWith("Historical notes, model-authored and possibly stale");
     expect(block.indexOf("--- b-2 ---\nthe verifier rejects bare floats")).toBeGreaterThan(0);
     expect(block.indexOf("--- b-2 ---")).toBeLessThan(block.indexOf("--- b-1 ---\nunits are kN"));
-    // A first session opens on no block at all, as it would without memory.
     expect(builderMemoryBlock(root, [])).toBe("");
   });
 
@@ -49,8 +47,8 @@ describe("the notes a campaign keeps", () => {
     expect(builderMemoryBlock(one.root, ["b-1"])).toContain("one: units are kN");
     expect(builderMemoryBlock(one.root, ["b-1"])).not.toContain("other:");
     expect(builderMemoryBlock(other.root, ["b-1"])).not.toContain("one:");
-    // Within a store, only the sessions the campaign's log started before this one are read: a
-    // folder no listed session names, such as one a later or foreign session left, is not.
+    // Only the sessions the campaign's log started before this one are read: a folder no listed session
+    // names, such as a later or foreign session's, is not.
     one.end("b-9", "not of this opening\n");
     expect(builderMemoryBlock(one.root, ["b-1"])).not.toContain("not of this opening");
   });
@@ -64,7 +62,6 @@ describe("the notes a campaign keeps", () => {
     expect(block).toContain("b-6 begins");
     expect(block).not.toContain("b-1 begins");
     expect(block).not.toContain("characters cut here");
-    // One note longer than the limit is kept and shown by its head and tail, inside the limit.
     end("b-7", `the first line\n${"x".repeat(3 * CONTEXT_OUTPUT_LIMIT)}\nthe newest line\n`);
     const kept = readFileSync(join(root, "b-7", MEMORY_FILE), "utf8");
     expect(kept.length).toBeLessThanOrEqual(CONTEXT_OUTPUT_LIMIT + 1);
@@ -82,7 +79,6 @@ describe("the notes a campaign keeps", () => {
     end("b-1", note);
     const block = builderMemoryBlock(root, ["b-1"]);
     expect(block.length).toBeLessThanOrEqual(CONTEXT_OUTPUT_LIMIT);
-    // The block shows the note as it was kept, so the read cut nothing more.
     expect(block).toEndWith(`--- b-1 ---\n${readFileSync(join(root, "b-1", MEMORY_FILE), "utf8").trim()}`);
     const counts = [...block.matchAll(/\n\[(\d+) characters cut here\]\n/g)].map(([, count]) =>
       Number(count),

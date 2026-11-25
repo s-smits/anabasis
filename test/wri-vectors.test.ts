@@ -1,6 +1,6 @@
 // The vector store under the embedding readers: what a cut leaves, what a read says when it cannot go
-// on, that it keeps no prose, and that neither the vectors nor their dependency can reach a seat. The
-// embedder is always injected: no test here loads a model or needs the network.
+// on, that it keeps no prose, and that neither vectors nor their dependency reach a seat. The embedder
+// is always injected, so no test loads a model.
 import { afterAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
@@ -49,7 +49,6 @@ const event = (kind: string, data: Readonly<Record<string, JsonValue>>) =>
 const wordsOf = (count: number) =>
   Array.from({ length: count }, (_, turn) => `words of turn ${String(turn)} ${CANARY}`);
 
-/** A log of one Builder session with these words, one turn each. */
 function logOf(words: readonly string[]): string {
   const folder = join(scratch(), ".ana", "d2", "the-run");
   mkdirSync(folder, { recursive: true });
@@ -147,7 +146,7 @@ describe("what a cut leaves", () => {
         "2",
       ],
     };
-    // Long enough for a loaded host to reach the hang: the helper hangs, so the whole budget is spent.
+    // Long enough for a loaded host to reach the hang, which spends the whole budget.
     const budgetMs = 8000;
     await passOver(store, [log], { budgetMs, roomNow: () => true, readers: [slow] });
     const cut = resultOf(store, log, "slow");
@@ -212,7 +211,6 @@ describe("that no seat reads it", () => {
   it("is imported by nothing in production, and neither is its dependency", () => {
     const tracked = lines(gitText(REPO, "ls-files", "src", "vendor", "packages", "tools"));
     expect(breaches(tracked, (file) => importsOf(REPO, file))).toEqual([]);
-    // The nearest hostile case: an import of this reader from a seat's file would be named.
     expect(breaches(["src/builder/session.ts"], () => ["tools/wri/embed.ts"])).toHaveLength(1);
     const naming = tracked.filter(
       (file) =>

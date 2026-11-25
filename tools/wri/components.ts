@@ -1,11 +1,8 @@
 /**
- * Component-level WRI readers and triggers for lanes 20 to 23:
- * - Lane 20 (`draft-audit.txt`): Adversarial Draft Auditor passes, findings, cost/turns, and unverified freezes.
- * - Lane 21 (`grounding.txt`): Verifier tool provenance (`host-tools.json`, staged bins) and verifier faults.
- * - Lane 22 (`wall-audit.txt`): Runtime cross-seat wall boundary signals and `solve.finished.network` parity.
- * - Lane 23 (`seats.txt`): Unified per-role ledger, anomalies, auxiliary spend share, and pause overshoots.
- *
- * Wall-safe: prints only event kinds, counts, enums, session ids, 8-char digests, dollars, and ratios.
+ * Component readers and their triggers: `draft-audit.txt` (the Adversarial Draft Auditor, lane 18),
+ * `grounding.txt` (verifier tool provenance and faults, lane 4), `wall-audit.txt` (cross-seat wall
+ * signals and network parity, lane 9) and `seats.txt` (the per-role ledger and pause overshoots).
+ * They print only event kinds, counts, enums, session ids, 8-character digests, dollars and ratios.
  */
 import { starterIn } from "#src/campaign/climb.ts";
 import { PAUSE, pauseKindsOf, pausePointReached } from "#src/campaign/word.ts";
@@ -123,7 +120,6 @@ function draftAuditSummary(events: readonly LogEvent[]) {
   return { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified };
 }
 
-/** Lane 20 derived reader (`draft-audit.txt`). */
 export function draftAuditRows(events: readonly LogEvent[]): string[] {
   const { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified } =
     draftAuditSummary(events);
@@ -187,7 +183,6 @@ function groundingStats(events: readonly LogEvent[]) {
   };
 }
 
-/** Lane 21 derived reader (`grounding.txt`). */
 export function groundingRows(events: readonly LogEvent[], examsDir?: string): string[] {
   const stats = groundingStats(events);
   const staged = stagedToolchainSummary(events, examsDir);
@@ -296,7 +291,6 @@ function wallScanOf(events: readonly LogEvent[]) {
   };
 }
 
-/** Lane 22 derived reader (`wall-audit.txt`). */
 export function wallAuditRows(events: readonly LogEvent[]): string[] {
   const scan = wallScanOf(events);
   const unobserved = Object.keys(scan.networkCounts).length === 1 && scan.networkCounts.absent !== undefined;
@@ -416,7 +410,6 @@ function seatLedger(events: readonly LogEvent[], traces: readonly Traced[] = tra
   };
 }
 
-/** Lane 23 derived reader (`seats.txt`). */
 export function seatSummaryRows(events: readonly LogEvent[]): string[] {
   const ledger = seatLedger(events);
   const pct = (part: number) => (ledger.totalBilled > 0 ? percent(part / ledger.totalBilled) : "0.0%");
@@ -429,7 +422,7 @@ export function seatSummaryRows(events: readonly LogEvent[]): string[] {
   ];
 }
 
-/** Triggers for lanes 20 to 23, called from `overview` (`tools/wri/read.ts`). */
+/** The component readers' triggers, called from `overview` (`tools/wri/read.ts`). */
 export function componentTriggers(log: Index): Trigger[] {
   const audit = draftAuditSummary(log.events);
   const defects = audit.passes.filter(({ verdict }) => verdict === "defects");

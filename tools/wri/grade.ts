@@ -46,21 +46,17 @@ interface GradeOptions {
   readonly answers: string | undefined;
 }
 
-/** Where an answer to grade came from, and what it was. */
 interface Graded {
   readonly task: string;
   readonly answer: JsonValue;
   readonly files?: readonly AnswerFile[];
-  /** The file and its digest, for an answer of a folder. */
   readonly label: string | null;
-  /** The verdict the log holds of it, for an answer read from a solve. */
   readonly recorded: string | null;
   readonly repeat: readonly string[];
 }
 
 const quoted = (word: string) => `'${word.replaceAll("'", String.raw`'\''`)}'`;
 
-/** The JSON type of a value, as `--set` holds a replacement to it. */
 const typeOf = (value: JsonValue | undefined): string => {
   if (value === null || value === undefined) return String(value);
   if (Array.isArray(value)) return "array";
@@ -69,18 +65,13 @@ const typeOf = (value: JsonValue | undefined): string => {
   return isNumber(value) ? "number" : "boolean";
 };
 
-/** A value as a change prints it, cut at 80 characters with its length: a replaced field can be a
- *  recorded answer's whole text, and a lane's report is read outside the exam side. */
+/** Cut at 80 characters: a replaced field can be a recorded answer's whole text, and a lane's
+ *  report is read outside the exam side. */
 const clipped = (value: JsonValue | undefined) => {
   const said = String(capturedJsonStringify(value));
   return said.length > 80 ? `${said.slice(0, 80)}... (${String(said.length)} characters)` : said;
 };
 
-/**
- * `answer` with each `<path>=<json>` replaced, and one line a change; it throws where a path does
- * not resolve in the answer or a value would change the field's JSON type. A scalar answer's root
- * `$` can be replaced; an object or array root cannot, as a Referee's probe cannot.
- */
 function withSet(answer: JsonValue, sets: readonly string[]): { answer: JsonValue; said: string[] } {
   let changed = answer;
   const said = sets.map((each) => {
@@ -107,14 +98,12 @@ function withSet(answer: JsonValue, sets: readonly string[]): { answer: JsonValu
         `--set ${each}: ${path} holds a ${typeOf(held.value)} and the value is a ${typeOf(value)}`,
       );
     }
-    // The Referee's own replacement, so a lane's change and a probe's are one operation.
     changed = withReplacedField(changed, path, value);
     return `set ${path}: ${clipped(held.value)} -> ${clipped(value)}`;
   });
   return { answer: changed, said };
 }
 
-/** The answers to grade: one recorded or given, or every file of a folder. */
 function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Graded[] {
   const base = ["bun", WRI, "grade", "--log", quoted(options.log)];
   if (options.answers !== undefined) {
@@ -181,12 +170,10 @@ export async function grade(options: GradeOptions): Promise<number> {
   if (options.answers !== undefined && options.set.length > 0) {
     throw new Error("--set changes one answer, not a folder");
   }
-  // The tasks an Examiner wrote are in the log and in no pack.
   const events = read(log);
   const tasks = new Map<string, Task>(
     [...writtenTasks(events), ...readPack(bundle).tasks].map((task) => [task.taskId, task]),
   );
-  // The format first, as the host holds a solver's answer to it before any check reads it (`judge`).
   const answerFormat = draftOf(events)?.answerFormat;
   // The bundle holds the battery (`tasks.json`, `controls.json`). A log read where it lies outside
   // the repository has a bundle the repository's denial does not cover, so it is denied by path.
@@ -211,7 +198,6 @@ export async function grade(options: GradeOptions): Promise<number> {
     const { answer: changed, said } = withSet(answer, options.set);
     for (const line of said) console.log(line);
     const now = await judged(task, answer, files);
-    // A plain grade prints its verdict alone; a regrade beside the recorded one; a change after both.
     const plain = recorded === null && said.length === 0 ? [now] : [];
     const lines = [
       ...plain,

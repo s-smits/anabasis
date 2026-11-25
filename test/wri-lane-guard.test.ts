@@ -21,7 +21,6 @@ describe("the lane guard", () => {
     ).toBeNull();
     expect(refusalOf("Write", { file_path: `${WRI}/lanes/07-prompt.md` })).not.toBeNull();
     expect(refusalOf("Write", { file_path: `${WRI}/vetting.md` })).not.toBeNull();
-    // The across session writes the investigation's cross-domain note, and only at its root.
     expect(refusalOf("Write", { file_path: `${WRI}/cross-domain.md` })).toBeNull();
     expect(refusalOf("Write", { file_path: `${WRI}/lanes/cross-domain.md` })).not.toBeNull();
     expect(refusalOf("Write", { file_path: `${WRI}/plan.md` })).not.toBeNull();
@@ -102,7 +101,6 @@ describe("the lane guard", () => {
     expect(bash("cat .env")).toBe("an env file");
     expect(bash("grep TOKEN <.env")).toBe("an env file");
     expect(bash("cat .env.runs.example")).toBeNull();
-    // Every other `.env*` is closed too: a local override, a glob and direnv's file.
     expect(refusalOf("Read", { file_path: "/Users/x/anabasis/.env.example" })).toBeNull();
     expect(refusalOf("Read", { file_path: "/Users/x/anabasis/.env.local" })).toBe("an env file");
     expect(bash("cat .env.example")).toBeNull();
@@ -137,7 +135,6 @@ describe("the lane guard", () => {
   });
 
   it("runs no interpreter on a campaign's path or a program kept in one, and Python with bytecode off", () => {
-    // The nearest allowed cases: a campaign's file piped or redirected in, a reader given its path.
     for (const ok of [
       `cat /a/.ana/d2/r/log.jsonl | python3 -B -c "import sys; print(sum(1 for _ in sys.stdin))"`,
       "python3 -B /tmp/lane/count.py < /a/.ana/d2/r/log.jsonl",

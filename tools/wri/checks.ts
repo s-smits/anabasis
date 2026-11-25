@@ -76,7 +76,6 @@ function controlsLine(reading: JsonObject | undefined): string {
   return `controls read: ${controls}; the do-nothing answer: ${met}`;
 }
 
-/** One row a check, then the verdicts under the rows' program by who asked for them. */
 export function checkRows(events: readonly LogEvent[], disk: OnDisk): string[] {
   const log = indexOf(events);
   const frozen = frozenChecker(events)?.checks;

@@ -1,26 +1,23 @@
 /**
  * What a launch of Codex sessions records, and how its reports are read back: the launch record,
  * one result a session, `reports.md`, the summary, and the drain. A session's outcome is decided
- * here once, from its last attempt, and every reader takes that decision. `gpt-sessions.ts` runs
- * the sessions and hands each one's last attempt here.
- *
- * Two faults decide what is kept. Lanes ended by SIGTERM read as rate limited from what their
- * commands printed, so only what Codex itself said counts towards a failure's kind. A batch's
- * lanes sit unread where nothing drains them, so every settled report is appended to `reports.md`
- * as it settles and the drain prints what that file gained since it last ran.
+ * here once, from the last attempt `gpt-sessions.ts` hands over. Lanes ended by SIGTERM read as
+ * rate limited from what their commands printed, so only what Codex itself said counts towards a
+ * failure's kind; each settled report is appended to `reports.md` as it settles, and the drain
+ * prints what that file gained since it last ran.
  */
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 
-/** One session as `launch.json` records it. The prompt's bytes sit beside it in `<name>.prompt.md`. */
+/** One session as `launch.json` records it; its prompt's bytes sit beside it in `<name>.prompt.md`.
+ */
 export interface SessionRecord {
   name: string;
   workdir: string;
   sandbox: string;
   ownedPaths: string[];
-  /** Absent in an older launch. */
   effort?: string | null;
   promptSha256: string;
 }
@@ -31,7 +28,6 @@ export interface LaunchRecord {
   model: string;
   reasoningEffort: string;
   serviceTier: string;
-  /** Whether Codex runs with live web search (`--search`); a manifest turns it off with `"search": false`. */
   search: boolean;
   runtime: { bunVersion: string; bunExecutable: string };
   maxActive: number;
@@ -42,8 +38,8 @@ export interface LaunchRecord {
   sessions: SessionRecord[];
 }
 
-/** How one attempt ended, as the launcher saw the process, and where its own output begins: every
- *  attempt of a session appends to the same event log and stderr. */
+/** How one attempt ended, and where its own output begins: every attempt of a session appends to
+ *  the same event log and stderr. */
 export interface AttemptEnd {
   exitCode: number | null;
   signal: string | null;
@@ -51,8 +47,8 @@ export interface AttemptEnd {
   from: { events: number; stderr: number };
 }
 
-/** One settled session, as `<name>.result.json` records it. The failure kind says why a failed
- *  session failed where the launcher can tell: Codex never started, or Codex said it was limited. */
+/** The failure kind says why where the launcher can tell: Codex never started, or Codex said it was
+ *  limited. */
 export interface SessionResult {
   name: string;
   status: "completed" | "failed";
@@ -70,7 +66,6 @@ export interface SessionResult {
   stderrPath: string;
 }
 
-/** The summary written once every session of a launch, or of a retry, has settled. */
 type Summary = Omit<LaunchRecord, "sessions" | "type"> & {
   type: typeof SUMMARY_TYPE;
   finishedAt: string;
@@ -78,7 +73,6 @@ type Summary = Omit<LaunchRecord, "sessions" | "type"> & {
   sessions: SessionResult[];
 };
 
-/** How far `reports.md` has been drained, as `.drained.json` records it. */
 interface Drained {
   bytes: number;
   updatedAt: string;
@@ -90,11 +84,9 @@ export const LAUNCH_TYPE = "gpt_sessions.launch";
 export const SUMMARY_TYPE = "gpt_sessions.completed";
 export const SUMMARY_FILE = "summary.json";
 const LAUNCH_FILE = "launch.json";
-/** The first event of a Codex thread, which names it: `{"type":"thread.started","thread_id":…}`. */
 const THREAD_STARTED = /^\{"type":"thread\.started","thread_id":"([\w-]{8,128})"/m;
 const RATE_LIMIT = /(?:\b429\b|too many requests|(?:rate|usage).?limit)/i;
 
-/** Where a session's prompt, event log, stderr, report and result live. */
 export function sessionPaths(outputDir: string, name: string) {
   return {
     promptPath: join(outputDir, `${name}.prompt.md`),
@@ -113,7 +105,7 @@ function textOf(path: string, from = 0): string {
   return new TextDecoder().decode(bytesOf(path).subarray(from));
 }
 
-/** Write a file whole, so a reader that opens it mid-launch sees the old bytes or the new. */
+/** Writes a file whole, so a reader that opens it mid-launch sees the old bytes or the new. */
 export function writeWhole(path: string, text: string): void {
   writeFileSync(`${path}.tmp`, text, { mode: 0o600 });
   renameSync(`${path}.tmp`, path);
@@ -141,12 +133,11 @@ export function readResult(outputDir: string, name: string): SessionResult | nul
   return existsSync(path) ? parseJsonAs<SessionResult>(readFileSync(path, "utf8")) : null;
 }
 
-/** The thread Codex named in this session's event log, which `codex exec resume` continues. */
 export function threadIdOf(eventPath: string): string | null {
   return THREAD_STARTED.exec(textOf(eventPath))?.[1] ?? null;
 }
 
-/** Text safe to print into a terminal: escape sequences, control characters and the bidirectional
+/** Text safe to print into a terminal: escape sequences, control characters and bidirectional
  *  overrides that make a line read differently from its bytes are dropped. */
 function printable(text: string): string {
   const shown = (char: string): boolean => {
@@ -164,9 +155,9 @@ function printable(text: string): string {
     .join("");
 }
 
-/** Why a failed attempt failed, where the launcher can tell: Codex never started, or Codex said in
- *  this attempt, on stderr or in its own `error` and `turn.failed` events, that it was rate limited.
- *  What a command printed is what the session read, not what Codex said. */
+/** Why a failed attempt failed, where the launcher can tell: Codex never started, or said on stderr or
+ *  in its own `error` and `turn.failed` events that it was rate limited. What a command printed is
+ *  what the session read, not what Codex said. */
 function failureKindOf(paths: SessionPaths, end: AttemptEnd): SessionResult["failureKind"] {
   if (end.spawnError !== null) return "spawn";
   const events = textOf(paths.eventPath, end.from.events)
@@ -187,8 +178,8 @@ function errorOf(
   return null;
 }
 
-/** The session's outcome from its last attempt: completed when Codex exited 0 and that attempt wrote
- *  the report, and otherwise failed, for the reason the failure kind names where it has one. */
+/** The session's outcome from its last attempt: completed when Codex exited 0 and that attempt
+ *  wrote the report, and otherwise failed. */
 export function settle(
   name: string,
   outputDir: string,
@@ -243,14 +234,13 @@ function reportSection(result: SessionResult): string {
   ].join("\n");
 }
 
-/** Record a settled session: its section is appended to `reports.md` first, so a reader that sees
- *  `<name>.result.json` also finds the report there, and a retried session gains a second one. */
+/** The section is appended to `reports.md` first, so a reader that sees `<name>.result.json` also
+ *  finds the report there; a retried session gains a second one. */
 export function recordResult(outputDir: string, result: SessionResult): void {
   appendFileSync(reportsPathOf(outputDir), reportSection(result), { mode: 0o600 });
   writeRecord(sessionPaths(outputDir, result.name).resultPath, result);
 }
 
-/** Every session's result in launch order, written as `summary.json` beside `reports.md`. */
 export function writeSummary(launch: LaunchRecord): Summary {
   const sessions = launch.sessions.map(({ name }) => {
     const result = readResult(launch.outputDir, name);
@@ -268,7 +258,6 @@ export function writeSummary(launch: LaunchRecord): Summary {
   return summary;
 }
 
-/** Print what `reports.md` gained since the last drain, and remember how far it has been read. */
 export async function drain(outputDir: string): Promise<void> {
   readLaunch(outputDir);
   const drainedPath = join(outputDir, ".drained.json");

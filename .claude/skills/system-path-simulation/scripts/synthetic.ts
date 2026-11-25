@@ -1,12 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Synthetic logs: build a campaign's events in memory, hand them to any reader of a tree, and print
- * what the reader makes of them. No model runs and nothing is written. It answers "does this reader
- * turn this pattern into the step I expect", for a pattern no recorded run happens to hold.
- *
- *   bun .claude/skills/system-path-simulation/scripts/synthetic.ts --list
- *   bun .claude/skills/system-path-simulation/scripts/synthetic.ts pool [--tree <worktree>]
- *   bun .claude/skills/system-path-simulation/scripts/synthetic.ts <scenario.ts> [--tree <worktree>]
+ * Synthetic logs: builds a campaign's events in memory, hands them to any reader of a tree, and
+ * prints what the reader makes of them, for a pattern no recorded run happens to hold. No model
+ * runs and nothing is written: `synthetic.ts --list`, `pool [--tree <worktree>]`, or `<scenario.ts>
+ * [--tree <worktree>]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import type { Plan } from "#src/campaign/ground.ts";
@@ -24,8 +21,6 @@ Runs one scenario over a log built in memory and prints what the tree's readers 
 example is named from this file; a scenario file default-exports (kit) => void.`;
 const OPTIONS = { tree: "abs", list: "flag" } as const;
 
-/** The kind of fail each solve letter but `P` stands for: a rejection ruled earned, a solve the
- *  deadline cut, and one that gave no answer. */
 const FAILS = { F: "rejected", W: "wall-ended", N: "no-answer" } as const;
 
 interface Readers {
@@ -38,7 +33,6 @@ interface Readers {
   readonly comparison: typeof import("#src/campaign/comparison.ts");
 }
 
-/** A task's solves with the objective each measured, old side first, as `compare` takes it. */
 export interface Measured {
   readonly solves: string;
   readonly objective: readonly number[];
@@ -52,7 +46,6 @@ export interface Kit {
 }
 export type Scenario = (kit: Kit) => void | Promise<void>;
 
-/** How the task pool's readers sort each task by its readings, one comparison a reading. */
 const POOL = {
   "every twice": ["PP/PP", "PP/PP"],
   "every, then some": ["PP/PP", "PP/PP", "FP/PP"],
@@ -62,7 +55,6 @@ const POOL = {
   "none, author answered": ["FF/FF", "FF/FF"],
 } satisfies Readonly<Record<string, readonly string[]>>;
 
-/** The move the decision table names for a log, under a plan whose terms are the constants here. */
 const PLAN: Plan = {
   patience: 3,
   unprepared: false,
@@ -75,8 +67,8 @@ const PLAN: Plan = {
   promotions: null,
 };
 
-/** A log under construction. Each method appends the events the campaign's own writer would, in
- *  the shapes the readers read, and returns the log, so calls chain. `add` takes any other kind. */
+/** A log under construction. Each method appends the events the campaign's own writer would, in the
+ *  shapes the readers read, and returns the log, so calls chain. `add` takes any other kind. */
 export class Log {
   readonly events: LogEvent[] = [];
   private solves = 0;
@@ -91,7 +83,6 @@ export class Log {
     return this;
   }
 
-  /** A task held out, with the reference's room solves at its admission where `reference` names them. */
   hold(task: string, reference?: { readonly valid: number; readonly solves: number }): this {
     this.add("task.proposed", { version: task, taskId: task });
     return this.add("task.gate", {
@@ -102,7 +93,6 @@ export class Log {
     });
   }
 
-  /** A draft the admission refused after reading the reference's `solves` room solves. */
   refuse(task: string, valid: number, solves = 3): this {
     this.add("task.proposed", { version: task, taskId: task });
     return this.add("task.gate", {
@@ -113,21 +103,18 @@ export class Log {
     });
   }
 
-  /** A task held out, then released for practice. */
   release(task: string): this {
     return this.hold(task).add("task.state", { version: task, state: "released" });
   }
 
-  /** The author's own answer passed on the task: a valid answer on record. */
   feasible(task: string): this {
     return this.add("task.feasible", { version: task, session: "x-1" });
   }
 
-  /** One comparison `session` of `old` against `fresh`, with each task's solves as `<old>/<fresh>`
-   *  letters (P valid, F rejected and ruled earned, W cut by the deadline, N no answer). A task given
-   *  as `{ solves, objective }` also has each solve's measure, in the same order, and the comparison
-   *  then fixes an objective where lower is better. The start takes `terms` over its defaults, and
-   *  the report is the tree's own (`compared`), read on these solves, with `reported` laid over it. */
+  /** Solves are `<old>/<fresh>` letters (P valid, F rejected and ruled earned, W cut by the
+   *  deadline, N no answer). A task given as `{ solves, objective }` also has each solve's measure,
+   *  and the comparison then fixes an objective where lower is better. The report is the tree's own
+   *  (`compared`), with `reported` laid over it. */
   compare(
     session: string,
     sides: { readonly old: string; readonly fresh: string; readonly starter?: string },
@@ -230,9 +217,6 @@ const conditionOf = (task: string, harness: string): Condition => ({
   side: "test",
 });
 
-// The examples. Each is a scenario to run by name, or to copy into a scratch file and tune: change
-// its constants, add a task, a promotion or a reader, and read the output again.
-
 const pool: Scenario = ({ readers: { reports }, log, table }) => {
   const built = log();
   for (const task of Object.keys(POOL)) built.hold(task);
@@ -265,8 +249,6 @@ const pool: Scenario = ({ readers: { reports }, log, table }) => {
   );
 };
 
-/** What the Examiner is told after a promotion: the summary across the exam, the admissions under
- *  the new reference, and each task's line. */
 const examiner: Scenario = ({ readers: { record }, log }) => {
   const built = log()
     .hold("a", { valid: 3, solves: 3 })

@@ -22,9 +22,6 @@ type ParameterOwner =
   | ESTree.TSFunctionType
   | ESTree.TSMethodSignature;
 
-/**
- * The type one member of a type literal declares, or null where it declares none.
- */
 function memberType(member: ESTree.TSSignature): ESTree.TSType | null {
   if (member.type !== "TSPropertySignature" && member.type !== "TSIndexSignature") return null;
   return member.typeAnnotation?.typeAnnotation ?? null;
@@ -96,11 +93,9 @@ export const noObjectParametersRule = defineRule({
           });
         }
         if (resolved.type === "TSTypeReference") {
-          // A weak collection is where `object` is the language's own constraint rather than
-          // an unread input. `WeakMap<object, object>` in `task-access-trace.ts` maps a traced
-          // value to its proxy; a key there has to be an object, and `WeakMap<Parsed, Proxy>`
-          // would narrow what the table may hold rather than say anything truer about it. So
-          // the broad type is the correct one and naming an owner type is the wrong repair.
+          // A weak collection is where `object` is the language's own constraint rather than an unread
+          // input: a `WeakMap` key has to be an object (`COMPILED` in `src/kernel/contract.ts`), so
+          // naming an owner type is the wrong repair.
           const owner = resolved.typeName;
           if (owner.type === "Identifier" && (owner.name === "WeakMap" || owner.name === "WeakSet")) {
             return false;

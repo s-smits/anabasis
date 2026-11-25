@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * The Codex launcher: one `codex exec` a session, queued under `--max-active` and paced by
- * `--start-interval-ms`, with one session-level retry.
+ * `--start-interval-ms`, with `--retries` further attempts (one by default) for a session that ends
+ * without a report.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { sha256 } from "#src/meta/digest.ts";
@@ -39,14 +40,12 @@ import {
   writeWhole,
 } from "./gpt-receipts.ts";
 
-/** One checked session, ready to launch. */
 export interface Session {
   name: string;
   prompt: string;
   workdir: string;
   sandbox: string;
   ownedPaths: string[];
-  /** The row's own reasoning effort, or null where the launch's `--reasoning-effort` holds. */
   effort: string | null;
 }
 
@@ -61,7 +60,6 @@ interface SessionEnvironment {
   runtime: LaunchRecord["runtime"];
 }
 
-/** One run of the queue: a new launch, or a `--retry` of an earlier one. */
 interface Execution {
   launch: LaunchRecord;
   sessions: Session[];
@@ -94,7 +92,6 @@ const OPTIONS = {
   "start-interval-ms": "int",
   retries: "int",
 } as const;
-/** Each mode, and the options it takes besides its own. A retry keeps its launch's condition. */
 const MODE_OPTIONS: ReadonlyMap<string, readonly string[]> = new Map([
   [
     "manifest",
@@ -103,7 +100,6 @@ const MODE_OPTIONS: ReadonlyMap<string, readonly string[]> = new Map([
   ["retry", ["codex-bin", "max-active", "start-interval-ms", "retries"]],
   ["drain", []],
 ]);
-/** Each model the launcher runs, the efforts it accepts, and the one it runs without a choice. */
 const MODELS: ReadonlyMap<string, { efforts: readonly string[]; effort: string }> = new Map([
   ["gpt-6-luna", { efforts: ["high", "xhigh", "max"], effort: "max" }],
   ["gpt-6.1-sol", { efforts: ["low", "medium", "high", "xhigh"], effort: "medium" }],
@@ -133,22 +129,19 @@ const CODEX_CANDIDATES = ["/Applications/ChatGPT.app/Contents/Resources/codex", 
 const DEFAULT_START_INTERVAL_MS = 1000;
 const MAX_START_INTERVAL_MS = 60_000;
 const MAX_RETRIES = 5;
-/** What a resumed session is told. Its thread already holds the task, so this is the whole turn. */
+/** What a resumed session is told: its thread already holds the task, so this is the whole turn. */
 const RESUME_PROMPT =
   "This session stopped before it ended. Continue the task from where it stopped, and end with the complete report the task asks for, repeating any part of it you already gave.";
 
-/** "a or b", or "a, b, or c". */
 function oneOf(values: readonly string[]): string {
   if (values.length < 3) return values.join(" or ");
   return `${values.slice(0, -1).join(", ")}, or ${values.at(-1) ?? ""}`;
 }
 
-/** Remove a file the launcher wrote, where it is there. */
 async function removeFile(path: string): Promise<void> {
   if (existsSync(path)) await Bun.file(path).delete();
 }
 
-/** The instructions every session shares: the file's, then the manifest's own. */
 function sharedInstructions({ instructions = "", instructionsFile = null }: JsonObject): string {
   if (!isString(instructions)) throw new Error("instructions must be text");
   if (instructionsFile !== null && (!isString(instructionsFile) || !isAbsolute(instructionsFile))) {
@@ -158,7 +151,6 @@ function sharedInstructions({ instructions = "", instructionsFile = null }: Json
   return [fromFile.trim(), instructions.trim()].filter((part) => part !== "").join("\n\n");
 }
 
-/** The prompt one session receives on stdin: the shared instructions, its task, then its authority. */
 function promptOf(
   instructions: string,
   task: string,
@@ -172,7 +164,6 @@ function promptOf(
   return [instructions, task.trim(), authority].filter((part) => part !== "").join("\n\n");
 }
 
-/** One session row, checked against the names and tasks already taken. */
 function sessionOf(manifest: JsonObject, raw: JsonValue, at: string, instructions: string): Session {
   const row = asRecord(raw);
   if (row === null) throw new Error(`${at} must be an object`);
@@ -207,7 +198,6 @@ function sessionOf(manifest: JsonObject, raw: JsonValue, at: string, instruction
   };
 }
 
-/** Every session of a manifest, checked before anything is written or started. */
 export function sessionsOf(manifest: JsonObject): Session[] {
   const extra = Object.keys(manifest).filter((key) => !MANIFEST_FIELDS.has(key));
   if (extra.length > 0) throw new Error(`manifest has unsupported fields: ${extra.join(", ")}`);
@@ -262,8 +252,8 @@ function codexBinary(explicit: string | null): string {
   return found;
 }
 
-/** The output directory, new and the caller's. v1 defaulted to one under the temporary root, which
- *  the host may clean before a long session's report is drained. */
+/** The output directory, new and the caller's: one under the temporary root may be cleaned before a
+ *  long session's report is drained. */
 function createOutputDir(explicit: string): string {
   if (existsSync(explicit)) throw new Error("--output-dir must not already exist");
   const output = join(realpathSync(dirname(explicit)), basename(explicit));
@@ -271,7 +261,6 @@ function createOutputDir(explicit: string): string {
   return output;
 }
 
-/** Hold the output directory for this process, refusing while another launcher still holds it. */
 function holdOutput(outputDir: string): () => Promise<void> {
   const path = join(outputDir, "launcher.pid");
   const holder = existsSync(path) ? Number(readFileSync(path, "utf8").trim()) : 0;
@@ -303,9 +292,8 @@ function sessionEnvironment(outputDir: string): SessionEnvironment {
 }
 
 /** Whether a session can write only what it owns: it is read-only, or an owned path is its workdir.
- *  Codex starts only inside a Git work tree, where Git can undo what a session wrote, and such a
- *  session has nothing of anyone else's to undo. A lane run in a scratch folder outside every work
- *  tree dies at once with "Not inside a trusted directory". */
+ *  Codex starts only inside a Git work tree, where Git can undo what a session wrote; a lane in a
+ *  scratch folder outside every work tree dies with "Not inside a trusted directory". */
 function ownsAllItCanWrite({ sandbox, workdir, ownedPaths }: Session): boolean {
   if (sandbox === READ_ONLY) return true;
   return ownedPaths.some((path) => {
@@ -314,8 +302,8 @@ function ownsAllItCanWrite({ sandbox, workdir, ownedPaths }: Session): boolean {
   });
 }
 
-/** The Codex call for one attempt: a fresh `exec` from the prompt, or `exec resume` of the thread
- *  Codex named. `exec resume` takes no `--sandbox`, so the sandbox travels as configuration. */
+/** The Codex call for one attempt: a fresh `exec`, or `exec resume` of the thread Codex named,
+ *  which takes no `--sandbox`, so the sandbox travels as configuration. */
 function codexArgs(
   session: Session,
   launch: LaunchRecord,
@@ -353,7 +341,6 @@ async function attempt(session: Session, run: Execution, threadId: string | null
   await removeFile(paths.reportPath);
   const eventFd = openSync(paths.eventPath, "a", 0o600);
   const stderrFd = openSync(paths.stderrPath, "a", 0o600);
-  // Every attempt appends to the same logs; its outcome is read from where its own output begins.
   const from = { events: Bun.file(paths.eventPath).size, stderr: Bun.file(paths.stderrPath).size };
   try {
     const child = capturedSpawn({
@@ -379,8 +366,8 @@ async function attempt(session: Session, run: Execution, threadId: string | null
   }
 }
 
-/** Run every session, each in the first free slot and no sooner than the interval after the last
- *  start. A session's retry takes a start of its own, so a burst of failures is paced too. */
+/** Runs every session in the first free slot, no sooner than the interval after the last start; a
+ *  retry takes a start of its own, so a burst of failures is paced too. */
 async function runQueue(run: Execution, onSettled: (result: SessionResult) => void): Promise<void> {
   const queue = run.sessions.values();
   let nextStart = 0;
@@ -465,7 +452,7 @@ async function launchSessions(source: string, args: CommandArgs): Promise<number
   const manifest = asRecord(parseJsonAs<JsonValue>(readFileSync(source, "utf8")));
   if (manifest === null) throw new Error("--manifest must hold a JSON object");
   const sessions = sessionsOf(manifest);
-  // A row may set its own effort, as a whole-run investigation's heavier groups do (`--high`).
+  // A row may set its own effort, as a whole-run investigation's heavier groups do.
   const efforts: readonly string[] = MODELS.get(condition.model)?.efforts ?? [];
   for (const { name, effort } of sessions) {
     if (effort !== null && !efforts.includes(effort)) {
@@ -500,7 +487,6 @@ async function launchSessions(source: string, args: CommandArgs): Promise<number
   }
 }
 
-/** A recorded session's prompt, from the bytes its launch sent. */
 function recordedSession(outputDir: string, row: SessionRecord): Session {
   const { promptPath } = sessionPaths(outputDir, row.name);
   const prompt = existsSync(promptPath) ? readFileSync(promptPath, "utf8") : "";
@@ -512,8 +498,8 @@ function recordedSession(outputDir: string, row: SessionRecord): Session {
   return { name, prompt, workdir, sandbox, ownedPaths, effort };
 }
 
-/** Run again only the sessions an earlier launch left without a completed result, under the model,
- *  effort and prompts it recorded, then write its summary over every session. */
+/** Runs again only the sessions an earlier launch left without a completed result, under the model,
+ *  effort and prompts it recorded. */
 async function retry(outputDir: string, args: CommandArgs): Promise<number> {
   const launch = readLaunch(outputDir);
   const release = holdOutput(outputDir);

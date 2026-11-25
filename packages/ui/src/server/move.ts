@@ -1,15 +1,10 @@
 /**
- * `GET /api/move?key=&move=`: one step's detail. A session's: its own turns and calls (an Examiner
- * session's in the exam tier only) and a Builder session's practice solves. A comparison's: its
- * terms (`fixedIn`), its scored tasks with each side's solves (`pairsReported`) and the tasks it
- * set aside. A comparison with no report yet lists the tasks
- * its start fixed and their solves so far, with no outcome: for a campaign that runs, that is the
- * comparison being made.
- *
- * A round runs a Builder session and the comparison after it under one id (`tools/d2/round.ts`),
- * and the campaigns on record ran as rounds, so a move is named by the place of its start in the
- * log (`Move.index`). An id is taken where it names exactly one move; one that names two is refused
- * with the places of both.
+ * `GET /api/move?key=&move=`: one step's detail. A session's own turns and calls (an Examiner's in
+ * the exam tier only) and a Builder session's practice solves; a comparison's terms (`fixedIn`),
+ * its scored tasks with each side's solves (`pairsReported`) and the tasks it set aside, or before
+ * its report the tasks its start fixed with their solves so far. A round runs a Builder session and
+ * its comparison under one id, so a move is named by its start's place in the log (`Move.index`);
+ * an id is taken where it names exactly one move.
  */
 import { fixedIn, predicted, type Report, reported } from "../../../../src/campaign/comparison.ts";
 import { carriedBy, type Measures, pointsOf, testedSet } from "../../../../src/kernel/compare.ts";
@@ -29,8 +24,8 @@ type ComparisonMove = Extract<Move, { readonly step: "comparison" }>;
 /** A task's rulings are withheld for the first of these that holds of one of its rejections. */
 const WITHHELD_ORDER = ["report", "label"] as const;
 
-/** The move `named` names: the one that starts at that place in the log, else the one move of that
- *  id. An id that names two is refused with both places. */
+/** The move `named` names: the one starting at that place in the log, else the one move of that id;
+ *  an id naming two is refused with both places. */
 function moveNamed(log: Log, named: string): Move {
   const moves = movesIn(log);
   if (/^\d+$/u.test(named)) {
@@ -52,14 +47,11 @@ function moveNamed(log: Log, named: string): Move {
 const ranByIdIn = once((log) => new Map(ranIn(log).map((solve) => [solve.id, solve])));
 const taskIdsIn = once((log) => new Map(proposalsIn(log).map(({ version, taskId }) => [version, taskId])));
 
-/** A comparison's tasks with each side's solves: the scored ones and the ones it set aside, or,
- *  before it reports, every task its start fixed. */
 function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
   const solves = ranByIdIn(log);
   const ids = taskIdsIn(log);
   const rows = (named: readonly Ran[]) => named.map((solve) => solveRow(log, solve, tier));
   const byId = (named: readonly string[]) => rows(named.flatMap((id) => solves.get(id) ?? []));
-  // A task's rulings are withheld where the ruling of any of its rejections is.
   const scoredTask = (
     task: string,
     outcome: Outcome | null,
@@ -96,8 +88,8 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
       carriedBy(pointsOf(pair)),
     ),
   );
-  // A task set aside is in no pair: its solves are the comparison's on it, under each side, cut to
-  // its solves a side as a pair is.
+  // A task set aside is in no pair: its solves are the comparison's on it under each side, cut to its
+  // solves a side as a pair is.
   const aside = report.aside.map((task) => {
     const side = (harness: string) => rows(ownSolves(log, move.id, task, harness, move.solves));
     return scoredTask(task, "aside", [side(move.old), side(move.fresh)]);
@@ -105,14 +97,12 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
   return [...tallied, ...aside];
 }
 
-/** What a comparison's report says beside its test, read as counts and shares: no task is named.
- *  Null for a report that compared nothing. */
 function sensitivityOf(report: Report): Sensitivity | null {
   const { scored, frontier, valid, noise, families, overlap } = report;
   if (scored === null) return null;
   const untied = Object.values(families ?? {}).map(({ frontier: { wins, losses } }) => wins + losses);
-  // The set the step was read on: the scored tasks, or the frontier in an older report;
-  // untied on the scores the step reads (`steppedOf`).
+  // The set the step was read on: the scored tasks, or the frontier in an older report; untied on the
+  // scores the step reads (`steppedOf`).
   const test = testedSet(scored, frontier);
   const { wins, losses } = test === null ? { wins: 0, losses: 0 } : steppedOf(test).tally;
   return {
@@ -143,9 +133,8 @@ export function moveAnswer(reading: Reading, query: Query<"move">): MoveDetail {
       move.step === "builder" || examTier(tier)
         ? sessionTrace(log, move.id, move.step === "builder" ? "build" : "exam")
         : null;
-    // A Builder session's practice solves are the ones that started inside its window, as
-    // `campaignOf` counts them. Cut at the first move it made instead, an open session would list
-    // far fewer solves than its head reads.
+    // A Builder session's practice solves are those that started inside its window, as `campaignOf`
+    // counts them; cut at its first move, an open session would list far fewer than its head reads.
     const solves =
       move.step === "builder"
         ? ranIn(log).flatMap((solve) =>

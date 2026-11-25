@@ -1,25 +1,19 @@
 /**
  * A reference in prose to something the tree no longer holds: a backticked repository path that
- * names no file or directory, or an `ANA_*` setting documented for the operator that no code reads.
- *
- * What is read: every Markdown file and every comment line of a TypeScript file, outside the
- * vendored trees and the documents whose subject is v1's record (`AGENTS.md`: `docs/transfer.md`,
- * `docs/v1.md` and `studies/`). A ledger elsewhere cites a gone file as `<sha>:path`, the
- * convention `AGENTS.md` sets, and a commit-qualified path is not checked. A path counts as present
- * where it exists from the repository root or from any directory above the document, which keeps a
- * skill's own relative paths, or where Git ignores it, since a command writes it (`dist`, `.token`).
- * A placeholder or a glob (`<name>`, `*`, `{a,b}`, `$X`, `...`) and a one-letter example name
- * (`src/x.ts`) are not paths. A setting is read when any code or script file spells it, comments
- * included, so the scan fails open; for that reason this file and its examples never spell one
- * whole.
+ * names no file or directory, or an `ANA_*` setting that no code reads. Every Markdown file and
+ * TypeScript comment line is read outside `UNREAD`; a commit-qualified `<sha>:path` is not checked.
+ * A path is present from the root or any directory above the document, or where Git ignores it;
+ * placeholders, globs and one-letter example names (`src/x.ts`) are not paths. A setting is read
+ * when any code or script spells it, comments included, so the scan fails open and this file never
+ * spells one whole.
  */
 import { existsSync, readdirSync, readFileSync } from "../../src/meta/filesystem.ts";
 import { gitMaybe } from "../../src/meta/git.ts";
 import { dirname, join } from "../../src/meta/path.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 
-/** A path from one of the roots, gone ones (`starters`) included. A path after `:` is qualified by
- *  a revision (`<sha>:path`) and one after `/`, `#` or a word is part of something longer. */
+/** A path after `:` is qualified by a revision (`<sha>:path`) and one after `/`, `#` or a word is
+ *  part of something longer. */
 const PATH =
   /(?<![\w./#@:$-])((?:src|tools|test|packages|docs|vendor|studies|starters|\.claude)\/[\w./@+-]*)/gu;
 const SPAN = /`([^`\n]+)`/gu;
@@ -43,7 +37,6 @@ interface Cited {
   cited: string[];
 }
 
-/** The repository paths one line cites inside backticks, as written, before any is resolved. */
 function pathsIn(line: string): string[] {
   return [...line.matchAll(SPAN)].flatMap(([, span = ""]) =>
     [...span.matchAll(PATH)].flatMap((match) => {
@@ -55,7 +48,6 @@ function pathsIn(line: string): string[] {
   );
 }
 
-/** Present from the root or from a directory above the document that cites it. */
 function present(document: string, path: string): boolean {
   for (let dir = dirname(document); ; dir = dirname(dir)) {
     if (existsSync(join(dir, path))) return true;
@@ -63,7 +55,6 @@ function present(document: string, path: string): boolean {
   }
 }
 
-/** The cited paths Git ignores, asked once, each also as a directory. Outside a checkout, none. */
 function ignored(paths: readonly string[]): Set<string> {
   if (paths.length === 0) return new Set();
   const asked = paths.flatMap((path) => (path.endsWith("/") ? [path] : [path, `${path}/`]));
@@ -114,7 +105,6 @@ export function envExamples(): Map<string, string> {
   return new Map(names.map((name) => [name, readFileSync(name, "utf8")]));
 }
 
-/** Every stale reference in the given files: a missing path in their prose, and an unread setting. */
 export function staleReferences(texts: ReadonlyMap<string, string>): TreeFinding[] {
   return [...missingPaths(texts), ...unreadSettings(texts)];
 }

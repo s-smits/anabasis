@@ -2,9 +2,8 @@
 // hand: the step is read on the frontier and retained differences in pair wins together (`compare.ts`, `readsStep`).
 
 /**
- * The tallies of a report whose scored set is all frontier, each task won or lost by one pair:
- * the scored set, the frontier the step is read on, a retained set nothing was tallied in, and no
- * family named.
+ * The tallies of a report whose scored set is all frontier, each task won or lost by one pair, with
+ * an empty retained set and no family named.
  */
 export function tallied(wins: number, losses: number, ties: number) {
   const tally = { wins, losses, ties };

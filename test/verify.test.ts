@@ -106,9 +106,8 @@ export const checks = {
 };
 `;
 
-/** A program with an objective: of the answer and the public input, against the hidden value the
- *  task was built from (mode `truth`), of what a check left in the cell (mode `cell`), or no
- *  finite number. */
+/** A program with an objective: of the answer and public input against the hidden value (mode
+ *  `truth`), of what a check left in the cell (mode `cell`), or no finite number. */
 const MEASURED = `import { existsSync, writeFileSync } from "node:fs";
 export const checks = {
   value: (req) => (writeFileSync("mark-value", "here"), req.artifact.value > 0),
@@ -128,7 +127,6 @@ export const objective = (req) => {
 
 const root = mkdtempSync(join(tmpdir(), "ana-verify-"));
 const tools = join(root, "tools");
-/** Another cell of the host's, holding an answer no check may read. */
 const sibling = hostScratch("cell-");
 const secret = join(sibling, "answer.json");
 
@@ -218,7 +216,6 @@ const checks = join(root, "checks");
 setDefaultTimeout(60_000);
 
 let verify: ReturnType<typeof openVerifier>;
-/** The same program under a check's time short enough to run out within a test. */
 let brief: ReturnType<typeof openVerifier>;
 
 beforeAll(() => {
@@ -324,8 +321,8 @@ describe.skipIf(!osIsolationSupport().ok)("a verdict's checks", () => {
       check: "spins",
       reason: "the check timed out, holding the cell past 900 ms",
     });
-    // When a sibling check runs and finishes while another check later spins synchronously, the
-    // cell timeout blames the still-running spinner, not the finished sibling.
+    // A sibling check that finished must not take the blame when a later check spins synchronously past
+    // the cell timeout.
     expect(await within(brief(task("spinRace"), {}), 5000)).toEqual({
       kind: "faulty",
       check: "spinsAfterFast",
@@ -350,7 +347,7 @@ describe.skipIf(!osIsolationSupport().ok)("a check's tools", () => {
     expect(await verify(task("ran", { tool: "refuses" }), {})).toEqual({ kind: "fail", blocking: ["ran"] });
   });
 
-  // The wall once refused clang its toolchain and the scratch it takes through `confstr`.
+  // The wall must leave clang its toolchain and the scratch it takes through `confstr`.
   it.if(existsSync("/usr/bin/cc"))("compile through the host's toolchain", async () => {
     expect(await verify(task("ran", { tool: "compiles" }), {})).toEqual({ kind: "pass" });
   });

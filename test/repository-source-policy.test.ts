@@ -57,8 +57,8 @@ describe("source policy", () => {
     expect(facts.literals.has("tpl-word")).toBe(true);
     expect(facts.calls.has("accept")).toBe(true);
     expect(facts.calls.has("go")).toBe(false);
-    // A bare `#` inside a regex literal held the scanner in place; the scan must end, and the
-    // code after the literal is still read.
+    // A bare `#` inside a regex literal must not hold the scanner: the scan ends and the code after the
+    // literal is read.
     const hashed = scanTokens('const c = /##/;\nfunction after() { seen("late"); }\n');
     expect(hashed.calls.has("seen")).toBe(true);
     expect(hashed.literals.has("late")).toBe(true);

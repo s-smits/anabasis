@@ -5,25 +5,12 @@
  *
  *   bun tools/wri/wri.ts reader aim --log <log>
  *
- * Lanes 17, 19 and 20 ask whether the tasks written after a promotion were written against the
- * reference in force, and a starter read pools them with the rest. Without it a lane 20 session
- * joins each session's tasks to the comparisons' solves by hand, in dozens of calls, and builds the
- * measure against the author's best by writing session and harness in a scratch script, since
- * validity reads every solve valid there. A writer taken from `task.feasible.session`, which a later
- * session's `try_answer` on an earlier task also writes; the writer here is the proposal's
- * (`proposalsOf`).
- *
- * A session's block gives its span against each promotion: the reference at its start and at its
- * end, since a continued conversation can span one, the last comparison reported before it, the
- * conversation it continues, whether the reference's copy lay in its home and its shell calls
- * that name the copy's folder (both read in logs of the code that laid the copy), its
- * `try_reference` calls and the harness each try was solved under,
- * the tasks the gate admitted, and the comparisons that later tallied them, starter reads named
- * apart. The table gives, per writer and harness, the valid solves, how many reached the author's
- * best within the floor (`gapAgainst`, `GAP_FLOOR`), and the median of measure over best where both are
- * positive. It prints counts and digest prefixes, never a measure, an answer or a task, and no
- * column says what a session aimed at: that is the lane's reading. A field an older log's code did
- * not write reads `not recorded`.
+ * Lane 7 asks whether tasks written after a promotion were written against the reference in force.
+ * A task's writer is its proposal's (`proposalsOf`), not `task.feasible.session`, which a later
+ * session's `try_answer` also writes. The table gives, per writer and harness, the valid solves,
+ * how many reached the author's best within the floor (`gapAgainst`, `GAP_FLOOR`), and the median
+ * of measure over best. It prints counts and digest prefixes, never a measure, an answer or a task;
+ * a field older code did not write reads `not recorded`.
  */
 import { epochsOf, tasksByEpoch } from "#src/campaign/climb.ts";
 import { gainOver, gapAgainst, type Paired } from "#src/kernel/compare.ts";
@@ -38,7 +25,6 @@ import { type Index, indexOf } from "./folds.ts";
 /** Where a writing session's home held the reference harness, under code that laid a copy there. */
 const REFERENCE_HOME = "reference-harness";
 
-/** A comparison's last report with the pairs it tallied. */
 interface PairedReport {
   readonly session: string;
   readonly data: JsonObject;
@@ -51,26 +37,20 @@ interface KeyedEvent {
   readonly data: JsonObject;
 }
 
-/** One Examiner writing session (an ask, `exam.started`), as the log records it. */
 interface ExamSession {
   readonly session: string;
-  /** The conversation it continues, null where it opened one. */
   readonly conversation: string | null;
-  /** Its start and its end by line of the log (from 1), null while no end is on record. */
+  /** Its start and end by log line (from 1), the end null while none is on record. */
   readonly started: number;
   readonly finished: number | null;
   readonly ended: string | null;
-  /** The reference in force at its start and at its end, by digest, or "starter". */
   readonly reference: { readonly start: string; readonly finish: string | null };
-  /** Harnesses promoted between its start and its end. */
   readonly promotedWithin: readonly string[];
-  /** The last comparison reported before its start. */
   readonly lastReport: string | null;
   /** Whether its home held the reference's copy, which `exam.started` recorded under code that laid
    *  one; a log without the field was written by code that laid none. */
   readonly referenceHome: boolean;
   readonly tryCalls: number | null;
-  /** The solves it asked for, by the harness each ran under. */
   readonly tries: ReadonlyMap<string, number>;
   /** Its shell calls naming the reference's folder, of all its shell calls; null where no call is traced. */
   readonly referenceShell: { readonly naming: number; readonly of: number } | null;
@@ -82,7 +62,6 @@ interface ExamSession {
   readonly friction: { readonly tryAnswers: number; readonly tryErrors: number; readonly bashErrors: number };
   /** Session billed dollars recorded on `exam.finished`, null when unrecorded. */
   readonly billed: number | null;
-  /** Each comparison that later tallied any of its admitted tasks, and how many. */
   readonly scoredIn: readonly {
     readonly comparison: string;
     readonly tasks: number;
@@ -90,7 +69,6 @@ interface ExamSession {
   }[];
 }
 
-/** What `examSessionsOf` reads once for every session. */
 interface Gathered {
   readonly total: number;
   readonly epochs: ReturnType<typeof epochsOf>;
@@ -100,7 +78,6 @@ interface Gathered {
   readonly callsBy: ReadonlyMap<string, readonly Call[]>;
   readonly anyCall: boolean;
   readonly anyTry: boolean;
-  /** Each solve's harness, by the session or comparison its start names. */
   readonly tries: ReadonlyMap<string, readonly string[]>;
   readonly reported: readonly PairedReport[];
   readonly finishedBy: ReadonlyMap<string, readonly KeyedEvent[]>;
@@ -108,7 +85,6 @@ interface Gathered {
   readonly promoted: readonly KeyedEvent[];
 }
 
-/** Per writer and harness, over every comparison's tallied pairs. */
 interface Measured {
   readonly writer: string;
   readonly harness: string;
@@ -131,7 +107,6 @@ const keyed = (events: readonly LogEvent[], kind: LogEvent["kind"], field: "sess
     return isString(value) ? [{ index, value, data }] : [];
   });
 
-/** A harness by its digest's prefix, the starter marked where the reports name one. */
 const labelOf = (digest: string, starter: string | null) =>
   `${digest === "starter" ? digest : digest.slice(0, 8)}${digest === starter ? " starter" : ""}`;
 
@@ -173,7 +148,6 @@ function readOnce(
   };
 }
 
-/** One session of `events`, whose start is at `started`. */
 function sessionAt(started: KeyedEvent, log: Gathered): ExamSession {
   const { index, value: session, data } = started;
   const endRow = log.finishedBy.get(session)?.find((each) => each.index > index);
@@ -275,7 +249,6 @@ function sessionLines(each: ExamSession, starter: string | null): string[] {
   ];
 }
 
-/** One side of one pair added to its writer's and harness's row. */
 function tick(row: Measured, pair: Paired, side: "old" | "fresh", best: number | null): void {
   const rule = pair.objective;
   if (rule === undefined) return;
@@ -343,7 +316,6 @@ function tableLines(rows: readonly Measured[], order: readonly string[]): string
   ];
 }
 
-/** The reader's whole output for one log. */
 export function aimRows(events: readonly LogEvent[]): string[] {
   const log = indexOf(events);
   const reported = log.compared.map((each) => ({

@@ -7,14 +7,11 @@ import { identifierName, isNamedMember } from "../shared/statements.ts";
 
 const OWNER = ".claude/skills/main/cli.ts";
 
-/** The three names a skill script reads its process arguments through. */
 const ARGV_OWNERS = new Set(["Bun", "process", "runtimeProcess"]);
 
-/** The module whose exports are the parser. Matched on the tail so the `#skills/…` alias and a
- *  relative spelling both count. */
+/** Matched on the tail so the `#skills/…` alias and a relative spelling both count. */
 const LIBRARY = /(?:^|\/)main\/cli(?:\.ts)?$/u;
 
-/** `Bun.argv`, `process.argv` or `runtimeProcess.argv`. */
 function isArgv(node: ESTree.MemberExpression): boolean {
   return (
     !node.computed &&
@@ -37,7 +34,6 @@ function isExecutable(argv: ESTree.MemberExpression): boolean {
   );
 }
 
-/** The `argv.slice(…)` call this read is the object of, or null for any other read. */
 function sliceCall(argv: ESTree.MemberExpression): ESTree.CallExpression | null {
   const member = argv.parent;
   if (!isNamedMember(member) || member.object !== argv) return null;

@@ -69,24 +69,19 @@ const MEASURES = ["validity", "objective", "bill"] as const;
 
 type Measure = (typeof MEASURES)[number];
 
-/** One comparison's last report, scored again. */
 interface Reading {
   readonly session: string;
   readonly key: string;
-  /** The frontier's and retained set's differences together, as the one test reads them. */
   readonly differences: readonly number[];
-  /** The same tasks without the bill, or null where the record cannot supply that test. */
   readonly unbilled: readonly number[] | null;
   readonly level: number;
   readonly step: boolean;
   /** The tasks it won, by the first measure that gave them points: validity, the objective, or the
    *  bill alone. */
   readonly wonBy: Readonly<Record<Measure, number>>;
-  /** The A/A's differences, or null where the comparison had fewer than two solves a side. */
   readonly aa: { readonly differences: readonly number[]; readonly unbilled: readonly number[] } | null;
 }
 
-/** The counts summed over every campaign read. */
 interface Totals {
   campaigns: number;
   compared: number;
@@ -115,7 +110,6 @@ interface Totals {
   dollars: number[];
 }
 
-/** A recorded promotion: the pair it names and where it stands in the log. */
 interface Promotion {
   readonly key: string;
   readonly index: number;
@@ -127,13 +121,11 @@ interface Read {
   readonly down: boolean;
 }
 
-/** One mechanism's panel. */
 interface Panel {
   readonly name: string;
   readonly steps: ReadonlySet<Comparison>;
   readonly added: readonly Comparison[];
   readonly dropped: readonly Comparison[];
-  /** Added steps by what the tree's own tally of the tasks read. */
   readonly classes: Readonly<Record<"ahead" | "level" | "zero" | "behind", number>>;
   readonly starter: { readonly of: number; readonly reads: number };
   readonly aa: { readonly of: number; readonly capable: number; readonly either: number };
@@ -180,28 +172,27 @@ const lost = (differences: readonly number[]) => differences.filter((one) => one
 const formatTally = (differences: readonly number[]) =>
   `${String(won(differences))}-${String(lost(differences))}-${String(differences.length - won(differences) - lost(differences))}`;
 
-/** Whether a report holds the points each measure gave, as none before the weights does. */
 function weightedIn(points: JsonValue | undefined): boolean {
   const { validity, objective } = asRecord(points) ?? {};
   return isNumber(validity) && isNumber(objective);
 }
 
-/** A task's scores from its points: with the bill where the tree scores one (before 2 November),
- *  and without it, which a step is read on. */
+/** A task's scores from its points: with the bill where the tree scores one, and without it, which
+ *  a step is read on. */
 function scoresOf({ validity, objective, bill }: Points) {
   return { scored: wholePoints(validity + objective + bill), unbilled: wholePoints(validity + objective) };
 }
 
-/** The measure that carried a task's result: the bill where the score without it does not share
- *  the score's sign, and otherwise this tree's reading (`carriedBy`). */
+/** The bill where the score without it does not share the score's sign, and otherwise this tree's
+ *  reading (`carriedBy`). */
 function carriedBy(points: Points): Measure | null {
   const { scored, unbilled } = scoresOf(points);
   if (scored === 0) return null;
   return Math.sign(unbilled) === Math.sign(scored) ? carriedOn(points) : "bill";
 }
 
-/** Reconstruct named tasks from pairs; retain stored scores where the log lacks a pair.
- * Missing cost-excluded evidence stays unknown, so the dual rule cannot promote it. */
+/** Named tasks rebuilt from pairs; stored scores stand where the log lacks a pair, and missing
+ *  cost-excluded evidence stays unknown, so the dual rule cannot promote it. */
 function scoredSet(
   tree: Tree,
   set: JsonValue | undefined,
@@ -210,7 +201,7 @@ function scoredSet(
 ) {
   const record = asRecord(set);
   const stored = numbers(record?.differences);
-  // A report before 14 October names no task, so its differences stand as stored.
+  // A report whose scores name no tasks keeps its differences as stored.
   const tasks =
     Array.isArray(record?.of) && record.of.length === stored.length ? record.of : stored.map(() => null);
   const without = numbers(record?.unbilled);
@@ -237,7 +228,7 @@ function scoredSet(
 }
 
 /** The reference against itself on halves of its own solves, as the comparison's report reads it
- *  (`compared`, `comparison.ts`), or null under two solves a side or an odd number. */
+ *  (`compared`, `src/campaign/comparison.ts`); null under two solves a side or an odd number. */
 function aaOf(tree: Tree, events: readonly LogEvent[], report: Reported): Reading["aa"] {
   const terms = selfTerms(report);
   if (terms === null) return null;
@@ -252,7 +243,6 @@ function aaOf(tree: Tree, events: readonly LogEvent[], report: Reported): Readin
   };
 }
 
-/** Each comparison with a frontier, scored again, its counts added to `totals`. */
 function readingsOf(tree: Tree, events: readonly LogEvent[], totals: Totals): Reading[] {
   return tree.lastReports(events).flatMap((report): Reading[] => {
     const { old, fresh, frontier, retained, noise, points, reading, level: recorded } = report.data;
@@ -295,7 +285,6 @@ const aaLine = (tree: Tree, reading: Reading) =>
     ? "A/A unread"
     : `A/A ${formatTally(reading.aa.differences)}${tree.readsStepEitherWay(reading.aa.differences, reading.level, reading.aa.unbilled) ? " STEP" : ""}`;
 
-/** A pair the score promotes: the reading it rests on, its A/A, and later readings. */
 function promotedLines(
   tree: Tree,
   readings: readonly Reading[],
@@ -325,7 +314,6 @@ function promotedLines(
   ];
 }
 
-/** The pairs a campaign compared, each with what the score reads of it. */
 function pairLines(
   tree: Tree,
   readings: readonly Reading[],
@@ -363,9 +351,8 @@ function pairLines(
   return lines;
 }
 
-/** Readings that step, and whether the pair's next reading stepped too or only won at least as many
- *  tasks as it lost, since a reading just over the level can be counted as held where only a tied
- *  repeat would have been. */
+/** Whether the pair's next reading stepped too or only won at least as many tasks as it lost, since
+ *  a reading just over the level can be counted as held where only a tied repeat would have been. */
 function countFollowed(list: readonly Reading[], totals: Totals): void {
   for (const [at, reading] of list.entries()) {
     const next = list[at + 1]?.differences;
@@ -376,7 +363,6 @@ function countFollowed(list: readonly Reading[], totals: Totals): void {
   }
 }
 
-/** One campaign's block, its counts added to `totals`. */
 export function campaignLines(tree: Tree, found: Found, totals: Totals): string[] {
   let events: LogEvent[];
   try {
@@ -437,7 +423,7 @@ function totalLines(tree: Tree, totals: Totals): string[] {
 
 const swapped = (task: Task): Task => ({ ...task, old: task.fresh, fresh: task.old });
 
-/** A tree's own rule as a mechanism: its `pointsOf`, and its `stepOf`, given the scores without a
+/** A tree's own rule as a mechanism: its `pointsOf`, and its `stepOf` given the scores without a
  *  bill where it scores one. */
 function treeMechanism(tree: Tree, name: string): Mechanism {
   const answers = (task: Task) => {
@@ -454,7 +440,6 @@ function treeMechanism(tree: Tree, name: string): Mechanism {
   };
 }
 
-/** What a mechanism's test reads of a set of tasks, each way. A guard is not read here. */
 function readOf(mechanism: Mechanism, tasks: readonly Task[], level: number): Read {
   const test = mechanism.test ?? readsStep;
   const scores = tasks.map(mechanism.score);
@@ -490,7 +475,6 @@ function samples(tasks: readonly Task[]): [Task[], Task[]] | null {
   return [at(0), at(1)];
 }
 
-/** How often the sign of a task's score holds on the comparison's other solves. */
 function repeatOf(mechanism: Mechanism, candidates: readonly Comparison[]) {
   let [signed, same] = [0, 0];
   for (const { tasks } of candidates) {
@@ -533,7 +517,6 @@ function classesOf(added: readonly Comparison[], base: Mechanism) {
   return classes;
 }
 
-/** What became of a step the record did not act on. Censored where the campaign read nothing after. */
 function laterOf(added: readonly Comparison[]) {
   const later = { same: 0, other: 0, none: 0, unread: 0 };
   for (const { fresh, after } of added) {
@@ -586,7 +569,6 @@ const pad = (text: string, width: number) => text.padStart(width);
 const two = (value: number | null) => (value === null ? "-" : value.toFixed(2));
 const share = (some: number, of: number) => (of === 0 ? "-" : (some / of).toFixed(2));
 
-/** The main table: one row a mechanism. */
 function panelLines(panels: readonly Panel[], comparisons: readonly Comparison[]): string[] {
   // Tasks alone: an A/A halves the reference's own solves, so counting it would pay for them twice.
   const solves = comparisons
@@ -667,8 +649,8 @@ function detailLines(panels: readonly Panel[], comparisons: readonly Comparison[
   return lines;
 }
 
-/** Each row's step rate either side of a time, raw and at the pooled mix of packs on both sides: on
- *  the record a later cohort read lower raw and higher at one mix, the gap being which packs ran. */
+/** Each row's step rate either side of a time, raw and at the pooled mix of packs on both sides,
+ *  since a later cohort can read lower raw and higher at one mix. */
 function splitLines(
   panels: readonly Panel[],
   comparisons: readonly Comparison[],
@@ -714,7 +696,6 @@ function namedLines(panels: readonly Panel[], mechanisms: readonly Mechanism[], 
   });
 }
 
-/** How far the knobs at production's values and the record's own readings stand from the tree. */
 function reconcileLines(base: Mechanism, comparisons: readonly Comparison[], tree: Tree): string[] {
   const knobs = knobbed(TODAY, "knobs");
   const tasks = comparisons.flatMap(({ tasks: scored, aa }) => [...scored, ...aa]);
@@ -744,7 +725,6 @@ async function fileMechanisms(args: CommandArgs): Promise<Mechanism[]> {
   }
   return found;
 }
-/** Each mechanism asked for read beside the tree's own on one panel. */
 async function panelMain(args: CommandArgs, tree: Tree, base: Mechanism): Promise<number> {
   const { comparisons: read, unread } = await recordOf({
     file: args.value("record"),

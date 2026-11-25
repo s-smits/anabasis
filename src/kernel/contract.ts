@@ -30,7 +30,6 @@ export interface Contract {
   readonly scope: string;
 }
 
-const WEIGHT_RATIO = 1e12;
 export const CRITERION = { least: 20, most: 220, perContract: 4 };
 const RESERVED_RUBRIC_IDS = new Set(["holistic"]);
 
@@ -87,10 +86,6 @@ export function rubricFaults(objective: Objective | undefined, checkIds: readonl
   }
   if (items.filter(({ kind }) => kind === "judge").length > CRITERION.perContract) {
     faults.push(`objective.items holds at most ${String(CRITERION.perContract)} judged items`);
-  }
-  const weights = items.map(({ weight }) => weight).filter((weight) => isNumber(weight) && weight > 0);
-  if (weights.length > 1 && Math.max(...weights) / Math.min(...weights) > WEIGHT_RATIO) {
-    faults.push(`objective.items weights span more than ${String(WEIGHT_RATIO)} to 1`);
   }
   return faults;
 }

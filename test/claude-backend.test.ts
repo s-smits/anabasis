@@ -647,4 +647,20 @@ describe("the Claude backend", () => {
     expect(refused.stopReason).toBe("error");
     expect(launches()).toBe(1);
   });
+
+  it("refuses same-tick and in-flight concurrent turns on one sessionId instead of deadlocking", async () => {
+    replay(TEXT, (text) => `${text.trim().split("\n").slice(0, -1).join("\n")}\n`);
+    sweep = claudeProvider({ executable, compaction: "off", home, shutdown: shutdown.signal, quiet: 300 });
+    const options = solveOptions();
+    const first = sweep.streamSimple(recorded, solverContext([opening]), options).result();
+    const sameTick = await sweep.streamSimple(recorded, solverContext([opening]), options).result();
+    expect(sameTick.stopReason).toBe("error");
+    expect(sameTick.errorMessage).toContain("already has a turn in flight");
+    await Bun.sleep(20);
+    const inFlight = await sweep.streamSimple(recorded, solverContext([opening]), options).result();
+    expect(inFlight.stopReason).toBe("error");
+    expect(inFlight.errorMessage).toContain("already has a turn in flight");
+    shutdown.abort();
+    await first;
+  });
 });

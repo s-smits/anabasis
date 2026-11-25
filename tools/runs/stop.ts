@@ -85,6 +85,13 @@ function after(run: Run, ran: readonly string[]): string {
   );
 }
 
+export async function stopProcessTree(pid: number, table?: string): Promise<number> {
+  const rows = table ?? runTextSyncOrThrow(["ps", "-axo", "pid=,ppid="]);
+  let left = 0;
+  for (const each of family(rows, pid)) left += (await terminateAndReapProcessGroupId(each)) ? 0 : 1;
+  return left;
+}
+
 /** Ends `run`'s writers and all they started, the run's own process first, so that it starts nothing more. */
 async function end(run: Run, running: readonly Running[], yes: boolean): Promise<number> {
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,ppid="]);
@@ -95,8 +102,7 @@ async function end(run: Run, running: readonly Running[], yes: boolean): Promise
       `${run.name} in ${run.tree}: pid ${String(pid)} and the ${String(pids.length - 1)} it started`,
     );
     if (!yes) continue;
-    let left = 0;
-    for (const each of pids) left += (await terminateAndReapProcessGroupId(each)) ? 0 : 1;
+    const left = await stopProcessTree(pid, table);
     if (left > 0) console.log(`  ⚠ ${String(left)} of them would not end`);
     console.log(`  stopped, its log as it was. ${after(run, args)}`);
   }

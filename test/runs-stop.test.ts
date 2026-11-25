@@ -8,13 +8,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../sr
 import { tmpdir } from "../src/meta/os.ts";
 import { basename, dirname, join } from "../src/meta/path.ts";
 import { capturedSpawn } from "../src/meta/process.ts";
-import {
-  processGroupExists,
-  runTextSyncOrThrow,
-  terminateAndReapProcessGroupId,
-} from "../src/meta/subprocess.ts";
+import { processGroupExists, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
-import { family, unreleasedSandboxes } from "../tools/runs/stop.ts";
+import { family, stopProcessTree, unreleasedSandboxes } from "../tools/runs/stop.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-runs-stop-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -107,7 +103,7 @@ describe("a stop", () => {
     ).toContainEqual([child.pid, child.pid]);
     expect(await out.text()).toBe("up\n");
     expect(existsSync(join(root, "launch-run-1.err"))).toBe(true);
-    for (const pid of pids) expect(await terminateAndReapProcessGroupId(pid)).toBe(true);
+    expect(await stopProcessTree(child.pid)).toBe(0);
     expect(pids.some((pid) => processGroupExists(pid))).toBe(false);
   });
 });

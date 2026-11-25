@@ -42,6 +42,7 @@ describe("the areas a call enters", () => {
       ids({ command: "*** Begin Patch\n*** Update File: src/kernel/compare.ts\n@@ x\n*** End Patch" }),
     ).toEqual(["measurement", "code"]);
     expect(ids({ command: ["bash", "-lc", "bun run test -- test/x.test.ts"] })).toEqual(["suite"]);
+    expect(ids({ command: "bun -e 'read(\"data/runs/h/r/log.jsonl\")'" })).toEqual(["reading"]);
   });
 
   it("omits unrelated calls and routes already delivered", () => {

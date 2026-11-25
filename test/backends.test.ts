@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { claudeExecutable } from "../src/agent/backends/claude.ts";
 import { codexAuthStatus } from "../src/agent/backends/codex-auth.ts";
 import { type BackendOptions, backends, compactionMode, retryPolicy } from "../src/agent/backends/models.ts";
@@ -58,12 +59,21 @@ describe("the three backends", () => {
       baseUrl: "https://openrouter.ai/api/v1",
       reasoning: true,
       contextWindow: 1_048_576,
-      maxTokens: 131_072,
+      maxTokens: 65_536,
     });
+    expect(
+      Math.max(...catalog.getModels("openrouter").map(({ maxTokens }) => maxTokens)),
+    ).toBeLessThanOrEqual(65_536);
+    const under = openrouterProvider()
+      .getModels()
+      .find(({ maxTokens }) => maxTokens < 65_536);
+    if (under === undefined) throw new Error("the OpenRouter catalog has no model below 65,536 maxTokens");
+    expect(catalog.getModel("openrouter", under.id)?.maxTokens).toBe(under.maxTokens);
     // A model nobody pinned keeps pi's own entry, routed as OpenRouter chooses; the chat listing holds
     // the pinned one too.
-    const chat = catalog.getModelsOfType("chat", "openrouter").map(({ id }) => id);
-    expect(chat).toContain("deepseek/deepseek-v4.1-flash-1017");
+    const chat = catalog.getModelsOfType("chat", "openrouter");
+    expect(chat.map(({ id }) => id)).toContain("deepseek/deepseek-v4.1-flash-1017");
+    expect(Math.max(...chat.map(({ maxTokens }) => maxTokens))).toBeLessThanOrEqual(65_536);
     const base = catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
     expect(base?.compat ?? {}).not.toHaveProperty("openRouterRouting");
     expect(catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();

@@ -105,13 +105,22 @@ describe("a promotion's starter read, split by what its tasks had been through",
 
   it("says so and exits clean on a log with no promotion, since the derived readers run it on every log", () => {
     const folder = mkdtempSync(join(tmpdir(), "starter-reads-"));
+    const promoted = mkdtempSync(join(tmpdir(), "starter-reads-"));
     const promotedAt = log.findIndex(({ kind }) => kind === "harness.promoted");
     const unpromoted = log.slice(0, promotedAt).map((event) => capturedJsonStringify(event));
     writeFileSync(join(folder, LOG_FILE), `${unpromoted.join("\n")}\n`);
+    writeFileSync(
+      join(promoted, LOG_FILE),
+      `${log.map((event) => capturedJsonStringify(event)).join("\n")}\n`,
+    );
     const reads = join(import.meta.dir, "..", ".claude/skills/comparison-reading/scripts/starter-reads.ts");
     const ran = runSync([capturedExecPath, reads, folder]);
     expect(ran.exitCode).toBe(0);
     expect(decodeOutput(ran.stdout)).toContain("no promotion");
+    const several = runSync([capturedExecPath, reads, folder, promoted]);
+    expect(several.exitCode).toBe(0);
+    expect(decodeOutput(several.stdout)).toContain("all of them");
+    expect(decodeOutput(several.stdout)).toContain("in 1 campaign");
   });
 });
 

@@ -36,8 +36,8 @@ import {
   type Campaign,
   COMPARISON_OPTIONS,
   capRead,
+  assertCrossFamily,
   crossFamilyVendors,
-  modelVendor,
   SESSION_OPTIONS,
   type Seated,
   solved,
@@ -268,17 +268,8 @@ function validateOpening(opening: Opening, values: Values, seats: "paid" | "scri
   }
   const { reviewer } = opening.seats;
   const solver = opening.solver?.model;
-  if (
-    opening.judged &&
-    reviewer !== null &&
-    solver !== undefined &&
-    !crossFamilyVendors(reviewer.model, solver)
-  ) {
-    const why =
-      modelVendor(reviewer.model) === null
-        ? `the reviewer ${reviewer.model} routes to an unknown vendor`
-        : `the reviewer ${reviewer.model} judges answers by a solver of its own family (${solver})`;
-    throw new Error(`--admit-judge: ${why}; name a reviewer from another family`);
+  if (opening.judged && reviewer !== null && solver !== undefined) {
+    assertCrossFamily(reviewer.model, solver, "--admit-judge: ");
   }
   counted(
     opening.patience,

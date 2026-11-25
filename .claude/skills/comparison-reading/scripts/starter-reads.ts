@@ -37,7 +37,7 @@ interface Composition {
 }
 
 const USAGE = `usage:
-  bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | campaign name> [--tasks]
+  bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | campaign name>... [--tasks]
   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --log <log> [--log <log> ...] [--tasks]
   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --all [--since <date>] [--name <part>] [--tasks]
 
@@ -252,7 +252,7 @@ export function starterLines(events: readonly LogEvent[], rows: "tasks" | "reads
 
 if (import.meta.main) {
   await runCommand(
-    { name: "starter-reads", usage: USAGE, options: OPTIONS, positionals: [0, 1] },
+    { name: "starter-reads", usage: USAGE, options: OPTIONS, positionals: [0, 100] },
     async (args: CommandArgs) => {
       const named = [...args.positionals, ...args.list("log")];
       const rows = args.flag("tasks") ? "tasks" : "reads";

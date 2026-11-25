@@ -34,12 +34,13 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
-import { processGroupExists, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
+import { processGroupExists } from "#src/meta/subprocess.ts";
 import { BUILDER, ROUND, SEED_FILE } from "#tools/runs/registry.ts";
 import { codeLine, seedCut } from "#tools/runs/seed.ts";
 import { seats as seatFlags } from "#tools/runs/fresh.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+import { stopProcessTree } from "#tools/runs/stop.ts";
 
 const USAGE = `usage:
   live-seat.ts start --tree <worktree> --name sim-<what> --out <prefix> --cap <dollars> --minutes <n>
@@ -366,7 +367,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
     if (billed > cap || elapsed > minutes) {
       stopped =
         billed > cap ? `its cap, $${billed.toFixed(2)} of $${String(cap)}` : `its ${String(minutes)} minutes`;
-      await terminateAndReapProcessGroupId(child.pid);
+      await stopProcessTree(child.pid);
     }
   }
   stopped ??= readFileSync(`${out}.stopped`, "utf8") || null;
@@ -464,7 +465,7 @@ async function stop(args: CommandArgs, seats: readonly string[]): Promise<number
       continue;
     }
     writeFileSync(`${seat}.stopped`, "live-seat stop");
-    await terminateAndReapProcessGroupId(pid);
+    await stopProcessTree(pid);
     const starter = wrapper ?? 0;
     for (let waited = 0; waited < WRAPPER_GRACE_MS && processGroupExists(starter); waited += 1000) {
       await Bun.sleep(1000);

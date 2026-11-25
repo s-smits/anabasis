@@ -473,6 +473,15 @@ export function crossFamilyVendors(first: string, second: string): boolean {
   return left !== null && right !== null && left !== right;
 }
 
+export function assertCrossFamily(reviewer: string, solver: string, prefix = ""): void {
+  if (crossFamilyVendors(reviewer, solver)) return;
+  const why =
+    modelVendor(reviewer) === null
+      ? `the reviewer ${reviewer} routes to an unknown vendor`
+      : `the reviewer ${reviewer} judges answers by a solver of its own family (${solver})`;
+  throw new Error(`${prefix}${why}; name a reviewer from another family`);
+}
+
 export async function comparedOn(
   { campaign, setting, cap }: Awaited<ReturnType<typeof campaignFor>>,
   values: { readonly level: string; readonly defects: string; readonly predict?: string | undefined },
@@ -485,14 +494,7 @@ export async function comparedOn(
     if (judges === null) {
       throw new Error("name --reviewer: a paid judged comparison needs a cross-family judging reviewer");
     }
-    const solver = priceKey(campaign.test.model);
-    if (!crossFamilyVendors(judges.reviewer, solver)) {
-      const why =
-        modelVendor(judges.reviewer) === null
-          ? `the reviewer ${judges.reviewer} routes to an unknown vendor`
-          : `the reviewer ${judges.reviewer} judges answers by a solver of its own family (${solver})`;
-      throw new Error(`${why}; name a reviewer from another family`);
-    }
+    assertCrossFamily(judges.reviewer, priceKey(campaign.test.model));
   }
   return {
     starter: await starter(campaign),

@@ -30,6 +30,7 @@ import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 export { CODEX_AUTH };
 
 const CODEX = "openai-codex";
+const OPENROUTER_MAX_TOKENS = 65_536;
 
 const DEEPSEEK_FLASH = {
   cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
@@ -159,11 +160,16 @@ export function openrouter(): Provider<"anthropic-messages" | "openai-completion
     ...DEEPSEEK_FLASH,
     compat: { ...dated.compat, openRouterRouting: { only: ["deepinfra/fp8"], allow_fallbacks: false } },
   };
-  const pin = <M extends { readonly id: string }>(model: M) => (model.id === pinned?.id ? pinned : model);
+  const cap = <M extends { readonly id: string; readonly maxTokens?: number }>(model: M) => {
+    const base = model.id === pinned?.id ? pinned : model;
+    return (base.maxTokens ?? 0) > OPENROUTER_MAX_TOKENS
+      ? { ...base, maxTokens: OPENROUTER_MAX_TOKENS }
+      : base;
+  };
   return {
     ...router,
-    getModels: () => router.getModels().map(pin),
-    getAllModels: () => (router.getAllModels?.() ?? router.getModels()).map(pin),
+    getModels: () => router.getModels().map(cap),
+    getAllModels: () => (router.getAllModels?.() ?? router.getModels()).map(cap),
   };
 }
 

@@ -58,8 +58,8 @@ const ROUTES: readonly Route[] = [
   {
     id: "reading",
     command:
-      /\bbun run runs (view|replay|source|status|pulse|active|zip)\b|tools\/wri\/|wri2p2\.ts|studies\/harness2\/(score|compare)\.ts/u,
-    said: "Run evidence (AGENTS.md §9): a run proves only its own commit (`bun run runs source --has <text>`). Read log events and folds before prose; separate outcome counts with denominators.",
+      /\bbun run runs (view|replay|source|status|pulse|active|zip)\b|tools\/wri\/|wri2p2\.ts|studies\/harness2\/(score|compare)\.ts|\blog\.jsonl\b/u,
+    said: "Run evidence (AGENTS.md §9): a run proves only its own commit (`bun run runs source --has <text>`). Prefer owning folds (`runs view`, `table.ts`, `reading.ts`, `starter-reads.ts`, `harness-versions.ts`, or `src/kernel/log.ts:read`, where log events wrap payloads under `{ at, kind, data }`); separate outcome counts with denominators.",
     skill: "whole-run-investigation",
     also: [
       ["claims", "attribution-and-proof"],

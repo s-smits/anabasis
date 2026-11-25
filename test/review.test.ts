@@ -957,6 +957,16 @@ describe("hand-label agreement", () => {
     expect(clears(agreement(many, new Map([...thirty, ["z", "earned"]])), { caught: 0, voided: 1 })).toBe(
       false,
     );
+    const ten = Array.from({ length: 10 }, (_, n) => n);
+    const tenfold = ten.flatMap((n) =>
+      events.map((e) => ({ ...e, data: { ...e.data, solve: `${e.data.solve}${String(n)}` } })),
+    );
+    const fifty = new Map(ten.flatMap((n) => [...labels].map(([k, v]) => [`${k}${String(n)}`, v] as const)));
+    const defects = [...fifty].flatMap(([k, v]) => (v === "check-defect" ? [k] : []));
+    const keepDefects = (kept: number) =>
+      new Map([...fifty].filter(([k]) => !defects.slice(kept).includes(k)));
+    expect(clears(agreement(tenfold, keepDefects(8)), { caught: 0, voided: 1 })).toBe(true);
+    expect(clears(agreement(tenfold, keepDefects(7)), { caught: 0, voided: 1 })).toBe(false);
     const noDefects = agreement(many, new Map([...thirty].filter(([, v]) => v === "earned")));
     expect(noDefects.caught).toBeNull();
     expect(clears(noDefects, { caught: 0, voided: 1 })).toBe(false);

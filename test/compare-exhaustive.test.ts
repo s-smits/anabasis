@@ -23,6 +23,7 @@ import {
   readsStepEitherWay,
   scored,
   scoresIn,
+  upperBound,
   sweepOf,
   testOf,
   WEIGHTS,
@@ -175,6 +176,29 @@ describe("the sign-flip p", () => {
     const outlier = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, -300];
     expect(flipP(outlier)).toBeLessThanOrEqual(0.02);
     expect(rawFlipP(outlier)).toBeGreaterThan(0.5);
+  });
+});
+
+describe("the exact upper bound", () => {
+  const atMost = (hits: number, trials: number, chance: number) => {
+    let [ways, below] = [1, 0];
+    for (let at = 0; at <= hits; at += 1) {
+      below += ways * chance ** at * (1 - chance) ** (trials - at);
+      ways = (ways * (trials - at)) / (at + 1);
+    }
+    return below;
+  };
+
+  it("leaves exactly 5% below the observed count, and never falls under the observed rate, up to 40 trials", () => {
+    for (let trials = 1; trials <= 40; trials += 1) {
+      for (let hits = 0; hits < trials; hits += 1) {
+        const bound = upperBound(hits, trials);
+        expect(bound).toBeGreaterThan(hits / trials);
+        expect(atMost(hits, trials, bound)).toBeCloseTo(0.05, 6);
+      }
+      expect(upperBound(trials, trials)).toBe(1);
+      expect(upperBound(0, trials)).toBeCloseTo(1 - 0.05 ** (1 / trials), 9);
+    }
   });
 });
 

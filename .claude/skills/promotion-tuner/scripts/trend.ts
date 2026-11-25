@@ -8,6 +8,7 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, printed } from "#skills/main/print.ts";
 import { loadRuns, type Run, rungsOf } from "#skills/main/runs.ts";
 import { type Shift, shiftOf } from "#skills/main/stats.ts";
+import { upperBound } from "#src/kernel/compare.ts";
 import { DAY_MS } from "#src/meta/clock.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { median } from "#src/meta/tally.ts";
@@ -125,6 +126,13 @@ function middle(factor: Measure["factor"], name: string, values: (run: Run) => r
 
 const lower = (measure: Measure): Measure => ({ ...measure, better: "lower" });
 
+function falseSteps(name: string, part: Each, whole: Each): Measure {
+  const measure = lower(rate("honesty", name, part, whole));
+  const bound = (runs: readonly Run[]) =>
+    (100 * upperBound(total(runs, part), total(runs, whole))).toFixed(1);
+  return { ...measure, counts: (runs) => `${measure.counts(runs)}, 95% bound ${bound(runs)}%` };
+}
+
 /** Every measure a list of runs is read by, in table order: `table.ts` prints a run's own counts
  *  from these, so a rate has one spelling. */
 export const MEASURES = {
@@ -178,29 +186,20 @@ export const MEASURES = {
     (run) => run.onValidity,
     (run) => run.stepped,
   ),
-  aa: lower(
-    rate(
-      "honesty",
-      "A/A steps, of A/A able to read one",
-      (run) => run.aaSteps,
-      (run) => run.controls,
-    ),
+  aa: falseSteps(
+    "A/A steps, of A/A able to read one",
+    (run) => run.aaSteps,
+    (run) => run.controls,
   ),
-  aaValidity: lower(
-    rate(
-      "honesty",
-      "A/A steps where reference validity varied",
-      (run) => run.aaValiditySteps,
-      (run) => run.aaValidityControls,
-    ),
+  aaValidity: falseSteps(
+    "A/A steps where reference validity varied",
+    (run) => run.aaValiditySteps,
+    (run) => run.aaValidityControls,
   ),
-  aaObjective: lower(
-    rate(
-      "honesty",
-      "A/A steps on objective alone",
-      (run) => run.aaObjectiveSteps,
-      (run) => run.aaObjectiveControls,
-    ),
+  aaObjective: falseSteps(
+    "A/A steps on objective alone",
+    (run) => run.aaObjectiveSteps,
+    (run) => run.aaObjectiveControls,
   ),
   rungDollars: middle("economy", "dollars per rung", (run) => rungsOf(run).map((rung) => rung.dollars)),
   perPromotion: lower(rate("economy", "dollars per promotion", (run) => run.dollars, promoted)),

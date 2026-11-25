@@ -31,8 +31,8 @@ Paired comparisons (§7) solve held-out tasks afresh on both arms, verify validi
 Name target factor and empirical count (`docs/plan.md`):
 - **Supply** (precondition): informative gradient (`informative`, `compare.ts`); admission tracks unclosed frontier tasks (`comparisonFloor`).
 - **1. Climb**: promotions/campaign (`climb.ts`), confirmed when an epoch's first starter read beats starter (`confirmed`). Never expose the 6-promotion / 2-domain bar to seats.
-- **2. Honesty**: A/A control per comparison; bar is 0 A/A steps across 10 post-promotion-6 comparisons (`falseRate`, `barLines`).
-- **3. Verdicts**: evidence-backed Referee rulings; against ≥30 blind labels, bar is ≥3/4 defect detection and ≤1/10 voided earned rejections (`clears`, `agreement.ts`).
+- **2. Honesty**: A/A control per comparison; bar is a 95% exact bound ≤2× level on false steps of powered A/As pooled over a release (`trend.ts --holds`).
+- **3. Verdicts**: evidence-backed Referee rulings; against ≥30 blind labels (≥8 defects), bar is ≥3/4 defect detection and ≤1/10 voided earned rejections (`clears`, `agreement.ts`).
 - **4. Economy**: list-price dollars and wall-clock hours/promotion (`close.ts`, `meter.ts:billOf`, observational epoch attempts `climb.ts:BARS`).
 
 ### Trade-offs to keep in view
@@ -137,7 +137,7 @@ Own conclusions and subagent reports sit lowest until grounded higher. Compute c
 | Mechanism / refusal | Live log event where trigger fired / refusal text (proves only trigger) |
 | Harness attribution | Ablation against `programs-of:<digest>` |
 
-Give every rate its denominator and binomial interval (0/n: ≤3/n), count looks behind a reading (repeats inflate false steps), and compare matched active hours, not wall-clock span. Optimise learning quality over cheap activity: separate **instrument health** (clean runs, 0 A/A steps, low crashes) from **product outcome** (`written-after` vs `chosen`, internal vs `baseStarter`, external vs `bareSolver`, same-domain delta vs prior version, weighting recent gaps highest). Triage inline via `.ana/wri/` + folds (`runs source|view`, `backtrack.ts`, `table.ts`, `trend.ts`, `starter-reads.ts`, `score.ts`).
+Give every rate its denominator and binomial interval (0/n: ≤3/n), count looks behind a reading (repeats inflate false steps), and compare matched active hours, not wall-clock span. Separate **instrument health** (clean runs, 0 A/A steps, low crashes) from **product outcome** (`written-after` vs `chosen`, internal vs `baseStarter`, external vs `bareSolver`, same-domain delta vs prior version, weighting recent gaps highest). Triage inline via `.ana/wri/` + folds (`runs source|view`, `backtrack.ts`, `table.ts`, `trend.ts`, `starter-reads.ts`, `score.ts`).
 
 ## 10. Runs with a real model
 

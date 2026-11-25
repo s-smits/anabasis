@@ -493,10 +493,6 @@ describe("a campaign against its bars", () => {
       scored: { differences: Array.from({ length: wins }, () => -1) },
     });
   const promotedTo = (harness: string, from: string) => event("harness.promoted", { harness, from });
-  const six = Array.from({ length: 6 }, (_, at) => {
-    const [from, harness] = [at === 0 ? "S" : `h${String(at)}`, `h${String(at + 1)}`];
-    return [reported(`g-${harness}`, from, harness), promotedTo(harness, from)];
-  }).flat();
   const honesty = (events: readonly LogEvent[]) => barLines([opened, ...events])[1];
   const allWon = [1, 1, 1, 1, 1, 1];
 
@@ -518,14 +514,8 @@ describe("a campaign against its bars", () => {
     expect(barLines([opened])[0]).toContain("0 promotions, 0 confirmed");
   });
 
-  it("reads the A/A comparisons reported after the sixth promotion alone, and keeps those too small and each direction apart", () => {
-    const five = six.slice(0, -2);
-    expect(honesty([...five, reported("g-a", "h5", "h6", allWon)])).toContain("promotion 6 not yet reached");
-    const atTheStep = six.map((each) =>
-      each.data.session === "g-h6" ? reported("g-h6", "h5", "h6", allWon) : each,
-    );
-    expect(honesty(atTheStep)).toContain("after promotion 6, 0 A/A controls");
-    const after = [
+  it("counts every A/A of the campaign, keeps those too small and each direction apart, and bounds the one-sided rate exactly", () => {
+    const aa = [
       reported("g-a", "h6", "h7", [1, 1]),
       reported("g-b", "h6", "h8", [1, -1, 1, -1, 1, -1]),
       reported("g-c", "h6", "h9", allWon),
@@ -536,23 +526,20 @@ describe("a campaign against its bars", () => {
         allWon.map((one) => -one),
       ),
     ];
-    expect(honesty([...six, ...after])).toBe(
-      "- Honesty: after promotion 6, 4 A/A controls against target 10; 3 powered A/A controls: 1 one-sided, 2 two-sided false positives.",
+    expect(honesty(aa)).toBe(
+      "- Honesty: 4 A/A controls; 3 powered A/A controls: 1 one-sided (95% bound 86%), 2 two-sided false positives. Observational; the bar pools a release's.",
     );
     const tied = reported("g-e", "h6", "h11", [0, 0, 0, 0, 0, 0]);
-    expect(honesty([...six, ...after, tied])).toBe(
-      "- Honesty: after promotion 6, 5 A/A controls against target 10; 3 powered A/A controls: 1 one-sided, 2 two-sided false positives. 1 of them tied every task (identical reference outcomes across rollouts, unpowered).",
+    expect(honesty([...aa, tied])).toContain(
+      "1 one-sided (95% bound 86%), 2 two-sided false positives. 1 of them tied every task (identical reference outcomes across rollouts, unpowered).",
     );
-    expect(honesty([...five, tied])).toBe(
-      "- Honesty: promotion 6 not yet reached (target: 10 post-milestone A/A controls). To date: 0 powered A/A controls: 0 one-sided, 0 two-sided false positives. 1 of 1 A/A control so far tied every task (identical reference outcomes across rollouts, unpowered).",
+    const clean = Array.from({ length: 10 }, (_, at) =>
+      reported(`g-${String(at)}`, "h6", `h${String(at + 7)}`, [1, -1, 1, -1, 1, -1]),
     );
-    const settled = [
-      ...five,
-      reported("g-s", "h5", "h6"),
-      promotedTo("h6", "h5"),
-      reported("g-s", "h5", "h6", allWon),
-    ];
-    expect(honesty(settled)).toContain("after promotion 6, 0 A/A controls");
+    expect(honesty(clean)).toContain("10 powered A/A controls: 0 one-sided (95% bound 26%)");
+    expect(honesty([])).toBe(
+      "- Honesty: 0 A/A controls; 0 powered A/A controls: 0 one-sided (95% bound 100%), 0 two-sided false positives. Observational; the bar pools a release's.",
+    );
   });
 
   it("reads the starter against itself on the halves of its own solves in each starter comparison, and counts it towards no bar", () => {
@@ -603,13 +590,13 @@ describe("a campaign against its bars", () => {
     const [drifts, alike, once] = [() => [true, false], () => [true, true], () => [true]];
     const apart = (place: number) => (place % 2 === 0 ? [true, false] : [false, true]);
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, apart)])).toBe(
-      "- Baseline A/A control: 1 split-arm starter comparison, 1 powered A/A control: 0 one-sided, 1 two-sided false positives, 0 tied every task. Observational only, excluded from honesty bar.",
+      "- Baseline A/A control: 1 split-arm starter comparison, 1 powered A/A control: 0 one-sided (95% bound 95%), 1 two-sided false positives, 0 tied every task. Observational only, excluded from honesty bar.",
     );
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toContain(
-      "1 powered A/A control: 0 one-sided, 0 two-sided false positives, 0 tied every task.",
+      "1 powered A/A control: 0 one-sided (95% bound 95%), 0 two-sided false positives, 0 tied every task.",
     );
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toContain(
-      "1 split-arm starter comparison, 0 powered A/A controls: 0 one-sided, 0 two-sided false positives, 1 tied every task.",
+      "1 split-arm starter comparison, 0 powered A/A controls: 0 one-sided (95% bound 100%), 0 two-sided false positives, 1 tied every task.",
     );
     const none = "- Baseline A/A control: no split-arm starter comparison recorded yet. Observational only.";
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 1, once)])).toBe(none);

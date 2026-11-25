@@ -87,6 +87,7 @@ const ZERO_FLOOR = 1e-12;
 export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 const POINTS_SCALE = 1000;
 export const JUDGE_STEP = 0.25;
+const BOUND_TAIL = 0.05;
 
 function plusTotalChances(sizes: readonly number[], share: number): Float64Array {
   const chances = new Float64Array(sumOf(sizes) + 1);
@@ -108,6 +109,17 @@ const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
 const sumOf = (values: readonly number[]) => values.reduce((sum, one) => sum + one, 0);
 const chanceOfAtLeast = (chances: Float64Array, from: number) =>
   chances.subarray(Math.max(0, from)).reduce((sum, one) => sum + one, 0);
+
+export function upperBound(hits: number, trials: number): number {
+  const units = Array.from({ length: trials }, () => 1);
+  let [lo, hi] = [0, 1];
+  for (let halving = 0; halving < 40; halving += 1) {
+    const mid = (lo + hi) / 2;
+    if (chanceOfAtLeast(plusTotalChances(units, mid), hits + 1) < 1 - BOUND_TAIL) lo = mid;
+    else hi = mid;
+  }
+  return hi;
+}
 
 export function signedRanks(differences: readonly number[]): number[] {
   const untied = differences.filter((one) => one !== 0);

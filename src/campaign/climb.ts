@@ -3,6 +3,7 @@ import {
   gapAgainst,
   type Paired,
   pointsOf,
+  upperBound,
   readsStep,
   readsStepEitherWay,
   scoresIn,
@@ -59,7 +60,7 @@ const ATTEMPT = "promotion attempt";
 
 export const BARS = { cost: 3 } as const;
 
-const MILESTONE = { promotions: 6, controls: 10 } as const;
+const MILESTONE = { promotions: 6 } as const;
 
 export interface Worth {
   readonly cost: {
@@ -501,7 +502,7 @@ export function barLines(events: readonly LogEvent[]): string[] {
   });
   return [
     `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
-    honestyLine(controls, epochs[MILESTONE.promotions]?.from),
+    `- Honesty: ${plural(controls.length, "A/A control")}; ${controlCounts(controls)}.${tiedClause(controls, "them")} Observational; the bar pools a release's.`,
     `- Economy: ${plural(climbed.length, "post-setup epoch")} against a threshold of ${plural(BARS.cost, ATTEMPT)} each, ${String(overBar.length)} exceeded${overBar.length === 0 ? "" : `: ${overBar.join("; ")}`}. Observational only.`,
     starterNoiseLine(events, reports),
     repeatLine(reports, pairsOf),
@@ -529,23 +530,11 @@ function tiedClause(controls: readonly { readonly tied: boolean }[], of: string)
     : ` ${String(tied)} of ${of} tied every task (identical reference outcomes across rollouts, unpowered).`;
 }
 
-function honestyLine(all: readonly ReturnType<typeof controlOf>[], sixth: number | undefined): string {
-  const named = `promotion ${String(MILESTONE.promotions)}`;
-  const target = String(MILESTONE.controls);
-  if (sixth === undefined) {
-    const so = tiedClause(all, `${plural(all.length, "A/A control")} so far`);
-    const counted = all.length === 0 ? "" : ` To date: ${controlCounts(all)}.`;
-    return `- Honesty: ${named} not yet reached (target: ${target} post-milestone A/A controls).${counted}${so}`;
-  }
-  const after = all.filter(({ index }) => index > sixth);
-  return `- Honesty: after ${named}, ${plural(after.length, "A/A control")} against target ${target}; ${controlCounts(after)}.${tiedClause(after, "them")}`;
-}
-
 function controlCounts(controls: readonly ReturnType<typeof controlOf>[]): string {
   const able = controls.filter((control) => control.able).length;
   const steps = controls.filter(({ step }) => step).length;
   const either = controls.filter((control) => control.either).length;
-  return `${plural(able, "powered A/A control")}: ${String(steps)} one-sided, ${String(either)} two-sided false positives`;
+  return `${plural(able, "powered A/A control")}: ${String(steps)} one-sided (95% bound ${percent(upperBound(steps, able))}), ${String(either)} two-sided false positives`;
 }
 
 function starterNoiseLine(events: readonly LogEvent[], reports: readonly Reported[]): string {

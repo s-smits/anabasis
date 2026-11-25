@@ -65,9 +65,15 @@ the release cycle stays aimed at them?
    7 tying every task. Proposed in their place: A/A steps at most the design rate, 1.1% at 0.02,
    over at least 50 able A/As in the release's measured campaigns, read apart on comparisons that
    validity decided and those the objective alone did, with the starter against itself counting
-   where a reference ties its own A/A. The ten after a sixth stay reported. The fleet reads 2
-   steps in 207 able. No reader splits the slices; `carriedBy` (`src/kernel/compare.ts`) names which
+   where a reference ties its own A/A. The fleet reads 2
+   steps in 73 able (`trend.ts`; an earlier 207 reproduces from no reader). No reader splits the slices; `carriedBy` (`src/kernel/compare.ts`) names which
    measure carried each task, so the split is a column of `table.ts --rows runs`.
+   Adopted on 25 November 2026 on the operator's instruction to fix the open bars, with a burden of
+   proof in place of the point rate: the 95% exact upper bound on the pooled false-step rate stays at
+   or under twice the level (4% at 0.02), which takes at least 74 able A/As with none stepping, 117
+   with one and 156 with two; `trend.ts` (`falseSteps`) prints the bound beside every honesty count,
+   and a campaign's honesty line (`climb.ts`) reports all its A/As with theirs.
+   Over the fleet's 193 runs it read 2 steps in 73 able A/As, bound 8.4%, so the bar is open.
 9. **Verdicts on both sides.** With 4 labelled check defects one miss fails three in four, so
    proposed at least 8 of the 30 rejections. Jobstat's candidate held no rejection in 763 finished
    solves, so the rejections come from buffer and the other domains, and a domain without them
@@ -79,6 +85,9 @@ the release cycle stays aimed at them?
    and `agreement` reads none. Proposed: at least 20 labelled passes from the measured campaigns'
    references, at most 1 in 10 wrong, the same rate as the earned side until labels give one of
    their own. Jobstat, which offers no rejection, offers passes. Labelling stays the operator's.
+   The floor of 8 defects was adopted on 25 November 2026 (`LEAST_DEFECTS`, `agreement.ts`); before
+   it, `clears` passed on a single labelled defect. The bar stays on the point rates, since a 95%
+   exact lower bound of 3/4 would take about 11 of 11 defects caught.
 10. **Grounding.** F32 stands: no drafted exam names an installed engine, since nothing installs one
     for a campaign. A review proposed an engine in every engine-capable domain; one domain is the
     row until one exists at all.
@@ -159,7 +168,7 @@ unmeasured.
 - **Pooled verdicts, both sides**: `agreement` over packets of several campaigns, with pass labels.
   At the first labelled packet.
 - **Honesty's two slices**: a column of `table.ts --rows runs` split by `carriedBy`. Now: the
-  record holds 207 able A/As.
+  record holds 73 able A/As.
 - **An arm's spread and worst task outside**: present in source since 20 November as
   `score.ts spread --out <store> --name <rollout,...>`, which reads the rollouts named as one arm
   over the store's fair uncut tasks that each scored; the Starter's five give 30 points of 268.
@@ -273,7 +282,7 @@ the candidate and the buffer control. Counts only; the values per row are in the
   that lay the copy) both wait on them.
 - **Honesty after a sixth cannot be read as worded.** 12 A/As after a sixth promotion in two
   campaigns, 0 able to read a step, 7 tying every task. The starter against itself in the same
-  campaigns: 16 splits, all able, 0 steps. Fleet: 2 steps in 207 able.
+  campaigns: 16 splits, all able, 0 steps. Fleet: 2 steps in 73 able.
 - **Jobstat's validity is saturated.** The candidate's reference was valid in every solve of its 7
   comparisons; jobstat holds room on validity on 13 of 2,200 scored tasks and 2 of 37 steps won on
   it, against buffer's 374 of 4,634 and 30 of 96.

@@ -8,6 +8,7 @@ export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
 export type PassLabel = (typeof PASS_LABELS)[number];
 
 const LEAST_LABELS = 30;
+const LEAST_DEFECTS = 8;
 const LEAST_PASS_LABELS = 20;
 const MAX_WRONG_PASS = 0.1;
 const UNCLEAR_EARNED = 1 / 4;
@@ -98,6 +99,7 @@ export function clears(measured: Agreement, bar: Bar): boolean {
   return (
     measured.unruled.length === 0 &&
     counts.reduce((sum, count) => sum + count, 0) >= LEAST_LABELS &&
+    RULINGS.reduce((sum, ruling) => sum + measured.table["check-defect"][ruling], 0) >= LEAST_DEFECTS &&
     measured.caught !== null &&
     measured.caught >= bar.caught &&
     measured.voided !== null &&

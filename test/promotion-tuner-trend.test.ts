@@ -81,6 +81,13 @@ const HOURS: Measure = {
   counts: (runs) => String(runs.length),
 };
 
+it("prints each A/A false-step rate beside its 95% exact upper bound, pooled over the runs", () => {
+  const pooled = [run({ controls: 107, aaSteps: 1 }), run({ controls: 100, aaSteps: 1 })];
+  expect(MEASURES.aa.counts(pooled)).toBe("2/207, 95% bound 3.0%");
+  expect(MEASURES.aa.counts([run({ controls: 10 })])).toBe("0/10, 95% bound 25.9%");
+  expect(MEASURES.aa.counts([run({})])).toBe("0/0, 95% bound 100.0%");
+});
+
 it("reads a difference past the spread by the measure's own direction", () => {
   const [slow, fast] = [five({ active: 20 }), five({ active: 10 })];
   expect(changeOf(HOURS, slow, fast).verdict).toBe("moved, better");

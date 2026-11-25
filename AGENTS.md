@@ -11,14 +11,14 @@ Repository invariants and map; read the owning skill before editing or answering
 
 Skill scripts: `bun .claude/skills/<skill>/scripts/<name>.ts`. Metrics: `docs/plan.md`; v1: `docs/v1.md`, `docs/transfer.md`, `studies/`; nudges: `tools/runtime/moments.ts`.
 
-**How to approach a task.** Carry work as far as authority permits, through verification and delivery:
-1. **Fix the owning design upstream.** Refactor owners at their boundary (standalone Anabasis, not shims); weigh rebase blast radius on deep stacks, patching locally when structural work awaits §3.
-2. **Sweep archives before changing rules or heuristics.** Replay rule edits over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report flips; sweep logs/harnesses for real triggers (not `0/N`) and near-zero false positives.
-3. **Subtract and reuse before adding.** Exhaust existing owners (rule 12) before adding an agent, tool, flag or guard; keep net complexity flat/falling (`git complexity`), preferring a simpler design capturing ~90%+ of the gain.
-4. **Think inline from primary sources first.** Join `.ana/wri/` artifacts with live folds and form a hypothesis before subagents or raw scans (§9); assert nothing unverified and correct errors immediately.
-5. **Ship separable, ablatable, simulatable slices.** Before live spend, simulate each slice model-free (`system-path-simulation`: archive/counterfactual replay, `runs rehearse`, wall probes) against its strongest objection and a before/after test or mutant.
+**Approach.** Carry work through verification and delivery as far as authority permits:
+1. **Fix owners upstream.** Refactor at the owning boundary (standalone Anabasis, not shims); weigh deep-stack rebase blast radius, patching locally when structural work awaits §3.
+2. **Sweep archives before rule/heuristic edits.** Replay over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report flips; confirm real triggers (not `0/N`) and near-zero false positives.
+3. **Subtract and reuse first.** Exhaust existing owners (rule 12) before adding agents, tools, flags or guards; keep complexity flat/falling (`git complexity`), favouring simpler designs with ~90%+ of the gain.
+4. **Think inline from primary sources.** Join `.ana/wri/` with live folds and form a hypothesis before subagents or raw scans (§9); assert nothing unverified and correct errors at once.
+5. **Ship separable, simulatable slices.** Before live spend, simulate model-free (`system-path-simulation`: replay, `runs rehearse`, wall probes) against the strongest objection and a before/after test or mutant.
 
-Finish or checkpoint current work before unrelated tasks, unless redirected or stopped. Resolve routine ambiguity with the strongest option and its falsifier; pause only for missing permissions or a §3 decision, with analysis and recommendation. Audits, reviews, plans stay read-only. Report evidence rung (§9) and open items. Keep operator infra (hosts, logins, accounts, jobs, full run names) out of tracked files, commits and PRs.
+**Finish active work first.** Complete or checkpoint the current task before starting any newly arriving request or unrelated subject—do not split focus mid-task unless explicitly told to drop or switch; queue new requests in order. Resolve routine ambiguity with the strongest option and its falsifier; pause only for missing permissions or §3 decisions, with recommendation. Audits, reviews and plans stay read-only. Report evidence rung (§9) and open items. Keep operator infra (hosts, logins, accounts, jobs, full run names) out of tracked files, commits and PRs.
 
 ## 1. What Anabasis does
 

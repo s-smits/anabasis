@@ -198,6 +198,7 @@ kill_tree() {
 # terminal, and ^C delivers INT. package.json owns each command: a restated test command once
 # dropped --path-ignore-patterns.
 status=0
+[[ "$where" != host ]] || cp -f test/.test-timings.json "$dir.times" 2>/dev/null || : >"$dir.times"
 ${keep_awake[@]+"${keep_awake[@]}"} "$bun_dir/bun" run "$task" "$@" &
 walled_task=$!
 (

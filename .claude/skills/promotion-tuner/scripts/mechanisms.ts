@@ -40,7 +40,7 @@ type Choice = keyof typeof CHOICES;
 const NUMBERS = ["validity", "objective", "bill", "turns", "seconds", "room", "floor", "untied"] as const;
 const OPTIONAL = ["level", "mostBill", "mostTurns", "mostSeconds"] as const;
 
-export type Knobs = Readonly<
+type Knobs = Readonly<
   Record<(typeof NUMBERS)[number], number> &
     Record<(typeof OPTIONAL)[number], number | null> & { [Key in Choice]: (typeof CHOICES)[Key][number] }
 >;

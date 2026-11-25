@@ -129,6 +129,96 @@ export const namedPlaces = (places: readonly Place[]): string =>
 export const placeEnv = ({ remote }: Place): Readonly<Record<string, string>> =>
   remote === undefined ? {} : { ANA_CHECK_HOST: remote, ANA_RUNNER_SPARE_HELD: "1" };
 
+export interface Seat {
+  readonly place: Place;
+  readonly index: number;
+  readonly leave: () => boolean;
+}
+
+export interface Spreading<T> {
+  readonly run: (task: T, seat: Seat) => Promise<"done" | "elsewhere">;
+  readonly qualify?: (seat: Seat) => Promise<string | null>;
+  readonly halt?: () => boolean;
+  readonly startsAlone?: (task: T) => boolean;
+}
+
+/**
+ * `tasks` dealt over the slots of `places` in order: a task takes the free seat whose place has the
+ * most room, the first listed among equals, and one that `startsAlone` takes the first free seat once
+ * nothing runs, so no host runs two whole suites of one landing. A place `qualify` refuses takes
+ * none; one whose `run` says `elsewhere` takes no more and its task goes back in order. A seat's
+ * `leave` takes its place out at once where another remains and says whether it did, so of two places
+ * that drop together the second keeps its task. Ends once the queue is empty, `halt` says so or no
+ * place is left, after what runs has finished; `unrun` keeps the rest in order.
+ */
+export async function spread<T>(
+  places: readonly Place[],
+  tasks: readonly T[],
+  { run, qualify, halt = () => false, startsAlone = () => false }: Spreading<T>,
+): Promise<{ unrun: T[]; refused: string[] }> {
+  const live = new Set(places);
+  const leave = (place: Place) => () => {
+    const others = [...live].some((other) => other !== place);
+    if (others) live.delete(place);
+    return others;
+  };
+  const seats = places.flatMap((place) => Array.from({ length: place.slots }, () => place));
+  const firsts = places.map((place) => ({
+    place,
+    index: seats.indexOf(place),
+    leave: leave(place),
+  }));
+  const refusals = qualify === undefined ? [] : await Promise.all(firsts.map(qualify));
+  const refused = refusals.filter((why) => why !== null);
+  for (const [at, why] of refusals.entries()) if (why !== null) live.delete(places[at] ?? { slots: 0 });
+  const busy = new Set<number>();
+  const queue = tasks.map((task, order) => ({ task, order }));
+  const running = new Set<Promise<void>>();
+  const room = (place: Place) => seats.filter((one, index) => one === place && !busy.has(index)).length;
+  const free = () =>
+    seats.flatMap((place, index) => (live.has(place) && !busy.has(index) ? [{ place, index }] : []));
+  const take = (task: T) => {
+    if (!startsAlone(task)) return free().toSorted((one, other) => room(other.place) - room(one.place))[0];
+    return running.size === 0 ? free()[0] : undefined;
+  };
+  try {
+    await dispatch();
+  } catch (error) {
+    await Promise.allSettled(running);
+    throw error;
+  }
+  return { unrun: queue.map(({ task }) => task), refused };
+
+  async function dispatch(): Promise<void> {
+    for (;;) {
+      const head = queue[0];
+      if (head === undefined || halt() || live.size === 0) {
+        if (running.size === 0) break;
+        await Promise.race(running);
+        continue;
+      }
+      const open = take(head.task);
+      if (open === undefined) {
+        if (running.size === 0) break;
+        await Promise.race(running);
+        continue;
+      }
+      queue.shift();
+      busy.add(open.index);
+      const seat = { ...open, leave: leave(open.place) };
+      const task: Promise<void> = run(head.task, seat).then((said) => {
+        busy.delete(open.index);
+        running.delete(task);
+        if (said === "done") return;
+        live.delete(open.place);
+        const above = queue.findIndex((other) => other.order > head.order);
+        queue.splice(above === -1 ? queue.length : above, 0, head);
+      });
+      running.add(task);
+    }
+  }
+}
+
 /** The hosts `text` lists, by default the environment's `ANA_HOSTS`: none for a verb kept here. */
 export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {
   if (isLocalOnly()) return [];

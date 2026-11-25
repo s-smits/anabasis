@@ -288,13 +288,15 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     for (const { cwd } of run.sent) expect(existsSync(join(cwd, "node_modules"))).toBe(false);
   }, 60_000);
 
-  it("puts a mutant back where its host stops answering, and another host reads it", () => {
+  it("puts a mutant back where its host stops answering, and the host left reads it beside one down from the start", () => {
     const run = fleet("fleet-fades", {
-      ANA_HOSTS: hosts(host("a", 1), host("e", 1)),
+      ANA_HOSTS: hosts(host("a", 1), host("e", 1), host("d", 1)),
       ANA_FAKE_FADES: "e",
       ANA_FAKE_FADE_AFTER: "1",
+      ANA_FAKE_DOWN: "d",
     });
     expect(run.status).toBe(0);
+    expect(run.stderr).toContain('baseline suite "t" did not pass unmutated (no verdict) on d');
     expect(run.stderr).toContain("e gave no verdict, so takes no more mutants");
     expect(verdicts(run.rows)).toStrictEqual(here);
     expect(run.rows.length).toBe(Object.keys(here).length);

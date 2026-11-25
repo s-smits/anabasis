@@ -24,7 +24,7 @@ import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, type ParseArgsOptionsConfig, runtimeProcess } from "../../src/meta/process.ts";
 import { killProcessGroup, runSync, runTextSyncOrThrow, zeroExitText } from "../../src/meta/subprocess.ts";
-import { NO_VERDICT, type Place, placeEnv } from "../runs/host-config.ts";
+import { NO_VERDICT, type Place, placeEnv, type Seat, spread } from "../runs/host-config.ts";
 import type { StatusState } from "./pulls.ts";
 
 type Pass = "static" | "whole";
@@ -474,39 +474,6 @@ async function checkerDigest(): Promise<string> {
   return sha256(await bundle.text()).slice(0, 16);
 }
 
-/**
- * The places of one proof, each with the passes it runs now. A static pass takes the place with the
- * most room, the first listed among equals; the whole pass takes the first place once nothing runs
- * anywhere, so no host runs two suites of one landing. A place leaves only while another remains.
- */
-function seating(places: readonly Place[]) {
-  const busy = new Map(places.map((place) => [place, 0]));
-  const room = ([place, running]: readonly [Place, number]): number => place.slots - running;
-  return {
-    /** The place `pass` now holds, or undefined until one has room for it. */
-    take(pass: Pass, running: number): Place | undefined {
-      const entries = [...busy];
-      const open =
-        pass === "whole"
-          ? entries.slice(0, running === 0 ? 1 : 0)
-          : entries.filter((entry) => room(entry) > 0).toSorted((one, other) => room(other) - room(one));
-      const place = open[0]?.[0];
-      if (place !== undefined) busy.set(place, (busy.get(place) ?? 0) + 1);
-      return place;
-    },
-    free(place: Place): void {
-      const running = busy.get(place);
-      if (running !== undefined) busy.set(place, running - 1);
-    },
-    /** Sets `place` aside where another place remains, and says whether it did. */
-    leave(place: Place): boolean {
-      if (![...busy.keys()].some((other) => other !== place)) return false;
-      busy.delete(place);
-      return true;
-    },
-  };
-}
-
 /** The clone's record of passes and what it remembers, unless `ANA_GATE_FRESH=1`, and the folder of
  *  the passes' logs, cleared of those older than `LOG_DAYS`. */
 async function remembered(root: string) {
@@ -558,10 +525,22 @@ export async function proveCommits(
   const free: string[] = [];
   const made: string[] = [];
   const failures: (Failure & { index: number })[] = [];
-  const seats = seating(prover.places);
-  const queue: Queued[] = proofs.map((proof, index) => ({ ...proof, index }));
-  const run = async (at: string, proof: Queued, pass: Pass, place: Place): Promise<void> => {
-    const { index, commit } = proof;
+  const at = ({ index, commit }: Queued) =>
+    `${String(index + 1)} of ${String(proofs.length)}, ${short(commit)}`;
+  const earlierOf = ({ commit, pass }: Proof): Pass | null => {
+    const had = (kind: Pass): boolean => passed.has(contentKey(root, commit, kind, checker));
+    return had("whole") ? "whole" : pass !== null && had(pass) ? pass : null;
+  };
+  const run = async (proof: Queued, { place, leave }: Seat): Promise<"done" | "elsewhere"> => {
+    const { index, commit, pass } = proof;
+    const earlier = earlierOf(proof);
+    if (pass === null || earlier !== null) {
+      say(
+        `${at(proof)}: ${earlier === null ? "documentation only" : "passed earlier on these exact bytes"}.`,
+      );
+      mark(commit, "success", earlier === null ? "documentation only" : PROVED[earlier]);
+      return "done";
+    }
     const { remote, slots } = place;
     const share = String(Math.max(2, Math.floor((availableParallelism() - 2) / slots)));
     let tree = free.pop();
@@ -574,7 +553,7 @@ export async function proveCommits(
     git(tree, ["checkout", "-q", "-f", "--detach", commit]);
     git(tree, ["clean", "-fdq"]);
     const log = join(logs, `${who}-${short(commit)}-${pass}.log`);
-    say(`${at}: ${WHAT[pass]}${remote === undefined ? "" : ` on ${remote}`}. Log: ${log}`);
+    say(`${at(proof)}: ${WHAT[pass]}${remote === undefined ? "" : ` on ${remote}`}. Log: ${log}`);
     mark(commit, "pending", WHAT[pass]);
     const fd = openSync(log, "w");
     const started = Date.now();
@@ -600,63 +579,42 @@ export async function proveCommits(
     clearInterval(pulsing);
     closeSync(fd);
     free.push(tree);
-    seats.free(place);
     if (code !== 0 && stop?.aborted === true) {
-      say(`${at}: stopped.`);
-      return;
+      say(`${at(proof)}: stopped.`);
+      return "done";
     }
     if (code === 0) {
       appendFileSync(record, `${contentKey(root, commit, pass, checker)}\n`);
       mark(commit, "success", PROVED[pass]);
-      say(`${at}: passed.`);
-      return;
+      say(`${at(proof)}: passed.`);
+      return "done";
     }
     // The gate's exit says whether the commit failed; its log only names the step that said so.
     const verdict = verdictOf(code) === "failed";
-    if (!verdict && seats.leave(place)) {
-      say(`${at}: ${place.remote ?? "its place"} gave no verdict, so takes no more; proving it elsewhere.`);
-      const above = queue.findIndex((other) => other.index > index);
-      queue.splice(above === -1 ? queue.length : above, 0, proof);
-      return;
+    if (!verdict && leave()) {
+      say(
+        `${at(proof)}: ${place.remote ?? "its place"} gave no verdict, so takes no more; proving it elsewhere.`,
+      );
+      return "elsewhere";
     }
     failures.push({ index, ...reported(who, commit, log, verdict) });
     const state = verdict ? "failure" : "error";
     mark(commit, state, FAILED[state]);
+    return "done";
   };
-  const running = new Set<Promise<boolean>>();
   try {
-    // Until the queue, into which a pass given no verdict comes back, and the passes under way are empty.
-    for (;;) {
-      const next = queue[0];
-      if (failures.length > 0 || stop?.aborted === true || (next === undefined && running.size === 0)) break;
-      if (next === undefined) {
-        await Promise.race(running);
-        continue;
-      }
-      const { index, commit, pass } = next;
-      const at = `${String(index + 1)} of ${String(proofs.length)}, ${short(commit)}`;
-      const had = (kind: Pass): boolean => passed.has(contentKey(root, commit, kind, checker));
-      const earlier = had("whole") ? "whole" : pass !== null && had(pass) ? pass : null;
-      if (pass === null || earlier !== null) {
-        queue.shift();
-        say(`${at}: ${earlier === null ? "documentation only" : "passed earlier on these exact bytes"}.`);
-        mark(commit, "success", earlier === null ? "documentation only" : PROVED[earlier]);
-        continue;
-      }
-      const place = seats.take(pass, running.size);
-      if (place === undefined) {
-        await Promise.race(running);
-        continue;
-      }
-      queue.shift();
-      const task: Promise<boolean> = run(at, next, pass, place).then(() => running.delete(task));
-      running.add(task);
-    }
-    await Promise.all(running);
+    await spread(
+      prover.places,
+      proofs.map((proof, index) => ({ ...proof, index })),
+      {
+        run,
+        startsAlone: (proof) => proof.pass === "whole" && earlierOf(proof) === null,
+        halt: () => failures.length > 0 || stop?.aborted === true,
+      },
+    );
   } finally {
-    // A rejected mark (land's `Moved`) leaves other proofs running in their checkouts: each is let
-    // finish, and its pass recorded for the retry, before any checkout is removed.
-    await Promise.allSettled(running);
+    // A rejected mark (land's `Moved`) leaves other proofs running in their checkouts: `spread` lets
+    // each finish, and its pass recorded for the retry, before any checkout is removed.
     for (const tree of made) runSync(["git", "worktree", "remove", "--force", tree], { cwd: root });
   }
   return failures.toSorted((a, b) => a.index - b.index)[0] ?? null;

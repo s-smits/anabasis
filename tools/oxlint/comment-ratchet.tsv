@@ -393,7 +393,7 @@ tools/runs/diagnosis.ts	10
 tools/runs/fresh.ts	16
 tools/runs/health.ts	7
 tools/runs/host-command.ts	8
-tools/runs/host-config.ts	27
+tools/runs/host-config.ts	28
 tools/runs/hosts.ts	23
 tools/runs/keep.ts	21
 tools/runs/live.ts	9
@@ -427,7 +427,7 @@ tools/runs/zip.ts	30
 tools/runtime/ci-runs.ts	19
 tools/runtime/doubled.ts	3
 tools/runtime/follow.ts	14
-tools/runtime/gate.ts	58
+tools/runtime/gate.ts	54
 tools/runtime/land.ts	55
 tools/runtime/landing.ts	16
 tools/runtime/lint.ts	35

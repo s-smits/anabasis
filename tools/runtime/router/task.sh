@@ -73,7 +73,9 @@ starts() {
   guard=$!
   disown "$guard"
   wait "$pid" 2>/dev/null || ok=$?
-  kill "$guard" 2>/dev/null || true
+  # SAFETY: SIGKILL. A TERM that reaches the guard before it has reset the traps it inherited runs
+  # this shell's EXIT trap there, which wrote the guard's 0 as a failed task's status on Linux.
+  kill -9 "$guard" 2>/dev/null || true
   return "$ok"
 }
 stalled() {

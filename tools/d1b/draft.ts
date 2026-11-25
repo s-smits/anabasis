@@ -8,6 +8,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
+import { nonRetryableProvider } from "#src/kernel/solve.ts";
 import {
   type DraftAuditCase,
   type DraftAuditFinding,
@@ -169,6 +170,13 @@ export async function draftCommand(
   // Unattended runs (without `--hitl`) admit author-computed checks and freeze at once, so the same
   // offline acceptance pass is not repeated.
   const after = read(log);
+  const refused = after.findLast(({ kind, data }) => kind === "referee.draft" && data.session === id)?.data
+    .error;
+  if (isString(refused) && nonRetryableProvider(refused)) {
+    throw new Error(
+      `the reviewer refused in a way no retry clears (${refused}), so the exam is not frozen and no solve is paid for: run it again once the reviewer's login works and the drafted exam is read from its log`,
+    );
+  }
   const stood = after.some(({ kind, data }) => kind === "exam.drafted" && data.session === id);
   const last = readings.at(-1);
   if (stood && last !== undefined) {

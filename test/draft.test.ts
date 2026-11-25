@@ -714,6 +714,28 @@ describe.concurrent("campaign draft lifecycle", () => {
     );
   });
 
+  it("stops before the freeze when the reviewer refused for good, and freezes past a usage limit", async () => {
+    const audited = (name: string, error: string) =>
+      draftCommand(
+        [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
+        putting(SOUND),
+        async () => {
+          append(campaignLog(name), "referee.draft", { session: "d-1", pass: 1, verdict: "skipped", error });
+          return { verdict: "skipped", findings: [], summary: error, probes: [], error };
+        },
+      );
+    const frozen = (name: string) => read(campaignLog(name)).filter(({ kind }) => kind === "contract.frozen");
+    const [refused, limited] = [`${STEM}-audit-refused`, `${STEM}-audit-limited`];
+    await Promise.all([
+      expect(
+        audited(refused, "Codex error: The model is not supported when using Codex with a ChatGPT account"),
+      ).rejects.toThrow("no retry clears"),
+      audited(limited, "Codex error: The usage limit has been reached"),
+    ]);
+    expect(frozen(refused)).toHaveLength(0);
+    expect(frozen(limited)).toHaveLength(1);
+  });
+
   it("audits up to two passes using reviewer.effort, stops early on sound/skipped, and skips when no reviewer is configured", async () => {
     const defectName = `${STEM}-audit-defect`;
     const seenPasses: {

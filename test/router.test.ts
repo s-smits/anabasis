@@ -26,7 +26,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { gitMaybe } from "../src/meta/git.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
@@ -84,13 +84,15 @@ const RECORDING_BUN = `#!/bin/bash
 case "$*" in *run.js*) exec ${capturedExecPath} "$@" ;; esac
 if [[ "\${1-}" == --version ]]; then echo 1.4.2; exit 0; fi
 if [[ "\${1-}" == install ]]; then exit 0; fi
-printf 'bun=%s\\tactive=%s\\tstrict=%s\\tworkers=%s\\tbail=%s\\tclimb=%s\\tpaths=%s\\thostLoad=%s\\targs=%s\\n' "$0" "\${ANA_RUNNER_ACTIVE-}" \\
-  "\${ANA_LINT_STRICT-}" "\${ANA_TEST_WORKERS-}" "\${ANA_TEST_BAIL-}" "\${ANA_CLIMB-}" "\${ANA_LINT_PATHS-}" "\${ANA_TEST_HOST_LOAD-}" "$*" >>"$HOME/bun.log"
+printf 'bun=%s\\tactive=%s\\tstrict=%s\\tworkers=%s\\tbail=%s\\tclimb=%s\\tpaths=%s\\thostLoad=%s\\thosts=%s\\targs=%s\\n' "$0" "\${ANA_RUNNER_ACTIVE-}" \\
+  "\${ANA_LINT_STRICT-}" "\${ANA_TEST_WORKERS-}" "\${ANA_TEST_BAIL-}" "\${ANA_CLIMB-}" "\${ANA_LINT_PATHS-}" "\${ANA_TEST_HOST_LOAD-}" "\${ANA_HOSTS-}" "$*" >>"$HOME/bun.log"
 status=0
 for arg in "$@"; do
   case "$arg" in
     hold:*) : >"\${arg#hold:}.ready"; until [[ -e "\${arg#hold:}.release" ]] || ((SECONDS > 120)); do sleep 0.05; done ;;
     exit:*) status="\${arg#exit:}" ;;
+    */fails.test.ts) status=3 ;;
+    nostart) : >"$HOME/nostart" ;;
   esac
 done
 exit "$status"
@@ -106,6 +108,7 @@ esac
 const HOST_TOOLS = {
   sysctl: "#!/bin/sh\nexit 1\n",
   df: `#!/bin/sh\nif [ -e "$HOME/garbled" ]; then echo nonsense; else exec /bin/df "$@"; fi\n`,
+  chmod: `#!/bin/sh\nif [ -e "$HOME/nostart" ]; then printf '#!/bin/sh\\nexit 1\\n' >"$2"; fi\nexec /bin/chmod "$@"\n`,
   ps: QUIET_PS,
 };
 
@@ -355,7 +358,7 @@ function makeCase(options: { readonly copySource?: boolean } = {}) {
   const fresh = (): void => {
     writeFileSync(log, "");
     for (const host of ["fake-mac", "fake-linux", "fake-peer"]) {
-      for (const state of ["down", "drops", "zero", "flaky", "garbled", "load", "bun.log"]) {
+      for (const state of ["down", "drops", "zero", "flaky", "garbled", "nostart", "load", "bun.log"]) {
         rmSync(join(hostHome(host), state), { force: true });
       }
     }
@@ -517,7 +520,7 @@ describe.concurrent("which host runs a task", () => {
         const refused = await sb.run(["test"], { ANA_CHECK_HOST: choice });
         expect(refused.status, choice).toBe(2);
         expect(refused.stderr, choice).toContain(`ANA_CHECK_HOST=${choice} names no host`);
-        expect(refused.stderr, choice).toContain("here, auto or one of: m1, zbook");
+        expect(refused.stderr, choice).toContain("here, auto, all or one of: m1, zbook");
         expect(sb.connections()).toEqual([]);
         expect(calls(sb.home)).toEqual([]);
       }),
@@ -619,7 +622,7 @@ describe.concurrent("which host runs a task", () => {
     ]);
   });
 
-  it("fails over under auto on pre-task refusal and mid-task no-verdict drop, releasing the slot, and trims whitespace on ANA_CHECK_HOST", async () => {
+  it("fails over under auto on pre-task refusal, a mid-task drop and a host that starts no new program, releasing the slot, and trims whitespace on ANA_CHECK_HOST", async () => {
     await Promise.all([
       (async () => {
         const sb = makeCase();
@@ -645,6 +648,16 @@ describe.concurrent("which host runs a task", () => {
       (async () => {
         const sb = makeCase();
         sb.spreadLoads();
+        writeFileSync(join(sb.hostHome("fake-mac"), "nostart"), "");
+        const stalled = await sb.run(["test"], { ANA_CHECK_HOST: "auto" });
+        expect(stalled.status, stalled.stderr).toBe(0);
+        expect(stalled.stderr).toContain("no verdict from m1; trying another place");
+        expect(calls(sb.hostHome("fake-mac"))).toEqual([]);
+        expect(sb.ran("fake-linux") || calls(sb.home).length > 0).toBe(true);
+      })(),
+      (async () => {
+        const sb = makeCase();
+        sb.spreadLoads();
         writeFileSync(join(sb.hostHome("fake-mac"), "garbled"), "");
         writeFileSync(join(sb.hostHome("fake-linux"), "garbled"), "");
         const toLocal = await sb.run(["test"], { ANA_CHECK_HOST: "  auto  " });
@@ -655,6 +668,86 @@ describe.concurrent("which host runs a task", () => {
         const sb = makeCase();
         expect((await sb.run(["test"], { ANA_CHECK_HOST: "  here  " })).status).toBe(0);
         expect(sb.connections()).toEqual([]);
+      })(),
+    ]);
+  });
+
+  it("splits the test task under all over the places under half load, each file once, runs one with a name pattern whole, takes a named folder as its test files and refuses one with none, puts the chunk of a place that drops or cannot start a new program elsewhere, and passes over a place whose slots others hold", async () => {
+    const FILES = ["a", "b", "c", "d", "e"].map((name) => `test/${name}.test.ts`);
+    const ranAt = (at: string): string[] =>
+      calls(at).flatMap((call) =>
+        call.args?.startsWith("run test") === true
+          ? call.args.split(" ").filter((arg) => arg.endsWith(".test.ts"))
+          : [],
+      );
+    const everywhere = (sb: ReturnType<typeof makeCase>): string[] =>
+      [sb.home, sb.hostHome("fake-mac"), sb.hostHome("fake-linux")].flatMap(ranAt).toSorted();
+    await Promise.all([
+      (async () => {
+        const sb = makeCase({ copySource: true });
+        mkdirSync(join(sb.source, "test"), { recursive: true });
+        for (const file of FILES) writeFileSync(join(sb.source, file), "");
+        sb.loaded("fake-mac", 2, 0);
+        sb.loaded("fake-linux", 4, 2.4);
+        const result = await sb.run(["test"], { ANA_CHECK_HOST: "all" });
+        expect(result.status, result.stderr).toBe(0);
+        expect(everywhere(sb)).toEqual(FILES);
+        expect(ranAt(sb.hostHome("fake-mac")).length).toBeGreaterThan(0);
+        expect(ranAt(sb.hostHome("fake-linux"))).toEqual([]);
+        const named = await sb.run(["test", "-t", "one"], { ANA_CHECK_HOST: "all" });
+        expect(named.status, named.stderr).toBe(0);
+        const homes = [sb.home, sb.hostHome("fake-mac"), sb.hostHome("fake-linux")];
+        expect(
+          homes.flatMap((home) => calls(home)).filter((call) => call.args === "run test -t one"),
+        ).toHaveLength(1);
+      })(),
+      ...["drops", "nostart"].map(async (fault) => {
+        const sb = makeCase({ copySource: true });
+        mkdirSync(join(sb.source, "test"), { recursive: true });
+        for (const file of FILES) writeFileSync(join(sb.source, file), "");
+        sb.loaded("fake-mac", 2, 0);
+        sb.loaded("fake-linux", 4, 0);
+        writeFileSync(join(sb.source, "test/fails.test.ts"), "");
+        writeFileSync(join(sb.hostHome("fake-mac"), fault), "");
+        const named = [...FILES.slice(0, 3), "test/fails.test.ts"];
+        const result = await sb.run(["test", ...named], { ANA_CHECK_HOST: "all" });
+        expect(result.status, result.stderr).toBe(3);
+        expect(result.stderr).toContain("all: no verdict from m1");
+        expect(everywhere(sb)).toEqual(named.toSorted());
+        expect(ranAt(sb.hostHome("fake-mac"))).toEqual([]);
+        expect(heldIn(sb.queueOf("fake-mac"))).toEqual([]);
+      }),
+      (async () => {
+        const sb = makeCase({ copySource: true });
+        mkdirSync(join(sb.source, "test"), { recursive: true });
+        for (const file of FILES) writeFileSync(join(sb.source, file), "");
+        sb.loaded("fake-mac", 2, 0);
+        sb.loaded("fake-linux", 4, 0);
+        const queue = sb.queueOf("fake-mac");
+        mkdirSync(queue, { recursive: true });
+        for (const slot of ["slot-1", "slot-2"]) symlinkSync(String(runtimeProcess.pid), join(queue, slot));
+        const result = await sb.run(["test"], { ANA_CHECK_HOST: "all", ANA_RUNNER_QUEUE_WAIT: "30" });
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stderr).not.toContain("no verdict");
+        expect(everywhere(sb)).toEqual(FILES);
+        expect(ranAt(sb.hostHome("fake-mac"))).toEqual([]);
+      })(),
+      (async () => {
+        const sb = makeCase({ copySource: true });
+        const ui = ["packages/ui/test/a.test.ts", "packages/ui/test/deep/b.test.ts"];
+        for (const file of [...FILES, ...ui]) {
+          mkdirSync(dirname(join(sb.source, file)), { recursive: true });
+          writeFileSync(join(sb.source, file), "");
+        }
+        sb.loaded("fake-mac", 2, 0);
+        sb.loaded("fake-linux", 4, 0);
+        const result = await sb.run(["test", "packages/ui/test"], { ANA_CHECK_HOST: "all" });
+        expect(result.status, result.stderr).toBe(0);
+        expect(everywhere(sb)).toEqual(ui);
+        mkdirSync(join(sb.source, "packages/empty"));
+        const empty = await sb.run(["test", "packages/empty"], { ANA_CHECK_HOST: "all" });
+        expect(empty.status).toBe(2);
+        expect(empty.stderr).toContain("all: no test files in packages/empty");
       })(),
     ]);
   });
@@ -673,6 +766,31 @@ describe.concurrent("which host runs a task", () => {
       paths: "src/a.ts",
       hostLoad: "2",
     });
+  });
+
+  it("leads a gate under all here, outside any slot and unmarked, so its own steps are routed in turn", async () => {
+    const sb = makeCase();
+    const result = await sb.run(["run", "gate"], { ANA_CHECK_HOST: "all" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(lastCall(sb.home)).toMatchObject({ active: "", args: "run gate" });
+    expect(sb.connections()).toEqual([]);
+    expect(heldIn(sb.queueOf("local"))).toEqual([]);
+  });
+
+  it("starts a task here without the host list the router read for it, and with one its caller set", async () => {
+    await Promise.all(
+      [true, false].map(async (read) => {
+        const sb = makeCase();
+        const file = join(sb.home, ".env.runs");
+        writeFileSync(file, `ANA_HOSTS=${HOSTS}\nANA_LOGINS=1\n`);
+        const result = await sb.run(["test"], {
+          ANA_CHECK_HOST: "here",
+          ANA_RUNNER_HOST_FILE: read ? file : undefined,
+        });
+        expect(result.status, result.stderr).toBe(0);
+        expect(lastCall(sb.home)?.hosts).toBe(read ? "" : HOSTS);
+      }),
+    );
   });
 
   it("refuses a setting that is no count, and a tree that pins no Bun, before any host is asked", async () => {
@@ -775,18 +893,23 @@ describe.concurrent("what reaches the host", () => {
     expect(readFileSync(join(target, "edited"), "utf8")).toBe("changed-again");
   });
 
-  it("returns the task's exit status where the server reports 0 for every session, and no verdict where the session drops", async () => {
-    const cases: [string | null, number][] = [
-      [null, 3],
-      ["zero", 3],
-      ["drops", 255],
+  it("returns the task's exit status where the server reports 0 for every session, and no verdict where the session drops or the host starts no new program before the task or after it failed", async () => {
+    const cases: [string | null, string[], number][] = [
+      [null, ["exit:3"], 3],
+      ["zero", ["exit:3"], 3],
+      ["drops", ["exit:3"], 255],
+      ["nostart", ["exit:0"], 69],
+      [null, ["nostart", "exit:3"], 69],
+      [null, ["nostart", "exit:0"], 0],
     ];
     await Promise.all(
-      cases.map(async ([state, status]) => {
+      cases.map(async ([state, args, status]) => {
         const sb = makeCase();
         if (state !== null) writeFileSync(join(sb.hostHome("fake-mac"), state), "");
-        expect((await sb.run(["test", "exit:3"], { ANA_CHECK_HOST: "m1" })).status, state ?? "plain").toBe(
-          status,
+        const result = await sb.run(["test", ...args], { ANA_CHECK_HOST: "m1" });
+        expect(result.status, `${state ?? "plain"} ${args.join(" ")}`).toBe(status);
+        expect(calls(sb.hostHome("fake-mac")).length, `${state ?? "plain"} ${args.join(" ")}`).toBe(
+          state === "nostart" || state === "drops" ? 0 : 1,
         );
       }),
     );

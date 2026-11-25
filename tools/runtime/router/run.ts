@@ -6,9 +6,17 @@
  * one-minute load a core plus active local slot occupancy (`placesFor`); unset or empty as `auto`
  * where the list names a host, and otherwise here without a sample, as where the host list cannot be
  * read; `here` on this machine, without reading the host list; a host's name or ssh destination on
- * that host. Any other value is refused with the names to write. Wherever it runs, the task is
+ * that host; `all` as `auto` over the places under half their cores' one-minute load (the least
+ * loaded where none is), where a test task that names only test files and folders (or nothing, for
+ * all of `test/`) has their files cut into chunks of like time by `test/.test-timings.json`, two a
+ * slot, each in the first free slot among the places that still give verdicts, and exits as the
+ * first failing chunk, or as no verdict where a chunk found no place (`sharded`); a test task with
+ * any other argument, such as a name pattern, runs whole, since a chunk the pattern misses fails; and
+ * where the gate leads on this machine, outside any slot, so that its own test, typecheck and lint
+ * steps are routed in turn. Any other value is refused with the names to write. Wherever it runs, the task is
  * `task.sh` over the working tree as it stands, uncommitted bytes included, and its exit status is
- * this command's.
+ * this command's. A task here starts without what the bun router read from the host list for this
+ * command alone (`CALLER_ENV`), as one sent to a host does, so no test reaches the fleet it names.
  *
  * **What reaches a host.** Git carries the tree: the working tree becomes one commit in place of
  * `HEAD` (`snapshot`), pushed to the slot's own repository on the host, which borrows the objects
@@ -27,17 +35,21 @@
  */
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   readlinkSync,
   renameSync,
   rmSync,
+  statSync,
 } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { hostTool } from "#src/meta/host-tool.ts";
+import { capturedJsonParse } from "#src/meta/json-runtime.ts";
+import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
-import { join } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { capturedSpawn, processAnswers, runtimeProcess } from "#src/meta/process.ts";
 import { errorCode, errorMessage } from "#src/meta/runtime-values.ts";
 import { sshOptions } from "#src/meta/ssh.ts";
@@ -52,6 +64,8 @@ import {
   ownName,
   RUNNER_SLOTS,
   type Host,
+  NO_VERDICT,
+  spread,
 } from "../../runs/host-config.ts";
 import { minuteLoads } from "../../runs/load.ts";
 
@@ -94,6 +108,8 @@ class Refusal extends Error {
     this.code = code;
   }
 }
+
+const heldByThisRunner = new Set<string>();
 
 const say = (line: string): void => console.error(`runner: ${line}`);
 
@@ -173,7 +189,9 @@ function slotCapacity(place: Place): number {
 /** Whether `path` holds a live runner slot; `"clean"` also clears stale symlinks, stray files, and dead entries. */
 function slotOccupied(path: string, mode: "read" | "clean"): boolean {
   const live = (holder: string): boolean =>
-    holder !== String(runtimeProcess.pid) && /^[1-9]\d*$/u.test(holder) && processAnswers(Number(holder));
+    holder === String(runtimeProcess.pid)
+      ? heldByThisRunner.has(path)
+      : /^[1-9]\d*$/u.test(holder) && processAnswers(Number(holder));
   let linkTarget: string | null = null;
   try {
     linkTarget = readlinkSync(path);
@@ -216,7 +234,7 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
   const { hosts, benches } = listed(choice);
   if (choice === "" && hosts.length === 0) return here;
   const waitMs = setting("ANA_RUNNER_PICK_WAIT", 5) * 1000;
-  if (choice === "" || choice === "auto") {
+  if (choice === "" || choice === "auto" || choice === "all") {
     const started = performance.now();
     const benched = new Set(benches.flatMap((bench) => (bench.host === undefined ? [] : [bench.host.name])));
     const { order: sampled, silent } = await minuteLoads(
@@ -242,7 +260,9 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
         silent.length === 0 ? "" : `; no answer from ${silent.join(", ")}`
       } (read in ${took}s)`,
     );
-    return { places: ranked.length === 0 ? [undefined] : ranked.map(({ host }) => host), picked: true };
+    const cool = choice === "all" ? ranked.filter(({ share }) => share < 0.5) : ranked;
+    const kept = cool.length === 0 ? ranked.slice(0, 1) : cool;
+    return { places: kept.length === 0 ? [undefined] : kept.map(({ host }) => host), picked: true };
   }
   const host = hosts.find((each) => each.name === choice || each.ssh === choice);
   if (host !== undefined) {
@@ -260,7 +280,7 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
   }
   const names = hosts.map((each) => each.name).join(", ");
   throw new Refusal(
-    `ANA_CHECK_HOST=${choice} names no host; write here, auto or one of: ${
+    `ANA_CHECK_HOST=${choice} names no host; write here, auto, all or one of: ${
       names === "" ? "none, since ANA_HOSTS lists no host" : names
     }`,
     EXIT.usage,
@@ -281,6 +301,7 @@ function takeSlot(folder: string, count: number): Slot | null {
     mkdirSync(join(claim, mine), { recursive: true });
     try {
       renameSync(claim, path);
+      heldByThisRunner.add(path);
       return { path: join(path, mine), number };
     } catch {
       // Another task took it between the two steps.
@@ -375,17 +396,33 @@ async function answer(cmd: string[], env?: Record<string, string | undefined>): 
   return null;
 }
 
+const CALLER_ENV = (() => {
+  const file = runtimeProcess.env.ANA_RUNNER_HOST_FILE;
+  const read = file !== undefined && existsSync(file) ? readFileSync(file, "utf8") : "";
+  const added = new Set([
+    "ANA_RUNNER_HOST_FILE",
+    ...[...read.matchAll(/^([A-Z_][A-Z0-9_]*)=/gmu)].map(([, name]) => name),
+  ]);
+  return Object.fromEntries(Object.entries(runtimeProcess.env).filter(([name]) => !added.has(name)));
+})();
+
 /** The task's own run, its streams this command's, as its exit status. A signal to this command
  *  goes on to it, and a hang-up reaches a host through its terminal. */
 async function attached(cmd: string[], release: () => void): Promise<number> {
   // A group of its own, so the signal reaches the task whole and this command once. No check reads
   // its input, and a group without the terminal could not.
-  const child = capturedSpawn(cmd, { detached: true, stdin: "ignore", stdout: "inherit", stderr: "inherit" });
+  const child = capturedSpawn(cmd, {
+    detached: true,
+    env: CALLER_ENV,
+    stdin: "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   const handlers = (["SIGHUP", "SIGINT", "SIGTERM"] as const).map((signal) => {
     const onSignal = (): void => {
       killProcessGroup(child, signal);
       release();
-      runtimeProcess.exit(EXIT.interrupted);
+      queueMicrotask(() => runtimeProcess.exit(EXIT.interrupted));
     };
     runtimeProcess.on(signal, onSignal);
     return [signal, onSignal] as const;
@@ -493,28 +530,127 @@ async function onHost(
   return status;
 }
 
+async function inSlot(host: Place, slot: Slot, job: Job, commitOf: () => string): Promise<number> {
+  const release = (): void => {
+    rmSync(slot.path, { recursive: true, force: true });
+    heldByThisRunner.delete(dirname(slot.path));
+  };
+  try {
+    if (host === undefined) {
+      const { root, pin, wall, task } = job;
+      return await attached(
+        ["/bin/bash", "--norc", TASK_SCRIPT, "here", root, pin, String(wall), ...task],
+        release,
+      );
+    }
+    return await onHost(host, slot.number, job, release, commitOf);
+  } finally {
+    release();
+  }
+}
+
+const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/u;
+
+async function sharded(job: Job, places: readonly Place[], commitOf: () => string): Promise<number> {
+  const [name = "test", ...named] = job.task;
+  const files = (named.length > 0 ? named : ["test"]).flatMap((path) =>
+    TEST_FILE.test(path)
+      ? [path]
+      : readdirSync(join(job.root, path), { recursive: true })
+          .map(String)
+          .filter((file) => TEST_FILE.test(file) && !file.split("/").includes("node_modules"))
+          .map((file) => join(path, file)),
+  );
+  if (files.length === 0) throw new Refusal(`all: no test files in ${named.join(" ")}`, EXIT.usage);
+  const timings = join(job.root, "test", ".test-timings.json");
+  const timed = asRecord(
+    asRecord(existsSync(timings) ? capturedJsonParse(readFileSync(timings, "utf8")) : null)?.files,
+  );
+  const known = files.flatMap((file) => {
+    const ms = timed?.[file];
+    return isNumber(ms) ? [ms] : [];
+  });
+  const median = known.toSorted((a, b) => a - b)[Math.floor(known.length / 2)] ?? 1;
+  const weight = (file: string): number => {
+    const ms = timed?.[file];
+    return isNumber(ms) ? ms : median;
+  };
+  const slots = places.reduce((sum, host) => sum + slotCapacity(host), 0);
+  const count = Math.min(files.length, 2 * slots);
+  const chunks: { files: string[]; weight: number }[] = Array.from({ length: count }, () => ({
+    files: [],
+    weight: 0,
+  }));
+  for (const file of files.toSorted((a, b) => weight(b) - weight(a))) {
+    const lightest = chunks.reduce((least, chunk) => (chunk.weight < least.weight ? chunk : least));
+    lightest.files.push(file);
+    lightest.weight += weight(file);
+  }
+  const where = places.map((host) => `${host?.name ?? ownName()} (${String(slotCapacity(host))})`).join(", ");
+  say(`all: ${String(files.length)} test files in ${String(count)} chunks over ${where}`);
+  const exits: number[] = [];
+  let live = [...places];
+  const { unrun } = await spread([{ slots }], chunks, {
+    run: async (chunk) => {
+      const part = { ...job, task: [name, ...chunk.files] };
+      while (live.length > 0) {
+        const { place: host, slot } = await slotAmong(live);
+        let status: number;
+        try {
+          status = await inSlot(host, slot, part, commitOf);
+        } catch (error) {
+          if (!(error instanceof Refusal) || !NO_VERDICT.has(error.code)) throw error;
+          say(error.message);
+          status = error.code;
+        }
+        const at = host?.name ?? ownName();
+        if (!NO_VERDICT.has(status)) {
+          say(`all: ${String(chunk.files.length)} files on ${at} exited ${String(status)}`);
+          exits.push(status);
+          return "done";
+        }
+        live = live.filter((each) => each !== host);
+        say(`all: no verdict from ${at} on ${String(chunk.files.length)} files; they go to another place`);
+      }
+      return "elsewhere";
+    },
+  });
+  if (unrun.length > 0) {
+    say(`all: ${String(unrun.length)} chunks found no place that gave a verdict`);
+    return EXIT.noVerdict;
+  }
+  return exits.find((status) => status !== 0) ?? 0;
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const [root = "", pin = "", ...task] = argv;
   if (!TASKS.includes(task[0] ?? "")) {
     throw new Refusal(`usage: run.js <tree> <bun pin> {${TASKS.join("|")}} [arguments...]`, EXIT.usage);
   }
   const job: Job = { root, pin, task, wall: setting("ANA_RUNNER_WALL", 3600) || 3600 };
+  const all = checkHost()?.trim() === "all";
+  if (all && task[0] === "gate") {
+    say("all: the gate leads here, and its test, typecheck and lint steps go out");
+    return await attached(
+      ["/bin/bash", "--norc", TASK_SCRIPT, "lead", root, pin, String(job.wall), ...task],
+      () => {},
+    );
+  }
   const { places, picked } = await placesFor();
-  let remaining = [...places];
   let commit: string | null = null;
+  const commitOf = (): string => (commit ??= snapshot(root));
+  const isPath = (arg: string): boolean =>
+    TEST_FILE.test(arg) || statSync(join(root, arg), { throwIfNoEntry: false })?.isDirectory() === true;
+  if (all && task[0] === "test" && task.slice(1).every(isPath)) return await sharded(job, places, commitOf);
+  let remaining = [...places];
   for (;;) {
     const { place: host, slot } = await slotAmong(remaining);
     if (picked) {
       say(`auto: runs on ${host?.name ?? `${ownName()}, this machine`}`);
     }
-    const release = (): void => rmSync(slot.path, { recursive: true, force: true });
     try {
-      if (host === undefined) {
-        const here = ["/bin/bash", "--norc", TASK_SCRIPT, "here", root, pin, String(job.wall), ...task];
-        return await attached(here, release);
-      }
-      const status = await onHost(host, slot.number, job, release, () => (commit ??= snapshot(root)));
-      if (status !== EXIT.noVerdict || !picked) return status;
+      const status = await inSlot(host, slot, job, commitOf);
+      if (!NO_VERDICT.has(status) || !picked || host === undefined) return status;
       remaining = remaining.filter((each) => each !== host);
       if (remaining.length === 0) return status;
       say(`no verdict from ${host.name}; trying another place`);
@@ -525,8 +661,6 @@ async function main(argv: readonly string[]): Promise<number> {
       remaining = remaining.filter((each) => each !== host);
       if (remaining.length === 0) throw error;
       say(`${error.message}; trying another place`);
-    } finally {
-      release();
     }
   }
 }

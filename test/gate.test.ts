@@ -347,7 +347,7 @@ describe.concurrent("proveCommits", () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toContain("alpha gave no verdict, so takes no more; proving it elsewhere");
     const ran = wherePassesRan(log);
-    expect(ran.slice(0, 2)).toEqual([`${source} alpha`, `${second} alpha`]);
+    expect(ran.slice(0, 2).toSorted()).toEqual([`${source} alpha`, `${second} alpha`].toSorted());
     expect(ran.slice(2).toSorted()).toEqual([`${source} beta`, `${second} beta`].toSorted());
     // Each pass is remembered as any other, whichever place proved it.
     rmSync(log, { force: true });

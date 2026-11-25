@@ -33,6 +33,7 @@ import {
   namedPlaces,
   type Place,
   placeEnv,
+  spread,
 } from "#tools/runs/host-config.ts";
 import { PER_TEST_WALL_MS } from "#tools/runtime/test-suite.ts";
 import * as ts from "typescript5";
@@ -203,7 +204,7 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
   const ran = (count: number) =>
     console.log(`${String(count)} mutants run, ${String(done.size)} held before`);
   if (todo.length === 0) return ran(0);
-  const workers = workersFor(args, root, out, originals);
+  const { places, workers } = workersFor(args, root, out, originals);
   const killsOf = async (worker: Worker, mutant: Mutant) => {
     const original = originals.get(mutant.file) ?? "";
     writeFileSync(
@@ -223,40 +224,33 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
       writeFileSync(join(worker.clone, mutant.file), original);
     }
   };
-  const firsts = workers.filter(
-    ({ place }, index) => workers.findIndex((one) => one.place === place) === index,
-  );
-  const refusals = await Promise.all(firsts.map((worker) => unfit(worker, suites, seconds)));
-  const fit = firsts.flatMap(({ place }, index) => (refusals[index] === null ? [place] : []));
-  if (fit.length === 0) return args.die(refusals.join("\n"));
-  for (const why of refusals) if (why !== null) console.error(`${why}; it takes no mutants`);
-  const queue = [...todo];
-  const take = async (worker: Worker): Promise<boolean> => {
-    for (let mutant = queue.shift(); mutant !== undefined; mutant = queue.shift()) {
-      if (Date.now() >= deadline) {
-        queue.unshift(mutant);
-        return true;
-      }
-      const killed = await killsOf(worker, mutant);
+  const worker = (index: number): Worker => {
+    const seat = workers[index];
+    if (seat === undefined) throw new Error(`no copy for seat ${String(index)}`);
+    return seat;
+  };
+  let read = 0;
+  const { unrun, refused } = await spread(places, todo, {
+    qualify: async ({ index }) => unfit(worker(index), suites, seconds),
+    halt: () => Date.now() >= deadline,
+    run: async (mutant, { index }) => {
+      const killed = await killsOf(worker(index), mutant);
       if (killed === "elsewhere") {
-        queue.push(mutant);
-        console.error(`${worker.place.remote ?? "here"} gave no verdict, so takes no more mutants`);
-        return false;
+        console.error(`${worker(index).place.remote ?? "here"} gave no verdict, so takes no more mutants`);
+        return "elsewhere";
       }
       const { id, file, line, label } = mutant;
       appendFileSync(out, `${JSON.stringify({ id, file, line, label, killed })}\n`);
-    }
-    return true;
-  };
-  const open = () => queue.length > 0 && Date.now() < deadline;
-  for (let live = workers.filter(({ place }) => fit.includes(place)); open() && live.length > 0; ) {
-    const answers = await Promise.all(live.map(take));
-    live = live.filter((_, index) => answers[index] === true);
-  }
-  ran(todo.length - queue.length);
-  if (queue.length > 0) {
+      read += 1;
+      return "done";
+    },
+  });
+  if (refused.length === places.length) return args.die(refused.join("\n"));
+  for (const why of refused) console.error(`${why}; it takes no mutants`);
+  ran(read);
+  if (unrun.length > 0) {
     const why = Date.now() >= deadline ? ` at ${String(until)}` : ", since no place gave a verdict";
-    args.die(`${String(queue.length)} mutants left unrun${why}; run again`);
+    args.die(`${String(unrun.length)} mutants left unrun${why}; run again`);
   }
 }
 
@@ -265,7 +259,7 @@ function workersFor(
   root: string,
   out: string,
   originals: ReadonlyMap<string, string>,
-): Worker[] {
+): { places: readonly Place[]; workers: Worker[] } {
   let places: readonly Place[] = [];
   try {
     places = checkPlaces(root, args.int("jobs") ?? undefined);
@@ -282,7 +276,7 @@ function workersFor(
     cpSync(root, clone, { recursive: true, force: true, filter: kept });
     for (const [file, text] of originals) writeFileSync(join(clone, file), text);
   }
-  return workers;
+  return { places, workers };
 }
 
 async function unfit(

@@ -1,6 +1,10 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
 import { type AnswerFile, textFiles } from "../src/kernel/answer-files.ts";
-import { EXTRACT, extract, headOf } from "../src/kernel/extract.ts";
+import { EXTRACT, dossierOf, extract, headOf } from "../src/kernel/extract.ts";
 
 const zipped = (path: string, entries: Record<string, string>): AnswerFile => {
   const [file] = textFiles([
@@ -25,6 +29,19 @@ const workbook = (rows: readonly string[][], shared: readonly string[] = []) =>
     "xl/sharedStrings.xml": `<sst>${shared.map((text) => `<si><t>${text}</t></si>`).join("")}</sst>`,
     "xl/worksheets/sheet1.xml": `<worksheet><sheetData>${rows.map((row) => `<row>${row.join("")}</row>`).join("")}</sheetData></worksheet>`,
   });
+
+const sqliteBytes = (setup: (db: Database) => void): string => {
+  const dir = mkdtempSync(join(tmpdir(), "ana-extract-db-"));
+  try {
+    const dbPath = join(dir, "sample.db");
+    const db = new Database(dbPath);
+    setup(db);
+    db.close();
+    return readFileSync(dbPath).toString("base64");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
 
 describe("the offline file extractor", () => {
   it("classifies every formula cell shape: cached, uncached, error, and without a reference", () => {
@@ -115,5 +132,81 @@ describe("the offline file extractor", () => {
       "formulas: 0 evaluated, 1 uncached, 0 errors, 0 without a reference",
     );
     expect(headOf(extract(plain("bad.ipynb", "{")))).toHaveLength(2);
+  });
+
+  it("follows workbook tab order, custom worksheet paths, namespaced shared formulas, and non-ASCII shared-string indices", () => {
+    const nsSheet = zipped("ns.xlsx", {
+      "xl/workbook.xml":
+        '<x:workbook xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><x:sheets><x:sheet name="Summary" sheetId="2" r:id="rId2"/><x:sheet name="Detail" sheetId="1" r:id="rId1"/></x:sheets></x:workbook>',
+      "xl/_rels/workbook.xml.rels":
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="/xl/worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/data.xml"/></Relationships>',
+      "xl/sharedStrings.xml": "<sst><si><t>ok</t></si></sst>",
+      "xl/worksheets/data.xml":
+        '<x:worksheet xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><x:sheetData><x:row><x:c r="A1"><x:f t="shared" si="0"/><x:v>42</x:v></x:c><x:c r="B1" t="s"><x:v>²</x:v></x:c></x:row></x:sheetData></x:worksheet>',
+      "xl/worksheets/sheet1.xml":
+        '<worksheet><sheetData><row><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>',
+    });
+    const sheet = extract(nsSheet);
+    expect(sheet.fault).toBeNull();
+    expect(sheet.text).toBe("## Summary\n42\t²\n\n## Detail\nok");
+    expect(sheet.formulas).toEqual({
+      cachedEvaluated: 1,
+      uncachedFormula: 0,
+      formulaError: 0,
+      zeroRefFormulaCount: 0,
+    });
+    expect(extract({ path: nsSheet.path, base64: nsSheet.base64 })).toMatchObject({
+      kind: "sheet",
+      text: "## Summary\n42\t²\n\n## Detail\nok",
+      fault: null,
+    });
+  });
+
+  it("routes by magic bytes so plain text named .db or .xlsx stays text, and reports single-line faults on corrupt zips", () => {
+    expect(extract(plain("notes.db", "plain notes"))).toMatchObject({
+      kind: "text",
+      text: "plain notes",
+      fault: null,
+    });
+    expect(extract(plain("notes.xlsx", "not a zip"))).toMatchObject({
+      kind: "text",
+      text: "not a zip",
+      fault: null,
+    });
+    const corrupt = extract({
+      path: "broken.xlsx",
+      base64: Buffer.from("PK\u0003\u0004not-a-valid-zip").toString("base64"),
+    });
+    expect(corrupt.kind).toBe("binary");
+    expect(corrupt.fault).toContain("could not read broken.xlsx");
+    expect(corrupt.fault).not.toContain("\n");
+  });
+
+  it("reads SQLite databases safely in memory across WAL headers, BLOBs, invalid UTF-8, and generated-column bombs", () => {
+    const base64 = sqliteBytes((db) => {
+      db.run("PRAGMA journal_mode=WAL");
+      db.run(
+        "CREATE TABLE metrics (k TEXT, payload BLOB, big BLOB GENERATED ALWAYS AS (zeroblob(200000000)) VIRTUAL)",
+      );
+      db.run("INSERT INTO metrics (k, payload) VALUES (CAST(x'ff41' AS TEXT), x'00010203')");
+      db.run("PRAGMA wal_checkpoint(TRUNCATE)");
+    });
+    const got = extract({ path: "sample.db", base64 });
+    expect(got.fault).toBeNull();
+    expect(got.kind).toBe("database");
+    expect(got.text).toBe("## metrics\nk\tpayload\n\uFFFDA\t<blob 4 bytes>");
+  });
+
+  it("refuses zip members above the 16 MB cap and keeps UTF-8 dossier slices free of replacement characters", () => {
+    const bomb = zipped("bomb.xlsx", {
+      "xl/workbook.xml": "<workbook/>",
+      "xl/worksheets/sheet1.xml": `<worksheet><sheetData><row><c r="A1" t="inlineStr"><is><t>${"A".repeat(17 * 1024 * 1024)}</t></is></c></row></sheetData></worksheet>`,
+    });
+    const refused = extract({ path: bomb.path, base64: bomb.base64 });
+    expect(refused.kind).toBe("binary");
+    expect(refused.fault).toContain("exceeds 16777216 byte limit");
+    expect(refused.fault).not.toContain("\n");
+    const euro = "€".repeat(2000);
+    expect(dossierOf(extract(plain("utf8.txt", euro)), "seed-42")).not.toContain("\uFFFD");
   });
 });

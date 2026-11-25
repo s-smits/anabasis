@@ -220,17 +220,28 @@ async function runTurn(
   if (claude.shutdown?.aborted === true) throw new Error(`session ${key} was shut down before its turn`);
   const { results } = extractAllToolResults(context.messages.map((message) => ({ ...message })));
   let session = sessions.get(key);
+  if (session?.reading === true) {
+    throw new Error(`session ${key} already has a turn in flight: concurrent seats need distinct sessionIds`);
+  }
   if (results.length > 0) {
     if (!session) throw new Error(`no live Claude Code query in session ${key} takes these tool results`);
-    for (const result of results) deliver(session, result);
   } else {
     if (!session && context.messages.some((message) => message.role === "assistant")) {
       throw new Error(`no live Claude Code query in session ${key} holds this conversation`);
     }
     session ??= open(claude, model, context, options, key);
-    await session.prompt.push(userMessage(promptText(context)));
   }
-  return await readTurn(key, session, model, turn, options.signal);
+  session.reading = true;
+  try {
+    if (results.length > 0) {
+      for (const result of results) deliver(session, result);
+    } else {
+      await session.prompt.push(userMessage(promptText(context)));
+    }
+    return await readTurn(key, session, model, turn, options.signal);
+  } finally {
+    session.reading = false;
+  }
 }
 
 function open(
@@ -371,7 +382,6 @@ async function readTurn(
   const interrupt = () => {
     session.query.interrupt().catch(() => close(key, session));
   };
-  session.reading = true;
   reads.delete(key);
   signal?.addEventListener("abort", interrupt, { once: true });
   if (signal?.aborted === true) interrupt();
@@ -379,7 +389,6 @@ async function readTurn(
     return await readMessages(key, session, model, turn, { spent, signal });
   } finally {
     signal?.removeEventListener("abort", interrupt);
-    session.reading = false;
     for (const usage of spent) addUsage(turn.usage, usage);
   }
 }

@@ -526,7 +526,6 @@ function judgingOf(
   return {
     weights: { code: all - judge, judge, step: JUDGE_STEP },
     reviewer: reviewers.reviewer,
-    brief: (version, comparison, kill) => reviewers.brief(packageOf(version), comparison, kill),
     pair: (version, asked, kill) => reviewers.pair(packageOf(version), asked, kill),
   };
 }

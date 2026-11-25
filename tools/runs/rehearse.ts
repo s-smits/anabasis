@@ -201,21 +201,13 @@ function scriptedJudge(): Reader {
   const vote: FauxResponseFactory = (context) => {
     faux.appendResponses([vote]);
     const shown = JSON.stringify(context.messages);
-    if (shown.includes("record_brief")) {
-      const expectations = ["The answer follows the task's input.", "The answer is complete."];
-      return fauxAssistantMessage(fauxToolCall("record_brief", { expectations, flags: [] }), TOOL_USE);
-    }
     const [a, b] = [shown.indexOf("Answer A:"), shown.indexOf("Answer B:")];
     const [one, other] = [
       hashJsonValue(shown.slice(a, b)).slice(-8),
       hashJsonValue(shown.slice(b)).slice(-8),
     ];
     const better = one === other ? "neither" : one < other ? "A" : "B";
-    const kind = better === "neither" ? { kind: "both-strong" } : {};
-    return fauxAssistantMessage(
-      fauxToolCall("record_vote", { better, ...kind, reason: "scripted" }),
-      TOOL_USE,
-    );
+    return fauxAssistantMessage(fauxToolCall("record_vote", { better, reason: "scripted" }), TOOL_USE);
   };
   faux.setResponses([vote]);
   const models = createModels();

@@ -6,8 +6,6 @@ import {
   type Objective,
   type RubricItem,
   rubricFaults,
-  type TaskCriterion,
-  taskRubricFaults,
 } from "../kernel/contract.ts";
 import { type ControlFile, DELIVERABLES } from "../kernel/answer-files.ts";
 import { GAP_FLOOR } from "../kernel/compare.ts";
@@ -55,7 +53,6 @@ export interface Draft {
     readonly family: string;
     readonly publicInput: JsonValue;
     readonly hidden: JsonValue;
-    readonly rubric?: readonly TaskCriterion[];
   }[];
   readonly accept: readonly DraftControl[];
   readonly reject: readonly (DraftControl & { readonly check: string })[];
@@ -207,20 +204,7 @@ const DRAFT_PARAMETERS_JUDGED = Type.Object({
     },
     { description: OBJECTIVE_DESCRIPTION },
   ),
-  tasks: Type.Array(
-    Type.Object({
-      ...TASK_FIELDS,
-      rubric: Type.Optional(
-        Type.Array(
-          Type.Object({
-            id: Type.String({ pattern: "^[a-z][a-z0-9-]*$" }),
-            criterion: Type.String({ minLength: 1 }),
-          }),
-          { minItems: 1 },
-        ),
-      ),
-    }),
-  ),
+  tasks: Type.Array(Type.Object(TASK_FIELDS)),
 });
 const DRAFT_PARAMETERS_CODE = Type.Object({
   ...DRAFT_COMMON,
@@ -479,12 +463,9 @@ export function draftFaults(draft: Draft, mode: "judged" | "code-only" = "judged
     ...(hidden === 0 || hidden === draft.tasks.length
       ? []
       : ["some examples carry hidden values and some carry none"]),
-    ...draft.tasks.flatMap(({ publicInput, rubric }, index) => [
-      ...(publicInput === null ? [`example ${String(index)} has no public input`] : []),
-      ...taskRubricFaults(draft.objective, rubric, checkIds).map(
-        (fault) => `example ${String(index)}: ${fault}`,
-      ),
-    ]),
+    ...draft.tasks.flatMap(({ publicInput }, index) =>
+      publicInput === null ? [`example ${String(index)} has no public input`] : [],
+    ),
     ...controlFaults(draft),
   ];
 }
@@ -525,13 +506,12 @@ function draftedFrom(args: DraftArgs): Draft {
     evaluator: args.evaluator as string,
     ...keyIfDefined("objective", objective),
     ...keyIfDefined("objectiveTools", tools !== undefined && tools.length > 0 ? tools : undefined),
-    tasks: args.tasks.map(({ family, public_input, hidden, rubric: taskRubric }) => ({
+    tasks: args.tasks.map(({ family, public_input, hidden }) => ({
       family,
       // SAFETY: as above.
       publicInput: public_input as JsonValue,
       // SAFETY: as above.
       hidden: decodedJsonText((hidden ?? null) as JsonValue),
-      ...keyIfDefined("rubric", taskRubric),
     })),
     // SAFETY: as above.
     accept: args.accept_controls.map(({ task, answer, files }) => ({

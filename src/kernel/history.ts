@@ -1,7 +1,5 @@
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { rubricOf } from "./contract.ts";
 import { type FileManifest, manifestOf } from "./answer-files.ts";
 import { eventsOf, type LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
@@ -16,16 +14,8 @@ interface Proposal {
   readonly task: Task | null;
 }
 
-export function contentOf({ family, publicInput, hidden, rubric }: Omit<Task, "taskId">): string {
-  return hashJsonValue({
-    family,
-    publicInput,
-    hidden: hidden ?? null,
-    ...keyIfDefined(
-      "rubric",
-      rubric?.map((one) => ({ ...one })),
-    ),
-  });
+export function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
+  return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
 }
 
 export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
@@ -46,7 +36,6 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
                 family: task.family,
                 publicInput: task.publicInput ?? null,
                 hidden: task.hidden ?? null,
-                ...keyIfDefined("rubric", rubricOf(task.rubric)),
               }
             : null,
       },

@@ -305,7 +305,7 @@ export function pointsOf(pair: Paired): Measures {
     weights === undefined || votes.length === 0
       ? orderFreeSum(gains)
       : (orderFreeSum(
-          votes.map((vote) => floored(judgedGain(weights, codeGain(pair, vote.fresh, vote.old), vote))),
+          votes.map((vote) => judgedGain(weights, floored(codeGain(pair, vote.fresh, vote.old)), vote)),
         ) *
           gains.length) /
         votes.length;

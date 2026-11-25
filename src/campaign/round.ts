@@ -68,7 +68,6 @@ interface Terms {
 export interface Judging {
   readonly weights: JudgeWeights;
   readonly reviewer: string;
-  readonly brief: (version: string, comparison: string, kill: AbortSignal) => Promise<void>;
   readonly pair: (version: string, asked: Asked, kill: AbortSignal) => Promise<void>;
 }
 
@@ -352,7 +351,6 @@ async function judgeAll(
   const width = Math.max(1, Math.min(concurrency, 2));
   let silent = 0;
   let fatal: string | null = null;
-  const failedBriefs = new Set<string>();
   const ask = async (what: string, asked: () => Promise<void>): Promise<boolean> => {
     try {
       await asked();
@@ -368,19 +366,8 @@ async function judgeAll(
   };
   const active = (laneSize: number) => open(laneSize) && fatal === null && silent < SILENT;
   const left = judgingLeft(read(log), fixed);
-  const tasks = [...new Set(left.map(({ task }) => task))];
-  for (let at = 0; at < tasks.length; at += width) {
-    const lane = tasks.slice(at, at + width);
-    if (!active(lane.length)) break;
-    await Promise.all(
-      lane.map(async (task) => {
-        if (!(await ask(`brief ${task}`, () => judge.brief(task, id, kill)))) failedBriefs.add(task);
-      }),
-    );
-  }
-  const runnable = left.filter(({ task }) => !failedBriefs.has(task));
-  for (let at = 0; at < runnable.length; at += width) {
-    const lane = runnable.slice(at, at + width);
+  for (let at = 0; at < left.length; at += width) {
+    const lane = left.slice(at, at + width);
     if (!active(lane.length)) break;
     await Promise.all(
       lane.map(({ task, first, second }) =>

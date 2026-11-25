@@ -2,7 +2,7 @@ import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
 import { openingOf } from "../campaign/opening.ts";
 import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-files.ts";
-import { answerFormatFault, type Contract, CRITERION, hasJudge, rubricOf } from "../kernel/contract.ts";
+import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
@@ -59,27 +59,10 @@ const SPELLED = {
   public_input: Type.Unknown(),
   hidden: Type.Unknown({ description: "Null when the task has none." }),
 };
-const RUBRIC = Type.Optional(
-  Type.Array(
-    Type.Object({
-      id: Type.String({ minLength: 1 }),
-      criterion: Type.String({ minLength: CRITERION.least, maxLength: CRITERION.most }),
-    }),
-    {
-      minItems: 1,
-      maxItems: CRITERION.perTask,
-      description:
-        "What a strong answer to this task does, one criterion a line, each stated as a quality to look for. A judging model compares two valid answers on each; the solver never reads them.",
-    },
-  ),
-);
-const spelledFor = (contract: Contract) =>
-  hasJudge(contract.objective) ? { ...SPELLED, rubric: RUBRIC } : SPELLED;
 const NAMED = Type.String({ description: "The instance reference returned by try_answer in this session." });
-const givenFor = (contract: Contract) =>
-  Type.Union([Type.Object(spelledFor(contract)), Type.Object({ reference: NAMED })], {
-    description: "An instance in the shape of the existing tasks, or its checked reference.",
-  });
+const GIVEN = Type.Union([Type.Object(SPELLED), Type.Object({ reference: NAMED })], {
+  description: "An instance in the shape of the existing tasks, or its checked reference.",
+});
 const PLANTED =
   "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
@@ -98,7 +81,6 @@ function instanceOf(
     readonly family: string;
     readonly public_input: unknown;
     readonly hidden: unknown;
-    readonly rubric?: unknown;
   },
 ): Task {
   return {
@@ -108,7 +90,6 @@ function instanceOf(
     publicInput: given.public_input as JsonValue,
     // SAFETY: as above.
     hidden: decodedJsonText((given.hidden ?? null) as JsonValue),
-    ...keyIfDefined("rubric", rubricOf(given.rubric)),
   };
 }
 
@@ -168,22 +149,8 @@ async function admitDraft(desk: Desk, instance: Task): Promise<string> {
   const { log, id: session, verify } = request;
   const task = request.pack(instance);
   const version = taskVersion(task);
-  const { taskId, family, publicInput, hidden, rubric } = instance;
-  append(log, "task.proposed", {
-    version,
-    taskId,
-    session,
-    task: {
-      taskId,
-      family,
-      publicInput,
-      hidden,
-      ...keyIfDefined(
-        "rubric",
-        rubric?.map((one) => ({ ...one })),
-      ),
-    },
-  });
+  const { taskId, family, publicInput, hidden } = instance;
+  append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
   const reason = refusalOf(request.contract, task, desk.planted);
   const { answer, files } = desk.answered.get(contentOf(instance)) ?? {};
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
@@ -233,7 +200,7 @@ function proposeTool(desk: Desk): SeatTool {
       name: "propose_tasks",
       description: `Put task instances to the host's gate. The gate reads the shape of each package: its family, its inputs, and that the checks have what they need to run on it. No solver is put to it there. Of each it says held out, or refused with its reason. A task held out is in the exam from then on, and a comparison scores no other.${filed(desk)}`,
       parameters: Type.Object({
-        tasks: Type.Array(givenFor(desk.request.contract), { minItems: 1 }),
+        tasks: Type.Array(GIVEN, { minItems: 1 }),
       }),
       execute: async (args, _api, context) => {
         context.abortSignal?.throwIfAborted();
@@ -274,14 +241,8 @@ function exampleTool(tasks: () => readonly Task[]): SeatTool {
       if (example === undefined) {
         throw new Error(`${args.task} is not one of the tasks: ${[...examples.keys()].join(", ")}`);
       }
-      const { taskId, family, publicInput, hidden, rubric } = example;
-      return text(
-        capturedJsonStringify(
-          rubric === undefined
-            ? { taskId, family, publicInput, hidden }
-            : { taskId, family, publicInput, hidden, rubric },
-        ),
-      );
+      const { taskId, family, publicInput, hidden } = example;
+      return text(capturedJsonStringify({ taskId, family, publicInput, hidden }));
     },
   });
 }
@@ -318,7 +279,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       name: "try_answer",
       description: `Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Return an instance reference for proposing this checked content without resending it. A try enters no task in the exam. Where the checks pass, the host keeps the answer on the exam side for the Referee, for a task held with that content before or after the try. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.${filed(desk)}`,
       parameters: Type.Object({
-        ...spelledFor(contract),
+        ...SPELLED,
         answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
         files: TEXT_FILES,
       }),

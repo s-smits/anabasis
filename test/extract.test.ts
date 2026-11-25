@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type AnswerFile, textFiles } from "../src/kernel/answer-files.ts";
-import { EXTRACT, dossierOf, extract, headOf } from "../src/kernel/extract.ts";
+import { EXTRACT, extract, headOf } from "../src/kernel/extract.ts";
 
 const zipped = (path: string, entries: Record<string, string>): AnswerFile => {
   const [file] = textFiles([
@@ -203,7 +203,7 @@ describe("the offline file extractor", () => {
     expect(got.text).toBe("## metrics\nk\tpayload\n\uFFFDA\t<blob 4 bytes>");
   });
 
-  it("refuses zip members above the 16 MB cap and keeps UTF-8 dossier slices free of replacement characters", () => {
+  it("refuses zip members above the 16 MB cap", () => {
     const bomb = zipped("bomb.xlsx", {
       "xl/workbook.xml": "<workbook/>",
       "xl/worksheets/sheet1.xml": `<worksheet><sheetData><row><c r="A1" t="inlineStr"><is><t>${"A".repeat(17 * 1024 * 1024)}</t></is></c></row></sheetData></worksheet>`,
@@ -212,7 +212,5 @@ describe("the offline file extractor", () => {
     expect(refused.kind).toBe("binary");
     expect(refused.fault).toContain("exceeds 16777216 byte limit");
     expect(refused.fault).not.toContain("\n");
-    const euro = "€".repeat(2000);
-    expect(dossierOf(extract(plain("utf8.txt", euro)), "seed-42")).not.toContain("\uFFFD");
   });
 });

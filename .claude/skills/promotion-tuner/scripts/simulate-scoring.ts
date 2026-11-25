@@ -4,13 +4,14 @@ import { scored, type JudgeWeights, judgedPairs, type Paired, readsStep } from "
 
 const USAGE = `usage:
   bun .claude/skills/promotion-tuner/scripts/simulate-scoring.ts
-    [--trials <n>] [--tasks <n>] [--solves <n>] [--level <p>] [--bias <b>] [--seed <n>]
+    [--trials <n>] [--tasks <n>] [--solves <n>] [--level <p>] [--bias <b>] [--weights <c:j>] [--seed <n>]
 
 --trials  comparisons drawn per scenario and step, 5000 by default
 --tasks   tasks a comparison scores, 24 by default
 --solves  solves an arm per task, 2 by default
 --level   the one-sided level a step reads at, 0.02 by default
 --bias    the judge's slot-1 primacy, in the latent units a vote reads, 0.3 by default
+--weights a mixed exam's code to judge weights, 1:1 by default
 --seed    the generator's seed, 1 by default
 
 How often a comparison reads a step, per scenario and per judge step, scored by the production
@@ -23,6 +24,7 @@ const OPTIONS = {
   solves: "int",
   level: "text",
   bias: "text",
+  weights: "text",
   seed: "int",
 } as const;
 
@@ -30,6 +32,8 @@ interface Effect {
   readonly code: number;
   readonly judge: number;
   readonly holistic: number;
+  readonly lifted?: number;
+  readonly saturated?: true;
 }
 interface Scenario {
   readonly name: string;
@@ -40,6 +44,7 @@ interface Scenario {
 
 const NONE: Effect = { code: 0, judge: 0, holistic: 0 };
 const MIXED = { code: 1, judge: 1 };
+const ONE_CRITERION = { code: 0, judge: 0.6, holistic: 0, lifted: 1 };
 const JUDGED_ONLY = { code: 0, judge: 1 };
 const SCENARIOS: readonly Scenario[] = [
   { name: "verifiable null A/A", weights: null, effect: NONE, wanted: "none" },
@@ -51,6 +56,19 @@ const SCENARIOS: readonly Scenario[] = [
     weights: MIXED,
     effect: { code: 0.05, judge: 0.3, holistic: 0.2 },
     wanted: "step",
+  },
+  { name: "mixed one-criterion win", weights: MIXED, effect: ONE_CRITERION, wanted: "step" },
+  {
+    name: "mixed one-criterion win, code saturated",
+    weights: MIXED,
+    effect: { ...ONE_CRITERION, saturated: true },
+    wanted: "step",
+  },
+  {
+    name: "mixed null A/A, code saturated",
+    weights: MIXED,
+    effect: { ...NONE, saturated: true },
+    wanted: "none",
   },
   {
     name: "mixed scale attack",
@@ -121,13 +139,16 @@ interface Setting {
   readonly step: number;
   readonly solves: number;
   readonly bias: number;
+  readonly mixed: { readonly code: number; readonly judge: number };
 }
 
-function taskPair(draw: Draw, { scenario, step, solves, bias }: Setting, at: number): Paired {
+function taskPair(draw: Draw, { scenario, step, solves, bias, mixed }: Setting, at: number): Paired {
   const base = 0.3 + 0.4 * draw.uniform();
   const clamp = (value: number) => Math.max(0, Math.min(1, value));
   const scores = (lift: number) =>
-    Array.from({ length: solves }, () => clamp(base + lift + draw.normal(SPREAD.code)));
+    Array.from({ length: solves }, () =>
+      scenario.effect.saturated ? 1 : clamp(base + lift + draw.normal(SPREAD.code)),
+    );
   const objective = {
     direction: "higher" as const,
     scale: "unit" as const,
@@ -147,13 +168,13 @@ function taskPair(draw: Draw, { scenario, step, solves, bias }: Setting, at: num
     fresh,
     old,
     judge:
-      Array.from({ length: CRITERIA }, () => mirrored(draw, scenario.effect.judge, bias)).reduce(
-        (sum, one) => sum + one,
-        0,
-      ) / CRITERIA,
+      Array.from({ length: CRITERIA }, (_, criterion) =>
+        mirrored(draw, criterion < (scenario.effect.lifted ?? CRITERIA) ? scenario.effect.judge : 0, bias),
+      ).reduce((sum, one) => sum + one, 0) / CRITERIA,
     holistic: mirrored(draw, scenario.effect.holistic, bias),
   }));
-  return { ...pair, judged: { weights: { ...scenario.weights, step }, votes } };
+  const weights = scenario.weights === MIXED ? mixed : scenario.weights;
+  return { ...pair, judged: { weights: { ...weights, step }, votes } };
 }
 
 function main(args: CommandArgs): number {
@@ -163,8 +184,10 @@ function main(args: CommandArgs): number {
   const level = Number(args.value("level") ?? 0.02);
   const bias = Number(args.value("bias") ?? 0.3);
   const draw = generator(args.int("seed") ?? 1);
+  const [code = 1, judge = 1] = (args.value("weights") ?? "1:1").split(":").map(Number);
+  const mixed = { code, judge };
   console.log(
-    `${String(trials)} comparisons of ${String(tasks)} tasks at ${String(solves)} solves an arm, step at p <= ${String(level)}, primacy ${String(bias)}\n`,
+    `${String(trials)} comparisons of ${String(tasks)} tasks at ${String(solves)} solves an arm, step at p <= ${String(level)}, primacy ${String(bias)}, mixed weights ${String(code)}:${String(judge)}\n`,
   );
   console.log(["scenario", "wanted", ...STEPS.map((step) => `step ${String(step)}`)].join("\t"));
   for (const scenario of SCENARIOS) {
@@ -173,7 +196,7 @@ function main(args: CommandArgs): number {
       let stepped = 0;
       for (let trial = 0; trial < trials; trial += 1) {
         const pairs = Array.from({ length: tasks }, (_, at) =>
-          taskPair(draw, { scenario, step, solves, bias }, at),
+          taskPair(draw, { scenario, step, solves, bias, mixed }, at),
         );
         if (readsStep(scored(pairs).differences, level)) stepped += 1;
       }

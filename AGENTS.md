@@ -46,7 +46,7 @@ Name target factor and empirical count (`docs/plan.md`):
 
 ### Two sides and one wall
 
-Examiner sees reference outcomes and winning harnesses; five items cross to build: (1) public rules, scope, conventions, answer format, objective (quantity, direction, item IDs/weights—never `judge` criteria/`Task.rubric`); (2) released practice specs; (3) practice outcome, kind, trajectory, paged extracts (`read_trace`) and coarse band vs author's best (no raw values); (4) aggregate tally/reading (no task names); (5) host limits, budget, task counts. Nothing else crosses: no held-out text/trajectory, check source, `judge` criteria/`Task.rubric`, hidden values, refusing checks, Referee rationale or move advice (rule 3).
+Examiner sees reference outcomes and winning harnesses; five items cross to build: (1) public rules, scope, conventions, answer format, objective (quantity, direction, item IDs/weights—never `judge` criteria); (2) released practice specs; (3) practice outcome, kind, trajectory, paged extracts (`read_trace`) and coarse band vs author's best (no raw values); (4) aggregate tally/reading (no task names); (5) host limits, budget, task counts. Nothing else crosses: no held-out text/trajectory, check source, `judge` criteria, hidden values, refusing checks, Referee rationale or move advice (rule 3).
 
 ## 2. The stance: code owns the conditions, models own the content
 
@@ -54,7 +54,7 @@ Code owns protocol, walls, limits, verification, pairing, swaps, weights, statis
 
 1. **Supply facts, frame positively, omit numeric targets.** Describe good work, not "do not X" bans or targets (Examiner never sees targets/pass rates); treat each prompt edit as an experiment naming its target failure and the read that would revert it; prune lines without effect.
 2. **Design for frontier models; trust judgement inside clean walls.** Give seats clean primitives and freedom (including lane choice when judged), not count floors, brittle heuristics or handholding; forbid only naming a task, copying its text or embedding its answer.
-3. **Code owns structure, walls and statistics; models own domain judgement.** Code validates schemas, enforces fail-closed contracts (`FIRST_PARTY_VENDORS`; unknown vendors refuse) and never lets a model set limits or identity. Draft audits reuse a seat and block only on mechanical probes. Under `--admit-judge`, a cross-family Referee commits a per-task brief before any pair vote (`referee.brief`, advisory flags only) and casts swapped pairwise votes (`referee.pair`, `judgePair` always-swap mean + equal-weight rubric-free `holistic`) on blinded valid pairs via `$0` offline extracts; code owns pairing, swaps, weights and statistics (`compare.ts`).
+3. **Code owns structure, walls and statistics; models own domain judgement.** Code validates schemas, enforces fail-closed contracts (`FIRST_PARTY_VENDORS`; unknown vendors refuse) and never lets a model set limits or identity. Draft audits reuse a seat and block only on mechanical probes. Under `--admit-judge`, a cross-family Referee casts swapped pairwise votes (`referee.pair`, `judgePair` always-swap mean + equal-weight rubric-free `holistic`) on blinded valid pairs via `$0` offline extracts, reading hidden values on criterion votes only; code owns pairing, swaps, weights and statistics (`compare.ts`).
 4. **Permit full workspace when in doubt** (hiding only hidden values, credentials and other seats' private files: `SolveDirs`, `command.ts`).
 5. **Keep designs as simple as honesty allows.** Prefer first-order mechanisms and native primitives over custom parsers or marginal machinery; every extra line carries cost.
 
@@ -64,15 +64,15 @@ Close gaming channels structurally in code, never with bans:
 - **Practice memorisation** (task IDs, rare codes, verbatim prompts): overfitting blocked by held-out comparisons; `check_harness` (`files.ts`) and WRI `names.ts` flag leaks.
 - **Oracle / hidden-value inversion**: closed by coarse bands (`bandOf`, `GAP_FLOOR`), keeping raw digits in logs.
 - **Measurement softening & fishing** (dropped checks, `vacuous-pass` like `Number("") === 0`, hedgable metrics, noisy re-compares): prevented by mechanical probes (`referee.draft`, `doNothing`, hidden-swap), host-gated fresh comparisons (`decide`, `written-after`) and WRI `gaming.ts`.
-- **Rubric & judge gaming** (bloat, cosmetic fluff, checklist farming): reduced by cross-family seats (self-preference), pre-vote briefs, swapped pairwise mean (position), equal-weight `holistic` and climbing `Task.rubric`; length is only prompted and capped (`fairCap`), unmeasured.
+- **Rubric & judge gaming** (bloat, cosmetic fluff, checklist farming): reduced by cross-family seats (self-preference), one criterion per vote, swapped pairwise mean (position) and equal-weight `holistic`; length is only prompted and capped (`fairCap`), unmeasured.
 
 ## 3. The seats
 
-- **Examiner** (`src/examiner/`): drafts exam specs (picking the lane when judged) and tasks (optional immutable `Task.rubric`); host validates structure and rejects planted answers (`propose_tasks`); reads `src/examiner/record.ts` (item scores, `tiesOf`, brief flags) without targets or harness names.
+- **Examiner** (`src/examiner/`): drafts exam specs (picking the lane when judged) and tasks; host validates structure and rejects planted answers (`propose_tasks`); reads `src/examiner/record.ts` (item scores) without targets or harness names.
 - **Builder** (`src/builder/`): edits `harness/`, reads practice traces and paged extracts (`read_trace`), picks moves and freezes candidates, seeing only §1's five items, `MEMORY.md` and kept harnesses.
 - **Solver** (`src/solver/`): solves a task via `read`, `bash`, `edit`, `write`, `submit` and installed programs.
 - **Verifier** (`src/kernel/verify.ts`): runs offline checks and `[0, 1]` code items in a fresh offline sandbox.
-- **Referee** (`src/referee/referee.ts`, `judge.ts`): rules on reproducible rejections (`earned`, `check-defect`, `unclear`) and, under `--admit-judge`, runs cross-family `referee.brief` and `referee.pair` (exam side only).
+- **Referee** (`src/referee/referee.ts`, `judge.ts`): rules on reproducible rejections (`earned`, `check-defect`, `unclear`) and, under `--admit-judge`, runs cross-family `referee.pair` (exam side only).
 
 A content-addressed **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) has three tiers: **`bareSolver`** (`pi-durable` + 4 tools, no guide/programs; external baseline), **`baseStarter`** (`starter.ts`: + minimal `BUILT_AGENTS.md`; + Builder-only `HARNESS.md` = **Starter Pack**), **`builtSolver`** (Builder harness; promotions beat `baseStarter`). Never say "with or without a harness".
 
@@ -114,7 +114,7 @@ Comparisons pre-register terms, solve both arms afresh on sampled tasks (newest 
 7. **Non-results are neither passes nor fails**; retry and exclude from denominators.
 8. **Rejections count only once adjudicated**; blind operator labels override Referee.
 9. **No reference answers, stronger solvers or answer-finding agents** (generation parameters are task facts).
-10. **No unadmitted agent-authored measurement instrument.** Unpinned authored checks and `judge` items fault unless admitted (`--admit`, `--admit-authored`, `--admit-judge`). Under `--admit-judge`, Examiner may author immutable per-task `rubric` criteria with the task; they freeze before solve 1 and never change post hoc.
+10. **No unadmitted agent-authored measurement instrument.** Unpinned authored checks and `judge` items fault unless admitted (`--admit`, `--admit-authored`, `--admit-judge`).
 11. **Host owns resource limits**; files requesting more time, turns or disk have no effect.
 12. **One owner per decision, one reader per fact.** Remove any second owner.
 13. **Add machinery only on empirical evidence**: `owner → live reader → decision → evidence → hostile test`. Collapse seams first; new diagnostics report only until replay flips decisions; delete superseded code (or list readers under "Not done"); additions >~50 prod lines justify why nothing simpler fits.

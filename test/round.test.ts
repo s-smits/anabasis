@@ -1924,15 +1924,6 @@ describe("a judged comparison", () => {
     return {
       weights: { code: 0, judge: 1 },
       reviewer: "faux/faux-judge",
-      brief: async (version, comparison) => {
-        append(log, "referee.brief", {
-          comparison,
-          task: version,
-          reader: "j",
-          expectations: ["e"],
-          flags: [],
-        });
-      },
       pair: async (version, { comparison, first, second }) => {
         if (broken.delete(first)) throw new Error("the judge's login is at its limit");
         const sign = Number(harnessOf(first) === better) - Number(harnessOf(second) === better);
@@ -1963,7 +1954,6 @@ describe("a judged comparison", () => {
     expect(fixed?.judge).toEqual({ code: 0, judge: 1 });
     expect(fixed === null ? null : judgingLeft(read(s.log), fixed)).toEqual([]);
     expect(pairs(s.log)).toBe(HELD.length * 3);
-    expect(read(s.log).filter(({ kind }) => kind === "referee.brief")).toHaveLength(HELD.length);
     const reported = lastReports(read(s.log)).filter((one) => one.session === "g-judged");
     const later = reported.flatMap((one) => pairsReported(read(s.log), one));
     expect(later).toHaveLength(HELD.length);

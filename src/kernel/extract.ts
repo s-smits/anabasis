@@ -1,4 +1,3 @@
-import { sha256 } from "../meta/digest.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
 import { capturedJsonParse, parseJsonAs } from "../meta/json-runtime.ts";
 import { delimiter } from "../meta/path.ts";
@@ -31,7 +30,7 @@ export interface Extracted {
   readonly fault: string | null;
 }
 
-export const EXTRACT = { cellsPerSheet: 100_000, emptyRows: 500, pdfMs: 15_000, slice: 750 };
+export const EXTRACT = { cellsPerSheet: 100_000, emptyRows: 500, pdfMs: 15_000 };
 const SQLITE_MAGIC = "SQLite format 3\0";
 const PY_MAX_BUFFER = 16 * 1024 * 1024;
 const cachedBins = new Map<string, string>();
@@ -181,25 +180,4 @@ export function headOf(extracted: Extracted): string[] {
         ]),
     ...(fault === null ? [] : [`extraction fault: ${fault}`]),
   ];
-}
-
-const sliceAt = (bytes: Buffer, from: number): string => {
-  let start = Math.max(0, Math.min(from, bytes.length));
-  while (start < bytes.length && ((bytes[start] ?? 0) & 0xc0) === 0x80) start += 1;
-  let end = Math.min(start + EXTRACT.slice, bytes.length);
-  while (end > start && end < bytes.length && ((bytes[end] ?? 0) & 0xc0) === 0x80) end -= 1;
-  return bytes.subarray(start, end).toString("utf8");
-};
-
-export function dossierOf(extracted: Extracted, seed: string): string {
-  const bytes = Buffer.from(extracted.text);
-  const room = Math.max(1, bytes.length - 3 * EXTRACT.slice);
-  const middle = [0, 1]
-    .map((at) => EXTRACT.slice + (Number.parseInt(sha256(`${seed}:${String(at)}`).slice(0, 8), 16) % room))
-    .toSorted((one, other) => one - other);
-  const parts =
-    bytes.length <= 4 * EXTRACT.slice
-      ? [extracted.text]
-      : [0, ...middle, bytes.length - EXTRACT.slice].map((at) => sliceAt(bytes, at));
-  return [...headOf(extracted), parts.join("\n[…]\n")].join("\n");
 }

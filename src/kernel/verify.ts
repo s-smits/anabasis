@@ -31,13 +31,7 @@ import { hostFolder, releaseRoot } from "../wall/seat-root.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
 import { closedHome, hostScratch, toolchainPathDirs } from "../wall/policy.ts";
 import type { CellInput, CellResult, CheckInput, CheckResult } from "./check-child.ts";
-import {
-  codeObjective,
-  type Objective,
-  type RubricItem,
-  rubricFaults,
-  type TaskCriterion,
-} from "./contract.ts";
+import { codeObjective, type Objective, type RubricItem, rubricFaults } from "./contract.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
@@ -81,7 +75,6 @@ export const CHECK_PROGRAM_CONTRACT = "check-program/v1";
 
 export type Task = PublicTask<JsonValue> & {
   readonly hidden: JsonValue;
-  readonly rubric?: readonly TaskCriterion[];
 };
 
 export interface VerifierTree {

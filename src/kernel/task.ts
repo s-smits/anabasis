@@ -4,7 +4,7 @@ import { type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { type Contract, taskRubricFaults } from "./contract.ts";
+import type { Contract } from "./contract.ts";
 import type { EventKind, LogEvent } from "./log.ts";
 import {
   applicableTruthChecks,
@@ -112,12 +112,6 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
     return `the check's brief does not read: ${errorMessage(error)}`;
   }
   if (checks.length === 0) return `no check applies to family ${task.family}`;
-  const [rubricFault] = taskRubricFaults(
-    contract.objective,
-    task.rubric,
-    checks.map(({ id }) => id),
-  );
-  if (rubricFault !== undefined) return rubricFault;
   const listed = new Set(task.ruleIds);
   for (const check of checks) {
     const cited: unknown = check.citedDecisionIds;

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-  GAP_FLOOR,
   JUDGE_STEP,
   judgedGain,
   judgedPairs,
@@ -40,10 +39,9 @@ describe("the judged composite gain", () => {
     expect(cases).toHaveLength(25 + 3 * 7 * 25);
   });
 
-  it("keeps the smallest judged win above the gap floor: one item of four on a 1:1 mix and on a judged-only exam", () => {
+  it("values the smallest judged win, one item of four, at its share of the judge step on a 1:1 mix and a judged-only exam", () => {
     const single = 0.5 / 4;
     expect(judgedGain({ code: 1, judge: 1 }, 0, vote(single, 0))).toBeCloseTo((JUDGE_STEP * single) / 3, 12);
-    expect(judgedGain({ code: 1, judge: 1 }, 0, vote(single, 0))).toBeGreaterThan(GAP_FLOOR);
     expect(judgedGain({ code: 0, judge: 1 }, 0, vote(single, 0))).toBe(0.0625);
     expect(judgedGain({ code: 1, judge: 1 }, 0.25, vote(0, 0))).toBeCloseTo(0.25 / 3, 12);
   });
@@ -89,5 +87,21 @@ describe("judged points", () => {
     expect(judged.validity).toBe(legacy.validity);
     const gain = judgedGain({ code: 1, judge: 1 }, 0.1, votes[0] ?? vote(0, 0));
     expect(judged.objective).toBeCloseTo(gain * 2 * 0.3 * (1000 / 4), 9);
+  });
+
+  it("floors the code gain alone, so a judged win of one item of four counts on any mix and code noise on none", () => {
+    const tied: Paired = {
+      task: "t-2",
+      fresh: [true],
+      old: [true],
+      objective: { direction: "higher", scale: "unit", fresh: [0.505], old: [0.5] },
+    };
+    for (const weights of [...WEIGHTS, { code: 9, judge: 1 }]) {
+      const scoredAt = (votes: Vote[]) => pointsOf({ ...tied, judged: { weights, votes } }).objective;
+      const single = { fresh: 0, old: 0, judge: 0.5 / 4, holistic: 0 };
+      expect(scoredAt([single])).toBeCloseTo(judgedGain(weights, 0, single) * 0.3 * 1000, 9);
+      expect(scoredAt([single])).toBeGreaterThan(0);
+      expect(scoredAt([vote(0, 0)])).toBe(0);
+    }
   });
 });

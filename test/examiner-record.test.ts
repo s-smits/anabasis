@@ -593,33 +593,3 @@ describe("a task the reference has closed", () => {
     );
   });
 });
-
-describe("the ties a judge records", () => {
-  it("names a criterion both harnesses' answers tie strong or weak on in most judged pairs, and no other", () => {
-    const log = logged();
-    log.hold(["memo"]);
-    log.solved("b-1", "memo", "h1", [true, true]);
-    log.solved("b-1", "memo", "h2", [true, true]);
-    log.reported("b-1", ["h1", "h2"], ["memo"]);
-    const pair = (ties: JsonObject) =>
-      log.add("referee.pair", { comparison: "b-1", task: "memo", judge: 0, ties });
-    pair({ plain: "both-strong", cites: "swap-disagreed" });
-    pair({ plain: "both-strong", cites: "both-weak" });
-    pair({ plain: "mixed", cites: "both-weak" });
-    const line = block(heard(log.events, [fixture("memo")]), "every").memo;
-    expect(line).toContain("tied both strong on plain, both weak on cites in half or more of 3 judged pairs");
-    log.add("referee.brief", {
-      comparison: "b-1",
-      task: "memo",
-      flags: [
-        { criterion: "cites", reason: "duplicates-code" },
-        { criterion: "plain", reason: "unknown" },
-      ],
-    });
-    const briefed = block(heard(log.events, [fixture("memo")]), "every").memo;
-    expect(briefed).toContain("its judging brief notes that cites is a fact code could decide exactly");
-    expect(briefed).not.toContain("plain is");
-    log.add("harness.promoted", { harness: "h2" });
-    expect(JSON.stringify(heard(log.events, [fixture("memo")]))).not.toContain("judged pairs");
-  });
-});

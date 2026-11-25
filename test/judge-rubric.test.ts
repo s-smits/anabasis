@@ -6,9 +6,7 @@ import {
   type Objective,
   objectiveLine,
   rubricFaults,
-  rubricOf,
   type RubricItem,
-  taskRubricFaults,
 } from "../src/kernel/contract.ts";
 import { authoredFaults, JUDGE } from "../src/kernel/acceptance.ts";
 import { crossFamilyVendors, modelVendor } from "../tools/d2/round.ts";
@@ -79,32 +77,11 @@ describe("the unified rubric", () => {
     expect(rubricFaults(unit(odd))).toEqual(["objective.items.j is of kind code or judge"]);
   });
 
-  it("holds a task's criteria to a judged contract, one to four, each with an id of its own", () => {
-    const judged = unit([code("a"), judge("j")]);
-    const one = (id: string, criterion = LINE) => ({ id, criterion });
-    expect(taskRubricFaults(judged, undefined, ["span"])).toEqual([]);
-    expect(taskRubricFaults(unit([code("a")]), [one("r")], [])).toEqual([
-      "the task carries rubric criteria, and the contract declares no judged item",
-    ]);
-    for (let count = 0; count <= CRITERION.perTask + 1; count += 1) {
-      const rubric = Array.from({ length: count }, (_, index) => one(`r${String(index)}`));
-      expect(taskRubricFaults(judged, rubric, ["span"]).length === 0).toBe(
-        count >= 1 && count <= CRITERION.perTask,
-      );
-    }
-    for (const taken of ["span", "a", "j", "holistic", "constructor"]) {
-      expect(taskRubricFaults(judged, [one(taken)], ["span"])).toHaveLength(1);
-    }
+  it("refuses a reserved id and more judged items than a contract holds", () => {
     expect(rubricFaults(unit([judge("holistic")]))).toHaveLength(1);
     expect(
-      rubricFaults(unit(Array.from({ length: CRITERION.perTask + 1 }, (_, i) => judge(`j${String(i)}`)))),
-    ).toEqual([`objective.items holds at most ${String(CRITERION.perTask)} judged items`]);
-    expect(taskRubricFaults(judged, [one("r"), one("r")], [])).toHaveLength(1);
-    expect(taskRubricFaults(judged, [one("r", "short")], [])).toEqual([
-      `rubric criterion r states its criterion in ${String(CRITERION.least)} to ${String(CRITERION.most)} characters`,
-    ]);
-    expect(rubricOf([{ id: "r", criterion: LINE }, { id: 3 }, "x"])).toEqual([one("r")]);
-    expect(rubricOf(undefined)).toBeUndefined();
+      rubricFaults(unit(Array.from({ length: CRITERION.perContract + 1 }, (_, i) => judge(`j${String(i)}`)))),
+    ).toEqual([`objective.items holds at most ${String(CRITERION.perContract)} judged items`]);
   });
 
   it("faults each judged item until the operator admits judging, which admitting authored checks never does", () => {

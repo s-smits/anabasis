@@ -10,7 +10,7 @@ import {
 import { type ControlFile, DELIVERABLES } from "../kernel/answer-files.ts";
 import { GAP_FLOOR } from "../kernel/compare.ts";
 import { PER_CHECK_MS } from "../kernel/verify.ts";
-import { REACH } from "./ladder.ts";
+import { REACH } from "./difficulty.ts";
 import { budgetLine, FAIR, type SolveBudget, TASK, UNHELD } from "./prompt.ts";
 import { FROM_FILE, fromHome } from "./shell.ts";
 import { append, eventsOf, type LogEvent } from "../kernel/log.ts";

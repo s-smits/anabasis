@@ -10,5 +10,5 @@ Non-obvious architectural, statistical, security, and evaluation-integrity decis
 | [0004](0004-paired-comparison-statistics-and-sampling.md) | Paired comparison scoring, Wilcoxon sign-flip test, and task sampling | `src/kernel/compare.ts`, `src/campaign/round.ts`, `src/campaign/climb.ts` |
 | [0005](0005-campaign-decision-table-and-log-model.md) | Append-only campaign log, decision table, and pause boundaries | `src/kernel/log.ts`, `src/campaign/scheduler.ts`, `src/campaign/signal.ts`, `src/kernel/trace.ts` |
 | [0006](0006-agent-backends-compaction-and-billing.md) | Agent backends, context compaction, deadlines, and billing | `src/agent/`, `src/solver/run.ts`, `src/kernel/solve.ts`, `src/kernel/meter.ts` |
-| [0007](0007-harness-storage-digests-and-memory.md) | Content-addressed harness storage, tree stamps, and Builder memory | `src/harness/open.ts`, `src/builder/kept.ts`, `src/builder/memory.ts` |
+| [0007](0007-harness-storage-digests-and-memory.md) | Content-addressed harness storage, tree stamps, and Builder memory | `src/harness/open.ts`, `src/builder/store.ts`, `src/builder/memory.ts` |
 | [0008](0008-referee-adjudication-and-meta-primitives.md) | Referee agreement bars, answer submission, and runtime primitives | `src/audit/`, `src/tools/answer.ts`, `src/meta/` |

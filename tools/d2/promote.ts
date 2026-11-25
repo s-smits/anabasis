@@ -12,7 +12,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { namesOf } from "#src/campaign/names.ts";
-import { harnessNamed, keptAs, starter } from "./campaign.ts";
+import { harnessNamed, resolveCheckpoint, starter } from "./campaign.ts";
 import { COMPARISON_OPTIONS } from "./round.ts";
 
 const OPTIONS = {
@@ -27,7 +27,7 @@ export async function promoteCommand(args: readonly string[]): Promise<number> {
   const { log, harness } = harnessNamed(values);
   const campaign = { log, states: join(dirname(log), "states") };
   const events = read(log);
-  const [kept, least] = [await keptAs(campaign, "--harness", harness), await starter(campaign)];
+  const [kept, least] = [await resolveCheckpoint(campaign, "--harness", harness), await starter(campaign)];
   const now = promoted(events) ?? least.digest;
   // A harness by its letter (`namesOf`) beside its whole digest, which `--harness` takes.
   const names = namesOf(events);

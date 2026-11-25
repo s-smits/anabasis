@@ -2,7 +2,7 @@
  * What a benchmark's container is given of an Anabasis arm: one folder, bind-mounted read-only,
  * holding the container solver compiled to one executable and the harness it solves inside. The arm
  * is the Starter or a harness a campaign kept, found and copied with the owners the campaign's own
- * handover uses (`closeCommand`): `logAcross` finds the log on any host, `keptAs` names the kept
+ * handover uses (`closeCommand`): `logAcross` finds the log on any host, `resolveCheckpoint` names the kept
  * state (`promoted` by default) and refuses one that no longer opens as its digest, `copyHarness`
  * copies it, and the copy must open as the same digest. The mount also records how the campaign
  * ended and whether the harness's epoch was confirmed (`epochsOf`), so a score is tied to a
@@ -11,7 +11,7 @@
  * campaign's folder. The solver is `pi-solve.ts` compiled with Bun's runtime for the container's
  * platform, so the container needs no Bun of its own.
  */
-import { copyHarness } from "#src/builder/kept.ts";
+import { copyHarness } from "#src/builder/store.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { read } from "#src/kernel/log.ts";
 import { promoted } from "#src/kernel/reports.ts";
@@ -28,7 +28,7 @@ import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { writeBare, writeStarter } from "#src/harness/starter.ts";
 import { toolTreeImports, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { keptAs, PROMOTED } from "#tools/d2/campaign.ts";
+import { resolveCheckpoint, PROMOTED } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { packageFolders } from "./foreign-python.ts";
 
@@ -97,13 +97,13 @@ export async function placeHarness(dir: string, source: "base" | "starter" | Sou
     );
   }
   const campaign = basename(dirname(log));
-  // The starter, asked for or still the reference, is written as itself: `keptAs` would keep a copy of
+  // The starter, asked for or still the reference, is written as itself: `resolveCheckpoint` would keep a copy of
   // it among the campaign's states.
   if (asked === "starter" || (asked === PROMOTED && promoted(events) === null)) {
     writeStarter(dir);
     return { campaign, ending, confirmed: null };
   }
-  const kept = await keptAs({ log, states: join(dirname(log), "states") }, "--harness", asked);
+  const kept = await resolveCheckpoint({ log, states: join(dirname(log), "states") }, "--harness", asked);
   copyHarness(kept.dir, dir);
   const { digest } = await openHarness(dir);
   if (digest !== kept.digest) {

@@ -39,7 +39,7 @@ import { HOST_ONLY } from "../harness/starter.ts";
 import { clockText } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
-import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } from "./kept.ts";
+import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } from "./store.ts";
 import { type Listed, measuredClause, type ModePrompts, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 

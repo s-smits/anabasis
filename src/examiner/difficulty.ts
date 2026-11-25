@@ -54,7 +54,7 @@ const SCALE = `Reach is how hard a task is for a strong current model working in
 
 export const REACH = [SCALE, SOLVER].join("\n\n");
 
-export const LADDER = [
+export const DIFFICULTY_SCALE = [
   SCALE,
   "Three fields that no exam here covers, each from easy to very hard. They show what each grade demands, and none is a task to copy:",
   ...FIELDS.map(({ field, rungs }) => `${field}:\n${rungs.map((rung) => `- ${rung}`).join("\n")}`),

@@ -20,7 +20,7 @@ Inspects reference solves only, so candidate wins never influence practice selec
 
 ## Defaults & Examiner finish
 
-- `--target`/`--solves`: `SIZE` (`src/kernel/size.ts`); `GAP_FLOOR` is shared across tally, admission, frontier and `headroomOf`; `--defects` applies to manual comparisons only.
+- `--target`/`--solves`: `SIZE` (`src/kernel/size.ts`); `GAP_FLOOR` is shared across tally, admission, frontier and `evalHeadroom`; `--defects` applies to manual comparisons only.
 - `--reserve`: sits above observed single-solve bills (gates launch; never interrupts running solves; inspect with `scripts/bills.ts` before changing).
 - Selectors default to `--parent latest`, `--reference promoted`.
 - Builder gets 24 `--practice-solves` (trimmed by remaining budget via `practiceLeft`, `src/builder/tools.ts`). Examiner gets 240 min, 200 turns, 36 proposals (`tools/d1b/examine.ts`).

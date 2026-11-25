@@ -15,7 +15,7 @@ import { UNSETTLED } from "#src/campaign/comparison.ts";
 import { campaignOf, type Handover } from "#src/campaign/summary.ts";
 import { short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
-import { copyHarness } from "#src/builder/kept.ts";
+import { copyHarness } from "#src/builder/store.ts";
 import { harnessesOf } from "../runs/registry.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
@@ -32,7 +32,14 @@ import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { campaignLog, keptAs, openCampaign, PACK_OPTIONS, PROMOTED, packNamed } from "./campaign.ts";
+import {
+  campaignLog,
+  resolveCheckpoint,
+  openCampaign,
+  PACK_OPTIONS,
+  PROMOTED,
+  packNamed,
+} from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
 import { recordedSetting, SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
@@ -298,7 +305,7 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
       `--to ${to} holds something besides a handover: a handover is written to a folder of its own`,
     );
   }
-  const kept = await keptAs(campaign, "--harness", values.harness ?? PROMOTED);
+  const kept = await resolveCheckpoint(campaign, "--harness", values.harness ?? PROMOTED);
   for (const one of before) rmSync(join(to, one), { recursive: true, force: true });
   const harness = join(to, "harness");
   const events = read(campaign.log);

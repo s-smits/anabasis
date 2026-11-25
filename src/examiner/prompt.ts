@@ -2,8 +2,8 @@ import { GAP_FLOOR, gapBasis, type ObjectiveRule } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
-import { LADDER } from "./ladder.ts";
-import type { heard } from "./record.ts";
+import { DIFFICULTY_SCALE } from "./difficulty.ts";
+import type { taskHistory } from "./record.ts";
 
 export interface SolveBudget {
   readonly modelTurns: number | null;
@@ -35,7 +35,7 @@ export function systemPrompt(objective?: ObjectiveRule): string {
     "## Who solves a task\n\nA solve is one system: a solving model inside a harness. The model reads the task, public rules, check assertions and harness guide, works in a shell with the harness's programs and its own code (reading all output, errors included), and submits one answer within the opening's budget. A failing program visible to the model can be retried or worked around. The reference harness is the starter (no domain programs) until a comparison promotes one built by a Builder on practice tasks. You never see a solver's tools, guide, answers or traces.",
     `## How a task is scored\n\nEach comparison solves every task afresh under both harnesses as many times as the opening states, within the budget. An answer passing every check within the budget is valid; a check refusal counts as a fail only once the Referee rules it earned. A check defect or unclear ruling sets the task aside for both harnesses, a solve whose check cannot decide is solved again, and exceeding the campaign's check-defect limit ends the campaign. Tasks are scored over all pairings of each harness's solves: validity first (valid beats invalid), then the objective between two valid answers where one is declared. Billing decides nothing.\n\nA task leaves the reference harness room in three ways:\n- on validity: some of its solves are valid and some fail (missing a public rule or hitting the budget).\n- on an answer of yours: none of its solves is valid, while a valid answer is on record (such as yours passing try_answer on the same instance).\n- on the objective (where declared): an answer on record, its own or yours, beats one of its own by at least ${floor} ${gapBasis(objective)}, even if every solve is valid.\n\nA task it answers every time with no answer on record better by ${floor} leaves no room. Without an objective, valid answers always tie, so only the first two ways leave room.`,
     `## What the exam needs\n\nTasks within the domain's scope that leave the reference room and have a valid answer, demanding and fair by practitioner standards. You are not told how many tasks are wanted.\n- A task with no valid answer measures nothing, since every harness fails it alike. Passing try_answer proves an instance has one, and building forward from a valid answer guarantees one even when it is harder than you could solve.\n- A harness that fits one family wins or loses its tasks together, so a comparison dominated by one family says little about the rest of the scope. The record reports how many tasks the largest family held in each comparison.\n- ${UNHELD}\n- ${FAIR}`,
-    `## How hard\n\n${LADDER}\n\nA grade is what the field demands of a task, read from its public input and cited rules. A fault in one harness's programs is no grade: the starter (which holds no domain programs) is also compared on tasks written after a promotion. A task the reference answers in every solve within a few turns, with no better answer on record, is grade 2 or below for this solver, whatever grade it was given. Repeating a grade the reference already answers in every solve, or writing a task whose objective the field's standard method already reaches, leaves no room; a regime within scope that no comparison has tested has no reading, since only a comparison shows whether the reference answers it in every solve. Occasional validity flips or objective spread between the reference's own solves are chance, not a better method (the record's last-comparison paragraph reports how often its own solves differed). The same holds for an instance cherry-picked from many draws because a method happened to land far from the truth: that error belongs to the draw, and a harness gains on it by sharing the offset, not by a better method. Write above the highest grade the reference answers in every solve.`,
+    `## How hard\n\n${DIFFICULTY_SCALE}\n\nA grade is what the field demands of a task, read from its public input and cited rules. A fault in one harness's programs is no grade: the starter (which holds no domain programs) is also compared on tasks written after a promotion. A task the reference answers in every solve within a few turns, with no better answer on record, is grade 2 or below for this solver, whatever grade it was given. Repeating a grade the reference already answers in every solve, or writing a task whose objective the field's standard method already reaches, leaves no room; a regime within scope that no comparison has tested has no reading, since only a comparison shows whether the reference answers it in every solve. Occasional validity flips or objective spread between the reference's own solves are chance, not a better method (the record's last-comparison paragraph reports how often its own solves differed). The same holds for an instance cherry-picked from many draws because a method happened to land far from the truth: that error belongs to the draw, and a harness gains on it by sharing the offset, not by a better method. Write above the highest grade the reference answers in every solve.`,
     "## The session\n\nPropose in rounds: put drafts to the gate, read its response, and propose more. Call finish when you have no more tasks worth proposing; the session also ends at its limits. After a finish or once the host has what it needs, the host may wake this conversation for more tasks and report what comparisons read since.",
   ].join("\n\n");
 }
@@ -47,7 +47,7 @@ export function budgetLine({ modelTurns, minutes, solves }: SolveBudget): string
 const limitsLine = (told: Told, lead: string) =>
   `${lead} ${plural(Math.round(told.wallSeconds / 60), "minute")}, ${plural(told.turns, "turn")} and ${plural(told.puts, "draft")} to put to the gate.`;
 
-const grouped = (groups: ReturnType<typeof heard>["groups"]) =>
+const grouped = (groups: ReturnType<typeof taskHistory>["groups"]) =>
   groups
     .map(({ heading, lines }) => `${heading}:\n${lines.map((line) => `- ${line}`).join("\n")}`)
     .join("\n\n");
@@ -55,7 +55,7 @@ const grouped = (groups: ReturnType<typeof heard>["groups"]) =>
 export function firstMessage(
   contract: Contract,
   checks: readonly CheckRow[],
-  tasks: ReturnType<typeof heard>,
+  tasks: ReturnType<typeof taskHistory>,
   told: {
     readonly wallSeconds: number;
     readonly turns: number;
@@ -107,7 +107,7 @@ ${brief}`,
   ].join("\n\n");
 }
 
-export function wakeMessage(tasks: ReturnType<typeof heard>, told: Told): string {
+export function wakeMessage(tasks: ReturnType<typeof taskHistory>, told: Told): string {
   return [
     "The host asks for more tasks under the same exam.",
     tasks.stood ?? "No comparison has reported since the host last told you.",

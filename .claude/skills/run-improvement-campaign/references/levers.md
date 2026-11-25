@@ -7,7 +7,7 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | --- | --- | --- | --- |
 | E1 | Task-writing difficulty guidance | `src/examiner/prompt.ts` | reference valid on all tasks; `TIED TASKS`; `TIES BETWEEN VALID ANSWERS` |
 | E2 | Outcome feedback to Examiner | `heard`, `src/examiner/record.ts` | `OUTCOMES BY SESSION` reading `reference-every` |
-| E3 | Difficulty ladder rungs/examples | `LADDER`, `src/examiner/ladder.ts` | high blind grades on tasks reference already solves |
+| E3 | Difficulty ladder rungs/examples | `DIFFICULTY_SCALE`, `src/examiner/difficulty.ts` | high blind grades on tasks reference already solves |
 | E4 | Drafting rules (objective, families) | `src/examiner/draft.ts` | objective tying every pair; `INSTRUMENT AUTHORED`; `FAMILY CONCENTRATION` |
 | E5 | Draft gate (note honesty risk if relaxed) | `draftFaults`, `src/examiner/draft.ts` | `exam` ending with 0 comparisons |
 | E6 | Task admission gate | `refusalOf`, `src/examiner/write.ts` | `GATE REFUSED`; `EXAMINER ZERO YIELD`; thin frontier |

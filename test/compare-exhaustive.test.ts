@@ -30,7 +30,7 @@ import {
   wholePoints,
 } from "../src/kernel/compare.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { PATIENCE, patienceOf, headroomOf } from "../src/kernel/reports.ts";
+import { PATIENCE, patienceOf, evalHeadroom } from "../src/kernel/reports.ts";
 import { howOftenValid, SIZE, sizeLines, smallestSteps } from "../src/kernel/size.ts";
 
 const LEVELS = [0.02, 0.05, 0.1, 0.25];
@@ -465,7 +465,7 @@ describe("the room a task leaves a harness", () => {
       // A count's first place holds the tasks valid in no solve.
       const someValid = [...old.slice(1), ...fresh.slice(1)].some((n) => n > 0);
       const expected = count === undefined || count > 0 ? "room" : someValid ? "none" : "too-hard";
-      expect(headroomOf({ valid: { informative: counts, old, fresh } }, side)).toBe(expected);
+      expect(evalHeadroom({ valid: { informative: counts, old, fresh } }, side)).toBe(expected);
     }
   });
 

@@ -39,7 +39,7 @@ import {
   HOME_TOOL_TREE,
   seedSavedHarnesses,
   snapshot,
-} from "./kept.ts";
+} from "./store.ts";
 import { builderMemoryBlock, keepMemory } from "./memory.ts";
 import { formatComparisonHistory, formatPracticeFailures, formatSessionStart } from "./past.ts";
 import {

@@ -1,7 +1,7 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
-import { INTERRUPTED, poolOf, headroomOf } from "../kernel/reports.ts";
+import { INTERRUPTED, poolOf, evalHeadroom } from "../kernel/reports.ts";
 import { nonRetryableProvider } from "../kernel/solve.ts";
 import { taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
@@ -114,7 +114,7 @@ function fruitlessRun({ events, reports, reference }: Ground) {
   const compared = reports.map(({ id, old, report, reported }) => ({
     at: reported,
     id,
-    gain: report.reading !== "not-scored" && (old !== reference || headroomOf(report) === "room"),
+    gain: report.reading !== "not-scored" && (old !== reference || evalHeadroom(report) === "room"),
   }));
   const gatedAt = new Map(
     events.flatMap(({ kind, data }, at) =>
@@ -395,7 +395,7 @@ function noRoom(ground: Ground): Move | null {
   const last = reports.findLast(({ old, fresh }) => old === reference || fresh === reference);
   if (last === undefined || enoughWrittenSince(ground, last)) return null;
   const side = last.old === reference ? "old" : "fresh";
-  const room = headroomOf(last.report, side);
+  const room = evalHeadroom(last.report, side);
   if (room === "room") {
     const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
     if (promotedAt === -1 || events[promotedAt]?.kind === "harness.reverted") return null;
@@ -450,7 +450,7 @@ function uncomparedTasks(ground: Ground): Move | null {
     none: "left no evaluation headroom",
     "too-hard": "produced no valid answers on either arm",
     room: null,
-  }[headroomOf(read.report)];
+  }[evalHeadroom(read.report)];
   return whatItLeft === null ? null : compare(`comparison ${read.id} ${whatItLeft}, ${later}`);
 }
 

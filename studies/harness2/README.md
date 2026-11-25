@@ -330,7 +330,7 @@ benchmark brings stays in the ignored `studies/external/`:
 An arm is a frozen harness, the starter or one a campaign kept, bundled once with the container
 solver compiled for the container (`../shared/bundle.ts`). A campaign's arm is named by the
 campaign alone: `run.ts bundle --arm D --from <campaign>` finds its log on any host (`logAcross`),
-takes the reference at its typed ending, or the kept harness `--harness` names (`keptAs`,
+takes the reference at its typed ending, or the kept harness `--harness` names (`resolveCheckpoint`,
 `tools/d2/campaign.ts`), copies it as the campaign's handover does (`copyHarness`), and refuses a
 copy that does not open as the digest the log names. The mount's record keeps the digest, the
 campaign, its ending and whether the harness's epoch was confirmed against the starter. WorkBuddy's runner starts every trial in a

@@ -264,7 +264,7 @@ const examiner: Scenario = ({ readers: { record }, log }) => {
     .hold("d", { valid: 1, solves: 3 })
     .refuse("e", 3)
     .compare("b-2", { old: "h2", fresh: "h3", starter: "h1" }, { a: "PP/PP", b: "PP/FP", d: "FF/FF" });
-  const heard = record.heard(
+  const heard = record.taskHistory(
     built.events,
     ["a", "b", "c", "d"].map((taskId) => ({ taskId, family: "f" })),
   );

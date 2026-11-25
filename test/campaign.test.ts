@@ -28,7 +28,15 @@ import { errorMessage } from "../src/meta/runtime-values.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { JUDGED_TASK_DOLLARS, Refused, refusals, stopRule } from "../src/campaign/admission.ts";
-import { codeOf, FOLLOWED, LIMITS, starter, keptAs, openCampaign, treeFault } from "../tools/d2/campaign.ts";
+import {
+  codeOf,
+  FOLLOWED,
+  LIMITS,
+  starter,
+  resolveCheckpoint,
+  openCampaign,
+  treeFault,
+} from "../tools/d2/campaign.ts";
 import { gitText } from "../src/meta/git.ts";
 import { checkpointCommand } from "../tools/d2/checkpoint.ts";
 import { importCommand } from "../tools/d2/import.ts";
@@ -285,12 +293,12 @@ describe("a campaign", () => {
     expect(opened.toolTree).toBeNull();
     expect(await starter(campaign)).toEqual(least);
     expect(readdirSync(campaign.states)).toEqual([least.digest]);
-    expect(await keptAs(campaign, "--reference", "starter")).toEqual(least);
-    expect(await keptAs(campaign, "--parent", "latest")).toEqual(least);
+    expect(await resolveCheckpoint(campaign, "--reference", "starter")).toEqual(least);
+    expect(await resolveCheckpoint(campaign, "--parent", "latest")).toEqual(least);
     expect(COMPARISON_OPTIONS.reference.default).toBe("promoted");
-    expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
+    expect(await resolveCheckpoint(campaign, "--reference", "promoted")).toEqual(least);
     expect(SESSION_OPTIONS.parent.default).toBe("latest");
-    await expect(keptAs(campaign, "--reference", "start")).rejects.toThrow(
+    await expect(resolveCheckpoint(campaign, "--reference", "start")).rejects.toThrow(
       "--reference start is no harness this campaign keeps",
     );
 
@@ -307,21 +315,23 @@ describe("a campaign", () => {
     });
     append(campaign.log, "comparison.reported", { session: "b-1", reading: "step", fresh: digest });
     const built = { dir: join(campaign.states, digest), digest };
-    expect(await keptAs(campaign, "--parent", "latest")).toEqual(built);
-    expect(await keptAs(campaign, "--reference", "starter")).toEqual(least);
-    expect(await keptAs(campaign, "--reference", digest)).toEqual(built);
-    expect(await keptAs(campaign, "--parent", least.digest)).toEqual(least);
-    expect(await keptAs(campaign, "--harness", "B")).toEqual(built);
-    await expect(keptAs(campaign, "--harness", "C")).rejects.toThrow(
+    expect(await resolveCheckpoint(campaign, "--parent", "latest")).toEqual(built);
+    expect(await resolveCheckpoint(campaign, "--reference", "starter")).toEqual(least);
+    expect(await resolveCheckpoint(campaign, "--reference", digest)).toEqual(built);
+    expect(await resolveCheckpoint(campaign, "--parent", least.digest)).toEqual(least);
+    expect(await resolveCheckpoint(campaign, "--harness", "B")).toEqual(built);
+    await expect(resolveCheckpoint(campaign, "--harness", "C")).rejects.toThrow(
       "--harness C is no harness this campaign keeps",
     );
     mkdirSync(join(campaign.states, "tree-x"));
-    await expect(keptAs(campaign, "--harness", "C")).rejects.toThrow(
+    await expect(resolveCheckpoint(campaign, "--harness", "C")).rejects.toThrow(
       `whole: ${[digest, least.digest].toSorted().join(", ")}.`,
     );
-    await expect(keptAs(campaign, "--parent", "tree-x")).rejects.toThrow("is no harness this campaign keeps");
+    await expect(resolveCheckpoint(campaign, "--parent", "tree-x")).rejects.toThrow(
+      "is no harness this campaign keeps",
+    );
     writeFileSync(join(built.dir, "agent", "BUILT_AGENTS.md"), "Add first.\n");
-    await expect(keptAs(campaign, "--parent", "latest")).rejects.toThrow(
+    await expect(resolveCheckpoint(campaign, "--parent", "latest")).rejects.toThrow(
       `${built.dir} no longer opens as the harness it is kept as`,
     );
   });
@@ -343,8 +353,8 @@ describe("a campaign", () => {
     expect(imported).toEqual({ digest, dir: join(campaign.states, digest) });
     expect(lstatSync(join(imported.dir, TOOL_TREE_DIR)).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(imported.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain("echo engine");
-    expect(await keptAs(campaign, "--parent", digest)).toEqual(imported);
-    expect(await keptAs(campaign, "--reference", `programs-of:${digest}`)).not.toEqual(imported);
+    expect(await resolveCheckpoint(campaign, "--parent", digest)).toEqual(imported);
+    expect(await resolveCheckpoint(campaign, "--reference", `programs-of:${digest}`)).not.toEqual(imported);
     const events = read(campaign.log).filter(({ kind }) => kind === "harness.imported");
     expect(events.map(({ data }) => data)).toEqual([
       { harness: digest, from: join("handed", "harness"), note: "epoch 0: the engine harness" },
@@ -486,7 +496,7 @@ describe("a campaign", () => {
       "is the reference harness from here on",
     );
     expect(promotions()).toEqual([{ harness: digest, from: least.digest, rests: [], despite }]);
-    expect((await keptAs(campaign, "--reference", "promoted")).digest).toBe(digest);
+    expect((await resolveCheckpoint(campaign, "--reference", "promoted")).digest).toBe(digest);
     expect(await promote("--harness", digest, "--yes")).toMatch(
       new RegExp(`^[A-Z]+ ${digest} is the campaign's reference harness already`, "mu"),
     );
@@ -502,7 +512,7 @@ describe("a campaign", () => {
     await expect(checkpointCommand(named, seats)).rejects.toThrow("there is nothing to compare");
     expect(against).toEqual([join(campaign.states, digest), least.dir]);
     await promote("--harness", "starter", "--yes");
-    expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
+    expect(await resolveCheckpoint(campaign, "--reference", "promoted")).toEqual(least);
   });
 
   it("runs every command under the campaign's recorded setting, and refuses one that names another", async () => {

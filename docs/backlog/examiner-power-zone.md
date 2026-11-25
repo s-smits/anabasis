@@ -145,7 +145,7 @@ one reading. They are listed by how much of jobstat's ceiling each can explain.
    operator's (`AGENTS.md`, section 3).
 7. **The ladder's worked examples come from other fields** (plausible). The reach scale shows where
    a solver with a shell fails in truss, firmware and buffer terms; whether a jobstat Examiner reads
-   them as reachable is unmeasured. Owner: `src/examiner/ladder.ts`, the examiner-complexity skill.
+   them as reachable is unmeasured. Owner: `src/examiner/difficulty.ts`, the examiner-complexity skill.
 
 ## Intended changes
 

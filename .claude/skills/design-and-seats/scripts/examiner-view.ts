@@ -8,7 +8,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { draftOf } from "#src/examiner/draft.ts";
-import { heard } from "#src/examiner/record.ts";
+import { taskHistory } from "#src/examiner/record.ts";
 import { wakeOn } from "#src/examiner/write.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -50,7 +50,7 @@ function nextTasks(events: readonly LogEvent[]): Named[] {
 
 export function examinerCounts(events: readonly LogEvent[]): string[] {
   const tasks = nextTasks(events);
-  const view = heard(events, tasks);
+  const view = taskHistory(events, tasks);
   const outcomes = countBy([...poolOf(events).outcomes.values()], (outcome) => outcome);
   return [
     `blocks: ${blocksOf(view)}, over ${plural(tasks.length, "task")}`,
@@ -64,7 +64,7 @@ export function examinerCounts(events: readonly LogEvent[]): string[] {
   ];
 }
 
-const blocksOf = (view: ReturnType<typeof heard>) =>
+const blocksOf = (view: ReturnType<typeof taskHistory>) =>
   view.groups.map(({ heading, lines }) => `${String(lines.length)} under "${heading}"`).join("; ") || "none";
 
 function partsAt(rebuilt: string, served: string): number | null {
@@ -107,7 +107,7 @@ function sessionRows(events: readonly LogEvent[], start: number): string[] {
   const unnamed = tasks.filter(({ family }) => family === NOT_RECORDED).length;
   const over = `${plural(tasks.length, "task")}${unnamed === 0 ? "" : `, ${String(unnamed)} with no family on record`}`;
   if (!isString(data.conversation)) {
-    const view = heard(before, tasks);
+    const view = taskHistory(before, tasks);
     const lines = view.groups.flatMap(({ lines: each }) => each.map((line) => `- ${line}`));
     const served = servedOpenings(events, start, session);
     const against = served.map((text) => lines.filter((line) => text.includes(line)).length);

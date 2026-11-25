@@ -2,7 +2,7 @@
 // tree, named by one digest. The host reads three things under a harness and builds or runs
 // nothing from its files, so a harness written before the tool module went keeps its name.
 import { afterAll, describe, expect, it } from "bun:test";
-import { copyHarness, stagedState } from "../src/builder/kept.ts";
+import { copyHarness, stagedState } from "../src/builder/store.ts";
 import {
   chmodSync,
   cpSync,

@@ -345,7 +345,7 @@ export interface Sensitivity {
     readonly detectable: number | null;
     readonly falseRate: number;
   } | null;
-  /** The tallied tasks informative for each harness, which room is read by (`headroomOf`); null in a
+  /** The tallied tasks informative for each harness, which room is read by (`evalHeadroom`); null in a
    *  report written by an older host. */
   readonly informative: { readonly old: number; readonly fresh: number } | null;
   readonly unsolved: number;

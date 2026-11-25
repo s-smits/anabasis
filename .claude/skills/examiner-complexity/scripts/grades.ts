@@ -3,7 +3,7 @@
  * examples re-rated blind: `grades.ts <grades.tsv> <log or campaign folder>...`, `grades.ts rungs
  * packet`, `grades.ts rungs compare <rungs.tsv>...`. `grades.tsv` holds `task<TAB>grade` rows from
  * a grader who read only the public input and rules, on lane 14's scale (`GRADES`,
- * `src/examiner/ladder.ts`); each grade prints its tasks, solves with a result, valid ones, tasks
+ * `src/examiner/difficulty.ts`); each grade prints its tasks, solves with a result, valid ones, tasks
  * valid on every solve and the valid ones' median turns. Non-results count nowhere (rule 7), and a
  * grade valid on every solve in a few turns measures nothing for this solver. `rungs packet` prints
  * the scale, `SOLVER` and each field's rungs without grades, one id a rung (`<field>.<rung>`), for
@@ -11,7 +11,7 @@
  * compare` flags a rung whose median blind grade (the lower middle) is below its stated grade or
  * not above the rung before it. Read-only; grades and outcomes stay on the exam side.
  */
-import { FIELDS, GRADES, SOLVER } from "#src/examiner/ladder.ts";
+import { FIELDS, GRADES, SOLVER } from "#src/examiner/difficulty.ts";
 import { read } from "#src/kernel/log.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { readFileSync } from "#src/meta/filesystem.ts";

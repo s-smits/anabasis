@@ -403,9 +403,12 @@ export async function starter(campaign: { readonly states: string }): Promise<Ke
   }
 }
 
-export async function keptAs(campaign: Keeping, flag: string, asked: string): Promise<Kept> {
+export async function resolveCheckpoint(campaign: Keeping, flag: string, asked: string): Promise<Kept> {
   if (asked.startsWith(PROGRAMS_OF)) {
-    return await programsAblation(campaign, await keptAs(campaign, flag, asked.slice(PROGRAMS_OF.length)));
+    return await programsAblation(
+      campaign,
+      await resolveCheckpoint(campaign, flag, asked.slice(PROGRAMS_OF.length)),
+    );
   }
   const events = read(campaign.log, TRACE_KINDS);
   const built = asked === "latest" ? latestBuilt(events) : asked === PROMOTED ? promoted(events) : null;

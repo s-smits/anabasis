@@ -2,7 +2,7 @@
  * The exam of a campaign opened from a prompt, as files: the draft its log holds, staged as a pack
  * laid out as a stored one is, so every command reads it as it reads a v1 bundle.
  */
-import { refuseNamingHome } from "#src/builder/kept.ts";
+import { refuseNamingHome } from "#src/builder/store.ts";
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { readChecker } from "#src/kernel/acceptance.ts";
 import { contractHash } from "#src/kernel/contract.ts";

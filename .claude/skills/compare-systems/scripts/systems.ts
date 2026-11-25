@@ -34,7 +34,7 @@ import { join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { mean } from "#src/meta/tally.ts";
-import { type Kept, keptAs, openCampaign, packNamed } from "#tools/d2/campaign.ts";
+import { type Kept, resolveCheckpoint, openCampaign, packNamed } from "#tools/d2/campaign.ts";
 import { gated } from "#tools/d2/host.ts";
 import {
   type Campaign,
@@ -99,7 +99,7 @@ interface Solving {
 
 function systemOf(flag: string, die: CommandArgs["die"]): System {
   // Each part is checked by its owner: the model must be served and the effort a level
-  // (`settingNamed`), and the harness kept and reopening under its digest (`keptAs`).
+  // (`settingNamed`), and the harness kept and reopening under its digest (`resolveCheckpoint`).
   const [name = "", system = "", ...more] = flag.split("=");
   const [solver = "", harness = "", ...after] = system.split("@");
   const [model = "", effort = "", ...extra] = solver.split(":");
@@ -352,7 +352,7 @@ async function main(args: CommandArgs): Promise<number> {
       mkdirSync(join(out, system.name), { recursive: true });
       const log = join(out, system.name, LOG_FILE);
       const campaign = await openCampaign({ ...stored, solver, limits, trial: log });
-      const harness = await keptAs(campaign, system.name, system.harness);
+      const harness = await resolveCheckpoint(campaign, system.name, system.harness);
       const seat = gated({ seated: solved, loaded: false }, log)(campaign, {
         builder: undefined,
         reference: harness.dir,

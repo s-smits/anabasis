@@ -35,7 +35,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openHarness, pathsUnder, treeContent } from "#src/harness/open.ts";
 import { writeStarter } from "#src/harness/starter.ts";
-import { keptAs } from "#tools/d2/campaign.ts";
+import { resolveCheckpoint } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { diffOf as lineDiff, madeOf, writtenIn } from "#tools/wri/trajectory.ts";
 
@@ -462,7 +462,7 @@ async function main(args: CommandArgs): Promise<number> {
     return 0;
   }
   if (args.flag("json")) args.die("--json is for the list; --diff prints its lines");
-  // A role is resolved here, so that `keptAs` is handed a digest and never writes the starter into a
+  // A role is resolved here, so that `resolveCheckpoint` is handed a digest and never writes the starter into a
   // campaign that does not keep it.
   const named = async (flag: string, harness: string) => {
     if (harness.startsWith("programs-of:")) {
@@ -475,7 +475,7 @@ async function main(args: CommandArgs): Promise<number> {
     }
     const whole = digest ?? wholeOf(args, versions, flag, harness);
     if (!versions.some((version) => version.kept && version.digest === whole)) {
-      return { ...(await keptAs(keeping, flag, whole)), notes: [] };
+      return { ...(await resolveCheckpoint(keeping, flag, whole)), notes: [] };
     }
     const dir = join(keeping.states, whole);
     const opens = await opensAs(dir, whole);

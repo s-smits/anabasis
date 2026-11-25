@@ -228,7 +228,7 @@ function refusedLines(
   return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
 }
 
-export function heard(
+export function taskHistory(
   events: readonly LogEvent[],
   tasks: readonly Pick<Task, "taskId" | "family">[],
   after?: number,

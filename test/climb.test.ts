@@ -10,7 +10,7 @@ import { stopRule } from "../src/campaign/admission.ts";
 import { barLines, type Epoch, epochLine, epochsOf, riskLines } from "../src/campaign/climb.ts";
 import { nextAction } from "../src/campaign/scheduler.ts";
 import type { Plan } from "../src/campaign/state.ts";
-import { heard } from "../src/examiner/record.ts";
+import { taskHistory } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
@@ -44,7 +44,7 @@ const TASKS = fixtureTasks(7);
 const STARTER_STRENGTH = 3;
 const RAISE = 2;
 /** One past the reference's strength, which it answers on some solves and not all, so the task
- *  is informative (`informative`, `headroomOf`); and harder ones, some past any harness so far. */
+ *  is informative (`informative`, `evalHeadroom`); and harder ones, some past any harness so far. */
 const ABOVE = [1, 1, 2, 2, 3, 4];
 const IDLE: readonly [string, JsonObject] = ["finish", { note: "Nothing further." }];
 const tried = new Map<string, number>();
@@ -716,6 +716,6 @@ describe("a campaign against its bars", () => {
     // and the Examiner's record distinguishes a revert from a promotion.
     expect(reverted.filter(({ kind }) => kind === "harness.promoted")).toHaveLength(2);
     expect(reverted.filter(({ kind }) => kind === "harness.reverted")).toHaveLength(1);
-    expect(heard(reverted, []).promoted).toContain("reverted to an earlier harness");
+    expect(taskHistory(reverted, []).promoted).toContain("reverted to an earlier harness");
   });
 });

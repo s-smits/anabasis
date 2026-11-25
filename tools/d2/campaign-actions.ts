@@ -12,7 +12,7 @@ import { type ScheduledAction, short } from "#src/campaign/move.ts";
 import type { Opening } from "#src/campaign/opening.ts";
 import { frontierOverlap, OVERLAP_LIMIT } from "#src/campaign/round.ts";
 import { formatComparisonHistory } from "#src/builder/past.ts";
-import { seedSavedHarnesses, snapshot } from "#src/builder/kept.ts";
+import { seedSavedHarnesses, snapshot } from "#src/builder/store.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
 import { pendingSignals } from "#src/campaign/signal.ts";
@@ -33,7 +33,7 @@ import { publicView } from "#src/solver/prompt.ts";
 import { waitOut } from "#src/solver/run.ts";
 import { examineCommand } from "../d1b/examine.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
+import { resolveCheckpoint, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import {
   comparisonOf,
   examinerRun,
@@ -118,7 +118,7 @@ async function refreshCampaign(context: CampaignContext, bench: Bench): Promise<
   const campaign = await openCampaign(packNamed(context.values));
   context.campaign = campaign;
   refreshPractice(bench, campaign);
-  const { dir } = await keptAs(campaign, "--reference", PROMOTED);
+  const { dir } = await resolveCheckpoint(campaign, "--reference", PROMOTED);
   bench.reference = { dir, harness: await openHarness(dir) };
   seedSavedHarnesses(bench.home, bench.request.states, read(campaign.log, TRACE_KINDS), bench.parent);
 }
@@ -348,7 +348,7 @@ async function comparedOf(
   } catch {
     return { refused: "harness/ does not open, so it cannot be compared: check_harness says why." };
   }
-  const reference = (await keptAs(context.campaign, "--reference", PROMOTED)).digest;
+  const reference = (await resolveCheckpoint(context.campaign, "--reference", PROMOTED)).digest;
   if (working === reference) {
     return decided.move === "compare"
       ? {
@@ -638,7 +638,7 @@ export function campaignTools(
         await context.examiner?.close();
       },
       unmeasured: async (digest) => {
-        const reference = (await keptAs(context.campaign, "--reference", PROMOTED)).digest;
+        const reference = (await resolveCheckpoint(context.campaign, "--reference", PROMOTED)).digest;
         if (digest === reference) {
           // A Builder that finishes on the harness just promoted would stop the climb at one step, so
           // it is told so.

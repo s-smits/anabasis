@@ -11,7 +11,7 @@ Frame empirical claims strictly from the campaign log: first the owning mechanis
 
 A `step` (`isSignificant`, `flipP` in `src/kernel/compare.ts`; legacy reports via `scoresIn`) is a single statistical draw under one fixed condition. It does not establish:
 - generalisation to a different deadline, compute budget, solver, reasoning effort, or host codebase;
-- which component drove the gain (only an ablation against `programs-of:<digest>`, the Starter paired with that harness's installed programs via `keptAs` in `tools/d2/campaign.ts`, separates installed programs from the guide and tools);
+- which component drove the gain (only an ablation against `programs-of:<digest>`, the Starter paired with that harness's installed programs via `resolveCheckpoint` in `tools/d2/campaign.ts`, separates installed programs from the guide and tools);
 - improved solver reasoning (pre-installing an engine saves setup time under a wall-clock deadline);
 - replication on fresh draws.
 

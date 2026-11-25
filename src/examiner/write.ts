@@ -17,7 +17,7 @@ import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import { TEXT_FILES } from "./draft.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt, wakeMessage } from "./prompt.ts";
-import { heard, measured } from "./record.ts";
+import { taskHistory, measured } from "./record.ts";
 import { FROM_FILE, fromHome, type Walls } from "./shell.ts";
 
 interface Terms {
@@ -339,7 +339,7 @@ export function writing(
   const { verify } = request;
   const before = read(request.log, CALL_KINDS);
   const openedOn = (asked: Terms, events: readonly LogEvent[]) =>
-    firstMessage(asked.contract, asked.checks, heard(events, asked.tasks), asked.limits, {
+    firstMessage(asked.contract, asked.checks, taskHistory(events, asked.tasks), asked.limits, {
       brief: openingOf(events)?.prompt ?? null,
       budget: asked.budget,
     });
@@ -406,5 +406,5 @@ export function wakeOn(
   told: Parameters<typeof wakeMessage>[1],
 ): string {
   const since = events.findLastIndex(({ kind }) => kind === "exam.started");
-  return wakeMessage(heard(events, tasks, since), told);
+  return wakeMessage(taskHistory(events, tasks, since), told);
 }

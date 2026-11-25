@@ -6,7 +6,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "../src/meta/filesystem.ts";
 import { drafting } from "../src/examiner/draft.ts";
-import { FIELDS, GRADES, LADDER, REACH } from "../src/examiner/ladder.ts";
+import { FIELDS, GRADES, DIFFICULTY_SCALE, REACH } from "../src/examiner/difficulty.ts";
 import { systemPrompt } from "../src/examiner/prompt.ts";
 import { GAP_FLOOR } from "../src/kernel/compare.ts";
 
@@ -34,17 +34,17 @@ describe("the Examiner's ladder", () => {
   });
 
   it("names no field a campaign examines, in the ladder or in the drafting prompt", () => {
-    for (const text of [LADDER, REACH, DRAFTING]) expect(EXAMINED.exec(text)).toBeNull();
+    for (const text of [DIFFICULTY_SCALE, REACH, DRAFTING]) expect(EXAMINED.exec(text)).toBeNull();
   });
 
   it("reaches grade 7 in each of its fields", () => {
-    const fields = LADDER.split("\n\n").filter((part) => part.includes(":\n- 1:"));
+    const fields = DIFFICULTY_SCALE.split("\n\n").filter((part) => part.includes(":\n- 1:"));
     expect(fields).toHaveLength(3);
     for (const field of fields) expect(field).toContain("\n- 7: ");
   });
 
   it("is shown whole to a writing session, and as its scale and solver to a drafting one", () => {
-    expect(systemPrompt()).toContain(LADDER);
+    expect(systemPrompt()).toContain(DIFFICULTY_SCALE);
     expect(DRAFTING).toContain(REACH);
     for (const { rungs } of FIELDS) for (const rung of rungs) expect(DRAFTING).not.toContain(rung);
   });

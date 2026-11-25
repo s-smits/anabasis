@@ -11,7 +11,7 @@ Expands `AGENTS.md` §7–8: how solves become a comparison reading, what move f
 | --- | --- | --- |
 | 7. Draw & solves | `references/draw-and-solves.md` | Pre-logged terms, `poolOf`, `scoredSet`, arm mirroring, solve outcomes |
 | 7. Tally & test | `references/tally-and-test.md` | `pointsOf`, `WEIGHTS`, `GAP_FLOOR`, `flipP`, `isSignificant`, A/A, reading kinds |
-| 7. Limits & room | `references/limits-and-room.md` | Referee rulings, budget/cap, `headroomOf`, `stopRule`, promotion |
+| 7. Limits & room | `references/limits-and-room.md` | Referee rulings, budget/cap, `evalHeadroom`, `stopRule`, promotion |
 | 7. Move table | `references/move-table.md` | Nine rows of `decide`, `roomless`, supply patience |
 | 8. Rules | `references/rules.md` | Rationale & edge cases per evaluation rule |
 

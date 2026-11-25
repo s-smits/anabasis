@@ -9,7 +9,7 @@ import { admitSession } from "#src/campaign/admission.ts";
 import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { keptAs, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
+import { resolveCheckpoint, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
 import {
   campaignFor,
   parentNamed,
@@ -36,7 +36,7 @@ export async function sessionCommand(
   const { cap, setting, campaign } = await campaignFor(values, pack, seated);
   const parent = await parentNamed(campaign, { ...values, session });
   // A practice solve stands on no side of a comparison, so it is seated against the reference harness.
-  const reference = await keptAs(campaign, "--reference", PROMOTED);
+  const reference = await resolveCheckpoint(campaign, "--reference", PROMOTED);
   const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
   const request = sessionNamed(
     campaign,

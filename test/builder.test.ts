@@ -14,7 +14,7 @@ import { Type } from "typebox";
 import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/state.ts";
 import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
-import { HOME_TOOL_TREE, snapshot } from "../src/builder/kept.ts";
+import { HOME_TOOL_TREE, snapshot } from "../src/builder/store.ts";
 import { type Bench, practiceLeft, recordsOf } from "../src/builder/tools.ts";
 import { formatKeys, namedTasks, readHarnessFiles } from "../src/harness/files.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
@@ -50,7 +50,7 @@ import { openHarness } from "../src/harness/open.ts";
 import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/sandbox/policy.ts";
-import { keptAs } from "../tools/d2/campaign.ts";
+import { resolveCheckpoint } from "../tools/d2/campaign.ts";
 import { endCut } from "../tools/d2/harness-builder.ts";
 
 const BUILD_CALL = "build.call";
@@ -1317,7 +1317,7 @@ describe.concurrent("a Builder session", () => {
       expect(read(cut)).toHaveLength(ended);
       if (!recoverable) return;
       expect(latestBuilt(read(cut))).toBe(digest);
-      const parent = await keptAs({ log: cut, states: s.request.states }, "--parent", "latest");
+      const parent = await resolveCheckpoint({ log: cut, states: s.request.states }, "--parent", "latest");
       const resumed = await setup([finish]);
       await session(
         { ...resumed.request, id: "b-2", log: cut, parent: parent.dir, states: s.request.states },

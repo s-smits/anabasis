@@ -26,7 +26,7 @@ import {
   UNMEASURED,
 } from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { lastReports, pairsReported, poolOf, headroomOf } from "#src/kernel/reports.ts";
+import { lastReports, pairsReported, poolOf, evalHeadroom } from "#src/kernel/reports.ts";
 import { ended, solvesIn } from "#src/kernel/solves.ts";
 import {
   asRecord,
@@ -227,7 +227,7 @@ function rowOf(
     aa: aaOf(data.noise, at),
     ...nearOf(tested === null ? [] : scoresIn(data.scored), at),
     cap: capOf(start, data),
-    room: headroomOf(data),
+    room: evalHeadroom(data),
     tallied: count(data.versions),
     apart: {
       aside: count(data.aside),

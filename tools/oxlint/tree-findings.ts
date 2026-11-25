@@ -100,8 +100,8 @@ export const TREE_FINDING_EXAMPLES: Readonly<Record<TreeFindingKind, readonly Ru
   ],
   "no-unused-reexport": [
     {
-      before: 'export { headroomOf } from "./room.ts";',
-      after: 'import { headroomOf } from "./room.ts";',
+      before: 'export { evalHeadroom } from "./room.ts";',
+      after: 'import { evalHeadroom } from "./room.ts";',
     },
   ],
   "no-unused-field": [

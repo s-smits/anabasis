@@ -19,7 +19,7 @@ Harnesses contain a guide, a tool-selection manifest, and an optional `.toolchai
    - Entries modified within `RACY_MS` (2000 ms) of `Date.now()` bypass the cache so same-size rewrites inside coarse filesystem timestamp ticks (such as Linux ext4 jiffies) never read stale content.
    - `pathsUnder` walks directories manually without following symlinks because Bun's recursive `readdirSync` enters symlinked directories and can fail with `ELOOP`.
 
-3. **Symlink safety and shared large tool trees (`src/builder/kept.ts`, `src/harness/open.ts`, `src/builder/session.ts`)**
+3. **Symlink safety and shared large tool trees (`src/builder/store.ts`, `src/harness/open.ts`, `src/builder/session.ts`)**
    - `openHarness` verifies that `BUILT_AGENTS.md` and `tools-spec.json` resolve inside the harness root so a symlinked guide or spec cannot trick the host into reading host files outside the wall.
    - `keptTree` refuses a symlinked `.toolchain` directory for the same reason, and `refuseNamingHome` rejects symlinks or executable scripts in a frozen `.toolchain/` that embed the session's ephemeral home path.
    - Tool trees larger than `LINKED_TREE_BYTES` (100 MiB) are deduplicated once under `trees/` and symlinked from `.toolchain` on handovers; unlinked trees from `check_harness` calls are cleaned up by `dropUnlinked`.

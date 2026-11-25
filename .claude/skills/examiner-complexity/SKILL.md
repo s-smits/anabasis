@@ -9,7 +9,7 @@ A paired comparison has statistical power only on tasks that the reference harne
 
 ## 1. Calibrate the record and diagnose where solvers stop
 
-A blind grader seeing only each task's public input and rules writes `task<TAB>grade` on the reach scale (`GRADES`, `src/examiner/ladder.ts`):
+A blind grader seeing only each task's public input and rules writes `task<TAB>grade` on the reach scale (`GRADES`, `src/examiner/difficulty.ts`):
 
 ```sh
 bun .claude/skills/examiner-complexity/scripts/grades.ts <grades.tsv> <campaign folder>...
@@ -22,7 +22,7 @@ bun .claude/skills/examiner-complexity/scripts/exams.ts [--every] <campaign fold
 
 | Responsibility | Owner |
 | --- | --- |
-| Reach scale, worked example fields, and the three difficulty mechanisms | `src/examiner/ladder.ts` (`GRADES`, `FIELDS`, `SOLVER`; task writing reads `LADDER`, drafting reads `REACH`) |
+| Reach scale, worked example fields, and the three difficulty mechanisms | `src/examiner/difficulty.ts` (`GRADES`, `FIELDS`, `SOLVER`; task writing reads `DIFFICULTY_SCALE`, drafting reads `REACH`) |
 | Exam difficulty bounds and how rules are stated | `src/examiner/draft.ts` |
 | Writing tasks above the reference harness's current grade | `src/examiner/prompt.ts`, "How hard" |
 

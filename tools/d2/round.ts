@@ -38,7 +38,7 @@ import {
   PROMOTED,
   starter,
   type Kept,
-  keptAs,
+  resolveCheckpoint,
   openCampaign,
   PACK_OPTIONS,
 } from "./campaign.ts";
@@ -152,7 +152,7 @@ export async function parentNamed(
   const began = read(campaign.log, TRACE_KINDS).find(
     ({ kind, data }) => kind === "build.started" && data.session === values.session,
   )?.data.parent;
-  return (await keptAs(campaign, "--parent", isString(began) ? began : values.parent)).dir;
+  return (await resolveCheckpoint(campaign, "--parent", isString(began) ? began : values.parent)).dir;
 }
 
 export function sessionNamed(

@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { draftOf } from "../src/examiner/draft.ts";
-import { heard } from "../src/examiner/record.ts";
+import { taskHistory } from "../src/examiner/record.ts";
 import { type Ask, examine } from "../src/examiner/session.ts";
 import { examinerDirs, inExaminerSandbox } from "../src/examiner/shell.ts";
 import { writing } from "../src/examiner/write.ts";
@@ -574,7 +574,7 @@ describe("a session that writes tasks", () => {
     expect(s.of("task.feasible")).toEqual(
       proved.map((version) => ({ version, session: "x-1", answer: GOOD })),
     );
-    const [unread] = heard(read(s.log), writtenTasks(read(s.log))).groups;
+    const [unread] = taskHistory(read(s.log), writtenTasks(read(s.log))).groups;
     expect(unread?.heading).toContain("Not yet compared");
     expect(unread?.lines[0]).toBe("x-1-001 (fixture); a valid answer on record");
   });

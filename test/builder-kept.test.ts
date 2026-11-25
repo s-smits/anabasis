@@ -1,11 +1,11 @@
 /**
- * The other harnesses a campaign kept, as a Builder's home holds them (`src/builder/kept.ts`): each
+ * The other harnesses a campaign kept, as a Builder's home holds them (`src/builder/store.ts`): each
  * the log names, under the head of its digest, with its programs. The hostile cases are a v1
  * state's correctness model, which holds every task's hidden values, and a state only a practice
  * solve ran.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { copyHarness, seedSavedHarnesses } from "../src/builder/kept.ts";
+import { copyHarness, seedSavedHarnesses } from "../src/builder/store.ts";
 import {
   closeSync,
   existsSync,

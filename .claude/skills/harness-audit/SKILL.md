@@ -14,7 +14,7 @@ bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign fol
 bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> --diff <harness> [--against <harness>]
 ```
 
-Harnesses are addressed via `keptAs` (`starter`, `promoted`, `latest`, a digest/prefix, or a letter alias from `namesOf`). The listing reports digest integrity (remote copies omit installed packages, which `--diff` notes while inspecting files in place), provenance (session/parent digest, import, starter, or unlogged sweep parent / `programs-of` control), structure (guide and `agent/tools.ts` line counts, declared tools, `.toolchain` size excluding caches), and every session and comparison in which the version participated.
+Harnesses are addressed via `resolveCheckpoint` (`starter`, `promoted`, `latest`, a digest/prefix, or a letter alias from `namesOf`). The listing reports digest integrity (remote copies omit installed packages, which `--diff` notes while inspecting files in place), provenance (session/parent digest, import, starter, or unlogged sweep parent / `programs-of` control), structure (guide and `agent/tools.ts` line counts, declared tools, `.toolchain` size excluding caches), and every session and comparison in which the version participated.
 
 To inspect line-level changes from within `states/` (using both commands because `.toolchain` is a symlink to `tree-*`):
 

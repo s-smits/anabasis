@@ -8,7 +8,7 @@ import type { Report } from "#src/campaign/comparison.ts";
 import { type CheckpointRequest, checkpoint, refuseTerms } from "#src/campaign/round.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { keptAs, PACK_OPTIONS, packNamed, stayAwake } from "./campaign.ts";
+import { resolveCheckpoint, PACK_OPTIONS, packNamed, stayAwake } from "./campaign.ts";
 import {
   campaignFor,
   COMPARISON_OPTIONS,
@@ -43,8 +43,8 @@ export async function checkpointCommand(
   if (id === undefined) throw new Error("name --id, the id the comparison takes in the log");
   if (kill?.aborted === true) throw new Error(`comparison ${id} was stopped before it began`);
   const { cap, setting, campaign } = await campaignFor(values, pack, seated);
-  const old = await keptAs(campaign, "--reference", values.reference);
-  const fresh = await keptAs(campaign, "--new", values.new);
+  const old = await resolveCheckpoint(campaign, "--reference", values.reference);
+  const fresh = await resolveCheckpoint(campaign, "--new", values.new);
   const reviewers = reviewersNamed(campaign, values);
   const seats = seated(campaign, { builder: undefined, reference: old.dir });
   const request: CheckpointRequest = {

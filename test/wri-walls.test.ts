@@ -189,9 +189,13 @@ describe("the isolated-lane wall", () => {
     expect(ISOLATED.length).toBeGreaterThan(0);
     expect(BLIND.length).toBeGreaterThan(0);
     const plain = parts(SECRETS[0], shared("Why the step.", "the gap floor", "nothing yet"));
-    const leading = parts(SECRETS[1], shared("LEAD the Builder won", "LEAD the level moved", "LEAD read"), [
-      other,
-    ]);
+    const asked =
+      "## Operator questions\n\n| id | lanes | question |\n| --- | --- | --- |\n| Q1 | 1, 4, 20 | LEAD asked |";
+    const leading = parts(
+      SECRETS[1],
+      `${shared("LEAD the Builder won", "LEAD the level moved", "LEAD read")}\n\n${asked}`,
+      [other],
+    );
     /** The leads, with every trigger but the lane's own given another count. */
     const led = (number: number) => ({
       ...leading,
@@ -217,6 +221,10 @@ describe("the isolated-lane wall", () => {
     expect(sharedPrompt(leading)).toContain("LEAD the Builder won");
     expect(sharedPrompt(leading)).toContain("LEAD 3 of 3");
     expect(sharedPrompt(led(20))).toContain("REFUSED UNREAD (lane 17): LEAD ");
+    const open = lanes.find(({ number }) => number === 4);
+    expect(open === undefined ? "" : lanePrompt({ ...leading, lane: open })).toContain(
+      "| Q1 | 1, 4, 20 | LEAD asked |",
+    );
   });
 
   it("gives an isolated lane the campaign's rows and its own trigger, and a blind lane neither", () => {

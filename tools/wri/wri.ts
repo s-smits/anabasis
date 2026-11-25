@@ -54,7 +54,7 @@ import {
   sourceOf,
 } from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
-import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
+import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES, section } from "./catalogue.ts";
 import { climbText } from "./climb.ts";
 import { domainReadinessOf, formatDomainCheck } from "./domains.ts";
 import { analyzeRegressions, formatRegressionReport } from "./regressions.ts";
@@ -277,7 +277,11 @@ async function start(): Promise<number> {
   if (evalReport !== null) writeFileSync(regressionsFile, `${evalReport}\n`);
   writeFileSync(
     join(out, SHARED),
-    template.replace("{campaigns}", () => campaigns),
+    template
+      .replace("{campaigns}", () => campaigns)
+      .replace("{questions}", () =>
+        section(readFileSync(join(REFERENCES, "questions.md"), "utf8"), "Questions"),
+      ),
   );
   console.log(text);
   console.log(line);

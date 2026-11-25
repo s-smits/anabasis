@@ -22,7 +22,7 @@ import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { hasWholeToken } from "../src/meta/text.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
 import { taskSets } from "../src/kernel/task.ts";
-import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
+import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES, section } from "../tools/wri/catalogue.ts";
 import { draftAuditRows, groundingRows, seatSummaryRows, wallAuditRows } from "../tools/wri/components.ts";
 import { continuityRows } from "../tools/wri/continuity.ts";
 import { deliverableRows } from "../tools/wri/deliverables.ts";
@@ -347,6 +347,48 @@ describe("a lane's report, as the synthesis collects it", () => {
       "no row names the lane findings 3.1, 3.2",
     ]);
     expect(vettingFaults(vetting("3"), counted, [])).toEqual([]);
+  });
+
+  it("hands each operator question to its lanes, refuses a report that leaves one out, and indexes the answers", () => {
+    const questions = section(readFileSync(join(REFERENCES, "questions.md"), "utf8"), "Questions");
+    const prediction = "| id | lanes | prediction |\n| --- | --- | --- |\n| p1 | 4 | the tolerance holds |";
+    const text = `## Operator questions\n\n${questions}\n| Q0 | 1, 20 | asked of lanes that may see no framing | none |\n\n## The moved variable\n\n${prediction}`;
+    const ids = [...questions.matchAll(/^\| (Q\d+) \|/gmu)].map(([, id = ""]) => id);
+    const owedBy = new Map(
+      lanes.map((each) => {
+        const fault =
+          reportOf(
+            each,
+            `# Lane ${String(each.number)}: x\nVerdict: no finding.\n`,
+            owners,
+            one,
+            text,
+          ).faults.find((said) => said.includes("operator's questions")) ?? "";
+        return [each, [...fault.matchAll(/Q\d+/gu)].map(([id]) => id)];
+      }),
+    );
+    const open = lanes.filter((each) => !each.blind && !each.isolated);
+    expect(open.filter((each) => (owedBy.get(each) ?? []).length === 0).map(({ number }) => number)).toEqual(
+      [],
+    );
+    expect(lanes.filter((each) => !open.includes(each)).flatMap((each) => owedBy.get(each) ?? [])).toEqual(
+      [],
+    );
+    expect(new Set([...owedBy.values()].flat())).toEqual(new Set(ids));
+    const owed = owedBy.get(lane(4)) ?? [];
+    const written = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed.map((id) => `Question ${id}: 5 of 9 passes, \`checks.txt\``).join("\n")}\n`;
+    const answered = reportOf(lane(4), written, owners, one, text);
+    expect(answered).toMatchObject({ state: "ok", faults: [], resolved: { p1: "confirmed" } });
+    expect(reportOf(lane(4), written.replaceAll("\n", "\r\n"), owners, one, text)).toMatchObject({
+      state: "ok",
+      resolved: { p1: "confirmed" },
+    });
+    const index = reportIndex([answered], (number) => `/r/${String(number)}.md`, [], text);
+    expect(index).toContain("- p1: confirmed by lane 4");
+    for (const id of owed) {
+      expect(index).toMatch(new RegExp(`^- ${id}: [^\\n]*\\n {2}- lane 4: 5 of 9 passes`, "mu"));
+    }
+    expect(index).toMatch(/- Q1: [^\n]* \(lane 6, 13 not opened\)/u);
   });
 
   it("excludes ladder comparisons from scoreRows just like lastReports does", () => {

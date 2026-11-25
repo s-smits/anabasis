@@ -55,6 +55,7 @@ Recurring issues observed across repeated investigations and left unresolved, in
 5. **Build plan.** Group `patch` rows into clusters touching disjoint files, specifying owner, mechanism, and failing test for each. A `pack/` finding is always a `decision` rather than a patch.
 6. **Operator decisions.** List each decision requiring operator authority with the missing evidence, what it changes, and its plan decision number where one exists.
 7. **Predictions.** List falsifiable rows for the next round specifying moved variable, claim, direction, and falsifier. Name the `patch` row each prediction tests so a fork's `predictions-<run>.md` can attach it to that pull request.
+8. **Operator questions.** Provide one row per question under `## Operator questions`: `id | answer | lanes | evidence`. Merge the lanes' answers from the reports above, recount any figure on which they disagree, and write `unanswered` with the missing read where no lane answered it.
 
 ## Hard rules
 

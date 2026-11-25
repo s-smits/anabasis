@@ -28,6 +28,15 @@ lane should reach. Separately, under an unread note, flag any anomaly noticed bu
 out-of-order event, a shifted count, or an unusually large file) by location only, without
 interpreting it: lanes are free to investigate it. Write "nothing" if no checks have been run yet. -->
 
+## Operator questions
+
+<!-- Copied from `references/questions.md` by `wri.ts start`. Each lane named in a row answers that
+question with a `Question <id>: <answer>` line, and `collect` refuses a report missing one. Add a row
+to ask this investigation something more, naming the lanes that can read it; delete a row to drop a
+question here. Edit before `wri.ts lanes`: a prompt already built keeps its questions, while `collect` reads this table as it stands. -->
+
+{questions}
+
 ## Campaigns under review
 
 {campaigns}

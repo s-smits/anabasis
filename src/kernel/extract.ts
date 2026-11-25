@@ -34,11 +34,14 @@ export interface Extracted {
 export const EXTRACT = { cellsPerSheet: 100_000, emptyRows: 500, pdfMs: 15_000, slice: 750 };
 const SQLITE_MAGIC = "SQLite format 3\0";
 const PY_MAX_BUFFER = 16 * 1024 * 1024;
-let cachedPython: string | undefined;
+const cachedBins = new Map<string, string>();
 
-function pythonBin(): string {
-  cachedPython ??= Bun.which("python3", { PATH: toolchainPathDirs().join(delimiter) }) ?? "python3";
-  return cachedPython;
+function toolBin(name: string): string {
+  const hit = cachedBins.get(name);
+  if (hit !== undefined) return hit;
+  const resolved = Bun.which(name, { PATH: toolchainPathDirs().join(delimiter) }) ?? name;
+  cachedBins.set(name, resolved);
+  return resolved;
 }
 
 const isZip = (bytes: Buffer): boolean =>
@@ -57,7 +60,15 @@ function pyExtract(
   bytes: Buffer,
 ): Pick<Extracted, "text" | "formulas"> {
   const ran = runSync(
-    [pythonBin(), "-I", "-c", EXTRACT_PY, mode, String(EXTRACT.cellsPerSheet), String(EXTRACT.emptyRows)],
+    [
+      toolBin("python3"),
+      "-I",
+      "-c",
+      EXTRACT_PY,
+      mode,
+      String(EXTRACT.cellsPerSheet),
+      String(EXTRACT.emptyRows),
+    ],
     { input: bytes, timeout: EXTRACT.pdfMs, maxBuffer: PY_MAX_BUFFER },
   );
   if (ran.cappedAt !== null) {
@@ -84,7 +95,12 @@ function notebookOf(text: string): string {
     .map((cell) => {
       const row = asRecord(cell);
       const outputs = Array.isArray(row?.outputs)
-        ? row.outputs.map((out) => joined(asRecord(out)?.text)).join("")
+        ? row.outputs
+            .map((out) => {
+              const item = asRecord(out);
+              return joined(item?.text) || joined(asRecord(item?.data)?.["text/plain"]);
+            })
+            .join("")
         : "";
       return `## ${isString(row?.cell_type) ? row.cell_type : "cell"}\n${joined(row?.source)}${outputs === "" ? "" : `\n# output\n${outputs}`}`;
     })
@@ -92,7 +108,7 @@ function notebookOf(text: string): string {
 }
 
 function pdfOf(bytes: Buffer): Pick<Extracted, "text" | "fault"> {
-  const ran = runSync(["pdftotext", "-q", "-layout", "fd://0", "-"], {
+  const ran = runSync([toolBin("pdftotext"), "-q", "-layout", "fd://0", "-"], {
     input: bytes,
     timeout: EXTRACT.pdfMs,
   });

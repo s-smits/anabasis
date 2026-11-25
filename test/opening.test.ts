@@ -57,4 +57,18 @@ describe("what a campaign runs by", () => {
     expect(planOf([capped("none")], ASKED).promotions).toBeNull();
     expect(planOf([opened], ASKED).promotions).toBeNull();
   });
+
+  it("keeps authored checks manual under attended mode even when judging is admitted", () => {
+    const rows = [
+      { id: "c-author", instrument: "author" },
+      { id: "j-rubric", instrument: "judge" },
+    ];
+    const readEvent = event("checker.read", { rows, admitted: [] });
+    const withFlags = (attended: boolean, judged: boolean) =>
+      planOf([event("campaign.opened", { ...opened.data, attended, judged }), readEvent], ASKED).admits;
+    expect(withFlags(false, false)).toEqual(["c-author"]);
+    expect(withFlags(false, true)).toEqual(["c-author", "j-rubric"]);
+    expect(withFlags(true, false)).toEqual([]);
+    expect(withFlags(true, true)).toEqual(["j-rubric"]);
+  });
 });

@@ -76,6 +76,8 @@ const OWNER_KINDS: readonly EventKind[] = [
   BUILD_FINISHED,
   "solve.started",
   "referee.finding",
+  "referee.brief",
+  "referee.pair",
 ];
 
 const WHOSE = {
@@ -251,17 +253,21 @@ export function callText(calls: readonly Call[], number: number): string {
   ].join("\n");
 }
 
+const readerIds = (data: JsonObject): string[] =>
+  [data.reader, ...(Array.isArray(data.readers) ? data.readers : [])].filter(isString);
+
+const endedForSeat = (of: Seat, id: string, events: readonly LogEvent[], last: number) =>
+  new Set<JsonValue | undefined>(
+    eventsOf(events, SEAT_ENDS[of]).flatMap(({ index, event }) =>
+      index > last ? [] : of === "referee" ? [event.data[id], ...readerIds(event.data)] : [event.data[id]],
+    ),
+  );
+
 function openSeats(events: readonly LogEvent[], last: number) {
   let from = last + 1;
   const active = SEATS.flatMap((of) => {
     const id = WHOSE[of];
-    const ended = new Set<JsonValue | undefined>();
-    for (const kind of SEAT_ENDS[of]) {
-      for (const { index, event } of eventsOf(events, kind)) {
-        if (index > last) break;
-        ended.add(event.data[id]);
-      }
-    }
+    const ended = endedForSeat(of, id, events, last);
     const startKind: EventKind = of === "referee" ? "referee.turn" : `${of}.started`;
     const first = eventsOf(events, startKind).find(
       ({ index, event }) => index <= last && !ended.has(event.data[id]),
@@ -350,6 +356,9 @@ export function ownersOf(events: readonly LogEvent[]): Map<string, Owner> {
     } else if (kind === "referee.finding" && isString(data.reader) && isString(data.solve)) {
       const owner = owners.get(data.solve);
       if (owner !== undefined) owners.set(data.reader, owner);
+    } else if ((kind === "referee.brief" || kind === "referee.pair") && isString(data.comparison)) {
+      const owner = { by: data.comparison, asked: true };
+      for (const one of readerIds(data)) owners.set(one, owner);
     }
   }
   return owners;

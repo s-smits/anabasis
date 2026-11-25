@@ -33,7 +33,16 @@ import { PACK_OPTIONS, projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
 import { PRACTICE, prepareCommand, ungated } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
-import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated, solved } from "./round.ts";
+import {
+  type Campaign,
+  COMPARISON_OPTIONS,
+  capRead,
+  crossFamilyVendors,
+  modelVendor,
+  SESSION_OPTIONS,
+  type Seated,
+  solved,
+} from "./round.ts";
 import { SETTING_OPTIONS } from "./setting.ts";
 
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
@@ -281,14 +290,6 @@ function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: 
   };
 }
 
-const FAMILIES = new Map([
-  ["anthropic", /anthropic|claude|fable|opus|sonnet|haiku/i],
-  ["openai", /openai|codex|gpt|(^|\/)o\d/i],
-  ["google", /google|gemini|gemma/i],
-]);
-const familyOf = (name: string): string =>
-  [...FAMILIES].find(([, pattern]) => pattern.test(name))?.[0] ?? name.split("/")[0] ?? name;
-
 /** Validate opening invariants (`budget`, `reviewer`, `patience`, `promotions`) before recording. */
 function validateOpening(opening: Opening, values: Values, seats: "paid" | "scripted"): void {
   if (seats === "paid" && opening.seats.reviewer === null) {
@@ -300,11 +301,13 @@ function validateOpening(opening: Opening, values: Values, seats: "paid" | "scri
     opening.judged &&
     reviewer !== null &&
     solver !== undefined &&
-    familyOf(reviewer.model) === familyOf(solver)
+    !crossFamilyVendors(reviewer.model, solver)
   ) {
-    throw new Error(
-      `--admit-judge: the reviewer ${reviewer.model} judges answers by a solver of its own family (${solver}); name a reviewer from another family`,
-    );
+    const why =
+      modelVendor(reviewer.model) === null
+        ? `the reviewer ${reviewer.model} routes to an unknown vendor`
+        : `the reviewer ${reviewer.model} judges answers by a solver of its own family (${solver})`;
+    throw new Error(`--admit-judge: ${why}; name a reviewer from another family`);
   }
   counted(
     opening.patience,
@@ -389,13 +392,23 @@ export function opened(
       "the campaign's exam was drafted from another prompt than this command gives: a prompt names one campaign, and another takes a name of its own",
     );
   }
+  const resolvedSeats = resolveSeats(values, was);
+  const attended = values.hitl ?? was?.attended ?? false;
+  const crossFamily =
+    resolvedSeats.reviewer !== null && crossFamilyVendors(resolvedSeats.reviewer.model, solver.model);
+  if (was?.judged === true && values["admit-judge"] === false && draftOf(events) !== null) {
+    throw new Error(
+      "--no-admit-judge: judging was already admitted when this campaign drafted its exam and stays kept",
+    );
+  }
+  const judged = values["admit-judge"] ?? (was === null ? !attended && crossFamily : was.judged);
   const opening: Opening = {
     project: projectOf(log, values.project, was),
     budget,
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
-    seats: resolveSeats(values, was),
-    attended: values.hitl ?? was?.attended ?? false,
-    judged: values["admit-judge"] ?? was?.judged ?? false,
+    seats: resolvedSeats,
+    attended,
+    judged,
     prompt,
     solver,
     terms: resolveTerms(events, was, values),

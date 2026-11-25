@@ -250,7 +250,7 @@ function tiesOf(events: readonly LogEvent[], since: number): Map<string, string>
     const task = tasks.get(data.task) ?? { pairs: 0, kinds: new Map<string, number>() };
     task.pairs += 1;
     for (const [criterion, tie] of Object.entries(asRecord(data.ties) ?? {})) {
-      if (tie !== "both-strong" && tie !== "both-weak") continue;
+      if (tie !== "both-strong" && tie !== "both-weak" && tie !== "swap-disagreed") continue;
       const key = `${tie.replace("-", " ")} on ${criterion}`;
       task.kinds.set(key, (task.kinds.get(key) ?? 0) + 1);
     }

@@ -380,12 +380,17 @@ export function authoredFaults(checks: readonly CheckReading[], admitted: Readon
   ]);
 }
 
-export function unadmitted(events: readonly LogEvent[], admitted?: readonly unknown[]): string[] {
+export function unadmitted(
+  events: readonly LogEvent[],
+  admitted?: readonly unknown[],
+  scope: "author" | "judge" = "author",
+): string[] {
   const reading = eventsOf(events, "checker.read").at(-1)?.event.data;
   const kept = new Set(admitted ?? (Array.isArray(reading?.admitted) ? reading.admitted : []));
+  const want = scope === "judge" ? JUDGE : AUTHOR;
   return (Array.isArray(reading?.rows) ? reading.rows : []).flatMap((row) => {
     const { id, instrument } = asRecord(row) ?? {};
-    return isString(id) && instrument === AUTHOR && !kept.has(id) ? [id] : [];
+    return isString(id) && instrument === want && !kept.has(id) ? [id] : [];
   });
 }
 

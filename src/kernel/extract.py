@@ -1,7 +1,7 @@
 import io, json, posixpath, re, sys, xml.etree.ElementTree as ET, zipfile
 
 ERRORS = {"#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#NULL!"}
-CELL_REF = re.compile(r"\$?[A-Z]{1,3}\$?\d+|[A-Za-z_][\w.]*!")
+CELL_REF = re.compile(r"(?<![A-Za-z0-9_])\$?[A-Z]{1,3}\$?\d+(?![A-Za-z0-9_(])|[A-Za-z_][\w.]*!")
 UNDECLARED_NS = re.compile(r"</?([A-Za-z_][\w.-]*):")
 MAX_MEMBER_BYTES = 16 * 1024 * 1024
 MAX_DB_CELL_CHARS = 2000

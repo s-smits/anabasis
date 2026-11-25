@@ -4,6 +4,7 @@
  * defaults, the request each is made with, and the report a comparison prints.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import { servedByClaude } from "#src/agent/backends/claude.ts";
 import { stopRule, type Wanted } from "#src/campaign/admission.ts";
 import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
@@ -490,6 +491,59 @@ export const solved: Seated = (campaign, { builder }) => ({
   paid: true,
 });
 
+const FIRST_PARTY_VENDORS = new Map([
+  ["alibaba", "alibaba"],
+  ["anthropic", "anthropic"],
+  ["claude", "anthropic"],
+  ["claude-code", "anthropic"],
+  ["codex", "openai"],
+  ["cohere", "cohere"],
+  ["deepseek", "deepseek"],
+  ["deepseek-ai", "deepseek"],
+  ["google", "google"],
+  ["google-gemini-cli", "google"],
+  ["kimi-coding", "moonshot"],
+  ["meta", "meta"],
+  ["meta-llama", "meta"],
+  ["minimax", "minimax"],
+  ["minimax-cn", "minimax"],
+  ["mistral", "mistral"],
+  ["mistralai", "mistral"],
+  ["moonshot", "moonshot"],
+  ["moonshotai", "moonshot"],
+  ["moonshotai-cn", "moonshot"],
+  ["openai", "openai"],
+  ["openai-codex", "openai"],
+  ["qwen", "alibaba"],
+  ["x-ai", "xai"],
+  ["xai", "xai"],
+  ["z-ai", "zai"],
+  ["zai", "zai"],
+]);
+
+export function modelVendor(name: string): string | null {
+  const normalize = (raw: string): string | null => {
+    const clean = raw.replace(/^~/u, "").toLowerCase();
+    if (servedByClaude(clean)) return "anthropic";
+    return FIRST_PARTY_VENDORS.get(clean) ?? null;
+  };
+  try {
+    const model = modelNamed(name);
+    if (servedByClaude(model.provider)) return "anthropic";
+    if (model.id.includes("/")) return normalize(model.id.split("/")[0] ?? "");
+    return normalize(model.provider);
+  } catch {
+    const parts = name.split("/");
+    return normalize(parts[parts.length >= 3 ? 1 : 0] ?? "");
+  }
+}
+
+export function crossFamilyVendors(first: string, second: string): boolean {
+  const left = modelVendor(first);
+  const right = modelVendor(second);
+  return left !== null && right !== null && left !== right;
+}
+
 /** What a comparison is made on, for a round and a standalone comparison alike: the starter, the
  *  scored set, the flags' terms and the seats that solve and rule. */
 export async function comparedOn(
@@ -500,6 +554,19 @@ export async function comparedOn(
 ): Promise<Omit<CheckpointRequest, "log" | "id" | "old" | "fresh" | "kill">> {
   const packageOf = packaged(campaign);
   const judges = reviewers ?? (seats.judge === undefined ? null : campaign.reviewers(seats.judge));
+  if (seats.paid && hasJudge(campaign.contract.objective)) {
+    if (judges === null) {
+      throw new Error("name --reviewer: a paid judged comparison needs a cross-family judging reviewer");
+    }
+    const solver = priceKey(campaign.test.model);
+    if (!crossFamilyVendors(judges.reviewer, solver)) {
+      const why =
+        modelVendor(judges.reviewer) === null
+          ? `the reviewer ${judges.reviewer} routes to an unknown vendor`
+          : `the reviewer ${judges.reviewer} judges answers by a solver of its own family (${solver})`;
+      throw new Error(`${why}; name a reviewer from another family`);
+    }
+  }
   return {
     starter: await starter(campaign),
     ...scoredSet(read(campaign.log, TRACE_KINDS), setting.target, contractHash(campaign.contract)),

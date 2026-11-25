@@ -26,7 +26,8 @@ import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.
 import { openHarness } from "#src/harness/open.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { writeBare, writeStarter } from "#src/harness/starter.ts";
-import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
+import { toolTreeImports, toolTreeSearchDirs } from "#src/wall/isolation.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { keptAs, PROMOTED } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { packageFolders } from "./foreign-python.ts";
@@ -151,7 +152,11 @@ export async function ownPython(tree: string, env: Readonly<Record<string, strin
   const run = (words: readonly string[]) => {
     const ran = runSync([python, "-c", ...words], {
       cwd: tmpdir(),
-      env: { ...env, PATH: [...dirs, env.PATH ?? ""].join(":") },
+      env: {
+        ...env,
+        PATH: [...dirs, env.PATH ?? ""].join(":"),
+        ...keyIfDefined("PYTHONPATH", toolTreeImports(toolchain)),
+      },
       timeout: 300_000,
     });
     const last = decodeOutput(ran.stderr).trim().split("\n").at(-1) ?? "";

@@ -12,7 +12,13 @@ import {
 import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { endHolders, hostFolder } from "../wall/seat-root.ts";
-import { commandIsolationPolicy, shellQuote, stageCommandIsolation } from "../wall/isolation.ts";
+import {
+  commandIsolationPolicy,
+  shellQuote,
+  stageCommandIsolation,
+  toolTreeImports,
+} from "../wall/isolation.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { BUILT_COMMAND_SCRATCH_ROOT } from "../wall/policy.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
 
@@ -232,7 +238,9 @@ export async function runWalled(
       into = mkdtempSync(join(dirs.kept, "in-"));
       options.stage(into);
     }
-    const policy = commandIsolationPolicy(wall.base, { ...dirs, toolTree: wall.toolTree });
+    const walled = commandIsolationPolicy(wall.base, { ...dirs, toolTree: wall.toolTree });
+    const imports = keyIfDefined("PYTHONPATH", toolTreeImports(wall.toolTree));
+    const policy = { ...walled, environment: { ...walled.environment, ...imports } };
     const line =
       into === null
         ? command

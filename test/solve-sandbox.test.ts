@@ -180,6 +180,25 @@ describe("the solve isolation's policy", () => {
     60_000,
   );
 
+  it.skipIf(Bun.which("python3") === null)(
+    "imports a kept tool tree's Python modules from its lib by name, from the seat's home",
+    async () => {
+      const repoRoot = workRepo();
+      const tree = join(repoRoot, ".ana", "d2", "c", "states", "tree-abc");
+      mkdirSync(join(tree, "lib"), { recursive: true });
+      writeFileSync(join(tree, "lib", "ana_tree_mod.py"), "SAID = 'tree'\n");
+      writeFileSync(join(repoRoot, "ana_repo_mod.py"), "SAID = 'repo'\n");
+      await inSeat(repoRoot, [], async (wall, run) => {
+        const command =
+          "cd ~ && python3 -c 'import ana_tree_mod; print(ana_tree_mod.SAID)'; python3 -c 'import ana_repo_mod' 2>&1";
+        const output = await run(command, { ...wall, toolTree: tree });
+        expect(output).toStartWith("tree\n");
+        expect(output).toContain("No module named 'ana_repo_mod'");
+      });
+    },
+    60_000,
+  );
+
   // pip installs into the user base, and refused there it reads as a broken pip.
   it.skipIf(Bun.which("python3") === null)(
     "keeps Python's user base in the seat's home, where a package installs",

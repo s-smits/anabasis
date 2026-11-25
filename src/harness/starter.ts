@@ -126,9 +126,10 @@ ${capturedJsonStringify(EXAMPLE.spec, null, 2)}
 ## .toolchain/
 
 Executables in .toolchain/bin (and any nested bin, shims, or sbin directory) run by name in the
-solver's commands, with .toolchain/bin first on PATH. The tree is read-only to the solver. Installing
-any interpreter, engine, or package your programs or the solver's commands need inside .toolchain/
-avoids per-solve installs and keeps external exports self-contained without naming host paths.
+solver's commands, with .toolchain/bin first on PATH, and Python modules in .toolchain/lib import by
+name from any python3 there. The tree is read-only to the solver. Installing any interpreter, engine,
+or package your programs or the solver's commands need inside .toolchain/ avoids per-solve installs
+and keeps external exports self-contained without naming host paths.
 
 General, high-leverage domain operations (parsing inputs, modelling or searching candidates, and
 independent checking) transfer cleanly across unseen tasks when they operate on plain data files.

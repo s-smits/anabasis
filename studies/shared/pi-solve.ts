@@ -37,7 +37,7 @@ import { listedPrograms, NUDGE, promptEnvelope } from "#src/solver/prompt.ts";
 import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
 import { type Seat, type SeatTool, sit } from "#src/agent/session.ts";
 import { trajectoryOf } from "./atif.ts";
-import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
+import { shellQuote, toolTreeImports, toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { seatBackends } from "#tools/d2/campaign.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 
@@ -177,7 +177,12 @@ async function solve(ask: Asked) {
   if (isString(harness)) return { ending: "broken-harness", reason: harness };
   // The harness's programs first on PATH, in the order a solve's shell has them.
   const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree);
-  const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
+  const lib = toolTreeImports(harness.toolTree);
+  const exports = [
+    ...(path.length === 0 ? [] : [`PATH=${shellQuote(path.join(":"))}:"$PATH"`]),
+    ...(lib === undefined ? [] : [`PYTHONPATH=${shellQuote(lib)}\${PYTHONPATH:+:"$PYTHONPATH"}`]),
+  ];
+  const prefix = exports.length === 0 ? undefined : `export ${exports.join(" ")}`;
   const said = { submitted: false };
   // In the order a campaign's solver is given them (`solverTools`, `src/solver/run.ts`).
   const defined = [...directCodingTools(selectedCodingTools(harness.presets), prefix), submitTool(said)];

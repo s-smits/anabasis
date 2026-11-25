@@ -202,7 +202,11 @@ describe.concurrent("the mutation oracle over check hosts", () => {
   });
   const hosts = (...list: ReturnType<typeof host>[]) => JSON.stringify(list);
 
-  const fleet = (name: string, env: Readonly<Record<string, string | undefined>>) => {
+  const fleet = (
+    name: string,
+    env: Readonly<Record<string, string | undefined>>,
+    extra: readonly string[] = [],
+  ) => {
     const out = join(root, `${name}.jsonl`);
     const log = join(root, `${name}.log`);
     if (!existsSync(log)) writeFileSync(log, "");
@@ -212,7 +216,20 @@ describe.concurrent("the mutation oracle over check hosts", () => {
       if (!(key in env)) delete merged[key];
     }
     const run = Bun.spawnSync(
-      [capturedExecPath, SCRIPT, "run", tree, "a.ts", "--out", out, "--suites", suites, "--timeout", "30"],
+      [
+        capturedExecPath,
+        SCRIPT,
+        "run",
+        tree,
+        "a.ts",
+        "--out",
+        out,
+        "--suites",
+        suites,
+        "--timeout",
+        "30",
+        ...extra,
+      ],
       {
         env: Object.fromEntries(Object.entries(merged).filter(([, value]) => value !== undefined)),
         stdout: "pipe",
@@ -300,6 +317,27 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     expect(again.stdout).toContain(`${String(left)} mutants run, 2 held before`);
     expect(verdicts(again.rows)).toStrictEqual(here);
     expect(again.rows.length).toBe(Object.keys(here).length);
+  }, 60_000);
+
+  it("takes no mutant past --until, and a rerun reads them over shared copies it refreshes from the tree", () => {
+    const shared = join(root, "fleet-shared");
+    const past = new Date(Date.now() - 1000).toISOString();
+    const stopped = fleet("fleet-until", { ANA_HOSTS: hosts(host("a", 1)) }, [
+      "--until",
+      past,
+      "--clones",
+      shared,
+    ]);
+    expect(stopped.status).not.toBe(0);
+    expect(stopped.rows).toEqual([]);
+    expect(stopped.stderr).toContain(
+      `${String(Object.keys(here).length)} mutants left unrun at ${past}; run again`,
+    );
+    writeFileSync(join(`${shared}.clone-0`, "a.test.ts"), 'throw new Error("stale");\n');
+    const again = fleet("fleet-until", { ANA_HOSTS: hosts(host("a", 1)) }, ["--clones", shared]);
+    expect(again.status).toBe(0);
+    expect(verdicts(again.rows)).toStrictEqual(here);
+    expect(new Set(again.sent.map(({ cwd }) => cwd))).toStrictEqual(new Set([`${shared}.clone-0`]));
   }, 60_000);
 
   it("runs nothing where no host passes the suites unmutated", () => {

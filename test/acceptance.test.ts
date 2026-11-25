@@ -451,7 +451,7 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
     }
   });
 
-  it("faults hidden values nothing reads, and nothing else: objective-only, check-read, identical and non-result swaps", async () => {
+  it("faults hidden values nothing reads, and nothing else: objective-only, check-read, identical, non-result and judge-read swaps", async () => {
     const distinct = tasksOf([{ k: 1 }, { k: 2 }, { k: 3 }]);
     const blind = await probeRead(distinct, async (t, a) =>
       asRecord(a)?.v === asRecord(t.publicInput)?.id
@@ -507,6 +507,25 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
       const read = await probeRead(tasks, check);
       expect([read.faults, read.notes]).toEqual([[], []]);
     }
+    const criterion = "The answer explains each figure it gives in plain words.";
+    const judged: Brief = {
+      ...probeBrief,
+      objective: {
+        quantity: "score",
+        direction: "higher",
+        scale: "unit",
+        items: [{ id: "plain", weight: 1, kind: "judge", criterion }],
+      },
+    };
+    const votedOn = await probeRead(
+      distinct,
+      async (t, a) =>
+        asRecord(a)?.v === asRecord(t.publicInput)?.id
+          ? { kind: "pass" }
+          : { kind: "fail", blocking: ["ok"] },
+      judged,
+    );
+    expect(votedOn.faults).toEqual([]);
   });
 
   it("faults deliverables nothing reads, and notes a flat rubric item only once a probe has passed", async () => {

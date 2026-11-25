@@ -196,20 +196,22 @@ function scriptedBuilder() {
   );
 }
 
+const VOTES_IN_FLIGHT = 16;
+
 function scriptedJudge(): Reader {
   const faux = fauxProvider({ models: [{ id: "script-judge", contextWindow: 200_000, cost: PRICE }] });
   const vote: FauxResponseFactory = (context) => {
     faux.appendResponses([vote]);
     const shown = JSON.stringify(context.messages);
-    const [a, b] = [shown.indexOf("Answer A:"), shown.indexOf("Answer B:")];
+    const after = (label: string) => shown.indexOf(label) + label.length;
     const [one, other] = [
-      hashJsonValue(shown.slice(a, b)).slice(-8),
-      hashJsonValue(shown.slice(b)).slice(-8),
+      hashJsonValue(shown.slice(after("Answer A:"), shown.indexOf("Answer B:"))).slice(-8),
+      hashJsonValue(shown.slice(after("Answer B:"), shown.indexOf("The criterion:"))).slice(-8),
     ];
     const better = one === other ? "neither" : one < other ? "A" : "B";
     return fauxAssistantMessage(fauxToolCall("record_vote", { better, reason: "scripted" }), TOOL_USE);
   };
-  faux.setResponses([vote]);
+  faux.setResponses(Array.from({ length: VOTES_IN_FLIGHT }, () => vote));
   const models = createModels();
   models.setProvider(faux.provider);
   return { model: faux.getModel(), effort: "medium", models: () => models };

@@ -18,6 +18,16 @@ export function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">)
   return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
 }
 
+const pastRubric = (rubric: unknown) =>
+  Array.isArray(rubric)
+    ? {
+        rubric: rubric.flatMap((row) => {
+          const { id, criterion } = asRecord(row) ?? {};
+          return isString(id) && isString(criterion) ? [{ id, criterion }] : [];
+        }),
+      }
+    : {};
+
 export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
   return eventsOf(events, "task.proposed").flatMap(({ event: { data } }) => {
     if (!isString(data.version)) return [];
@@ -36,6 +46,7 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
                 family: task.family,
                 publicInput: task.publicInput ?? null,
                 hidden: task.hidden ?? null,
+                ...pastRubric(task.rubric),
               }
             : null,
       },

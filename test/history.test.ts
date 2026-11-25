@@ -1,7 +1,9 @@
 // A person's wrong label must remove a passing answer from the exam side's valid examples.
 // acceptedAnswers would otherwise read only the checker's verdict.
 import { expect, it } from "bun:test";
-import { acceptedAnswers } from "../src/kernel/history.ts";
+import { acceptedAnswers, writtenTasks } from "../src/kernel/history.ts";
+import { type TaskPackage, taskVersion } from "../src/kernel/task.ts";
+import type { Task } from "../src/kernel/verify.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 
@@ -41,4 +43,14 @@ it("carries the files an author's valid answer delivered, so the Referee reads i
     event("task.feasible", { version: "v1", answer: { author: true }, files }),
   ];
   expect(acceptedAnswers(log, "v1")).toEqual([{ answer: { author: true }, files }]);
+});
+
+it("packages a task written with a per-task rubric under the version its proposal logged", () => {
+  const pack = (task: Task): TaskPackage => ({ ...task, ruleIds: [], checks: "/no-checks" });
+  const written = { taskId: "t1", family: "f", publicInput: { q: 1 }, hidden: { a: 2 } };
+  for (const task of [written, { ...written, rubric: [{ id: "cites", criterion: "cites the figures" }] }]) {
+    const version = taskVersion(pack(task));
+    const log = [event("task.proposed", { version, taskId: "t1", task })];
+    expect(writtenTasks(log).map((one) => taskVersion(pack(one)))).toEqual([version]);
+  }
 });

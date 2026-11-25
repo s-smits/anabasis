@@ -92,11 +92,11 @@ describe("the pairwise judge", () => {
       const { pair } = await judged(onSubstance, first, second);
       expect(pair).toMatchObject({ solve: first, old: second, judge: sign, holistic: sign, disagreed: [] });
     }
-    const { pair } = await judged(() => ({ better: "A", reason: "r" }));
+    const { pair } = await judged(() => ({ better: "A", reason: "r".repeat(2000) }));
     expect(pair).toMatchObject({ judge: 0, holistic: 0, disagreed: ["cites", "plain", "holistic"] });
   });
 
-  it("weights criteria as the contract does, and counts a tie in both orders as no disagreement", async () => {
+  it("weights criteria as the contract does, counts a tie in both orders as agreement and a half-swap as disagreement", async () => {
     const split: Said = (shown) =>
       shown.includes("cites the figures the request")
         ? { better: answerA(shown).includes(STRONG) ? "A" : "B", reason: "r" }
@@ -107,6 +107,14 @@ describe("the pairwise judge", () => {
       holistic: 0,
       criteria: { cites: 1, plain: 0, holistic: 0 },
       disagreed: [],
+    });
+    const half: Said = (shown) => ({
+      better: answerA(shown).includes(STRONG) ? "A" : "neither",
+      reason: "r",
+    });
+    expect((await judged(half)).pair).toMatchObject({
+      judge: 0.5,
+      disagreed: ["cites", "plain", "holistic"],
     });
   });
 

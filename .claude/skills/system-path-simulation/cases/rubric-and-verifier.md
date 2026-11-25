@@ -12,7 +12,7 @@ A contract's objective may carry rubric items of two kinds: `code` items, which 
 | Does an unjudged campaign stay judge-free end to end? | 2 | `bun run runs rehearse --name sim-<what> --id g-sim --new latest --held none:pass` on a seed of a verifiable campaign | Same reading at both commits; 0 `referee.pair` events |
 | Does a real judge vote on substance and agree with itself under swap? | 3 | Operator-approved live seat (`cases/live-seat.md`) | Swap-disagreement and A/A rates within the plan's live watchlist |
 
-A scripted rehearsal reaches the judged path only on a seed whose contract carries a judge item. No archived campaign before v0.14 has one, and seeding one would mean authoring log events (`AGENTS.md` §5), so the judged path stays at tier 1–2 tests until the first operator-admitted judged campaign exists; seed from that campaign afterwards. Rehearsals then seat `scriptedJudge` (`tools/runs/rehearse.ts`), which votes by answer digest, independent of order.
+A scripted rehearsal reaches the judged path only on a seed whose contract carries a judge item; seed from an archived judged campaign rather than authoring log events (`AGENTS.md` §5). Rehearsals seat `scriptedJudge` (`tools/runs/rehearse.ts`), which reads the two fenced answers and votes by their digests, so its two orders of a pair agree.
 
 ## Hostile cases to keep
 
@@ -20,7 +20,7 @@ A scripted rehearsal reaches the judged path only on a seed whose contract carri
 - **Missing vote.** A pair without a vote stops the comparison before its report; running it again resumes from the log and judges only what is left (`judgingLeft`).
 - **Cap during judging.** A cap reached between pairs marks the comparison capped, and it reads not-scored rather than scoring a partial set.
 - **Same-family reviewer.** An opening whose reviewer shares the solver's family is refused (`validateOpening`).
-- **Hidden values.** Only the brief sees a task's hidden values; pair sessions see the brief's expectations and the two answers, and the holistic session sees neither the brief nor the criteria.
+- **Hidden values.** Criterion votes see a task's hidden values beside the task; the holistic vote sees neither the hidden values nor the criteria (`test/judge.test.ts`).
 - **Pool closure.** Under a judge, no task closes as easy on code saturation (`poolOf`), since judged room lies above a full code score.
 
 Report each case as `cleared`, `blocking` or `accepted-risk` with its owner, as `SKILL.md` asks.

@@ -62,12 +62,12 @@ const HOLISTIC_LINE =
   "Overall, which answer would serve the person who set this task better, judged on substance? Count padding, repetition, hedging and decoration against an answer; polish alone counts for nothing.";
 
 const VOTE_PARAMETERS = Type.Object({
-  reason: Type.String({ minLength: 1, maxLength: 400 }),
+  reason: Type.String({ minLength: 1 }),
   better: Type.Union([Type.Literal("A"), Type.Literal("B"), Type.Literal("neither")]),
 });
 
 function taskLines({ task, contract, prompt }: JudgeCase, hidden: boolean): string[] {
-  const clip = (value: string, bytes: number) => boundText(value, bytes).text;
+  const clip = (value: string, bytes: number) => boundText(value, bytes).shown;
   const json = (value: JsonValue) => clip(capturedJsonStringify(boundPublicInput(value)), TASK_JSON_BYTES);
   const rules = contract.rules.map(({ id, statement }) => `- ${id}: ${statement}`).join("\n");
   const sections: readonly [string, string, number][] = [
@@ -122,7 +122,7 @@ function answerOf(events: readonly LogEvent[], log: string, solve: string): stri
     ...verdict.files.map(extract).map((file) => [...headOf(file), file.text].join("\n")),
   ];
   const cap = fairCap(parts, ANSWER_BYTES);
-  return parts.map((part) => boundText(part, cap).text).join("\n\n");
+  return parts.map((part) => boundText(part, cap).shown).join("\n\n");
 }
 
 async function voted(
@@ -226,7 +226,7 @@ export async function judgePair(reader: Reader, given: PairCase): Promise<void> 
     criteria: Object.fromEntries(criteria.map(({ id: one }) => [one, mean(one)])),
     disagreed: criteria.flatMap(({ id: one }) => {
       const [ab, ba] = byCriterion.get(one) ?? [];
-      return ab !== undefined && ba !== undefined && ab.sign * ba.sign < 0 ? [one] : [];
+      return ab !== undefined && ba !== undefined && ab.sign !== ba.sign ? [one] : [];
     }),
   });
 }

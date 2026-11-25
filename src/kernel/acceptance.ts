@@ -4,7 +4,7 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { gainOver, GAP_FLOOR, objectiveRuleOf } from "./compare.ts";
-import { answerFormatFault, codeObjective, type Contract } from "./contract.ts";
+import { answerFormatFault, codeObjective, type Contract, hasJudge } from "./contract.ts";
 import { eventsOf, type LogEvent } from "./log.ts";
 import {
   applicableTruthChecks,
@@ -173,7 +173,8 @@ async function probeReading(
       return task === null ? [] : [{ run, task, files: run.files }];
     });
   const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
-  const carried = tasks.length > 1 && tasks.every(({ hidden }) => hidden !== null);
+  const carried =
+    tasks.length > 1 && !hasJudge(given.brief.objective) && tasks.every(({ hidden }) => hidden !== null);
 
   const [swaps, hidden, stripped] = await Promise.all([
     probed(accepted.flatMap((run) => others(run, (other) => other))),

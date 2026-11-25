@@ -7,13 +7,15 @@ It expands `AGENTS.md` section 3.
 
 Seven decisions remain with the operator because an external authority outside the optimisation loop
 must fix the evaluation exam, authorise expenditure, and own irreversible actions; the operator
-never authors the exam itself. Launching a campaign pre-authorises three of these decisions for that
-campaign so it can run unattended to a typed ending: freezing a fault-free exam
-(`accept.ts --freeze`), admitting checks computed by their author (`--admit-authored`), and
-promoting the harness selected by the promotion rule. These grants are owned by `make` in
-`tools/d2/harness-builder.ts` and `planOf` in `src/campaign/opening.ts`. Passing `--hitl` revokes
-all three grants until `--no-hitl` is passed. Any other fault, as well as continuing past the stop
-rule, requires explicit operator approval on each occasion (`--despite`, `--past-stop`).
+never authors the exam itself. Launching an unattended campaign pre-authorises four of these
+decisions for that campaign so it can run to a typed ending: freezing a fault-free exam
+(`accept.ts --freeze`), admitting checks computed by their author (`--admit-authored`), admitting
+judged rubric items when a cross-family reviewer is configured (`--admit-judge`, disabled by
+`--no-admit-judge`), and promoting the harness selected by the promotion rule. These grants are
+owned by `make` in `tools/d2/harness-builder.ts`, `openTerms` in `tools/d2/campaign-terms.ts`, and
+`planOf` in `src/campaign/opening.ts`. Passing `--hitl` revokes these grants until `--no-hitl` is
+passed. Any other fault, as well as continuing past the stop rule, requires explicit operator
+approval on each occasion (`--despite`, `--past-stop`).
 
 ### The harness
 

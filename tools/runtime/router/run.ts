@@ -8,14 +8,16 @@
  * read; `here` on this machine, without reading the host list; a host's name or ssh destination on
  * that host; `all` as `auto` over the places under half their cores' one-minute load (the least
  * loaded where none is), where a test task that names only test files and folders (or nothing, for
- * all of `test/`) has their files cut into chunks of like time by `test/.test-timings.json`, two a
- * slot, each in the first free slot among the places that still give verdicts, and exits as the
- * first failing chunk, or as no verdict where a chunk found no place (`sharded`); a test task with
- * any other argument, such as a name pattern, runs whole, since a chunk the pattern misses fails; and
- * where the gate leads on this machine, outside any slot, so that its own test, typecheck and lint
- * steps are routed in turn. Any other value is refused with the names to write. Wherever it runs, the task is
- * `task.sh` over the working tree as it stands, uncommitted bytes included, and its exit status is
- * this command's. A task here starts without what the bun router read from the host list for this
+ * all of `test/`) has their files cut into chunks of like time by the running means each place's
+ * runs measured (`learn`, from the timings a run rewrote, kept in the repository's common git
+ * folder for every worktree; a file no place measured weighs the median), a chunk to a minute of
+ * them or more and at most two a slot, each in the first free slot among the places that still
+ * give verdicts, and exits as the first failing chunk, or as no verdict where a chunk found no
+ * place (`sharded`); a test task with any other argument, such as a name pattern, runs whole, since
+ * a chunk the pattern misses fails; and where the gate leads on this machine, outside any slot, so
+ * that its own test, typecheck and lint steps are routed in turn. Any other value is refused with
+ * the names to write. Wherever it runs, the task is `task.sh` over the working tree as it stands,
+ * uncommitted bytes included, and its exit status is this command's. A task here starts without what the bun router read from the host list for this
  * command alone (`CALLER_ENV`), as one sent to a host does, so no test reaches the fleet it names.
  *
  * **What reaches a host.** Git carries the tree: the working tree becomes one commit in place of
@@ -43,11 +45,12 @@ import {
   renameSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { hostTool } from "#src/meta/host-tool.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, type JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedSpawn, processAnswers, runtimeProcess } from "#src/meta/process.ts";
@@ -84,6 +87,11 @@ const EXIT = { usage: 2, unavailable: 69, noSlot: 75, interrupted: 130, noVerdic
 const TASK_SCRIPT = join(import.meta.dir, "task.sh");
 const EPOCH = "2000-01-01T00:00:00Z";
 const IDENTITY = ["-c", "user.name=Runner Snapshot", "-c", "user.email=runner@snapshot.invalid"];
+
+interface Ran {
+  readonly status: number;
+  readonly times: string;
+}
 
 /** One task: the tree it checks, the Bun that tree pins, the task with its arguments, its deadline. */
 interface Job {
@@ -469,7 +477,7 @@ async function onHost(
   job: Job,
   release: () => void,
   commitOf: () => string,
-): Promise<number> {
+): Promise<Ran> {
   const { root, pin } = job;
   if (pin === "") throw new Refusal(`${root} pins no Bun in package.json's packageManager`, EXIT.usage);
   const dir = `${RUNNER_SLOTS}/${ownName()}-slot-${String(slot)}`;
@@ -518,19 +526,24 @@ async function onHost(
   // failures as 255. Otherwise the verdict is the status task.sh left beside the slot, since
   // Tailscale SSH reports 0 whatever the task did; none left is no verdict either.
   let status = await attached(ssh("-tt", host.ssh, words.join(" ")), release);
+  let times = "";
   if (status !== EXIT.noVerdict) {
+    const bunTimes = quoted(`${dir}/${BUN_TIMES}`);
+    const rewritten = `! cmp -s ${bunTimes} ${quoted(`${dir}.times`)} && cat ${bunTimes}`;
     const left = await retried("reading the status", () =>
-      answer(ssh(host.ssh, `cat ${quoted(`${dir}.status`)}`)),
+      answer(ssh(host.ssh, `cat ${quoted(`${dir}.status`)} && { ${rewritten} || true; }`)),
     );
-    status = left !== null && /^\d+$/u.test(left) ? Number(left) : EXIT.noVerdict;
+    const [first = "", ...rest] = (left ?? "").split("\n");
+    status = /^\d+$/u.test(first) ? Number(first) : EXIT.noVerdict;
+    times = rest.join("\n");
   }
   if (status === EXIT.noVerdict) {
     say(`the connection to ${host.ssh} dropped, or its task left no exit status, so this is no verdict`);
   }
-  return status;
+  return { status, times };
 }
 
-async function inSlot(host: Place, slot: Slot, job: Job, commitOf: () => string): Promise<number> {
+async function inSlot(host: Place, slot: Slot, job: Job, commitOf: () => string): Promise<Ran> {
   const release = (): void => {
     rmSync(slot.path, { recursive: true, force: true });
     heldByThisRunner.delete(dirname(slot.path));
@@ -538,10 +551,15 @@ async function inSlot(host: Place, slot: Slot, job: Job, commitOf: () => string)
   try {
     if (host === undefined) {
       const { root, pin, wall, task } = job;
-      return await attached(
+      const times = join(root, BUN_TIMES);
+      const written = (): string => (existsSync(times) ? readFileSync(times, "utf8") : "");
+      const before = written();
+      const status = await attached(
         ["/bin/bash", "--norc", TASK_SCRIPT, "here", root, pin, String(wall), ...task],
         release,
       );
+      const after = written();
+      return { status, times: after === before ? "" : after };
     }
     return await onHost(host, slot.number, job, release, commitOf);
   } finally {
@@ -550,6 +568,45 @@ async function inSlot(host: Place, slot: Slot, job: Job, commitOf: () => string)
 }
 
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/u;
+const BUN_TIMES = "test/.test-timings.json";
+const NEWEST_SHARE = 0.3;
+const LEAST_CHUNK_MS = 60_000;
+
+function numbersOf(value: JsonValue | undefined): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(asRecord(value) ?? {}).flatMap(([name, ms]) => (isNumber(ms) ? [[name, ms]] : [])),
+  );
+}
+
+function parsed(text: string): JsonValue {
+  try {
+    return capturedJsonParse(text);
+  } catch {
+    return null;
+  }
+}
+
+function timesOf(store: string): Record<string, Record<string, number>> {
+  const all = asRecord(existsSync(store) ? parsed(readFileSync(store, "utf8")) : null) ?? {};
+  return Object.fromEntries(Object.entries(all).map(([place, files]) => [place, numbersOf(files)]));
+}
+
+function learn(store: string, place: string, files: readonly string[], text: string): void {
+  const ran = numbersOf(asRecord(parsed(text))?.files);
+  const times = timesOf(store);
+  const mine = { ...times[place] };
+  for (const file of files) {
+    const ms = ran[file];
+    const mean = mine[file];
+    if (ms !== undefined) {
+      mine[file] = Math.round(mean === undefined ? ms : mean + NEWEST_SHARE * (ms - mean));
+    }
+  }
+  times[place] = mine;
+  const next = `${store}.${String(runtimeProcess.pid)}`;
+  writeFileSync(next, `${JSON.stringify(times)}\n`);
+  renameSync(next, store);
+}
 
 async function sharded(job: Job, places: readonly Place[], commitOf: () => string): Promise<number> {
   const [name = "test", ...named] = job.task;
@@ -562,21 +619,22 @@ async function sharded(job: Job, places: readonly Place[], commitOf: () => strin
           .map((file) => join(path, file)),
   );
   if (files.length === 0) throw new Refusal(`all: no test files in ${named.join(" ")}`, EXIT.usage);
-  const timings = join(job.root, "test", ".test-timings.json");
-  const timed = asRecord(
-    asRecord(existsSync(timings) ? capturedJsonParse(readFileSync(timings, "utf8")) : null)?.files,
+  const store = join(
+    gitText(job.root, "rev-parse", "--path-format=absolute", "--git-common-dir"),
+    "ana-test-times.json",
   );
-  const known = files.flatMap((file) => {
-    const ms = timed?.[file];
-    return isNumber(ms) ? [ms] : [];
-  });
-  const median = known.toSorted((a, b) => a - b)[Math.floor(known.length / 2)] ?? 1;
-  const weight = (file: string): number => {
-    const ms = timed?.[file];
-    return isNumber(ms) ? ms : median;
+  const means = Object.values(timesOf(store));
+  const meanOf = (file: string): number | null => {
+    const seen = means.flatMap((each) => each[file] ?? []);
+    return seen.length === 0 ? null : seen.reduce((sum, ms) => sum + ms, 0) / seen.length;
   };
+  const known = files.flatMap((file) => meanOf(file) ?? []);
+  const median = known.toSorted((a, b) => a - b)[Math.floor(known.length / 2)] ?? 1;
+  const weight = (file: string): number => meanOf(file) ?? median;
+  const total = files.reduce((sum, file) => sum + weight(file), 0);
   const slots = places.reduce((sum, host) => sum + slotCapacity(host), 0);
-  const count = Math.min(files.length, 2 * slots);
+  const byTime = known.length === 0 ? files.length : Math.max(1, Math.floor(total / LEAST_CHUNK_MS));
+  const count = Math.min(files.length, 2 * slots, byTime);
   const chunks: { files: string[]; weight: number }[] = Array.from({ length: count }, () => ({
     files: [],
     weight: 0,
@@ -595,15 +653,23 @@ async function sharded(job: Job, places: readonly Place[], commitOf: () => strin
       const part = { ...job, task: [name, ...chunk.files] };
       while (live.length > 0) {
         const { place: host, slot } = await slotAmong(live);
+        const at = host?.name ?? ownName();
         let status: number;
         try {
-          status = await inSlot(host, slot, part, commitOf);
+          const ran = await inSlot(host, slot, part, commitOf);
+          status = ran.status;
+          if (!NO_VERDICT.has(status)) {
+            try {
+              learn(store, at, chunk.files, ran.times);
+            } catch (error) {
+              say(`all: the test times of ${at} went unrecorded: ${String(error)}`);
+            }
+          }
         } catch (error) {
           if (!(error instanceof Refusal) || !NO_VERDICT.has(error.code)) throw error;
           say(error.message);
           status = error.code;
         }
-        const at = host?.name ?? ownName();
         if (!NO_VERDICT.has(status)) {
           say(`all: ${String(chunk.files.length)} files on ${at} exited ${String(status)}`);
           exits.push(status);
@@ -649,7 +715,7 @@ async function main(argv: readonly string[]): Promise<number> {
       say(`auto: runs on ${host?.name ?? `${ownName()}, this machine`}`);
     }
     try {
-      const status = await inSlot(host, slot, job, commitOf);
+      const { status } = await inSlot(host, slot, job, commitOf);
       if (!NO_VERDICT.has(status) || !picked || host === undefined) return status;
       remaining = remaining.filter((each) => each !== host);
       if (remaining.length === 0) return status;

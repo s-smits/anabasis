@@ -25,6 +25,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { gitMaybe } from "../src/meta/git.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
@@ -95,6 +96,15 @@ for arg in "$@"; do
     nostart) : >"$HOME/nostart" ;;
   esac
 done
+times=""
+case "$*" in *.test.ts*)
+  for file in test/*.test.ts; do
+    [[ -f "$file" ]] || continue
+    times="$times\${times:+,}\\"$file\\":$(( $(wc -c <"$file") * 1000 * $(cat "$HOME/speed" 2>/dev/null || echo 1) ))"
+  done ;;
+esac
+[[ -z "$times" || -e "$HOME/notimes" ]] ||
+  printf '{"version":1,"run":"%s","files":{%s}}' "$RANDOM$$" "$times" >test/.test-timings.json
 exit "$status"
 `;
 
@@ -748,6 +758,99 @@ describe.concurrent("which host runs a task", () => {
         const empty = await sb.run(["test", "packages/empty"], { ANA_CHECK_HOST: "all" });
         expect(empty.status).toBe(2);
         expect(empty.stderr).toContain("all: no test files in packages/empty");
+      })(),
+    ]);
+  });
+
+  it("learns each place's running mean of each test file's time from what its runs measured, cuts chunks by that time, weighs a new file at the median and forgets a removed one", async () => {
+    const sizes = { a: 40, b: 30, c: 20, d: 10, e: 5 };
+    type Name = keyof typeof sizes;
+    const FIRST: readonly Name[] = ["a", "b", "c", "d"];
+    const fileOf = (name: string): string => `test/${name}.test.ts`;
+    const learned = (sb: ReturnType<typeof makeCase>) =>
+      parseJsonAs<Record<string, Record<string, number>>>(
+        readFileSync(join(sb.source, ".git", "ana-test-times.json"), "utf8"),
+      );
+    const write = (sb: ReturnType<typeof makeCase>, names: readonly Name[]): void => {
+      mkdirSync(join(sb.source, "test"), { recursive: true });
+      for (const name of names) writeFileSync(join(sb.source, fileOf(name)), "x".repeat(sizes[name]));
+    };
+    const meansOf = (entries: [string, number][]) =>
+      Object.fromEntries(entries.map(([name, ms]) => [fileOf(name), ms]));
+    await Promise.all([
+      (async () => {
+        const sb = makeCase({ copySource: true });
+        write(sb, FIRST);
+        const here = { ANA_CHECK_HOST: "all", ANA_HOSTS: "" };
+        const first = await sb.run(["test"], here);
+        expect(first.status, first.stderr).toBe(0);
+        expect(first.stderr).toContain("4 test files in 2 chunks");
+        expect(learned(sb)).toEqual({
+          [MACHINE]: meansOf([
+            ["a", 40_000],
+            ["b", 30_000],
+            ["c", 20_000],
+            ["d", 10_000],
+          ]),
+        });
+        writeFileSync(join(sb.home, "speed"), "2");
+        const second = await sb.run(["test"], here);
+        expect(second.status, second.stderr).toBe(0);
+        expect(second.stderr).toContain("4 test files in 1 chunks");
+        expect(learned(sb)).toEqual({
+          [MACHINE]: meansOf([
+            ["a", 52_000],
+            ["b", 39_000],
+            ["c", 26_000],
+            ["d", 13_000],
+          ]),
+        });
+        rmSync(join(sb.source, fileOf("d")));
+        write(sb, ["e"]);
+        const third = await sb.run(["test"], here);
+        expect(third.status, third.stderr).toBe(0);
+        expect(third.stderr).toContain("4 test files in 2 chunks");
+        const kept = {
+          [MACHINE]: meansOf([
+            ["a", 60_400],
+            ["b", 45_300],
+            ["c", 30_200],
+            ["d", 13_000],
+            ["e", 10_000],
+          ]),
+        };
+        expect(learned(sb)).toEqual(kept);
+        writeFileSync(join(sb.home, "notimes"), "");
+        const unwritten = await sb.run(["test"], here);
+        expect(unwritten.status, unwritten.stderr).toBe(0);
+        expect(learned(sb)).toEqual(kept);
+      })(),
+      (async () => {
+        const sb = makeCase({ copySource: true });
+        write(sb, FIRST);
+        sb.loaded("fake-mac", 2, 0);
+        sb.loaded("fake-linux", 4, 2.4);
+        const homes = [sb.home, sb.hostHome("fake-mac")];
+        const each = (file: string, text: string): void => {
+          for (const home of homes) writeFileSync(join(home, file), text);
+        };
+        each("speed", "10");
+        const result = await sb.run(["test"], { ANA_CHECK_HOST: "all" });
+        expect(result.status, result.stderr).toBe(0);
+        const first = learned(sb);
+        expect(Object.keys(first).every((place) => ["m1", MACHINE].includes(place))).toBe(true);
+        expect(first.m1 === undefined).toBe(!sb.ran("fake-mac"));
+        expect(Object.assign({}, ...Object.values(first))).toEqual(
+          meansOf(FIRST.map((name) => [name, sizes[name] * 10_000])),
+        );
+        each("speed", "20");
+        const second = await sb.run(["test"], { ANA_CHECK_HOST: "all" });
+        expect(second.status, second.stderr).toBe(0);
+        const means = learned(sb);
+        each("notimes", "");
+        const unwritten = await sb.run(["test"], { ANA_CHECK_HOST: "all" });
+        expect(unwritten.status, unwritten.stderr).toBe(0);
+        expect(learned(sb)).toEqual(means);
       })(),
     ]);
   });

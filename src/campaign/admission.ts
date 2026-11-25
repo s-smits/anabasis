@@ -141,10 +141,11 @@ export function comparisonFloor(level: number): number {
   return sweepOf(level) + MARGIN;
 }
 
-function sizeOf(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "solves">) {
+function sizeOf(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "solves" | "judged">) {
   const scored = Math.min(wanted.target, supply.held);
   const floor = comparisonFloor(wanted.level);
-  return { scored, floor, test: 2 * scored * wanted.solves };
+  const judging = wanted.judged === true ? JUDGED_TASK_DOLLARS * scored * Math.max(1, wanted.solves / 2) : 0;
+  return { scored, floor, test: 2 * scored * wanted.solves, judging };
 }
 
 function stopVerdict({ stop }: Supply, pastStop: string | undefined) {
@@ -162,10 +163,9 @@ function stopVerdict({ stop }: Supply, pastStop: string | undefined) {
 }
 
 export function refusals(supply: Supply, wanted: SizedWant) {
-  const { scored, floor, test } = sizeOf(supply, wanted);
+  const { scored, floor, test, judging } = sizeOf(supply, wanted);
   const { cap } = wanted;
   const [size = ""] = sizeLines(scored, wanted.level);
-  const judging = wanted.judged === true ? JUDGED_TASK_DOLLARS * scored * Math.max(1, wanted.solves / 2) : 0;
   const price = supply.billed === null ? null : test * supply.billed + judging;
   const askForMore = `An Examiner session writes more held-out tasks (examine, or ${EXAMINE} by hand)`;
   const stop = stopVerdict(supply, wanted.pastStop);
@@ -203,9 +203,8 @@ function faultNote(supply: Supply): readonly [boolean, string] {
 }
 
 function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
-  const { scored, floor, test } = sizeOf(supply, wanted);
+  const { scored, floor, test, judging } = sizeOf(supply, wanted);
   const { cap, pastStop } = wanted;
-  const judging = wanted.judged === true ? JUDGED_TASK_DOLLARS * scored * Math.max(1, wanted.solves / 2) : 0;
   const afforded = cap === null ? test : Math.max(0, Math.floor((cap.dollars - judging) / cap.reserve));
   return {
     refusals: [

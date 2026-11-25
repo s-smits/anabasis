@@ -1,6 +1,7 @@
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import { type SeatTool, sit } from "../agent/session.ts";
+import { waitOut } from "../solver/run.ts";
 import { type AnswerFile, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
@@ -431,30 +432,34 @@ export async function runRefereeSession(given: {
   readonly next: string;
 }) {
   const { id, reader, system, opening, tools, log, over, most, defaultSeconds, next } = given;
-  const deadline = AbortSignal.timeout((reader.wallSeconds ?? defaultSeconds) * 1000);
-  const turns: AssistantMessage[] = [];
-  const { spent } = await sit({
-    models: reader.models,
-    id,
-    model: reader.model,
-    effort: reader.effort,
-    system,
-    opening,
-    tools,
-    trace: { log, of: "referee" },
-    over,
-    turns,
-    most,
-    next: async () => next,
-    stops: [deadline, reader.kill],
-  });
-  return {
-    reader: id,
-    model: priceKey(reader.model),
-    walled: deadline.aborted,
-    error: turns.at(-1)?.errorMessage ?? null,
-    ...spent,
-  };
+  for (;;) {
+    const deadline = AbortSignal.timeout((reader.wallSeconds ?? defaultSeconds) * 1000);
+    const turns: AssistantMessage[] = [];
+    const { spent } = await sit({
+      models: reader.models,
+      id,
+      model: reader.model,
+      effort: reader.effort,
+      system,
+      opening,
+      tools,
+      trace: { log, of: "referee" },
+      over,
+      turns,
+      most,
+      next: async () => next,
+      stops: [deadline, reader.kill],
+    });
+    const error = deadline.aborted ? null : (turns.at(-1)?.errorMessage ?? null);
+    const refused = error !== null && spent.billed === 0;
+    if (
+      !refused ||
+      !(await waitOut(log, error, undefined, new Date(), reader.kill)) ||
+      reader.kill?.aborted === true
+    ) {
+      return { reader: id, model: priceKey(reader.model), walled: deadline.aborted, error, ...spent };
+    }
+  }
 }
 
 export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
@@ -531,7 +536,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
       : null;
   const finding = host ??
     found.at(-1) ?? {
-      ruling: reader.kill?.aborted === true || (isString(meter?.error) && !meter.walled) ? null : "unclear",
+      ruling: reader.kill?.aborted === true || isString(meter?.error) ? null : "unclear",
       check: null,
       rule: null,
       field: null,

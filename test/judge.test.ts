@@ -12,7 +12,7 @@ import { append, read } from "../src/kernel/log.ts";
 import { unfinished } from "../src/kernel/trace.ts";
 import type { Task } from "../src/kernel/verify.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { judgePair } from "../src/referee/judge.ts";
@@ -46,7 +46,7 @@ const scratch = mkdtempSync(join(tmpdir(), "ana-judge-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 let logs = 0;
 
-type Said = (context: string) => JsonObject;
+type Said = (context: string) => JsonObject | string;
 function seated(said: Said) {
   const sent: string[] = [];
   const faux = fauxProvider({
@@ -61,7 +61,10 @@ function seated(said: Said) {
   const reply = (context: TranscriptContext) => {
     const shown = JSON.stringify(context);
     sent.push(shown);
-    return fauxAssistantMessage(fauxToolCall("record_vote", said(shown)), { stopReason: "toolUse" });
+    const vote = said(shown);
+    return isString(vote)
+      ? fauxAssistantMessage(vote)
+      : fauxAssistantMessage(fauxToolCall("record_vote", vote), { stopReason: "toolUse" });
   };
   faux.setResponses(Array.from({ length: 16 }, () => reply));
   const models = createModels();
@@ -130,6 +133,37 @@ describe("the pairwise judge", () => {
     const pair = read(at.log).find(({ kind }) => kind === "referee.pair")?.data;
     expect(pair).toMatchObject({ judge: null, holistic: null });
     expect(pair?.billed).toBeGreaterThan(0);
+  });
+
+  it("waits out a judge's usage limit and asks the vote again", async () => {
+    const reset = Math.floor(Date.now() / 1000) - 59;
+    let limited = 0;
+    const at = seated((shown) => {
+      if (shown.includes("Overall, which answer") && limited++ < 2) {
+        throw new Error(`limit reached|${String(reset)}`);
+      }
+      return onSubstance(shown);
+    });
+    const given = { log: at.log, comparison: "g-1", task: TASK, contract: CONTRACT };
+    await judgePair(at.reader, { ...given, first: "s-strong", second: "s-weak" });
+    const events = read(at.log);
+    expect(events.filter(({ kind }) => kind === "campaign.waited")).toHaveLength(2);
+    expect(events.find(({ kind }) => kind === "referee.pair")?.data).toMatchObject({ judge: 1, holistic: 1 });
+  });
+
+  it("asks no vote again once a session has billed before its limit", async () => {
+    const reset = Math.floor(Date.now() / 1000) - 59;
+    const weighing = "Let me weigh both answers first.";
+    const at = seated((shown) => {
+      if (!shown.includes("Overall, which answer")) return onSubstance(shown);
+      if (!shown.includes(weighing)) return weighing;
+      throw new Error(`limit reached|${String(reset)}`);
+    });
+    const given = { log: at.log, comparison: "g-1", task: TASK, contract: CONTRACT };
+    await expect(judgePair(at.reader, { ...given, first: "s-strong", second: "s-weak" })).rejects.toThrow(
+      "limit reached",
+    );
+    expect(read(at.log).filter(({ kind }) => kind === "campaign.waited")).toEqual([]);
   });
 
   it("shows hidden values to criterion votes alone, fences a pair once, and asks its criterion last", async () => {

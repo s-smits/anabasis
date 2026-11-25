@@ -1988,6 +1988,30 @@ describe("a judged comparison", () => {
     expect(report.reading).toBe("step");
   });
 
+  it("stops asking after three silent pairs, and after the first refusal no retry clears", async () => {
+    const asked = [];
+    for (const [at, said] of ["the judge's session ended", "the model is not supported"].entries()) {
+      const s = await setup([], () => PASS);
+      const judge = judging(s.log, s.paired(`g-silent-${String(at)}`).fresh.digest);
+      let calls = 0;
+      const silent: Judging = {
+        ...judge,
+        pair: async () => {
+          calls += 1;
+          throw new Error(said);
+        },
+      };
+      await expect(checkpoint(s.paired(`g-silent-${String(at)}`, { judge: silent }))).rejects.toThrow(
+        "the judge gave no vote on",
+      );
+      asked.push(calls);
+    }
+    const [quiet = 0, refused = 0] = asked;
+    expect(quiet).toBeGreaterThanOrEqual(3);
+    expect(quiet).toBeLessThan(HELD.length * 3);
+    expect(refused).toBeLessThan(quiet);
+  });
+
   it("reads a comparison whose last vote spends the budget down, and stops on a kill while judging", async () => {
     const s = await setup([], () => PASS);
     append(s.log, "campaign.opened", { budget: { dollars: 1000, reserve: 2 } });

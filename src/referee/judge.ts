@@ -207,10 +207,9 @@ export async function judgePair(reader: Reader, given: PairCase): Promise<void> 
     append(given.log, PAIRED, { ...record, judge: null, holistic: null });
     const failed =
       settled.flatMap((one) => (one.status === "rejected" ? [errorMessage(one.reason)] : []))[0] ??
-      passes.map(({ meter }) => meter.error).find((err) => err !== null);
-    throw new Error(
-      `the judge recorded no vote on ${given.first} against ${given.second}${failed === undefined ? "" : ` (${failed})`}`,
-    );
+      passes.map(({ meter }) => meter.error).find((err) => err !== null) ??
+      `a session cast no vote within ${String(TURNS)} turns and ${String(reader.wallSeconds ?? SECONDS)} s`;
+    throw new Error(`the judge recorded no vote on ${given.first} against ${given.second} (${failed})`);
   }
   const byCriterion = Map.groupBy(votedPasses, ({ one }) => one);
   const mean = (one: string) => {

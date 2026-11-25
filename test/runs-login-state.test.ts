@@ -1,7 +1,7 @@
 // A login reads open or closed from one reading. A picker rechecks once the reset or cache expiry
-// arrives, and the next full `usage` overrules what was kept.
+// arrives, and any later reading of the login overrules what was kept.
 import { describe, expect, it } from "bun:test";
-import { closedOf, notClosed, stateWords } from "../tools/runs/login-state.ts";
+import { closedOf, notClosed, noted, stateWords } from "../tools/runs/login-state.ts";
 import type { Reading } from "../tools/runs/logins.ts";
 
 const NOW = Date.parse("2026-11-05T21:00:00Z");
@@ -47,14 +47,24 @@ describe("a login's state, from one reading", () => {
   });
 });
 
-describe("what a picker takes from the last reading kept", () => {
+describe("what a picker takes from the closures kept", () => {
   const earlyReset = NOW + HOUR / 6;
-  const closed = { at: NOW - HOUR / 2, weeks: {}, closed: { "3": WEEK_RESET, "2": earlyReset } };
+  const at = NOW - HOUR / 2;
+  const closures = { "3": { at, until: WEEK_RESET }, "2": { at, until: earlyReset } };
 
   it("rechecks at the reset or after 45 minutes, leaving time for a keeper retry within the hour", () => {
-    expect(notClosed(["2", "3"], [closed], earlyReset)).toEqual(["2"]);
-    const expiry = closed.at + (3 * HOUR) / 4;
-    expect(notClosed(["3"], [closed], expiry - 1)).toEqual([]);
-    expect(notClosed(["2", "3"], [closed], expiry)).toEqual(["2", "3"]);
+    expect(notClosed(["2", "3"], closures, earlyReset)).toEqual(["2"]);
+    const expiry = at + (3 * HOUR) / 4;
+    expect(notClosed(["3"], closures, expiry - 1)).toEqual([]);
+    expect(notClosed(["2", "3"], closures, expiry)).toEqual(["2", "3"]);
+  });
+
+  it("keeps a closure until a reading finds the login open, and an unread login as it was", () => {
+    const failed: Reading = { login: "3", plain: false, error: "429" };
+    expect(noted({}, [reading("2", { pct: 100 }), reading("3")], NOW)).toEqual({
+      "2": { at: NOW, until: FIVE_RESET },
+    });
+    expect(noted(closures, [reading("2"), failed], NOW)).toEqual({ "3": closures["3"] });
+    expect(noted(closures, [], WEEK_RESET)).toEqual({});
   });
 });

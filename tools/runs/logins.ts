@@ -24,11 +24,12 @@ import { CODEX, countedAgainst, type Live, liveHere, liveOf, seatFlagsOf } from 
 import { remember } from "./pulse-readers.ts";
 import { archived, isCampaign } from "./registry.ts";
 import {
-  closedResets,
+  closures,
   historyFile,
   cachedUsageHistory,
   listedBy,
   notClosed,
+  noteReadings,
   resetOf,
   stateWords,
   windowOpen,
@@ -75,6 +76,7 @@ const PLAIN = "";
 const BASE = "https://api.anthropic.com";
 const BETA = "oauth-2025-04-20";
 const TIMEOUT_MS = 30_000;
+const VERSION_MS = 5000;
 const HISTORY_RETENTION_MS = 28 * 24 * HOUR_MS;
 const RATE_MS = 8 * 24 * HOUR_MS;
 const ACTIVE_SHARE = 16 / 24;
@@ -312,7 +314,7 @@ function planned(reading: Reading, env: Env): Reading {
 }
 
 export async function readLogins(wanted: readonly string[], env: Env): Promise<Reading[]> {
-  const version = zeroExitText(runSync(["claude", "--version"]))?.split(/\s+/)[0];
+  const version = zeroExitText(runSync(["claude", "--version"], { timeout: VERSION_MS }))?.split(/\s+/)[0];
   const agent = `claude-code/${textOr(version, "2.1.0")}`;
   return Promise.all(
     wanted.map(async (login): Promise<Reading> => {
@@ -334,8 +336,11 @@ export async function readLogins(wanted: readonly string[], env: Env): Promise<R
   );
 }
 
-export const readNotClosed: typeof readLogins = (wanted, env) =>
-  readLogins(notClosed(wanted, cachedUsageHistory(historyFile()), Date.now()), env);
+export async function readNotClosed(wanted: readonly string[], env: Env): Promise<Reading[]> {
+  const readings = await readLogins(notClosed(wanted, closures(), Date.now()), env);
+  noteReadings(readings);
+  return readings;
+}
 
 export function room(
   readings: readonly Reading[],
@@ -536,13 +541,12 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
     );
   }
   const whole = !values.json && positionals.length === 0;
-  const forwarded = isLocalOnly();
-  const [readings, counted, refreshed] = await Promise.all([
+  const [readings, counted] = await Promise.all([
     readUsage(positionals.length > 0 ? positionals : held, runtimeProcess.env),
     values.json ? null : liveEverywhere(),
-    whole ? asked(["usage"]) : null,
   ]);
   const now = Date.now();
+  noteReadings(readings, now);
   const onEach = (login: string) => counted?.live.filter((run) => (run.login ?? PLAIN) === login).length ?? 0;
   const allowed = allowedLogins(runtimeProcess.env);
   const weeks = readings.flatMap((reading): Week[] => {
@@ -560,8 +564,7 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
   const snapshot: Snapshot = {
     at: now,
     weeks: read,
-    closed: closedResets(readings),
-    ...keysIf(!forwarded && counted?.unasked.length === 0, () => ({
+    ...keysIf(!isLocalOnly() && counted?.unasked.length === 0, () => ({
       runs: Object.fromEntries(Object.keys(read).map((login) => [login, onEach(login)])),
     })),
   };
@@ -605,13 +608,6 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
     console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
   }
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
-  const stale = (refreshed ?? []).flatMap(({ host, lines }) => (lines === null ? [host.name] : []));
-  if (stale.length > 0) {
-    console.log(`login cache not refreshed on ${stale.join(", ")}: no answer to \`usage\``);
-  }
-  if (forwarded && whole && !complete) {
-    throw new Error("no weekly usage read, so the login cache was not refreshed");
-  }
   if (!complete) return;
   console.log(poolLine(weeks, held.length - weeks.length, now));
   console.log(

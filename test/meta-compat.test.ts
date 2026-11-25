@@ -6,6 +6,7 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { hashJsonValue, sameJsonValue, stableJson } from "../src/meta/stable-json.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { hasText, textOr } from "../src/meta/text.ts";
+import { runCaptured } from "../src/meta/subprocess.ts";
 import { isObject } from "../src/meta/json-shape.ts";
 
 describe("path containment", () => {
@@ -118,5 +119,14 @@ describe("warn", () => {
     expect(written(true)).toBe("\u001B[33mone host is silent\u001B[39m\n");
     expect(written(false)).toBe("one host is silent\n");
     expect(written(true, { NO_COLOR: "1" })).toBe("one host is silent\n");
+  });
+});
+
+describe("runCaptured", () => {
+  it("returns soon after its child exits while a grandchild still holds both pipes", async () => {
+    const started = performance.now();
+    const result = await runCaptured(["/bin/sh", "-c", "echo out; echo err >&2; sleep 30 & exit 3"]);
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(result).toEqual({ exitCode: 3, signal: null, stdout: "out\n", stderr: "err\n" });
   });
 });

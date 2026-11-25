@@ -12,7 +12,6 @@ export interface Snapshot {
   readonly at: number;
   readonly weeks: Record<string, { pct: number; reset: number }>;
   readonly runs?: Record<string, number>;
-  readonly closed?: Record<string, number>;
 }
 
 interface Row {
@@ -154,29 +153,38 @@ function cutsOf(column: readonly number[]): number[] {
   return mids.filter((_, at) => Math.floor(at % step) === 0);
 }
 
+function sumOf(of: readonly number[], values: Float64Array): number {
+  let sum = 0;
+  for (const at of of) sum += values[at] ?? 0;
+  return sum;
+}
+
 function bestSplit(
   of: readonly number[],
-  bins: readonly (readonly number[])[],
-  residuals: readonly number[],
+  bins: readonly Int32Array[],
+  residuals: Float64Array,
   cuts: readonly (readonly number[])[],
 ) {
   let best: { feature: number; bin: number; gain: number } | null = null;
-  const total = { n: of.length, sum: of.reduce((all, at) => all + (residuals[at] ?? 0), 0) };
+  const totalSum = sumOf(of, residuals);
   for (const [feature, row] of cuts.entries()) {
-    const count = Array.from({ length: row.length + 1 }, () => 0);
-    const sum = Array.from({ length: row.length + 1 }, () => 0);
+    const column = bins[feature] ?? new Int32Array(0);
+    const count = new Int32Array(row.length + 1);
+    const sum = new Float64Array(row.length + 1);
     for (const at of of) {
-      const bin = bins[at]?.[feature] ?? 0;
+      const bin = column[at] ?? 0;
       count[bin] = (count[bin] ?? 0) + 1;
       sum[bin] = (sum[bin] ?? 0) + (residuals[at] ?? 0);
     }
-    const low = { n: 0, sum: 0 };
+    let lowN = 0;
+    let lowSum = 0;
     for (let bin = 0; bin < row.length; bin += 1) {
-      low.n += count[bin] ?? 0;
-      low.sum += sum[bin] ?? 0;
-      const high = { n: total.n - low.n, sum: total.sum - low.sum };
-      if (low.n < LEAF || high.n < LEAF) continue;
-      const gain = (low.sum * low.sum) / low.n + (high.sum * high.sum) / high.n;
+      lowN += count[bin] ?? 0;
+      lowSum += sum[bin] ?? 0;
+      const highN = of.length - lowN;
+      if (lowN < LEAF || highN < LEAF) continue;
+      const highSum = totalSum - lowSum;
+      const gain = (lowSum * lowSum) / lowN + (highSum * highSum) / highN;
       if (best === null || gain > best.gain) best = { feature, bin, gain };
     }
   }
@@ -185,15 +193,16 @@ function bestSplit(
 
 function grow(
   of: readonly number[],
-  bins: readonly (readonly number[])[],
-  residuals: readonly number[],
+  bins: readonly Int32Array[],
+  residuals: Float64Array,
   cuts: readonly (readonly number[])[],
   depth: number,
 ): Tree {
   const split = depth === 0 || of.length < 2 * LEAF ? null : bestSplit(of, bins, residuals, cuts);
-  if (split === null) return { value: mean(of.map((at) => residuals[at] ?? 0)) };
+  if (split === null) return { value: sumOf(of, residuals) / of.length };
   const { feature, bin } = split;
-  const below = (at: number) => (bins[at]?.[feature] ?? 0) <= bin;
+  const column = bins[feature] ?? new Int32Array(0);
+  const below = (at: number) => (column[at] ?? 0) <= bin;
   return {
     feature,
     cut: cuts[feature]?.[bin] ?? 0,
@@ -214,19 +223,20 @@ const valueOf = (tree: Tree, x: readonly number[]): number =>
 function fit(rows: readonly Row[]): Model {
   const xs = rows.map(({ x }) => x);
   const cuts = (xs[0] ?? []).map((_, feature) => cutsOf(xs.map((x) => x[feature] ?? 0)));
-  const bins = xs.map((x) =>
-    cuts.map((row, feature) => row.filter((cut) => cut <= (x[feature] ?? 0)).length),
+  const bins = cuts.map((row, feature) =>
+    Int32Array.from(xs, (x) => row.filter((cut) => cut <= (x[feature] ?? 0)).length),
   );
   const all = rows.map((_, at) => at);
   const rates = rows.map(({ y, hours }) => y / hours);
   const base = mean(rates);
   const trees: Tree[] = [];
-  let guesses = rows.map(() => base);
+  const guesses = new Float64Array(rows.length).fill(base);
+  const residuals = new Float64Array(rows.length);
   for (let round = 0; round < ROUNDS; round += 1) {
-    const residuals = rates.map((rate, at) => rate - (guesses[at] ?? base));
+    for (const [at, rate] of rates.entries()) residuals[at] = rate - (guesses[at] ?? base);
     const tree = grow(all, bins, residuals, cuts, DEPTH);
     trees.push(tree);
-    guesses = guesses.map((guess, at) => guess + SHRINK * valueOf(tree, xs[at] ?? []));
+    for (const [at, x] of xs.entries()) guesses[at] = (guesses[at] ?? base) + SHRINK * valueOf(tree, x);
   }
   return { base, trees };
 }

@@ -26,7 +26,7 @@ import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.
 import { openHarness } from "#src/harness/open.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { writeBare, writeStarter } from "#src/harness/starter.ts";
-import { toolTreeImports, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
+import { toolTreeEnv, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { resolveCheckpoint, PROMOTED } from "#tools/campaign/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
@@ -149,13 +149,18 @@ export async function ownPython(tree: string, env: Readonly<Record<string, strin
     .map((dir) => join(dir, "python3"))
     .find((path) => lstatSync(path, { throwIfNoEntry: false }) !== undefined);
   if (python === undefined) return null;
+  const envScript = toolTreeEnv(toolchain);
   const run = (words: readonly string[]) => {
-    const ran = runSync([python, "-c", ...words], {
+    const argv =
+      envScript === undefined
+        ? [python, "-c", ...words]
+        : ["/bin/bash", "-c", 'exec "$1" -c "${@:2}"', "_", python, ...words];
+    const ran = runSync(argv, {
       cwd: tmpdir(),
       env: {
         ...env,
         PATH: [...dirs, env.PATH ?? ""].join(":"),
-        ...keyIfDefined("PYTHONPATH", toolTreeImports(toolchain)),
+        ...keyIfDefined("BASH_ENV", envScript),
       },
       timeout: 300_000,
     });

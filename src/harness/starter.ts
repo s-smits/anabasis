@@ -126,14 +126,18 @@ ${capturedJsonStringify(EXAMPLE.spec, null, 2)}
 ## .toolchain/
 
 Executables in .toolchain/bin (and any nested bin, shims, or sbin directory) run by name in the
-solver's commands, with .toolchain/bin first on PATH, and Python modules in .toolchain/lib import by
-name from any python3 there. The tree is read-only to the solver. Installing any interpreter, engine,
-or package your programs or the solver's commands need inside .toolchain/ avoids per-solve installs
-and keeps external exports self-contained without naming host paths.
+solver's commands, with .toolchain/bin first on PATH. If .toolchain/env.sh exists, the host sets
+BASH_ENV to it so bash sources it before every seat command (including on native pi exports); export
+any language import or library path there relative to \`\${BASH_SOURCE%/*}\` (such as PYTHONPATH,
+R_LIBS_USER, NODE_PATH, LD_LIBRARY_PATH, or extra PATH entries). The tree is read-only to the
+solver. Installing interpreters, engines, libraries, or packages inside .toolchain/ avoids per-solve
+installs and keeps external exports self-contained without naming host paths.
 
-General, high-leverage domain operations (parsing inputs, modelling or searching candidates, and
-independent checking) transfer cleanly across unseen tasks when they operate on plain data files.
-Practice traces show which programs are used and which sit idle in PATH and the guide.
+General, high-leverage domain libraries and tools (parsing ordinary data files, modelling or
+searching candidates, and independent numerical or structural verification) transfer cleanly across
+unseen tasks and external workspaces. Keep campaign-specific adapters (reading public/task.json or
+checking answer.json) separate from general domain tools. Practice traces show which programs and
+libraries are used and which sit idle.
 
 Predictable CLI conventions:
 
@@ -170,12 +174,12 @@ You may revise, replace, or remove it, including the file itself.
   workspaces where public/task.json, public/files/, public/resources/, answer.json, submit, exam
   rule IDs, and campaign scoring do not exist. Export keeps the guide up to the heading
   "${HOST_ONLY}" and strips everything below it (a guide without that heading is exported whole
-  under a host disclaimer). Sections above "${HOST_ONLY}" — Programs and tools, Working with them,
-  and Domain notes — therefore apply to general workspaces and ordinary files: how to use your
-  programs, reason from first principles, and verify work independently.
-- Under "${HOST_ONLY}": campaign-specific workflow belongs strictly under this
-  heading — reading public/task.json, public/files/, and public/resources/, checking rules against
-  answer.json, campaign scoring notes, and calling submit.
+  under a host disclaimer). Keep sections above "${HOST_ONLY}" short and workspace-general: how to
+  call your portable tools and libraries, and domain verification principles that apply to ordinary
+  files of any task structure.
+- Under "${HOST_ONLY}": put every campaign-specific detail strictly under this heading — reading
+  public/task.json, public/files/, and public/resources/, exam-specific field names, schemas,
+  taxonomy rules, campaign-only check/deliverable wrappers, scoring weights, and calling submit.
 - Conciseness and pruning: every paragraph sits in the system prompt of every solve. Long
   checklists, pasted code, or narrow formulas accumulated from individual practice families crowd
   out reading new tasks and break when an unseen task brings different structure; practice traces

@@ -1,11 +1,18 @@
-import { existsSync, readdirSync, realpathSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { TOOL_TREE_LIB } from "../meta/bundle-layout.ts";
+import { TOOL_TREE_ENV } from "../meta/bundle-layout.ts";
 import { LINUX_BWRAP_ID, bwrapCommandArgs, nodeRuntimeReadRoots } from "./linux-bwrap.ts";
 import type { EnvValues } from "../agent/backends/scrub-env.ts";
 import { covers, moveBlockingRules, sbRule } from "./seatbelt-path-guard.ts";
@@ -75,9 +82,11 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
   return found;
 }
 
-export function toolTreeImports(toolTree: string | null): string | undefined {
-  const lib = toolTree === null ? undefined : join(toolTree, TOOL_TREE_LIB);
-  return lib !== undefined && existsSync(lib) ? lib : undefined;
+export function toolTreeEnv(toolTree: string | null): string | undefined {
+  const envFile = toolTree === null ? undefined : join(toolTree, TOOL_TREE_ENV);
+  if (envFile === undefined) return undefined;
+  const stat = lstatSync(envFile, { throwIfNoEntry: false });
+  return stat?.isFile() === true ? envFile : undefined;
 }
 
 function commandSearchPath(

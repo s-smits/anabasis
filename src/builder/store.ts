@@ -1,5 +1,5 @@
 import type { LogEvent } from "../kernel/log.ts";
-import { CORRECTNESS_MODEL_DIR, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
+import { CORRECTNESS_MODEL_DIR, TOOL_TREE_DIR, TOOL_TREE_ENV } from "../meta/bundle-layout.ts";
 import {
   cpSync,
   existsSync,
@@ -18,6 +18,7 @@ import {
 import { containsPath } from "../meta/path-containment.ts";
 import { basename, dirname, join, relative, resolve } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
+import { decodeOutput, runSync } from "../meta/subprocess.ts";
 import { type Harness, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
 import { selectedCodingTools } from "../tools/coding.ts";
 import { short } from "../campaign/move.ts";
@@ -96,15 +97,32 @@ export function parentToolTree(parent: string): string | null {
   return real;
 }
 
+function checkToolTreeEnv(dir: string, under: string): void {
+  const envFile = join(dir, TOOL_TREE_ENV);
+  const envStat = lstatSync(envFile, { throwIfNoEntry: false });
+  if (envStat === undefined) return;
+  if (envStat.isSymbolicLink() || !envStat.isFile()) {
+    throw new Error(`${join(under, TOOL_TREE_ENV)} must be a regular file`);
+  }
+  const parsed = runSync(["/bin/bash", "-n", envFile], { timeout: 5000 });
+  if (parsed.exitCode !== 0) {
+    const detail = decodeOutput(parsed.stderr).trim().split("\n").at(0) ?? "syntax error";
+    throw new Error(`${join(under, TOOL_TREE_ENV)} has a bash syntax error: ${detail}`);
+  }
+}
+
 export function refuseNamingHome(dir: string, home: string, under: string): void {
   const forms = [...new Set([home, realpathSync(home)])];
+  const checkEnv = under === HOME_TOOL_TREE;
   const named = pathsUnder(dir).filter((path) => {
     const full = join(dir, path);
     const stat = lstatSync(full);
     if (stat.isSymbolicLink()) return forms.some((form) => readlinkSync(full).includes(form));
-    if (!stat.isFile() || (stat.mode & 0o111) === 0 || readHeadSync(full, 2).toString() !== "#!") {
-      return false;
-    }
+    if (!stat.isFile()) return false;
+    const checked =
+      (checkEnv && path === TOOL_TREE_ENV) ||
+      ((stat.mode & 0o111) !== 0 && readHeadSync(full, 2).toString() === "#!");
+    if (!checked) return false;
     const bytes = readFileSync(full);
     return forms.some((form) => bytes.includes(form));
   });
@@ -113,6 +131,7 @@ export function refuseNamingHome(dir: string, home: string, under: string): void
       `${named.map((path) => join(under, path)).join(", ")} name your home, and frozen tools run from elsewhere: a launcher finds its files from its own path, as "$(dirname "$0")" does, and a link names its target relatively`,
     );
   }
+  if (checkEnv) checkToolTreeEnv(dir, under);
 }
 
 function dropUnlinked(states: string, dir: string): void {

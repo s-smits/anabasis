@@ -23,15 +23,17 @@ import { objectiveOf } from "../kernel/verify.ts";
 import { GAP_FLOOR, gainOver, gapBasis, type ObjectiveRule } from "../kernel/compare.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
+import { TOOL_TREE_ENV } from "../meta/bundle-layout.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isFunction, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
+import { toolTreeEnv } from "../sandbox/isolation.ts";
 import { ending as endSession, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
-import type { CommandSandbox, NetworkReach } from "../tools/command.ts";
+import { type CommandSandbox, type NetworkReach, runSandboxed } from "../tools/command.ts";
 import { formatKeys, namedTasks, readHarnessFiles } from "../harness/files.ts";
 import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
@@ -571,11 +573,25 @@ function listText(parts: readonly string[]): string {
   return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1) ?? ""}`;
 }
 
-function countPhrases(rows: readonly (readonly [number, string, string?])[]): string[] {
-  return rows.flatMap(([count, unit, suffix = ""]) => (count > 0 ? [`${plural(count, unit)}${suffix}`] : []));
+function namedDetail(names: readonly string[]): string {
+  if (names.length === 0) return "";
+  const shown = names.slice(0, 6).join(", ");
+  return names.length > 6 ? ` (${shown}, +${String(names.length - 6)} more)` : ` (${shown})`;
 }
 
-function opens(harness: Harness, dir: string, contract: Contract, tasks: readonly PracticeTask[]): string {
+function countPhrases(rows: readonly (readonly [number, string, string?, (readonly string[])?])[]): string[] {
+  return rows.flatMap(([count, unit, suffix = "", names = []]) =>
+    count > 0 ? [`${plural(count, unit)}${suffix}${namedDetail(names)}`] : [],
+  );
+}
+
+function opens(
+  harness: Harness,
+  dir: string,
+  contract: Contract,
+  tasks: readonly PracticeTask[],
+  envIssue: string | null = null,
+): string {
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);
   const ruleIds = [...new Set(contract.rules.map(({ id }) => id).filter((id) => id !== ""))];
@@ -591,12 +607,12 @@ function opens(harness: Harness, dir: string, contract: Contract, tasks: readonl
     [info.hostShebangs, "host-specific shebang"],
     [info.plainBins, "non-executable file", " in bin/"],
     [info.brokenLinks, "broken link"],
-    [info.campaignRefs, "reference", " to campaign files"],
+    [info.campaignRefs, "reference", " to campaign files", info.campaignRefFiles],
   ]);
   const guideIssues = countPhrases([
-    [info.keptHostRefs, "host reference"],
-    [info.keptRuleIds, "rule id"],
-    [info.keptFormatKeys, "answer field"],
+    [info.keptHostRefs, "host reference", "", info.keptHostRefNames],
+    [info.keptRuleIds, "rule id", "", info.keptRuleIdNames],
+    [info.keptFormatKeys, "answer field", "", info.keptFormatKeyNames],
   ]);
   const exportNote = info.hasSplit
     ? `Before "${HOST_ONLY}", the guide names ${listText(guideIssues)}; text before that heading stays in exported harnesses.`
@@ -613,6 +629,7 @@ function opens(harness: Harness, dir: string, contract: Contract, tasks: readonl
     ...(toolFiles > 0
       ? [`Your files under .toolchain/: ${plural(toolFiles, "file")}, ${plural(toolLines, "line")}.`]
       : []),
+    ...(envIssue === null ? [] : [envIssue]),
     ...(programs.length > 0 && !presets.includes("bash")
       ? ["The solver has no shell, so it can run none of the programs itself."]
       : []),
@@ -622,16 +639,42 @@ function opens(harness: Harness, dir: string, contract: Contract, tasks: readonl
   ].join("\n");
 }
 
-function checkTool(bench: Bench): AgentTool {
+const ENV_CHECK_MARKER = "ANA_ENV_CHECK_STATUS=";
+
+async function checkEnvScript(wall: CommandSandbox, toolTree: string | null): Promise<string | null> {
+  if (toolTreeEnv(toolTree) === undefined) return null;
+  const chunks: Buffer[] = [];
+  const label = `harness/.toolchain/${TOOL_TREE_ENV}`;
+  try {
+    await runSandboxed(wall, `source "${label}"; printf '\\n${ENV_CHECK_MARKER}%d\\n' "$?"`, {
+      onData: (data) => chunks.push(data),
+      timeout: 15,
+    });
+  } catch (error) {
+    return `${label} failed while sourced: ${errorMessage(error)}.`;
+  }
+  const output = Buffer.concat(chunks).toString("utf8");
+  const match = new RegExp(`^${ENV_CHECK_MARKER}(\\d+)$`, "mu").exec(output);
+  if (match === null) {
+    return `${label} exited early when sourced, which silences subsequent shell commands.`;
+  }
+  const code = Number(match[1]);
+  if (code === 0) return null;
+  const before = output.slice(0, match.index).trim().split("\n").at(-1) ?? "";
+  return `${label} returned status ${String(code)} when sourced${before === "" ? "" : `: ${before}`}.`;
+}
+
+function checkTool(bench: Bench, wall: CommandSandbox): AgentTool {
   return tool({
     name: "check_harness",
     description:
-      "Open harness/ as a solve would. Reports pi's tools, its programs, the guide's length and heading split, any host-specific paths or campaign references that break outside this host, and any practice task named or quoted in your files, or the error a solve would stop on. Spends no practice solve.",
+      "Open harness/ as a solve would. Reports pi's tools, its programs, the guide's length and heading split, any host-specific paths or campaign references that break outside this host, env.sh sourcing health, and any practice task named or quoted in your files, or the error a solve would stop on. Spends no practice solve.",
     parameters: Type.Object({}),
     execute: async () =>
-      await frozen(bench, ({ dir, harness }) =>
-        text(opens(harness, dir, bench.request.contract, bench.tasks)),
-      ),
+      await frozen(bench, async ({ dir, harness }) => {
+        const envIssue = await checkEnvScript(wall, harness.toolTree);
+        return text(opens(harness, dir, bench.request.contract, bench.tasks, envIssue));
+      }),
   });
 }
 
@@ -640,6 +683,6 @@ export function walledTools(bench: Bench, wall: CommandSandbox, network: Network
     ...codingTools(wall, CODING_TOOLS).map((each) =>
       each.name === "bash" ? { ...each, description: `${each.description}${shellWalls(network)}` } : each,
     ),
-    checkTool(bench),
+    checkTool(bench, wall),
   ];
 }

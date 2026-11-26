@@ -23,6 +23,7 @@ import { unanswered } from "#src/kernel/solve.ts";
 import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -37,7 +38,7 @@ import { listedPrograms, NUDGE, promptEnvelope } from "#src/solver/prompt.ts";
 import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
 import { type AgentSpec, type AgentTool, runAgent } from "#src/agent/session.ts";
 import { trajectoryOf } from "./atif.ts";
-import { shellQuote, toolTreeImports, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
+import { shellQuote, toolTreeEnv, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
 import { seatBackends } from "#tools/campaign/campaign.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 
@@ -170,19 +171,19 @@ export function keyless(names: readonly string[]): Record<string, undefined> {
 
 async function solve(ask: Asked) {
   const cwd = runtimeProcess.cwd();
-  const shellEnv = "solver" in ask.route ? keyless(Object.keys(runtimeProcess.env)) : {};
-  const env = new NodeExecutionEnv({ cwd, shellEnv });
+  const baseEnv = "solver" in ask.route ? keyless(Object.keys(runtimeProcess.env)) : {};
   const clock: SolveClock = { started: null, seconds: ask.wallSeconds };
   const harness = await openHarness(ask.harness).catch((error: unknown) => errorMessage(error));
   if (isString(harness)) return { ending: "broken-harness", reason: harness };
   // The harness's programs first on PATH, in the order a solve's shell has them.
   const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree);
-  const lib = toolTreeImports(harness.toolTree);
-  const exports = [
-    ...(path.length === 0 ? [] : [`PATH=${shellQuote(path.join(":"))}:"$PATH"`]),
-    ...(lib === undefined ? [] : [`PYTHONPATH=${shellQuote(lib)}\${PYTHONPATH:+:"$PYTHONPATH"}`]),
-  ];
-  const prefix = exports.length === 0 ? undefined : `export ${exports.join(" ")}`;
+  const envScript = toolTreeEnv(harness.toolTree);
+  const env = new NodeExecutionEnv({
+    cwd,
+    shellPath: "/bin/bash",
+    shellEnv: { ...baseEnv, ...keyIfDefined("BASH_ENV", envScript) },
+  });
+  const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
   const said = { submitted: false };
   // In the order a campaign's solver is given them (`solverTools`, `src/solver/run.ts`).
   const defined = [...directCodingTools(selectedCodingTools(harness.presets), prefix), submitTool(said)];

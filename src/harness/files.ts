@@ -209,17 +209,26 @@ export function readHarnessFiles(
   const { written, brokenLinks, treeFiles, size } = writtenFiles(stateDir);
   let [hostPaths, hostShebangs, plainBins, filesWithKeys, campaignRefs] = [0, 0, 0, 0, 0];
   const matchedKeys = new Set<string>();
+  const campaignRefFiles: string[] = [];
   for (const { path, text, executable } of written) {
     hostPaths += (text.match(HOST_PATH_RE) ?? []).length;
     hostShebangs += Number(HOST_SHEBANG_RE.test(text));
     plainBins += Number(path.startsWith("bin/") && !executable);
-    if (path !== "guide") campaignRefs += (text.match(CAMPAIGN_FILE_RE) ?? []).length;
+    if (path !== "guide") {
+      const refs = (text.match(CAMPAIGN_FILE_RE) ?? []).length;
+      campaignRefs += refs;
+      if (refs > 0) campaignRefFiles.push(path);
+    }
     const matched = answerKeys.filter((key) => text.includes(key));
     for (const key of matched) matchedKeys.add(key);
     filesWithKeys += Number(matched.length > 0);
   }
   const guideEntry = written.find(({ path }) => path === "guide");
   const kept = guideEntry === undefined ? "" : portableGuide(guideEntry.text);
+  const keptHostRefMatches = kept.match(HOST_REF_RE) ?? [];
+  const keptHostRefNames = [...new Set(keptHostRefMatches)].toSorted();
+  const keptFormatKeyNames = answerKeys.filter((key) => hasWholeToken(kept, key)).toSorted();
+  const keptRuleIdNames = ruleIds.filter((id) => hasWholeToken(kept, id)).toSorted();
   return {
     written,
     brokenLinks,
@@ -227,13 +236,17 @@ export function readHarnessFiles(
     size,
     hasSplit: guideEntry !== undefined && kept.length < guideEntry.text.length,
     keptLines: nonblank(kept),
-    keptHostRefs: (kept.match(HOST_REF_RE) ?? []).length,
-    keptFormatKeys: answerKeys.filter((key) => hasWholeToken(kept, key)).length,
-    keptRuleIds: ruleIds.filter((id) => hasWholeToken(kept, id)).length,
+    keptHostRefs: keptHostRefMatches.length,
+    keptHostRefNames,
+    keptFormatKeys: keptFormatKeyNames.length,
+    keptFormatKeyNames,
+    keptRuleIds: keptRuleIdNames.length,
+    keptRuleIdNames,
     hostPaths,
     hostShebangs,
     plainBins,
     campaignRefs,
+    campaignRefFiles: campaignRefFiles.toSorted(),
     matchedKeys,
     filesWithKeys,
   };

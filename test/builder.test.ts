@@ -14,7 +14,7 @@ import { Type } from "typebox";
 import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/state.ts";
 import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
-import { HOME_TOOL_TREE, snapshot } from "../src/builder/store.ts";
+import { HOME_TOOL_TREE, refuseNamingHome, snapshot } from "../src/builder/store.ts";
 import { type Bench, practiceLeft, recordsOf } from "../src/builder/tools.ts";
 import { formatKeys, namedTasks, readHarnessFiles } from "../src/harness/files.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
@@ -1910,11 +1910,15 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
             'rm "$HOME/harness/.toolchain/bin/named"',
             'echo "Record the answer." >> "$HOME/harness/agent/BUILT_AGENTS.md"',
             'mkdir "$HOME/harness/.toolchain/lib"',
+            String.raw`printf 'VALUE = 42\n' > "$HOME/harness/.toolchain/lib/helper.py"`,
+            'printf \'export PYTHONPATH="${BASH_SOURCE%%/*}/lib:${PYTHONPATH:-}"\\n\' > "$HOME/harness/.toolchain/env.sh"',
             String.raw`printf 'open("public/task.json")\n' > "$HOME/harness/.toolchain/lib/inspect.py"`,
           ].join(" && "),
         }),
         call("check_harness", {}),
-        call("bash", { command: "pwd -P; head -1 HARNESS.md" }),
+        call("bash", {
+          command: "python3 -c 'import helper; print(helper.VALUE)'; pwd -P; head -1 HARNESS.md",
+        }),
         call("edit", {
           path: GUIDE_PATH,
           edits: [{ oldText: "Multiply", newText: "Always multiply" }],
@@ -1949,9 +1953,10 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(calls[5]).toContain("installed-greeting");
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
     expect(calls[8]).toContain(
-      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 2 lines (47 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 4 files, 7 lines.\nFiles in harness/ carry 1 reference to campaign files.\nThe guide names 1 answer field, with no`,
+      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 2 lines (47 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 6 files, 9 lines.\nFiles in harness/ carry 1 reference to campaign files (lib/inspect.py).\nThe guide names 1 answer field (answer), with no`,
     );
     expect(calls[8]).not.toContain("Matches a practice task:");
+    expect(calls[9]).toContain(String.raw`42\n`);
     expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
     expect(calls[10]).toContain("Successfully replaced 1 block(s)");
     expect(calls[11]).toContain("Always multiply before you record.");
@@ -2056,19 +2061,36 @@ describe("harness file checks and practice task mentions", () => {
       expect(dirtyInfo).toMatchObject({
         hasSplit: false,
         keptHostRefs: 1,
+        keptHostRefNames: ["public/task.json"],
         keptFormatKeys: 1,
+        keptFormatKeyNames: ["estimateValue"],
         keptRuleIds: 1,
+        keptRuleIdNames: ["R-1"],
         hostPaths: 2,
         hostShebangs: 1,
         plainBins: 1,
         brokenLinks: 1,
         campaignRefs: 1,
+        campaignRefFiles: ["bin/inspect"],
       });
       expect(namedTasks(dirtyInfo.written, tasks)).toEqual([
         "guide names task-alpha-1",
         'guide:2 uses code "S01-007" from task-alpha-1',
         'guide:2 quotes task-alpha-1 ("compute the quarterly regional payroll total accurately every month")',
       ]);
+
+      const envDir = join(dir, "env-check");
+      mkdirSync(envDir, { recursive: true });
+      writeFileSync(join(envDir, "env.sh"), `export PYTHONPATH="${dir}/lib"\n`);
+      expect(() => refuseNamingHome(envDir, dir, "harness/.toolchain")).toThrow(/name your home/u);
+      writeFileSync(join(envDir, "env.sh"), 'export X="unterminated\n');
+      expect(() => refuseNamingHome(envDir, dir, "harness/.toolchain")).toThrow(/bash syntax error/u);
+      writeFileSync(join(envDir, "env.sh"), 'export PYTHONPATH="${BASH_SOURCE%/*}/lib"\n');
+      expect(() => refuseNamingHome(envDir, dir, "harness/.toolchain")).not.toThrow();
+      rmSync(join(envDir, "env.sh"));
+      writeFileSync(join(envDir, "real-env.sh"), "export X=1\n");
+      symlinkSync("real-env.sh", join(envDir, "env.sh"));
+      expect(() => refuseNamingHome(envDir, dir, "harness/.toolchain")).toThrow(/must be a regular file/u);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

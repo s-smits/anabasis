@@ -52,6 +52,7 @@ type DraftDefect = {
   readonly kind: "vacuous-pass" | "check-defect" | "objective-defect";
   readonly task: string;
   readonly check?: string;
+  readonly item?: string;
   readonly probe: number;
   readonly reason: string;
 };
@@ -91,6 +92,9 @@ const PARAMETERS = Type.Object({
       ]),
       task: Type.String({ minLength: 1, description: "The example task id probed." }),
       check: Type.Optional(Type.String({ description: "For check-defect: the refusing check id." })),
+      item: Type.Optional(
+        Type.String({ description: "For objective-defect: the score item id that kept its score." }),
+      ),
       probe: Type.Integer({ minimum: 1, description: "The probe number proving this defect." }),
       reason: Type.String({ minLength: 1 }),
     }),
@@ -135,6 +139,10 @@ function refusal(
       (row.changed.kind !== "pass" || objectiveOf(row.original) === null || objectiveOf(row.changed) === null)
     ) {
       return `objective-defect requires probe ${String(finding.probe)} to pass with a finite objective on both original and changed answers`;
+    }
+    const items = scoresOf(row.changed);
+    if (finding.kind === "objective-defect" && items !== null && !((finding.item ?? "") in items)) {
+      return `objective-defect requires naming a score item probe ${String(finding.probe)} scored`;
     }
     if (finding.kind === "check-defect") {
       if (finding.check === undefined || finding.check === "") {
@@ -271,10 +279,11 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
       }
       recorded.push({
         verdict: args.verdict,
-        findings: args.findings.map(({ kind, task, check, probe, reason }) => ({
+        findings: args.findings.map(({ kind, task, check, item, probe, reason }) => ({
           kind,
           task,
           ...keyIfDefined("check", check),
+          ...keyIfDefined("item", item),
           probe,
           reason: boundText(reason, REASON_DISPLAY_BYTES).shown,
         })),
@@ -408,10 +417,8 @@ export async function replayDraftProbes(
           return cached;
         },
       });
-      const scoredNow = scoresOf(replayed.changed) ?? {};
-      const itemDropped =
-        finding.kind === "objective-defect" &&
-        Object.keys(scoresOf(row.changed) ?? {}).some((id) => !(id in scoredNow));
+      const scoredNow = scoresOf(replayed.changed);
+      const itemDropped = finding.item !== undefined && scoredNow !== null && !(finding.item in scoredNow);
       if ((!conclusive(replayed) && throwsIn(replayed) === null) || itemDropped) {
         unverified.push(formatted);
       } else if (

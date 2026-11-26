@@ -998,7 +998,13 @@ describe("draft audit replay of an objective defect", () => {
       verdict: "defects" as const,
       summary: "report item reads keywords only",
       findings: [
-        { kind: "objective-defect" as const, task: "t-1", probe: 1, reason: "wrong report keeps report=1" },
+        {
+          kind: "objective-defect" as const,
+          task: "t-1",
+          item: "report",
+          probe: 1,
+          reason: "wrong report keeps report=1",
+        },
       ],
       probes: [
         {
@@ -1020,6 +1026,9 @@ describe("draft audit replay of an objective defect", () => {
     expect(await replayDraftProbes(prior, { ...target, verify: scored(both) })).toMatchObject({
       stillBroken: [expect.stringContaining("still reproduces")],
       unverified: [],
+    });
+    expect(await replayDraftProbes(prior, { ...target, verify: scored({ report: 1 }) })).toMatchObject({
+      stillBroken: [expect.stringContaining("still reproduces")],
     });
     expect(await replayDraftProbes(prior, { ...target, verify: scored({ accuracy: 0.9 }) })).toMatchObject({
       stillBroken: [],

@@ -1,9 +1,11 @@
+import type { Api, ImageContent, Model } from "@earendil-works/pi-ai";
 import {
   type BashToolInput,
   createBashTool,
   createEditTool,
   createReadTool,
   createWriteTool,
+  DEFAULT_IMAGE_LIMITS,
   type ImageProcessor,
 } from "@earendil-works/pi-durable/tools";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
@@ -25,6 +27,21 @@ const images: ImageProcessor = {
   prepare: async (bytes, mimeType, limits) =>
     (await (photon ??= createNodePhotonImages())).prepare(bytes, mimeType, limits),
 };
+
+export async function prepareImage(
+  bytes: Uint8Array,
+  path: string,
+  model: Pick<Model<Api>, "input" | "inputLimits">,
+): Promise<ImageContent | null> {
+  if (!model.input.includes("image") || !Bun.file(path).type.startsWith("image/")) return null;
+  const resize = model.inputLimits?.images?.resize;
+  const prepared = await images.prepare(bytes, "application/octet-stream", {
+    maxWidth: resize?.maxWidth ?? DEFAULT_IMAGE_LIMITS.maxWidth,
+    maxHeight: resize?.maxHeight ?? DEFAULT_IMAGE_LIMITS.maxHeight,
+    maxBytes: resize?.maxBytes ?? DEFAULT_IMAGE_LIMITS.maxBytes,
+  });
+  return prepared === undefined ? null : { type: "image", data: prepared.data, mimeType: prepared.mimeType };
+}
 
 const NEAR_END =
   "\n\nThe command was cut because the solve's time is nearly up, so that its result reaches you while you can still act on it.";

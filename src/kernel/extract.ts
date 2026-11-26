@@ -86,30 +86,6 @@ function pyExtract(
   return parseJsonAs<Pick<Extracted, "text" | "formulas" | "notes">>(decodeOutput(ran.stdout));
 }
 
-function imageInfo(bytes: Buffer): string {
-  if (
-    bytes.length >= 24 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47 &&
-    bytes.subarray(12, 16).toString("ascii") === "IHDR"
-  ) {
-    return `PNG image ${String(bytes.readUInt32BE(16))}x${String(bytes.readUInt32BE(20))} (${String(bytes.length)} bytes)`;
-  }
-  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return "";
-  for (let at = 2; at + 8 < bytes.length; ) {
-    const marker = bytes[at + 1] ?? 0;
-    const size = bytes.readUInt16BE(at + 2);
-    if (bytes[at] !== 0xff || size < 2) break;
-    if (marker === 0xc0 || marker === 0xc2) {
-      return `JPEG image ${String(bytes.readUInt16BE(at + 7))}x${String(bytes.readUInt16BE(at + 5))} (${String(bytes.length)} bytes)`;
-    }
-    at += 2 + size;
-  }
-  return "";
-}
-
 function notebookOf(text: string): string {
   const cells = asRecord(capturedJsonParse(text))?.cells;
   if (!Array.isArray(cells)) throw new Error("a notebook without cells");
@@ -181,7 +157,7 @@ export function extract(file: AnswerFile): Extracted {
     }
     if (lower.endsWith(".pdf")) return { ...base, kind: "pdf", ...pdfOf(bytes) };
     if (isSqlite(bytes)) return { ...base, kind: "database", ...pyExtract("sqlite", bytes) };
-    if (file.text === undefined) return { ...base, kind: "binary", text: imageInfo(bytes) };
+    if (file.text === undefined) return { ...base, kind: "binary", text: "" };
     const notebook = lower.endsWith(".ipynb");
     return {
       ...base,

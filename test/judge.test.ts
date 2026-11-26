@@ -232,4 +232,66 @@ describe("the pairwise judge", () => {
     expect(pairPrompts.every((shown) => shown.includes(mid))).toBe(true);
     expect(Math.max(...pairPrompts.map((shown) => Buffer.byteLength(answerA(shown))))).toBeLessThan(96_500);
   });
+
+  it("prepares valid delivered images via pi-durable Photon and exposes view_image to vision-capable judges", async () => {
+    const png1x1 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const faux = fauxProvider({
+      models: [
+        {
+          id: "faux-vision-judge",
+          input: ["text", "image"],
+          contextWindow: 200_000,
+          cost: { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+    });
+    const sawImage: boolean[] = [];
+    const reply = (context: TranscriptContext) => {
+      const shown = JSON.stringify(context);
+      const hasImageBlock = shown.includes('"type":"image"');
+      if (!hasImageBlock && shown.includes("view_image")) {
+        const answer = answerA(shown).includes("forest.png") ? "A" : "B";
+        return fauxAssistantMessage(fauxToolCall("view_image", { answer, path: "forest.png" }), {
+          stopReason: "toolUse",
+        });
+      }
+      sawImage.push(hasImageBlock);
+      return fauxAssistantMessage(fauxToolCall("record_vote", { better: "A", reason: "visual check" }), {
+        stopReason: "toolUse",
+      });
+    };
+    faux.setResponses(Array.from({ length: 16 }, () => reply));
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const log = join(scratch, `judged-vision-${String(++logs)}.jsonl`);
+    const files = keepAnswerFiles(log, [
+      { path: "forest.png", base64: png1x1 },
+      { path: "stub.png", base64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64") },
+    ]);
+    append(log, "verdict", {
+      solve: "s-img",
+      task: TASK.taskId,
+      kind: "pass",
+      answer: { note: "ok" },
+      files: files.map((file) => ({ ...file })),
+    });
+    append(log, "verdict", { solve: "s-plain", task: TASK.taskId, kind: "pass", answer: { note: "ok" } });
+    const oneItem: Contract = {
+      ...CONTRACT,
+      objective: {
+        quantity: "quality",
+        direction: "higher",
+        scale: "unit",
+        items: [{ id: "vis", weight: 1, kind: "judge", criterion: "Figure is clear and well labelled." }],
+      },
+    };
+    await judgePair(
+      { model: faux.getModel(), effort: "medium", models: () => models },
+      { log, comparison: "g-img", task: TASK, contract: oneItem, first: "s-img", second: "s-plain" },
+    );
+    const pair = read(log).find(({ kind }) => kind === "referee.pair")?.data;
+    expect(pair?.extracts).toEqual({ files: 2, empty: 1, faults: 0, truncated: 0 });
+    expect(sawImage).toEqual([true, true, true, true]);
+  });
 });

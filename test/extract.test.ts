@@ -214,7 +214,7 @@ describe("the offline file extractor", () => {
     expect(refused.fault).not.toContain("\n");
   });
 
-  it("extracts docx tables, workbook sheet order and embedded visuals, sqlite row/index counts, notebook images, and PNG/JPEG headers", () => {
+  it("extracts docx tables, workbook sheet order and embedded visuals, sqlite row/index counts, and notebook images", () => {
     const doc = zipped("report.docx", {
       "word/document.xml":
         "<w:document><w:body><w:p><w:r><w:t>Summary</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Metric</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Value</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>N</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>42</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>",
@@ -238,20 +238,6 @@ describe("the offline file extractor", () => {
     });
     expect(headOf(extract(book))).toContain("sheets: Summary (1x1), Raw (2x2)");
     expect(headOf(extract(book))).toContain("embedded visuals: 1 image(s), 1 chart(s)");
-
-    const png = Buffer.alloc(24);
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
-    png.write("IHDR", 12, "ascii");
-    png.writeUInt32BE(1200, 16);
-    png.writeUInt32BE(800, 20);
-    expect(extract({ path: "plot.png", base64: png.toString("base64") }).text).toBe(
-      "PNG image 1200x800 (24 bytes)",
-    );
-
-    const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x02, 0x58, 0x03, 0x20, 0xff, 0xd9]);
-    expect(extract({ path: "plot.jpg", base64: jpg.toString("base64") }).text).toBe(
-      "JPEG image 800x600 (13 bytes)",
-    );
 
     const nb = {
       cells: [{ cell_type: "code", source: "plot()", outputs: [{ data: { "image/png": "AAAA" } }] }],

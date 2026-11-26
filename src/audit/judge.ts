@@ -1,3 +1,4 @@
+import type { ImageContent } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import type { Contract } from "../kernel/contract.ts";
 import { extract, headOf } from "../kernel/extract.ts";
@@ -10,12 +11,14 @@ import { isNumber, type JsonValue } from "../meta/json-shape.ts";
 import { pooled } from "../meta/pool.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { ending, text, tool } from "../tools/answer.ts";
+import { prepareImage } from "../tools/coding.ts";
 import { boundPublicInput, loggedVerdict, type Reader, runAuditSession } from "./auditor.ts";
 
 const PAIRED = "referee.pair";
 const HOLISTIC = "holistic";
 const SECONDS = 600;
 const TURNS = 3;
+const MAX_PAIR_IMAGES = 4;
 const ANSWER_BYTES = 96_000;
 const PROMPT_BYTES = 4000;
 const CONVENTIONS_BYTES = 2000;
@@ -114,26 +117,47 @@ function fairCap(parts: readonly string[], budget: number): number {
   return budget;
 }
 
-function answerOf(events: readonly LogEvent[], log: string, solve: string) {
+type AnswerImages = ReadonlyMap<string, ImageContent>;
+
+async function answerOf(events: readonly LogEvent[], log: string, solve: string, model: Reader["model"]) {
   const verdict = loggedVerdict(events, solve, log);
   if (verdict === null) throw new Error(`solve ${solve} has no answer on record to judge`);
   const extracted = verdict.files.map(extract);
+  const images = new Map<string, ImageContent>();
+  for (const [index, file] of extracted.entries()) {
+    if (file.kind !== "binary" || images.size >= MAX_PAIR_IMAGES) continue;
+    const raw = verdict.files[index];
+    if (raw === undefined) continue;
+    const prepared = await prepareImage(Buffer.from(raw.base64, "base64"), raw.path, model);
+    if (prepared !== null) images.set(raw.path, prepared);
+  }
   const parts = [
     `answer: ${capturedJsonStringify(verdict.answer)}`,
-    ...extracted.map((file) => [...headOf(file), file.text].join("\n")),
+    ...extracted.map((file) =>
+      [
+        ...headOf(file),
+        images.has(file.path) ? `[image available via view_image: ${file.path}]` : file.text,
+      ].join("\n"),
+    ),
   ];
   const cap = fairCap(parts, ANSWER_BYTES);
   const bounded = parts.map((part) => boundText(part, cap));
   return {
     text: bounded.map(({ shown }) => shown).join("\n\n"),
+    images,
     extracts: {
       files: extracted.length,
-      empty: extracted.filter((file) => file.text.trim() === "").length,
+      empty: extracted.filter((file) => file.text.trim() === "" && !images.has(file.path)).length,
       faults: extracted.filter((file) => file.fault !== null).length,
       truncated: bounded.slice(1).filter(({ truncated }) => truncated).length,
     },
   };
 }
+
+const IMAGE_PARAMETERS = Type.Object({
+  answer: Type.Union([Type.Literal("A"), Type.Literal("B")]),
+  path: Type.String({ minLength: 1 }),
+});
 
 async function voted(
   reader: Reader,
@@ -143,11 +167,24 @@ async function voted(
     readonly fence: string;
     readonly criterion: string;
     readonly pair: readonly [string, string];
+    readonly images: readonly [AnswerImages, AnswerImages];
   },
 ) {
   const kept: Static<typeof VOTE_PARAMETERS>[] = [];
   const [a, b] = given.pair;
+  const [imagesA, imagesB] = given.images;
+  const hasImages = imagesA.size > 0 || imagesB.size > 0;
   const fenced = (answer: string) => `${given.fence}\n${answer}\n${given.fence}`;
+  const view = tool({
+    name: "view_image",
+    description: "Inspect an image file delivered by Answer A or Answer B.",
+    parameters: IMAGE_PARAMETERS,
+    execute: async (args) => {
+      const image = (args.answer === "A" ? imagesA : imagesB).get(args.path);
+      if (image === undefined) throw new Error(`Answer ${args.answer} has no viewable image ${args.path}`);
+      return { output: [{ type: "text", text: `Answer ${args.answer}: ${args.path}` }, image] };
+    },
+  });
   const meter = await runAuditSession({
     id: given.id,
     reader,
@@ -159,6 +196,7 @@ async function voted(
       `The criterion: ${given.criterion}`,
     ].join("\n\n"),
     tools: [
+      ...(hasImages ? [view] : []),
       tool({
         name: "record_vote",
         description: "Record which answer meets the criterion better, or neither.",
@@ -171,7 +209,7 @@ async function voted(
     ],
     log: given.log,
     over: () => kept.length > 0,
-    most: TURNS,
+    most: hasImages ? TURNS + MAX_PAIR_IMAGES : TURNS,
     defaultSeconds: SECONDS,
     next: "Nothing is recorded until you call record_vote.",
   });
@@ -180,8 +218,8 @@ async function voted(
 
 export async function judgePair(reader: Reader, given: PairCase): Promise<void> {
   const events = read(given.log, TRACE_KINDS);
-  const first = answerOf(events, given.log, given.first);
-  const second = answerOf(events, given.log, given.second);
+  const first = await answerOf(events, given.log, given.first, reader.model);
+  const second = await answerOf(events, given.log, given.second, reader.model);
   const seed = `${given.comparison}:${given.first}:${given.second}`;
   const firstIsA = Number.parseInt(sha256(seed).slice(0, 1), 16) % 2 === 0;
   const id = `judge-${crypto.randomUUID()}`;
@@ -200,6 +238,9 @@ export async function judgePair(reader: Reader, given: PairCase): Promise<void> 
     try {
       const lines = taskLines(given, one !== HOLISTIC);
       const order: [string, string] = aIsFirst ? [first.text, second.text] : [second.text, first.text];
+      const images: [AnswerImages, AnswerImages] = aIsFirst
+        ? [first.images, second.images]
+        : [second.images, first.images];
       const { vote, meter } = await voted(reader, {
         ...given,
         id: voteId,
@@ -207,6 +248,7 @@ export async function judgePair(reader: Reader, given: PairCase): Promise<void> 
         fence,
         criterion,
         pair: order,
+        images,
       });
       const sign = vote === null ? null : VOTE[vote.better] * (aIsFirst ? 1 : -1);
       return { status: "fulfilled" as const, value: { one, voteId, sign, meter } };

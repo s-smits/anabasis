@@ -255,7 +255,9 @@ export function stringsIn(value: JsonValue | undefined): string[] {
   if (isString(value)) return [value];
   if (Array.isArray(value)) return value.flatMap(stringsIn);
   const record = asRecord(value);
-  return record === null ? [] : Object.entries(record).flatMap(([key, each]) => [key, ...stringsIn(each)]);
+  return record === null
+    ? []
+    : Object.entries(record).flatMap(([key, each]) => (key === "base64" ? [key] : [key, ...stringsIn(each)]));
 }
 
 const wordsOf = (text: string): string[] => text.toLowerCase().match(WORD_RE) ?? [];

@@ -182,7 +182,7 @@ async function solve(ask: Asked) {
   const env = new NodeExecutionEnv({
     cwd,
     shellPath: "/bin/bash",
-    shellEnv: { ...baseEnv, ...keyIfDefined("BASH_ENV", envScript) },
+    shellEnv: { ...baseEnv, MPLBACKEND: "Agg", ...keyIfDefined("BASH_ENV", envScript) },
   });
   const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
   const said = { submitted: false };

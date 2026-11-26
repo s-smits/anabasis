@@ -1905,7 +1905,14 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
           ].join(" && "),
         }),
         call("check_harness", {}),
-        call("bash", { command: 'rm "$HOME/harness/.toolchain/bin/named"' }),
+        call("bash", {
+          command: [
+            'rm "$HOME/harness/.toolchain/bin/named"',
+            'echo "Record the answer." >> "$HOME/harness/agent/BUILT_AGENTS.md"',
+            'mkdir "$HOME/harness/.toolchain/lib"',
+            String.raw`printf 'open("public/task.json")\n' > "$HOME/harness/.toolchain/lib/inspect.py"`,
+          ].join(" && "),
+        }),
         call("check_harness", {}),
         call("bash", { command: "pwd -P; head -1 HARNESS.md" }),
         call("edit", {
@@ -1942,9 +1949,8 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(calls[5]).toContain("installed-greeting");
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
     expect(calls[8]).toContain(
-      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 1 line (28 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 3 files, 6 lines.`,
+      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 2 lines (47 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 4 files, 7 lines.\nFiles in harness/ carry 1 reference to campaign files.\nThe guide names 1 answer field, with no`,
     );
-    expect(calls[8]).not.toContain("Files in harness/ carry");
     expect(calls[8]).not.toContain("Matches a practice task:");
     expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
     expect(calls[10]).toContain("Successfully replaced 1 block(s)");
@@ -2012,6 +2018,7 @@ describe("harness file checks and practice task mentions", () => {
         hostShebangs: 0,
         plainBins: 0,
         brokenLinks: 0,
+        campaignRefs: 0,
       });
       expect(namedTasks(cleanInfo.written, tasks)).toEqual([]);
 
@@ -2039,6 +2046,11 @@ describe("harness file checks and practice task mentions", () => {
       );
       chmodSync(join(dirty, TOOL_TREE_DIR, "bin", "bad-bin"), 0o644);
       symlinkSync("/no/such/target", join(dirty, TOOL_TREE_DIR, "bin", "broken"));
+      writeFileSync(
+        join(dirty, TOOL_TREE_DIR, "bin", "inspect"),
+        "#!/usr/bin/env sh\ncat public/task.json\n",
+      );
+      chmodSync(join(dirty, TOOL_TREE_DIR, "bin", "inspect"), 0o755);
 
       const dirtyInfo = readHarnessFiles(dirty, answerKeys, ["R-1"]);
       expect(dirtyInfo).toMatchObject({
@@ -2050,6 +2062,7 @@ describe("harness file checks and practice task mentions", () => {
         hostShebangs: 1,
         plainBins: 1,
         brokenLinks: 1,
+        campaignRefs: 1,
       });
       expect(namedTasks(dirtyInfo.written, tasks)).toEqual([
         "guide names task-alpha-1",

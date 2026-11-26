@@ -191,7 +191,7 @@ Plain English: state principles, current behaviour and rationale rather than chr
 
 ## 14. Terms and map
 
-**Held-out**: scored, hidden from Builder. **Practice**: released, unscored. **Valid**: passes checks in limits. **Reference harness**: `baseStarter` until promoted. **Round**: Builder + comparison. Glossary: `terms-and-map.md`.
+**Held-out**: scored, hidden from Builder. **Practice**: released, unscored. **Valid**: passes checks in limits. **Reference harness**: `baseStarter` until promoted. **Round**: Builder + comparison. **Scrub** a run: stop, no WRI. **Pause** a run: clean stop, then WRI. Glossary: `terms-and-map.md`.
 
 ```text
 src/meta runtime owners  src/kernel log, conditions, verifier, comparison, reports

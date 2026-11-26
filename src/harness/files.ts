@@ -17,7 +17,8 @@ const MAX_WRITTEN_BYTES = 256 * 1024;
 const GUIDE_PATH = `${AGENT_DIR}${GUIDE_FILE}`;
 const HOST_PATH_RE = /(?:\/Users\/|\/home\/|\/opt\/homebrew\/|\/private\/tmp\/|\/var\/folders\/|\.ana\/)/gu;
 const HOST_SHEBANG_RE = /^#!\s*\/(?:Users|home|opt\/homebrew|Library)\//u;
-const HOST_REF_RE = /(?:public\/task\.json|public\/files\/|public\/resources\/|answer\.json|\bsubmit\b)/gu;
+const CAMPAIGN_FILE_RE = /public\/(?:task\.json|files\/|resources\/)|answer\.json/gu;
+const HOST_REF_RE = new RegExp(`${CAMPAIGN_FILE_RE.source}|\\bsubmit\\b`, "gu");
 const MIN_KEY_LEN = 4;
 const WORD_RE = /[\p{L}\p{N}]+/gu;
 const TOKEN_RE = /[\p{L}\p{N}_](?:[\p{L}\p{N}_.:-]*[\p{L}\p{N}_])?/gu;
@@ -206,12 +207,13 @@ export function readHarnessFiles(
   ruleIds: readonly string[],
 ) {
   const { written, brokenLinks, treeFiles, size } = writtenFiles(stateDir);
-  let [hostPaths, hostShebangs, plainBins, filesWithKeys] = [0, 0, 0, 0];
+  let [hostPaths, hostShebangs, plainBins, filesWithKeys, campaignRefs] = [0, 0, 0, 0, 0];
   const matchedKeys = new Set<string>();
   for (const { path, text, executable } of written) {
     hostPaths += (text.match(HOST_PATH_RE) ?? []).length;
     hostShebangs += Number(HOST_SHEBANG_RE.test(text));
     plainBins += Number(path.startsWith("bin/") && !executable);
+    if (path !== "guide") campaignRefs += (text.match(CAMPAIGN_FILE_RE) ?? []).length;
     const matched = answerKeys.filter((key) => text.includes(key));
     for (const key of matched) matchedKeys.add(key);
     filesWithKeys += Number(matched.length > 0);
@@ -231,6 +233,7 @@ export function readHarnessFiles(
     hostPaths,
     hostShebangs,
     plainBins,
+    campaignRefs,
     matchedKeys,
     filesWithKeys,
   };

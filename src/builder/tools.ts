@@ -32,7 +32,7 @@ import { plural } from "../meta/text.ts";
 import { ending as endSession, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
 import type { CommandSandbox, NetworkReach } from "../tools/command.ts";
-import { namedTasks, readHarnessFiles } from "../harness/files.ts";
+import { formatKeys, namedTasks, readHarnessFiles } from "../harness/files.ts";
 import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { HOST_ONLY } from "../harness/starter.ts";
@@ -579,7 +579,7 @@ function opens(harness: Harness, dir: string, contract: Contract, tasks: readonl
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);
   const ruleIds = [...new Set(contract.rules.map(({ id }) => id).filter((id) => id !== ""))];
-  const info = readHarnessFiles(dir, [], ruleIds);
+  const info = readHarnessFiles(dir, [...new Set(formatKeys(contract.answerFormat))], ruleIds);
   const { guide, files: toolFiles, lines: toolLines } = info.size ?? { guide: 0, files: 0, lines: 0 };
   const chars = harness.guide?.length ?? 0;
   const split = info.hasSplit
@@ -591,10 +591,12 @@ function opens(harness: Harness, dir: string, contract: Contract, tasks: readonl
     [info.hostShebangs, "host-specific shebang"],
     [info.plainBins, "non-executable file", " in bin/"],
     [info.brokenLinks, "broken link"],
+    [info.campaignRefs, "reference", " to campaign files"],
   ]);
   const guideIssues = countPhrases([
     [info.keptHostRefs, "host reference"],
     [info.keptRuleIds, "rule id"],
+    [info.keptFormatKeys, "answer field"],
   ]);
   const exportNote = info.hasSplit
     ? `Before "${HOST_ONLY}", the guide names ${listText(guideIssues)}; text before that heading stays in exported harnesses.`

@@ -711,34 +711,128 @@ describe("the decision table, searched", () => {
         versions: ["t-1", "t-2"],
         reading: "no-step",
         scored: { wins: 0, losses: 0, ties: 2, p: 1, unsolved: 0 },
-        valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
+        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
         aside: [],
       }),
     ];
     expect(stopRule(sticky)).toMatchObject({ checkpoints: 1, sinceStep: 1 });
   });
 
-  it("keeps prior-epoch tasks out of practicePool and releaseOrder's failed half, and caps small batches at half", () => {
-    const cond = (task: string, harness: string) => {
-      const condition = {
-        contract: "c",
-        harness,
-        task,
-        model: "m",
-        effort: "high",
-        prices: { m: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } },
-        runtime: {},
-        compaction: "off" as const,
-        solverTools: "s",
-        verifierTools: "v",
-        sandbox: "p",
-        limits: { wallSeconds: 60, turns: 10, shellDefaultSeconds: 10, shellMaxSeconds: 20, concurrency: 1 },
-        host: "h",
-        side: "test" as const,
-      };
-      const id = conditionId(condition);
-      return { id, setting: settingId(condition), recorded: event("condition.recorded", { id, condition }) };
+  const cond = (task: string, harness: string) => {
+    const condition = {
+      contract: "c",
+      harness,
+      task,
+      model: "m",
+      effort: "high",
+      prices: { m: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } },
+      runtime: {},
+      compaction: "off" as const,
+      solverTools: "s",
+      verifierTools: "v",
+      sandbox: "p",
+      limits: { wallSeconds: 60, turns: 10, shellDefaultSeconds: 10, shellMaxSeconds: 20, concurrency: 1 },
+      host: "h",
+      side: "test" as const,
     };
+    const id = conditionId(condition);
+    return { id, setting: settingId(condition), recorded: event("condition.recorded", { id, condition }) };
+  };
+
+  it("counts unchanged Builder sessions with in-epoch practice failures toward stopRule, in chronological order with comparisons", () => {
+    const pCond = cond("p-1", STARTER);
+    let seq = 0;
+    const practice = (outcome: "pass" | "fail", ruling: "earned" | "check-defect" = "earned"): LogEvent[] => {
+      const solve = `ps-${String(++seq)}`;
+      return [
+        event("solve.started", { solve, condition: pCond.id }),
+        event("solve.finished", {
+          solve,
+          ending: outcome === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+        }),
+        ...(outcome === "fail" ? [event("referee.finding", { solve, ruling })] : []),
+      ];
+    };
+    const buildStart = (session: string) => event("build.started", { session });
+    const buildFin = (session: string, changed: boolean, ended = "finished") =>
+      event("build.finished", { session, harness: STARTER, changed, ended });
+    const stepReport = (session: string, harness: string): LogEvent[] => [
+      event("build.checkpoint", { session: `c-${session}`, harness }),
+      event(REPORTED_EVENT, {
+        session,
+        old: STARTER,
+        fresh: harness,
+        starter: STARTER,
+        versions: ["t-1"],
+        reading: "step",
+        scored: { wins: 1, losses: 0, ties: 0 },
+        valid: { old: [1, 0], fresh: [0, 1], informative: { old: 1, fresh: 1 } },
+        aside: [],
+      }),
+    ];
+    const base: LogEvent[] = [pCond.recorded];
+
+    const declinedBeforeStep: LogEvent[] = [
+      ...base,
+      buildStart("b-1"),
+      ...practice("fail"),
+      buildStart("b-other"),
+      buildFin("b-1", false),
+      ...stepReport("g-1", "h1"),
+    ];
+    expect(stopRule(declinedBeforeStep)).toEqual({ checkpoints: 2, sinceStep: 0, stop: false });
+
+    const declinedAfterStep: LogEvent[] = [
+      ...base,
+      ...stepReport("g-1", "h1"),
+      buildStart("b-2"),
+      ...practice("fail"),
+      buildFin("b-2", false),
+    ];
+    expect(stopRule(declinedAfterStep)).toEqual({ checkpoints: 2, sinceStep: 1, stop: false });
+
+    for (const ignored of [
+      [...base, buildStart("b-1"), ...practice("pass"), buildFin("b-1", false)],
+      [...base, buildStart("b-1"), ...practice("fail", "check-defect"), buildFin("b-1", false)],
+      [...base, ...practice("fail"), buildStart("b-1"), buildFin("b-1", false)],
+      [...base, buildStart("b-1"), buildFin("b-1", false), ...practice("fail")],
+      [
+        ...base,
+        buildStart("b-1"),
+        ...practice("fail"),
+        event(PROMOTED_EVENT, { harness: "h1", from: STARTER, rests: [] }),
+        buildFin("b-1", false),
+      ],
+      [
+        ...base,
+        buildStart("b-1"),
+        ...practice("fail"),
+        event("harness.reverted", { harness: STARTER, from: "h1" }),
+        buildFin("b-1", false),
+      ],
+      [...base, buildStart("b-1"), ...practice("fail"), buildFin("b-1", false, "crashed")],
+      [...base, buildStart("b-1"), ...practice("fail"), buildFin("b-1", false, "killed")],
+      [...base, buildStart("b-1"), ...practice("fail"), buildFin("b-1", true)],
+      [
+        ...base,
+        event("build.checkpoint", { session: "b-1", harness: "h1" }),
+        event(REPORTED_EVENT, {
+          session: "g-empty",
+          old: STARTER,
+          fresh: "h1",
+          starter: STARTER,
+          versions: [],
+          reading: "no-step",
+          scored: { wins: 0, losses: 0, ties: 0 },
+          valid: { old: [0, 0], fresh: [0, 0], informative: { old: 1, fresh: 1 } },
+        }),
+      ],
+    ] as const) {
+      expect(stopRule(ignored)).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
+    }
+  });
+
+  it("keeps prior-epoch tasks out of practicePool and releaseOrder's failed half, and caps small batches at half", () => {
     const solve = (id: string, condition: string, comparison: string, outcome: "pass" | "fail") => [
       event("solve.started", { solve: id, condition, comparison }),
       event("solve.finished", {

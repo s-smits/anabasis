@@ -10,7 +10,10 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { gitMaybe } from "#src/meta/git.ts";
-import { join } from "#src/meta/path.ts";
+import { capturedJsonParse } from "#src/meta/json-runtime.ts";
+import { asRecord, isNumber } from "#src/meta/json-shape.ts";
+import { dirname, join, relative, resolve } from "#src/meta/path.ts";
+import * as ts from "typescript5";
 
 const BOUNDED = [
   "test/compare-exhaustive.test.ts",
@@ -49,16 +52,137 @@ const MUTATE = join(import.meta.dir, "mutate.ts");
 
 const slug = (owner: string) => owner.replaceAll("/", "_").replace(/\.ts$/, "");
 
-function suitesOf(tree: string, owner: string): string[] {
+function resolveImport(tree: string, from: string, specifier: string): string | null {
+  let target: string | null = null;
+  if (specifier.startsWith("#skills/")) {
+    target = `.claude/skills/${specifier.slice("#skills/".length)}`;
+  } else if (specifier.startsWith("#src/") || specifier.startsWith("#tools/")) {
+    target = specifier.slice(1);
+  } else if (specifier.startsWith(".")) {
+    target = relative(tree, resolve(dirname(join(tree, from)), specifier)).replaceAll("\\", "/");
+  }
+  if (target === null) return null;
+  const full = join(tree, target);
+  return existsSync(full) && statSync(full).isFile() ? target : null;
+}
+
+function scanFile(rel: string, text: string): { readonly imports: string[]; readonly literals: string[] } {
+  const source = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  const imports: string[] = [];
+  const literals: string[] = [];
+  const runtimeImport = (clause: ts.ImportClause | undefined): boolean => {
+    if (clause === undefined) return true;
+    if (clause.phaseModifier === ts.SyntaxKind.TypeKeyword) return false;
+    if (clause.name !== undefined) return true;
+    const bindings = clause.namedBindings;
+    if (bindings === undefined || !ts.isNamedImports(bindings)) return true;
+    return bindings.elements.some((el) => !el.isTypeOnly);
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (runtimeImport(node.importClause)) imports.push(node.moduleSpecifier.text);
+      return;
+    }
+    if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      const named = node.exportClause !== undefined && ts.isNamedExports(node.exportClause);
+      const anyValue =
+        !node.isTypeOnly && (!named || node.exportClause.elements.some((el) => !el.isTypeOnly));
+      if (anyValue) imports.push(node.moduleSpecifier.text);
+      return;
+    }
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments[0] !== undefined &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      imports.push(node.arguments[0].text);
+    } else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      literals.push(node.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return { imports, literals };
+}
+
+function timingsOf(tree: string): ReadonlyMap<string, number> {
+  const path = join(tree, "test", ".test-timings.json");
+  if (!existsSync(path)) return new Map();
+  let parsed: unknown;
+  try {
+    parsed = capturedJsonParse(readFileSync(path, "utf8"));
+  } catch {
+    return new Map();
+  }
+  const files = asRecord(asRecord(parsed)?.files);
+  if (files === null) return new Map();
+  return new Map(Object.entries(files).flatMap(([file, ms]) => (isNumber(ms) ? [[file, ms] as const] : [])));
+}
+
+function testIndex(tree: string) {
+  const scanned = new Map<string, ReturnType<typeof scanFile>>();
+  const scan = (rel: string) => {
+    const cached = scanned.get(rel);
+    if (cached !== undefined) return cached;
+    const full = join(tree, rel);
+    const result =
+      existsSync(full) && statSync(full).isFile()
+        ? scanFile(rel, readFileSync(full, "utf8"))
+        : { imports: [], literals: [] };
+    scanned.set(rel, result);
+    return result;
+  };
+  const importsOf = (rel: string): string[] =>
+    scan(rel).imports.flatMap((spec) => {
+      const resolved = resolveImport(tree, rel, spec);
+      return resolved === null ? [] : [resolved];
+    });
   const tests = readdirSync(join(tree, "test"))
     .filter((name) => name.endsWith(".test.ts"))
     .map((name) => `test/${name}`);
-  const importers = tests
-    .filter((path) => !BOUNDED.includes(path) && readFileSync(join(tree, path), "utf8").includes(owner))
-    .toSorted((a, b) => statSync(join(tree, a)).size - statSync(join(tree, b)).size);
-  return [...new Set([...BOUNDED, ...importers, ...(OWNERS.get(owner) ?? [])])].filter((path) =>
-    existsSync(join(tree, path)),
+  const reachable = new Map(
+    tests.map((test) => {
+      const seen = new Set<string>();
+      const pending = [test];
+      while (pending.length > 0) {
+        const current = pending.pop();
+        if (current === undefined) continue;
+        for (const dep of importsOf(current)) {
+          if (seen.has(dep)) continue;
+          seen.add(dep);
+          pending.push(dep);
+        }
+      }
+      return [test, seen] as const;
+    }),
   );
+  const timings = timingsOf(tree);
+  const compareSuites = (a: string, b: string): number => {
+    const [ta, tb] = [timings.get(a), timings.get(b)];
+    if (ta !== undefined && tb !== undefined) return ta - tb;
+    if (ta !== undefined || tb !== undefined) return ta === undefined ? 1 : -1;
+    return statSync(join(tree, a)).size - statSync(join(tree, b)).size;
+  };
+  return (owner: string): { readonly suites: string[]; readonly deps: string[] } => {
+    const matched = tests
+      .filter(
+        (path) =>
+          !BOUNDED.includes(path) &&
+          (reachable.get(path)?.has(owner) === true ||
+            scan(path).literals.some((lit) => lit.includes(owner))),
+      )
+      .toSorted(compareSuites);
+    const suites = [...new Set([...BOUNDED, ...matched, ...(OWNERS.get(owner) ?? [])])].filter((path) =>
+      existsSync(join(tree, path)),
+    );
+    const deps = [...new Set(suites.flatMap((suite) => [...(reachable.get(suite) ?? [])]))];
+    return { suites, deps };
+  };
 }
 
 const rowsOf = (path: string): Row[] =>
@@ -118,11 +242,19 @@ async function nightly(args: CommandArgs, tree: string): Promise<number> {
   const until = deadlineOf(args.value("until"));
   const unfinished: string[] = [];
   const owners = [...OWNERS.keys()].filter((owner) => existsSync(join(tree, owner)));
+  const suitesFor = testIndex(tree);
   for (const owner of owners) {
-    const suites = suitesOf(tree, owner);
+    const { suites, deps } = suitesFor(owner);
     const out = join(here, `${slug(owner)}.jsonl`);
     const carried = prev === null ? null : join(state, prev, `${slug(owner)}.jsonl`);
-    const stale = changed === null || [owner, ...suites].some((path) => changed.has(path));
+    const prevSuitesPath = prev === null ? null : join(state, prev, `${slug(owner)}.suites.json`);
+    const suiteJson = JSON.stringify(Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]])));
+    const suitesChanged =
+      prevSuitesPath === null ||
+      !existsSync(prevSuitesPath) ||
+      readFileSync(prevSuitesPath, "utf8") !== suiteJson;
+    const stale =
+      changed === null || suitesChanged || [owner, ...suites, ...deps].some((path) => changed.has(path));
     if (!stale && carried !== null && existsSync(carried) && !existsSync(out)) copyFileSync(carried, out);
     if (!stale && existsSync(out)) continue;
     if (until !== null && Date.now() >= Date.parse(until)) {
@@ -130,7 +262,7 @@ async function nightly(args: CommandArgs, tree: string): Promise<number> {
       continue;
     }
     const map = join(here, `${slug(owner)}.suites.json`);
-    writeFileSync(map, JSON.stringify(Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]]))));
+    writeFileSync(map, suiteJson);
     const timeout = args.int("timeout") ?? 900;
     const command = [MUTATE, "run", tree, owner, "--out", out, "--suites", map, "--stop-at-kill"];
     const extra = ["--timeout", String(timeout), "--clones", join(state, "clone")];

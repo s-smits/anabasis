@@ -13,11 +13,15 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { gitText } from "../src/meta/git.ts";
+import { capturedJsonParse } from "../src/meta/json-runtime.ts";
+import { asRecord } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 
 const SCRIPT = join(import.meta.dir, "..", ".claude", "skills", "commit-r", "scripts", "mutate.ts");
+const NIGHTLY = join(import.meta.dir, "..", ".claude", "skills", "commit-r", "scripts", "nightly.ts");
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-mutate-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
@@ -368,5 +372,90 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     expect(run.stderr).toContain("ANA_HOSTS is not JSON");
     expect(run.stderr).toContain("ANA_CHECK_HOST=here runs every suite on this machine");
     expect(run.sent).toEqual([]);
+  }, 60_000);
+});
+
+describe("nightly mutation suite selection", () => {
+  it("selects runtime transitive importers and literal matches fastest-first, drops type-only edges, and kills indirect mutants", () => {
+    const tree = join(root, "nightly-tree");
+    mkdirSync(join(tree, "src", "kernel"), { recursive: true });
+    mkdirSync(join(tree, "test"), { recursive: true });
+    writeFileSync(
+      join(tree, "src", "kernel", "solve.ts"),
+      "export type Flag = boolean;\nexport const above = (x: number): Flag => x > 1;\n",
+    );
+    writeFileSync(
+      join(tree, "src", "cycle-a.ts"),
+      'import { ping } from "./cycle-b.ts";\nimport { above } from "./kernel/solve.ts";\nexport const check = (x: number) => (ping() ? above(x) : false);\n',
+    );
+    writeFileSync(
+      join(tree, "src", "cycle-b.ts"),
+      'import { check } from "./cycle-a.ts";\nexport const ping = () => typeof check === "function";\n',
+    );
+    writeFileSync(
+      join(tree, "test", "a-slow-indirect.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { check } from "../src/cycle-a.ts";\nit("passes", () => expect(check(2)).toBe(true));\n',
+    );
+    writeFileSync(
+      join(tree, "test", "z-fast-indirect.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { check } from "../src/cycle-a.ts";\nit("bounds", () => expect([check(1), check(2)]).toEqual([false, true]));\n',
+    );
+    writeFileSync(
+      join(tree, "test", "literal-mention.test.ts"),
+      'import { expect, it } from "bun:test";\nit("mentions path", () => expect("src/kernel/solve.ts").toContain("solve"));\n',
+    );
+    writeFileSync(
+      join(tree, "test", "type-only.test.ts"),
+      'import { expect, it } from "bun:test";\nimport type { Flag } from "../src/kernel/solve.ts";\nconst ok: Flag = true;\nit("type only", () => expect(ok).toBe(true));\n',
+    );
+    writeFileSync(
+      join(tree, "test", "unrelated.test.ts"),
+      'import { expect, it } from "bun:test";\nit("unrelated", () => expect(1).toBe(1));\n',
+    );
+    writeFileSync(
+      join(tree, "test", ".test-timings.json"),
+      JSON.stringify({
+        version: 1,
+        files: { "test/a-slow-indirect.test.ts": 50_000, "test/z-fast-indirect.test.ts": 100 },
+      }),
+    );
+    gitText(tree, "init");
+    gitText(tree, "config", "user.email", "test@example.com");
+    gitText(tree, "config", "user.name", "Test");
+    gitText(tree, "add", ".");
+    gitText(tree, "commit", "-m", "seed");
+    const head = gitText(tree, "rev-parse", "HEAD");
+    const state = join(root, "nightly-state");
+    const run = Bun.spawnSync([capturedExecPath, NIGHTLY, tree, "--state", state, "--timeout", "30"], {
+      env: { ...Bun.env, ANA_CHECK_HOST: "here" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(run.exitCode).toBe(0);
+    const chosen = asRecord(
+      capturedJsonParse(readFileSync(join(state, head, "src_kernel_solve.suites.json"), "utf8")),
+    );
+    expect(Object.keys(chosen ?? {})).toEqual(["z-fast-indirect", "a-slow-indirect", "literal-mention"]);
+    const rows = rowsOf(join(state, head, "src_kernel_solve.jsonl"));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(
+      rows.every(
+        ({ killed }) =>
+          killed["z-fast-indirect"] === true &&
+          killed["a-slow-indirect"] === null &&
+          killed["literal-mention"] === null,
+      ),
+    ).toBe(true);
+
+    writeFileSync(join(tree, "test", ".test-timings.json"), "{broken");
+    const fallback = Bun.spawnSync(
+      [capturedExecPath, NIGHTLY, tree, "--state", join(root, "nightly-bad"), "--timeout", "30"],
+      {
+        env: { ...Bun.env, ANA_CHECK_HOST: "here" },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    expect(fallback.exitCode).toBe(0);
   }, 60_000);
 });

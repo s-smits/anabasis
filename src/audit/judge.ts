@@ -1,7 +1,7 @@
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import type { Contract } from "../kernel/contract.ts";
-import { extract, headOf } from "../kernel/extract.ts";
+import { embeddedImages, extract, headOf } from "../kernel/extract.ts";
 import { append, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import type { Task } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
@@ -118,18 +118,30 @@ async function answerOf(events: readonly LogEvent[], log: string, solve: string,
   if (verdict === null) throw new Error(`solve ${solve} has no answer on record to judge`);
   const extracted = verdict.files.map(extract);
   const images = new Map<string, ImageContent>();
+  const embedded = new Map<string, string[]>();
   for (const [index, file] of extracted.entries()) {
-    if (file.kind !== "binary" || images.size >= MAX_PAIR_IMAGES) continue;
     const raw = verdict.files[index];
-    if (raw === undefined) continue;
-    const prepared = await prepareImage(Buffer.from(raw.base64, "base64"), raw.path, model);
-    if (prepared !== null) images.set(raw.path, prepared);
+    if (raw === undefined || images.size >= MAX_PAIR_IMAGES) continue;
+    const candidates =
+      file.kind === "binary"
+        ? [{ path: raw.path, bytes: Buffer.from(raw.base64, "base64") }]
+        : embeddedImages(raw);
+    for (const candidate of candidates) {
+      if (images.size >= MAX_PAIR_IMAGES) break;
+      const prepared = await prepareImage(candidate.bytes, candidate.path, model);
+      if (prepared === null) continue;
+      images.set(candidate.path, prepared);
+      if (file.kind !== "binary") {
+        embedded.set(file.path, [...(embedded.get(file.path) ?? []), candidate.path]);
+      }
+    }
   }
   const parts = [
     `answer: ${capturedJsonStringify(verdict.answer)}`,
     ...extracted.map((file) =>
       [
         ...headOf(file),
+        ...(embedded.get(file.path) ?? []).map((ref) => `[image available via view_image: ${ref}]`),
         images.has(file.path) ? `[image available via view_image: ${file.path}]` : file.text,
       ].join("\n"),
     ),

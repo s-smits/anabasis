@@ -1,30 +1,21 @@
 #!/usr/bin/env bun
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
-import { gitMaybe } from "#src/meta/git.ts";
+import { changedLinesInDiff, gitMaybe, mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber } from "#src/meta/json-shape.ts";
-import { dirname, join, relative, resolve } from "#src/meta/path.ts";
-
-const TRANSPILER = new Bun.Transpiler({ loader: "ts" });
-const FROM_SPECIFIER = /\bfrom\s+["'][^"']+["']/gu;
-const UNTIMED_OFFSET = 1e12;
-
-const BOUNDED = [
-  "test/compare-exhaustive.test.ts",
-  "test/decide-explore.test.ts",
-  "test/pairs-property.test.ts",
-  "test/wall-practice.test.ts",
-  "test/wall-held-out.test.ts",
-];
+import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { availableParallelism } from "#src/meta/os.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
+import { NEAR, within } from "#tools/runtime/gate.ts";
+import { mutantsOf } from "./mutate.ts";
 
 const CAMPAIGN_SUITES = ["test/harness-builder.test.ts", "test/campaign-kill.test.ts", "test/climb.test.ts"];
 
@@ -52,38 +43,33 @@ interface Row {
   readonly killed: Readonly<Record<string, boolean | null>>;
 }
 
-const MUTATE = join(import.meta.dir, "mutate.ts");
-
-const slug = (owner: string) => owner.replaceAll("/", "_").replace(/\.ts$/, "");
-
-function resolveImport(tree: string, from: string, specifier: string): string | null {
-  let target: string | null = null;
-  if (specifier.startsWith("#skills/")) {
-    target = `.claude/skills/${specifier.slice("#skills/".length)}`;
-  } else if (specifier.startsWith("#src/") || specifier.startsWith("#tools/")) {
-    target = specifier.slice(1);
-  } else if (specifier.startsWith(".")) {
-    target = relative(tree, resolve(dirname(join(tree, from)), specifier)).replaceAll("\\", "/");
-  }
-  if (target === null) return null;
-  const full = join(tree, target);
-  return existsSync(full) && statSync(full).isFile() ? target : null;
+interface Done {
+  readonly commit: string;
+  readonly full: string;
 }
 
-function scanFile(text: string): { readonly imports: readonly string[]; readonly nonImportText: string } {
+const MUTATE = join(import.meta.dir, "mutate.ts");
+const DIFF_ROOTS = ["src", "tools"] as const;
+const TRANSPILER = new Bun.Transpiler({ loader: "ts" });
+
+const slug = (owner: string) => owner.replaceAll("/", "_").replace(/\.ts$/, "");
+const stem = (owner: string, diffBase: string | null) =>
+  diffBase === null ? slug(owner) : `${slug(owner)}.diff-${diffBase.slice(0, 9)}`;
+
+function timingsPath(tree: string): string | null {
+  const local = join(tree, "test", ".test-timings.json");
+  if (existsSync(local)) return local;
   try {
-    return {
-      imports: TRANSPILER.scanImports(text).map(({ path }) => path),
-      nonImportText: text.replaceAll(FROM_SPECIFIER, ""),
-    };
+    const shared = join(mainTree(tree), "test", ".test-timings.json");
+    return existsSync(shared) ? shared : null;
   } catch {
-    return { imports: [], nonImportText: text };
+    return null;
   }
 }
 
 function timingsOf(tree: string): ReadonlyMap<string, number> {
-  const path = join(tree, "test", ".test-timings.json");
-  if (!existsSync(path)) return new Map();
+  const path = timingsPath(tree);
+  if (path === null) return new Map();
   let parsed: unknown;
   try {
     parsed = capturedJsonParse(readFileSync(path, "utf8"));
@@ -95,58 +81,63 @@ function timingsOf(tree: string): ReadonlyMap<string, number> {
   return new Map(Object.entries(files).flatMap(([file, ms]) => (isNumber(ms) ? [[file, ms] as const] : [])));
 }
 
-function testIndex(tree: string) {
-  const scanned = new Map<string, ReturnType<typeof scanFile>>();
-  const scan = (rel: string) => {
-    const cached = scanned.get(rel);
-    if (cached !== undefined) return cached;
-    const full = join(tree, rel);
-    const result =
-      existsSync(full) && statSync(full).isFile()
-        ? scanFile(readFileSync(full, "utf8"))
-        : { imports: [], nonImportText: "" };
-    scanned.set(rel, result);
-    return result;
-  };
-  const importsOf = (rel: string): string[] =>
-    scan(rel).imports.flatMap((spec) => {
-      const resolved = resolveImport(tree, rel, spec);
-      return resolved === null ? [] : [resolved];
-    });
+function runtimeText(tree: string, rel: string): string {
+  try {
+    return TRANSPILER.transformSync(readFileSync(join(tree, rel), "utf8"));
+  } catch {
+    return "";
+  }
+}
+
+const joinedPath = (path: string): string =>
+  path
+    .split("/")
+    .map((part) => JSON.stringify(part))
+    .join(", ");
+
+const pathMentioned = (code: string, path: string): boolean =>
+  code.includes(path) || code.includes(joinedPath(path));
+
+function testIndex(tree: string, depth: number) {
   const tests = readdirSync(join(tree, "test"))
     .filter((name) => name.endsWith(".test.ts"))
     .map((name) => `test/${name}`);
-  const reachable = new Map(
-    tests.map((test) => {
-      const seen = new Set<string>();
-      const pending = [test];
-      while (pending.length > 0) {
-        const current = pending.pop();
-        if (current === undefined) continue;
-        for (const dep of importsOf(current)) {
-          if (seen.has(dep)) continue;
-          seen.add(dep);
-          pending.push(dep);
-        }
-      }
-      return [test, seen] as const;
-    }),
-  );
+  const reachAt = (limit: number) =>
+    new Map(
+      tests.map((test) => {
+        const seen = within(tree, test, limit);
+        seen.delete(test);
+        return [test, seen] as const;
+      }),
+    );
+  const reachable = reachAt(depth);
+  let transitive: Map<string, Set<string>> | null = null;
+  const transformed = new Map(tests.map((test) => [test, runtimeText(tree, test)] as const));
   const timings = timingsOf(tree);
-  const suiteOrder = (path: string) => timings.get(path) ?? UNTIMED_OFFSET + statSync(join(tree, path)).size;
-  return (owner: string): { readonly suites: string[]; readonly deps: string[] } => {
-    const matched = tests
-      .filter(
-        (path) =>
-          !BOUNDED.includes(path) &&
-          (reachable.get(path)?.has(owner) === true || scan(path).nonImportText.includes(owner)),
-      )
-      .toSorted((a, b) => suiteOrder(a) - suiteOrder(b));
-    const suites = [...new Set([...BOUNDED, ...matched, ...(OWNERS.get(owner) ?? [])])].filter((path) =>
+  const compareSuites = (a: string, b: string): number => {
+    const [ta, tb] = [timings.get(a), timings.get(b)];
+    if (ta !== undefined && tb !== undefined) return ta - tb;
+    if (ta !== undefined || tb !== undefined) return ta === undefined ? 1 : -1;
+    return statSync(join(tree, a)).size - statSync(join(tree, b)).size;
+  };
+  return (owner: string): string[] => {
+    let matched = tests.filter(
+      (path) => reachable.get(path)?.has(owner) === true || pathMentioned(transformed.get(path) ?? "", owner),
+    );
+    if (matched.length === 0 && depth < Number.POSITIVE_INFINITY) {
+      transitive ??= reachAt(Number.POSITIVE_INFINITY);
+      matched = tests.filter((path) => transitive?.get(path)?.has(owner) === true);
+    }
+    if (matched.length === 0) {
+      const parent = dirname(owner);
+      if (parent !== "." && parent.includes("/")) {
+        const needle = joinedPath(parent);
+        matched = tests.filter((path) => (transformed.get(path) ?? "").includes(needle));
+      }
+    }
+    return [...new Set([...matched.toSorted(compareSuites), ...(OWNERS.get(owner) ?? [])])].filter((path) =>
       existsSync(join(tree, path)),
     );
-    const deps = [...new Set(suites.flatMap((suite) => [...(reachable.get(suite) ?? [])]))];
-    return { suites, deps };
   };
 }
 
@@ -176,102 +167,300 @@ function deadlineOf(clock: string | null): string | null {
   return at.toISOString();
 }
 
-function survivorKeys(tree: string, commit: string, rows: readonly Row[]): string[] {
+interface Survivor {
+  readonly id: string;
+  readonly file: string;
+  readonly line: number;
+  readonly label: string;
+  readonly source: string;
+  readonly key: string;
+}
+
+function survivorEntries(tree: string, commit: string, rows: readonly Row[]): Survivor[] {
   const sources = new Map<string, string[]>();
   return rows.flatMap((row) => {
     if (verdictOf(row) !== "survived") return [];
     if (!sources.has(row.file)) {
       sources.set(row.file, (gitMaybe(tree, "show", `${commit}:${row.file}`) ?? "").split("\n"));
     }
-    return [`${row.file}  ${row.label}  ${sources.get(row.file)?.[row.line - 1]?.trim() ?? ""}`];
+    const source = sources.get(row.file)?.[row.line - 1]?.trim() ?? "";
+    const key = `${row.file}  ${row.label}  ${source}`;
+    return [{ id: row.id, file: row.file, line: row.line, label: row.label, source, key }];
   });
 }
 
-function fresh(now: readonly string[], before: readonly string[]): string[] {
+function freshSurvivors(now: readonly Survivor[], before: readonly Survivor[]): Survivor[] {
+  const beforeKeys = before.map(({ key }) => key);
   const count = (keys: readonly string[], key: string) => keys.filter((one) => one === key).length;
-  return now.filter((key, at) => count(now.slice(0, at), key) >= count(before, key));
+  return now.filter(
+    (entry, at) =>
+      count(
+        now.slice(0, at).map(({ key }) => key),
+        entry.key,
+      ) >= count(beforeKeys, entry.key),
+  );
 }
 
-async function nightly(args: CommandArgs, tree: string): Promise<number> {
-  const state = args.required("state");
-  const head = gitMaybe(tree, "rev-parse", "HEAD") ?? args.die(`${tree} is not a git tree`);
-  const donePath = join(state, "done.json");
-  // SAFETY: done.json is the one this script writes, `{ commit }`.
-  const prev = existsSync(donePath)
-    ? (JSON.parse(readFileSync(donePath, "utf8")) as { commit: string }).commit
-    : null;
-  const diff = prev === null || args.flag("full") ? null : gitMaybe(tree, "diff", "--name-only", prev, head);
-  const changed = diff === null ? null : new Set(diff.split("\n"));
-  const here = join(state, head);
-  mkdirSync(here, { recursive: true });
-  const until = deadlineOf(args.value("until"));
-  const unfinished: string[] = [];
-  const owners = [...OWNERS.keys()].filter((owner) => existsSync(join(tree, owner)));
-  const suitesFor = testIndex(tree);
-  for (const owner of owners) {
-    const { suites, deps } = suitesFor(owner);
-    const out = join(here, `${slug(owner)}.jsonl`);
-    const carried = prev === null ? null : join(state, prev, `${slug(owner)}.jsonl`);
-    const prevSuitesPath = prev === null ? null : join(state, prev, `${slug(owner)}.suites.json`);
-    const suiteJson = JSON.stringify(Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]])));
-    const suitesChanged =
-      prevSuitesPath === null ||
-      !existsSync(prevSuitesPath) ||
-      readFileSync(prevSuitesPath, "utf8") !== suiteJson;
-    const stale =
-      changed === null || suitesChanged || [owner, ...suites, ...deps].some((path) => changed.has(path));
-    if (!stale && carried !== null && existsSync(carried) && !existsSync(out)) copyFileSync(carried, out);
-    if (!stale && existsSync(out)) continue;
-    if (until !== null && Date.now() >= Date.parse(until)) {
-      unfinished.push(owner);
-      continue;
-    }
-    const map = join(here, `${slug(owner)}.suites.json`);
-    writeFileSync(map, suiteJson);
-    const timeout = args.int("timeout") ?? 900;
-    const command = [MUTATE, "run", tree, owner, "--out", out, "--suites", map, "--stop-at-kill"];
-    const extra = ["--fleet", "--timeout", String(timeout), "--clones", join(state, "clone")];
-    const run = Bun.spawn(["bun", ...command, ...extra, ...(until === null ? [] : ["--until", until])], {
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    if ((await run.exited) !== 0) unfinished.push(owner);
+function formatSurvivorClusters(entries: readonly Survivor[]): string[] {
+  const groups = [...Map.groupBy(entries, ({ file, line }) => `${file}:${String(line)}`).values()].toSorted(
+    (a, b) =>
+      b.length - a.length ||
+      (a[0]?.file ?? "").localeCompare(b[0]?.file ?? "") ||
+      (a[0]?.line ?? 0) - (b[0]?.line ?? 0),
+  );
+  return groups.flatMap((group) => {
+    const first = group[0];
+    if (first === undefined) return [];
+    const counts = new Map<string, number>();
+    for (const { label } of group) counts.set(label, (counts.get(label) ?? 0) + 1);
+    const ops = [...counts].map(([label, n]) => (n > 1 ? `${label} x${String(n)}` : label)).join(", ");
+    return [`- \`${first.file}:${String(first.line)}  [${String(group.length)}: ${ops}]  ${first.source}\``];
+  });
+}
+
+function readDone(path: string): Done | null {
+  if (!existsSync(path)) return null;
+  let parsed: unknown;
+  try {
+    parsed = capturedJsonParse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
   }
-  const complete = unfinished.length === 0;
-  const lines = [
-    `# Nightly mutation at ${head.slice(0, 9)}`,
-    "",
-    "| owner | killed | survived | unread |",
-    "| --- | --- | --- | --- |",
+  const record = asRecord(parsed);
+  const commit = record?.commit;
+  if (!isString(commit)) return null;
+  return { commit, full: isString(record?.full) ? record.full : commit };
+}
+
+function diffTargets(
+  tree: string,
+  base: string,
+  head: string,
+): readonly (readonly [string, string[]])[] | null {
+  const raw = gitMaybe(
+    tree,
+    "-c",
+    "core.quotePath=false",
+    "diff",
+    "--unified=0",
+    "--no-color",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    "--no-ext-diff",
+    base,
+    head,
+    "--",
+    ...DIFF_ROOTS,
+  );
+  if (raw === null) return null;
+  return [...changedLinesInDiff(raw)].flatMap(([file, lines]) => {
+    if (!file.endsWith(".ts") || file.endsWith(".test.ts") || lines.size === 0) return [];
+    const full = join(tree, file);
+    if (!existsSync(full) || !statSync(full).isFile()) return [];
+    const ids = mutantsOf(tree, file)
+      .filter((mutant) => lines.has(mutant.line))
+      .map((mutant) => mutant.id);
+    return ids.length === 0 ? [] : ([[file, ids]] as const);
+  });
+}
+
+async function runOwner(opts: {
+  readonly tree: string;
+  readonly state: string;
+  readonly here: string;
+  readonly owner: string;
+  readonly diffBase: string | null;
+  readonly suiteJson: string;
+  readonly ids: readonly string[] | null;
+  readonly timeout: number;
+  readonly until: string | null;
+}): Promise<boolean> {
+  const { tree, state, here, owner, diffBase, suiteJson, ids, timeout, until } = opts;
+  if (until !== null && Date.now() >= Date.parse(until)) return false;
+  const prefix = stem(owner, diffBase);
+  const out = join(here, `${prefix}.jsonl`);
+  const map = join(here, `${prefix}.suites.json`);
+  writeFileSync(map, suiteJson);
+  const only: string[] = [];
+  if (ids !== null) {
+    const idsPath = join(here, `${prefix}.ids.txt`);
+    writeFileSync(idsPath, `${ids.join("\n")}\n`);
+    only.push("--only", idsPath);
+  }
+  const localSlots = Math.max(2, Math.floor(availableParallelism() / 3));
+  const command = [
+    MUTATE,
+    "run",
+    tree,
+    owner,
+    "--out",
+    out,
+    "--suites",
+    map,
+    "--fleet",
+    "--local",
+    String(localSlots),
+    "--batch",
+    "12",
+    "--prune",
+    "--stop-at-kill",
+    ...only,
   ];
+  const extra = ["--timeout", String(timeout), "--clones", join(state, "clone")];
+  const run = Bun.spawn(["bun", ...command, ...extra, ...(until === null ? [] : ["--until", until])], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  return (await run.exited) === 0;
+}
+
+function writeReport(opts: {
+  readonly tree: string;
+  readonly state: string;
+  readonly here: string;
+  readonly head: string;
+  readonly diffBase: string | null;
+  readonly prevFull: string | null;
+  readonly owners: readonly string[];
+  readonly untested: readonly (readonly [string, number])[];
+  readonly unfinished: readonly string[];
+}): { readonly total: number; readonly survived: number; readonly added: number; readonly unread: number } {
+  const { tree, state, here, head, diffBase, prevFull, owners, untested, unfinished } = opts;
+  const diffMode = diffBase !== null;
+  const heading = diffMode
+    ? `# Nightly diff mutation at ${head.slice(0, 9)} (since ${diffBase.slice(0, 9)})`
+    : `# Nightly mutation at ${head.slice(0, 9)}`;
+  const lines = [heading, "", "| owner | killed | survived | unread |", "| --- | --- | --- | --- |"];
   const now: Row[] = [];
   const before: Row[] = [];
   for (const owner of owners) {
-    const rows = rowsOf(join(here, `${slug(owner)}.jsonl`));
+    const rows = rowsOf(join(here, `${stem(owner, diffBase)}.jsonl`));
     now.push(...rows);
-    if (prev !== null) before.push(...rowsOf(join(state, prev, `${slug(owner)}.jsonl`)));
+    if (!diffMode && prevFull !== null) before.push(...rowsOf(join(state, prevFull, `${slug(owner)}.jsonl`)));
     const count = (kind: string) => String(rows.filter((row) => verdictOf(row) === kind).length);
     lines.push(`| \`${owner}\` | ${count("killed")} | ${count("survived")} | ${count("unread")} |`);
   }
-  const added = prev === null ? [] : fresh(survivorKeys(tree, head, now), survivorKeys(tree, prev, before));
+  const added = diffMode
+    ? survivorEntries(tree, head, now)
+    : prevFull === null
+      ? []
+      : freshSurvivors(survivorEntries(tree, head, now), survivorEntries(tree, prevFull, before));
+  const clusters = formatSurvivorClusters(added);
+  const recheckIds = [
+    ...added.map(({ id }) => id),
+    ...now.filter((row) => verdictOf(row) === "unread").map(({ id }) => id),
+  ];
+  const idsFile = join(
+    here,
+    diffBase === null ? "survivors.ids.txt" : `survivors.diff-${diffBase.slice(0, 9)}.ids.txt`,
+  );
+  if (recheckIds.length > 0) writeFileSync(idsFile, `${recheckIds.join("\n")}\n`);
+  const summary = diffMode
+    ? `Diff survivors since ${diffBase.slice(0, 9)}: ${String(added.length)} across ${String(clusters.length)} line(s)`
+    : prevFull === null
+      ? "No earlier complete pass to compare."
+      : `New survivors since ${prevFull.slice(0, 9)}: ${String(added.length)} across ${String(clusters.length)} line(s)`;
   lines.push(
     "",
+    ...untested.map(([owner, count]) => `No nearby test: \`${owner}\` (${String(count)} mutants)`),
     ...unfinished.map(
       (owner) =>
         `Unfinished, resumes next run: \`${owner}\` (deadline, or a suite failed unmutated; see the log)`,
     ),
-    prev === null
-      ? "No earlier complete pass to compare."
-      : `New survivors since ${prev.slice(0, 9)}: ${String(added.length)}`,
-    ...added.map((key) => `- \`${key}\``),
+    summary,
+    ...(recheckIds.length > 0 ? [`Recheck IDs (\`mutate.ts run --only\`): \`${idsFile}\``] : []),
+    ...clusters,
   );
   writeFileSync(join(here, "report.md"), `${lines.join("\n")}\n`);
-  if (complete) writeFileSync(donePath, JSON.stringify({ commit: head }));
   const tally = (kind: string) => now.filter((row) => verdictOf(row) === kind).length;
+  return { total: now.length, survived: tally("survived"), added: added.length, unread: tally("unread") };
+}
+
+function defaultDiffBase(tree: string, head: string, stored: string | undefined): string | null {
+  if (stored === undefined) return null;
+  if (gitMaybe(tree, "merge-base", "--is-ancestor", stored, head) !== null) return stored;
+  return gitMaybe(tree, "merge-base", "origin/main", head) ?? stored;
+}
+
+async function nightly(args: CommandArgs, rawTree: string): Promise<number> {
+  const tree = realpathSync(resolve(rawTree));
+  const state = args.required("state");
+  const head = gitMaybe(tree, "rev-parse", "HEAD") ?? args.die(`${tree} is not a git tree`);
+  const diffFlag = args.value("diff");
+  if (diffFlag !== null && args.flag("full")) args.die("--diff and --full cannot be combined");
+  const donePath = join(state, "done.json");
+  const done = readDone(donePath);
+  const requestedBase = args.flag("full") ? null : (diffFlag ?? defaultDiffBase(tree, head, done?.commit));
+  const targets = requestedBase === null ? null : diffTargets(tree, requestedBase, head);
+  if (diffFlag !== null && targets === null) {
+    args.die(`--diff ${diffFlag}: not a reachable commit in ${tree}`);
+  }
+  if (requestedBase !== null && targets === null) {
+    console.error(
+      `nightly: stored base ${requestedBase.slice(0, 9)} is unreachable; running full owner sweep`,
+    );
+  }
+  const diffBase = targets === null ? null : requestedBase;
+  const diffMode = diffBase !== null && targets !== null;
+  const here = join(state, head);
+  mkdirSync(here, { recursive: true });
+  const reportPath = join(here, "report.md");
+  if (diffBase !== null && targets?.length === 0 && diffFlag === null && done?.commit === head) {
+    console.log(`${head.slice(0, 9)}: 0 diff mutants since ${diffBase.slice(0, 9)}; ${reportPath}`);
+    return 0;
+  }
+  const until = deadlineOf(args.value("until"));
+  const timeout = args.int("timeout") ?? 900;
+  const suitesFor = testIndex(tree, diffMode ? NEAR.root : Number.POSITIVE_INFINITY);
+  const unfinished: string[] = [];
+  const untested: [string, number][] = [];
+  const owners =
+    diffBase !== null && targets !== null
+      ? targets.map(([owner]) => owner)
+      : [...OWNERS.keys()].filter((owner) => existsSync(join(tree, owner)));
+  const prevFull = done?.full ?? null;
+  const diffIds = targets === null ? new Map<string, string[]>() : new Map(targets);
+  for (const owner of owners) {
+    const suites = suitesFor(owner);
+    if (suites.length === 0) {
+      untested.push([owner, diffMode ? (diffIds.get(owner)?.length ?? 0) : mutantsOf(tree, owner).length]);
+      continue;
+    }
+    const ok = await runOwner({
+      tree,
+      state,
+      here,
+      owner,
+      diffBase,
+      suiteJson: JSON.stringify(Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]]))),
+      ids: diffMode ? (diffIds.get(owner) ?? []) : null,
+      timeout,
+      until,
+    });
+    if (!ok) unfinished.push(owner);
+  }
+  const complete = unfinished.length === 0;
+  const stats = writeReport({
+    tree,
+    state,
+    here,
+    head,
+    diffBase,
+    prevFull,
+    owners,
+    untested,
+    unfinished,
+  });
+  if (complete && stats.unread === 0 && diffFlag === null) {
+    writeFileSync(
+      donePath,
+      JSON.stringify({ commit: head, full: diffMode ? (done?.full ?? diffBase) : head }),
+    );
+  }
   console.log(
-    `${head.slice(0, 9)}: ${String(now.length)} mutants, ${String(tally("survived"))} survived (${String(added.length)} new), ${String(tally("unread"))} unread; ${complete ? "complete" : "resumes next run"}; ${join(here, "report.md")}`,
+    `${head.slice(0, 9)}: ${String(stats.total)} mutants, ${String(stats.survived)} survived (${String(stats.added)} new), ${String(stats.unread)} unread; ${complete ? "complete" : "resumes next run"}; ${reportPath}`,
   );
-  return complete && added.length === 0 ? 0 : 3;
+  return complete && stats.added === 0 && stats.unread === 0 && (!diffMode || untested.length === 0) ? 0 : 3;
 }
 
 if (import.meta.main) {
@@ -279,13 +468,12 @@ if (import.meta.main) {
     {
       name: "nightly",
       usage: [
-        "usage: nightly.ts <tree> --state <dir> [--until HH:MM] [--timeout s] [--full]",
-        "Mutates the high-importance owners at <tree>'s HEAD against bounded suites and their importers",
-        "over every listed check host (`mutate.ts --fleet`), rerunning only owners whose file or suites",
-        "changed since the last complete pass in <dir>.",
-        "Exits 3 when survivors are new or the pass must resume; report.md lists them.",
+        "usage: nightly.ts <tree> --state <dir> [--until HH:MM] [--timeout s] [--diff <base>] [--full]",
+        "After a complete baseline in <dir>, mutates only changed lines under src/ and tools/",
+        "since the previous complete pass (or --diff <base>); --full (and the first pass) sweeps all",
+        "high-importance owners. Exits 3 when survivors remain or the pass must resume.",
       ].join("\n"),
-      options: { state: "text", until: "text", timeout: "int", full: "flag" },
+      options: { state: "text", until: "text", timeout: "int", diff: "text", full: "flag" },
       positionals: 1,
     },
     async (args: CommandArgs) => nightly(args, args.positionals[0] ?? ""),

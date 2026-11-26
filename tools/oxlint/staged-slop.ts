@@ -6,6 +6,7 @@
 // disk.
 
 import { boundText } from "../../src/meta/bounded-text.ts";
+import { changedLinesInDiff } from "../../src/meta/git.ts";
 import { resolve } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
@@ -24,17 +25,25 @@ const git = (args: readonly string[]): string => runTextSyncOrThrow(["git", ...a
 function changedLines(): Map<string, { lines: Set<number>; added: boolean }> {
   const staged = git(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]).split("\n").filter(Boolean);
   const added = new Set(git(["diff", "--cached", "--name-only", "--diff-filter=A"]).split("\n"));
-  const changed = new Map(staged.map((path) => [path, { lines: new Set<number>(), added: added.has(path) }]));
-  if (staged.length === 0) return changed;
-  let lines: Set<number> | undefined;
-  for (const row of git(["diff", "HEAD", "--unified=0", "--no-color", "--", ...staged]).split("\n")) {
-    if (row.startsWith("+++ ")) lines = changed.get(row.slice(4).replace(/^b\//u, ""))?.lines;
-    const hunk = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/u.exec(row);
-    if (hunk === null || lines === undefined) continue;
-    const start = Number(hunk[1]);
-    for (let line = start; line < start + Number(hunk[2] ?? 1); line += 1) lines.add(line);
-  }
-  return changed;
+  if (staged.length === 0) return new Map();
+  const parsed = changedLinesInDiff(
+    git([
+      "-c",
+      "core.quotePath=false",
+      "diff",
+      "HEAD",
+      "--unified=0",
+      "--no-color",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
+      "--no-ext-diff",
+      "--",
+      ...staged,
+    ]),
+  );
+  return new Map(
+    staged.map((path) => [path, { lines: parsed.get(path) ?? new Set<number>(), added: added.has(path) }]),
+  );
 }
 
 function touches(site: TreeSite, changed: ReturnType<typeof changedLines>): boolean {

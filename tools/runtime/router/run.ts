@@ -1,8 +1,9 @@
 /**
  * The check runner: `run.js <tree> <bun pin> <test|typecheck|lint|secrets|gate> [arguments...]`,
  * called by the bun router for a tree's check tasks. `ANA_CHECK_HOST` picks where (`placesFor`):
- * `auto`, `here`, a host, or `all`, which also cuts a test task into timed chunks. The working tree
- * goes to a host as one commit in place of `HEAD` (`snapshot`), keeping `HEAD`'s parents so a
+ * `auto`, `here`, a host, or `all`, which keeps fast static checks (`secrets`, `typecheck`, `lint`)
+ * in a bounded local queue and cuts a test task into timed chunks spread breadth-first over cool
+ * hosts. The working tree goes to a host as one commit in place of `HEAD` (`snapshot`), keeping `HEAD`'s parents so a
  * static gate picks the same tests. Exit 75 means the queue wait passed, exit 69 a host without
  * free disk. The steps before a task are tried three times; the task itself is never retried.
  */
@@ -44,6 +45,8 @@ import {
 import { minuteLoads } from "../../runs/load.ts";
 
 const TASKS = ["test", "typecheck", "lint", "secrets", "gate"];
+const LOCAL_IN_ALL = new Set(["secrets", "typecheck", "lint"]);
+const LOCAL_STATIC_SLOTS = 2;
 const FORWARDED = [
   "ANA_LINT_STRICT",
   "ANA_LINT_PATHS",
@@ -255,26 +258,27 @@ async function placesFor(
   );
 }
 
-function takeSlot(folder: string, count: number): Slot | null {
+function takeSlotNumber(folder: string, number: number): Slot | null {
   const mine = String(runtimeProcess.pid);
   const claim = join(folder, `claim-${mine}`);
-  for (let number = 1; number <= count; number++) {
-    const path = join(folder, `slot-${String(number)}`);
-    if (slotOccupied(path, "clean")) continue;
-    mkdirSync(join(claim, mine), { recursive: true });
-    try {
-      renameSync(claim, path);
-      heldByThisRunner.add(path);
-      return { path: join(path, mine), number };
-    } catch {
-      // Another task took it between the two steps.
-    }
+  const path = join(folder, `slot-${String(number)}`);
+  if (slotOccupied(path, "clean")) return null;
+  mkdirSync(join(claim, mine), { recursive: true });
+  try {
+    renameSync(claim, path);
+    heldByThisRunner.add(path);
+    return { path: join(path, mine), number };
+  } catch {
+    // Another task took it between the two steps.
   }
   rmSync(claim, { recursive: true, force: true });
   return null;
 }
 
-async function slotAmong(places: readonly Place[]): Promise<{ place: Place; slot: Slot }> {
+async function slotAmong(
+  places: readonly Place[],
+  order: "ranked" | "least-busy" = "ranked",
+): Promise<{ place: Place; slot: Slot }> {
   const queues = places.map((place) => {
     const folder = slotFolder(place);
     mkdirSync(folder, { recursive: true });
@@ -283,15 +287,59 @@ async function slotAmong(places: readonly Place[]): Promise<{ place: Place; slot
   const named = queues.map(({ place }) => place?.ssh ?? "local").join(" or ");
   const limit = setting("ANA_RUNNER_QUEUE_WAIT", 2400);
   for (let waited = 0; ; waited++) {
-    for (const { place, folder, count } of queues) {
-      const slot = takeSlot(folder, count);
-      if (slot !== null) return { place, slot };
+    const ordered =
+      order === "least-busy"
+        ? queues
+            .map((queue, index) => {
+              const busy = Array.from({ length: queue.count }, (_, at) => at + 1).filter((number) =>
+                slotOccupied(join(queue.folder, `slot-${String(number)}`), "read"),
+              ).length;
+              return { queue, index, share: busy / queue.count };
+            })
+            .toSorted((a, b) => a.share - b.share || a.index - b.index)
+            .map(({ queue }) => queue)
+        : queues;
+    for (const { place, folder, count } of ordered) {
+      for (let number = 1; number <= count; number++) {
+        const slot = takeSlotNumber(folder, number);
+        if (slot !== null) return { place, slot };
+      }
     }
     if (waited >= limit) {
       throw new Refusal(`waited ${String(limit)}s for a slot on ${named}; no task started`, EXIT.noSlot);
     }
     if (waited % 15 === 14) say(`waiting for a slot on ${named} (${String(waited + 1)}s)`);
     await Bun.sleep(1000);
+  }
+}
+
+async function runLocalStatic(job: Job): Promise<number> {
+  const folder = join(tmpdir(), "ana-runner", "local-static");
+  mkdirSync(folder, { recursive: true });
+  const limit = setting("ANA_RUNNER_QUEUE_WAIT", 2400);
+  let slot: Slot | null = null;
+  for (let waited = 0; slot === null; waited++) {
+    for (let number = 1; number <= LOCAL_STATIC_SLOTS && slot === null; number++) {
+      slot = takeSlotNumber(folder, number);
+    }
+    if (slot !== null) break;
+    if (waited >= limit) {
+      throw new Refusal(`waited ${String(limit)}s for a slot on local-static; no task started`, EXIT.noSlot);
+    }
+    if (waited % 15 === 14) say(`waiting for a slot on local-static (${String(waited + 1)}s)`);
+    await Bun.sleep(1000);
+  }
+  const release = (): void => {
+    rmSync(slot.path, { recursive: true, force: true });
+    heldByThisRunner.delete(dirname(slot.path));
+  };
+  try {
+    return await attached(
+      ["/bin/bash", "--norc", TASK_SCRIPT, "here", job.root, job.pin, String(job.wall), ...job.task],
+      release,
+    );
+  } finally {
+    release();
   }
 }
 
@@ -500,7 +548,7 @@ const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/u;
 const LINUX_TESTS = /platform\s*[!=]==\s*"linux"|osIsolationSupport\(/u;
 const BUN_TIMES = "test/.test-timings.json";
 const NEWEST_SHARE = 0.3;
-const LEAST_CHUNK_MS = 60_000;
+const LEAST_CHUNK_MS = 20_000;
 
 function numbersOf(value: JsonValue | undefined): Record<string, number> {
   return Object.fromEntries(
@@ -628,7 +676,7 @@ async function sharded(
     spread([{ slots }], chunks, {
       run: async (chunk) => {
         while (live.length > 0) {
-          const seat = await slotAmong(live);
+          const seat = await slotAmong(live, "least-busy");
           if (!NO_VERDICT.has(await once(seat, chunk.files))) return "done";
           live = live.filter((each) => each !== seat.place);
         }
@@ -660,11 +708,15 @@ async function main(argv: readonly string[]): Promise<number> {
   const job: Job = { root, pin, task, wall: setting("ANA_RUNNER_WALL", 3600) || 3600 };
   const all = checkHost()?.trim() === "all";
   if (all && task[0] === "gate") {
-    say("all: the gate leads here, and its test, typecheck and lint steps go out");
+    say("all: the gate leads here, and its test chunks go out");
     return await attached(
       ["/bin/bash", "--norc", TASK_SCRIPT, "lead", root, pin, String(job.wall), ...task],
       () => {},
     );
+  }
+  if (all && LOCAL_IN_ALL.has(task[0] ?? "")) {
+    listed("all");
+    return await runLocalStatic(job);
   }
   const isPath = (arg: string): boolean =>
     TEST_FILE.test(arg) || statSync(join(root, arg), { throwIfNoEntry: false })?.isDirectory() === true;

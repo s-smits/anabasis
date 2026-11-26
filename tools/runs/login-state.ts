@@ -1,18 +1,24 @@
 /**
  * Whether a login is open or closed, from one reading of `readLogins`. Closed means a window is
  * used up or refused until its reset (the later of two); a login that could not be read is neither.
+ * Readers record closures in this host's disposable cache (`noteReadings`), so pickers (`keep`,
+ * `fresh`) skip logins read closed within 45 minutes until their reset without fanning out `usage`.
  */
 import { MINUTE_MS } from "#src/meta/clock.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { mainTree } from "#src/meta/git.ts";
-import { parseJsonAs } from "#src/meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import type { Reading, Window } from "./logins.ts";
+import { remember } from "./pulse-readers.ts";
 import type { Snapshot } from "./usage-model.ts";
 
 // Leave time for the keeper's ten-minute retry and its next poll within the hour.
 const CLOSED_CACHE_MS = 45 * MINUTE_MS;
+
+type Closures = Readonly<Record<string, { readonly at: number; readonly until: number }>>;
 
 export const resetOf = (iso: string | null): number | null => {
   const at = iso === null ? Number.NaN : new Date(iso).getTime();
@@ -30,15 +36,6 @@ export function closedOf(reading: Reading): { until: number | null } | null {
   if (closed.length === 0) return null;
   const resets = closed.map(({ resetsAt }) => resetOf(resetsAt));
   return { until: resets.includes(null) ? null : Math.max(...resets.flatMap((at) => at ?? [])) };
-}
-
-export function closedResets(readings: readonly Reading[]): Record<string, number> {
-  return Object.fromEntries(
-    readings.flatMap((reading) => {
-      const until = closedOf(reading)?.until ?? null;
-      return until === null ? [] : [[reading.login, until]];
-    }),
-  );
 }
 
 /** The `readings` a filter of `usage` lists: all with neither flag, and one that could not be read
@@ -63,14 +60,47 @@ export function stateWords(
   return ` · ${state}${allowed.includes(reading.login) ? "" : " · not in the pool"}`;
 }
 
-/** `wanted`, less each login a recent snapshot found closed whose reset has not come by `now`. */
-export function notClosed(wanted: readonly string[], kept: readonly Snapshot[], now: number): string[] {
-  // A stable sort keeps the later of two snapshots taken at one time last, as the record wrote them.
-  const last = kept
-    .filter(({ at }) => now - at < CLOSED_CACHE_MS)
-    .toSorted((one, other) => one.at - other.at)
-    .at(-1);
-  return wanted.filter((login) => (last?.closed?.[login] ?? 0) <= now);
+/** `wanted`, less each login recorded closed within the cache window whose reset has not arrived. */
+export function notClosed(wanted: readonly string[], kept: Closures, now: number): string[] {
+  return wanted.filter((login) => {
+    const closed = kept[login];
+    return closed === undefined || now - closed.at >= CLOSED_CACHE_MS || closed.until <= now;
+  });
+}
+
+export function noted(kept: Closures, readings: readonly Reading[], now: number): Closures {
+  const next = { ...kept };
+  for (const reading of readings) {
+    if ("error" in reading) continue;
+    const until = closedOf(reading)?.until ?? null;
+    if (until === null) delete next[reading.login];
+    else next[reading.login] = { at: now, until };
+  }
+  return Object.fromEntries(Object.entries(next).filter(([, { until }]) => until > now));
+}
+
+const closuresFile = (): string => join(mainTree(runtimeProcess.cwd()), ".ana", "logins-closed.json");
+
+export function closures(file = closuresFile()): Closures {
+  if (!existsSync(file)) return {};
+  try {
+    const parsed = asRecord(capturedJsonParse(readFileSync(file, "utf8")));
+    if (parsed === null) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).flatMap(([login, entry]) => {
+        const record = asRecord(entry);
+        return record !== null && isNumber(record.at) && isNumber(record.until)
+          ? [[login, { at: record.at, until: record.until }]]
+          : [];
+      }),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function noteReadings(readings: readonly Reading[], now = Date.now(), file = closuresFile()): void {
+  remember(file, capturedJsonStringify(noted(closures(file), readings, now)));
 }
 
 export const historyFile = (): string => join(mainTree(runtimeProcess.cwd()), ".ana", "logins-history.jsonl");

@@ -29,7 +29,7 @@ import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 
 export { CODEX_AUTH };
 
-const CODEX = "openai-codex";
+export const CODEX = "openai-codex";
 const OPENROUTER_MAX_TOKENS = 65_536;
 
 const DEEPSEEK_FLASH = {

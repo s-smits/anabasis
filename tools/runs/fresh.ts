@@ -12,15 +12,19 @@
  *   bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>[,<b>,<c>,<d>]] [--effort hhmm] [--login N] [--budget 800]
  *     [--at <commit>] [--as <suffix>] [--host <host> | --placed] [--yes] [-- <more of the campaign command's flags>]
  */
+import { codexAuthStatus } from "#src/agent/backends/codex-auth.ts";
+import { CODEX } from "#src/agent/backends/models.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
+import { assertCrossFamily } from "#tools/campaign/round.ts";
 import { type Host, hostNamed, ownName } from "./host-config.ts";
 import { verbOn } from "./hosts.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 import {
+  codexPresent,
   freshFleet,
   freshHost,
   freshHosts,
@@ -32,15 +36,13 @@ import {
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
 import { everyRun, HERE, harnessesOf, Misused, ownArgs } from "./registry.ts";
-import { payerOf } from "./live.ts";
+import { payerOf, seatFlagsOf } from "./live.ts";
 import { billsLogin, readLogins } from "./logins.ts";
 
 type Values = ReturnType<typeof parsed>["values"];
 
 interface Planning extends Pick<Values, "login" | "logins"> {
-  /** The host the operator or a placing caller named, or undefined where placement chooses. */
   readonly named: string | undefined;
-  /** The four seats' flags and those after `--`, which say who pays. */
   readonly flags: readonly string[];
   readonly read: typeof readLogins;
 }
@@ -58,7 +60,6 @@ interface Start extends Values {
   readonly commit: string;
 }
 
-/** The operator's named conditions: a model and its efforts a seat, as the operator ran them. */
 const NAMED = {
   opus: { id: "claude/claude-opus-5-5", effort: "hhmm" },
   sonnet: { id: "claude/claude-sonnet-5-5", effort: "xxhh" },
@@ -86,8 +87,6 @@ function parsed(own: readonly string[]) {
   });
 }
 
-/** A named condition, or any model a backend serves as `<provider>/<id>` at high in every seat and
- *  named by its id; refused before a worktree is made where no backend serves it. */
 function modelOf(model: string): { id: string; effort: string; label: string } {
   const named = Object.entries(NAMED).find(([one]) => one === model);
   if (named !== undefined) return { ...named[1], label: named[0] };
@@ -98,11 +97,6 @@ function modelOf(model: string): { id: string; effort: string; label: string } {
   return { id: model, effort: "hhhh", label: model.split("/").at(-1) ?? model };
 }
 
-/**
- * The four seats' flags for `--model` and `--effort`. `model` is one model for every seat, or four
- * comma-separated in `SEATS` order. Without `effort`, each seat takes its own model's letter for that
- * seat. The run is named by the solver's model.
- */
 export function seats(model: string, effort: string | undefined): { label: string; seated: string[] } {
   const names = model.split(",");
   if (names.length !== 1 && names.length !== SEATS.length) {
@@ -126,6 +120,17 @@ export function seats(model: string, effort: string | undefined): { label: strin
   };
 }
 
+const judgeFlagEnabled = (more: readonly string[]): boolean =>
+  more.lastIndexOf("--admit-judge") > more.lastIndexOf("--no-admit-judge");
+
+function preflightSeats(seated: readonly string[], more: readonly string[]): boolean {
+  const bySeat = seatFlagsOf([...seated, ...more]);
+  if (judgeFlagEnabled(more) && bySeat.reviewer !== undefined && bySeat.solver !== undefined) {
+    assertCrossFamily(bySeat.reviewer, bySeat.solver, "--admit-judge: ");
+  }
+  return Object.values(bySeat).some((model) => model?.startsWith(`${CODEX}/`) === true);
+}
+
 export async function fresh(args: readonly string[], read: typeof readLogins = readLogins): Promise<void> {
   const own = ownArgs(args);
   const more = args.slice(own.length + 1);
@@ -141,12 +146,19 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   }
   const here = runtimeProcess.cwd();
   const { label, seated } = seats(values.model, values.effort);
+  const needsCodex = preflightSeats(seated, more);
   if (positionals.length > 1 && values.host !== undefined) {
     throw new Error("a batch chooses its hosts automatically");
   }
   if (values.host !== undefined && values.host !== HERE) hostNamed(values.host);
   const named = values.placed ? HERE : values.host;
   const planned = await plan(positionals, { ...values, named, flags: [...seated, ...more], read });
+  if (needsCodex) {
+    const hosts = new Map(planned.map(({ host }) => [host?.name ?? HERE, host] as const));
+    let ready = true;
+    for (const host of hosts.values()) ready = (await codexCarried(host)) && ready;
+    if (!ready) return;
+  }
   if (planned.length > 1 && !(await announced(planned, values.yes))) return;
   const commit = publishedAt(here, values.at);
   for (const item of planned) {
@@ -161,8 +173,6 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   }
 }
 
-/** Every pack's host and login, each reserved in the counts before the next is placed, so a batch
- *  reads the fleet, catalogues and login windows once. */
 async function plan(packs: readonly string[], o: Planning): Promise<Planned[]> {
   const fleet = [...(await freshFleet())];
   const allowed = loginPool(o.logins);
@@ -189,7 +199,6 @@ async function plan(packs: readonly string[], o: Planning): Promise<Planned[]> {
   return planned;
 }
 
-/** Whether `host` holds `login`, saying so in the line the hourly fork reads where it does not. */
 async function carried(host: Host, login: string): Promise<boolean> {
   if (await loginPresent(host, login)) return true;
   console.error(`login ${login} must be carried to ${host.name} first`);
@@ -197,8 +206,21 @@ async function carried(host: Host, login: string): Promise<boolean> {
   return false;
 }
 
-/** Prints a batch's whole plan, and whether it may launch: with `--yes`, and with every login it
- *  takes already on its host, so one missing stops every launch. */
+async function codexCarried(host: Host | undefined): Promise<boolean> {
+  const status = host === undefined ? codexAuthStatus() : await codexPresent(host);
+  if (status === "ready") return true;
+  if (status === "unknown") {
+    console.error(
+      `warning: could not verify Codex login on ${host?.name ?? HERE} (no recognised answer); continuing`,
+    );
+    return true;
+  }
+  const where = host === undefined ? "this host" : host.name;
+  console.error(`Codex login on ${where} is ${status}: renew it with \`codex\` on ${where} first`);
+  runtimeProcess.exitCode = 1;
+  return false;
+}
+
 async function announced(planned: readonly Planned[], yes: boolean): Promise<boolean> {
   console.log("fresh batch plan");
   for (const [index, { pack, host, login }] of planned.entries()) {
@@ -217,8 +239,6 @@ async function announced(planned: readonly Planned[], yes: boolean): Promise<boo
   return yes;
 }
 
-/** Launches one planned pack: here in a worktree of its own, or on its host through a controller
- *  prepared at the commit, whose own `fresh` is told `--placed`. */
 async function startPlanned({ pack, host, login }: Planned, start: Start): Promise<void> {
   if (host === undefined) return await startFresh(pack, login, start);
   console.log(
@@ -247,8 +267,6 @@ async function startPlanned({ pack, host, login }: Planned, start: Start): Promi
   runtimeProcess.exitCode = await verbOn(await preparedHost(host, start.commit), forwarded);
 }
 
-/** Makes and launches the local worktree after fleet admission. A run placed here by this machine
- *  ends with its own name; one a caller placed here carries the caller's suffix. */
 async function startFresh(pack: string, login: string | undefined, start: Start): Promise<void> {
   const here = runtimeProcess.cwd();
   const beside = dirname(mainTree(here));

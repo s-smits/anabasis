@@ -2,15 +2,21 @@
  * Stops a run and releases what it held on the host. It ends the process that writes each named
  * campaign's log and every process that one started, and nothing else, since a round started by
  * hand can share its process group with a sibling. A name is one campaign's whole name
- * (`runNamed`). Without `--yes` it prints what it would end. The campaign goes on from its log when
- * run again under the same name (`bun run runs continue`); a word (`tools/campaign/signal.ts`) or `bun run
- * runs pause` stops one at a boundary instead.
+ * (`runNamed`). Without `--yes` it prints what it would end. Once no writer remains, a direct CLI
+ * stop of a campaign controller records `campaign.ended` (`ending: "stop"`, resetting idle and
+ * crash streaks on continue just as `signal.ts --stop` does) unless the log already holds an
+ * ending or an active pause word; internal callers (`keep.ts`, `manage.ts`) never record one. The
+ * campaign goes on from its log when run again under the same name (`bun run runs continue`); a
+ * word (`tools/campaign/signal.ts`) or `bun run runs pause` stops one at a boundary instead.
  *
  *   bun run runs stop <name> ... [--yes]
  */
 import { EXAMINE } from "#src/campaign/admission.ts";
+import { pauseSince } from "#src/campaign/signal.ts";
 import { keepCutNotes, sessionDirs, spent } from "#src/builder/session.ts";
 import { examinerDirs } from "#src/examiner/shell.ts";
+import { append } from "#src/kernel/log.ts";
+import { endedData, endingOf } from "#src/kernel/reports.ts";
 import { examinerSessions } from "#src/kernel/solves.ts";
 import { unfinished } from "#src/kernel/trace.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
@@ -36,8 +42,8 @@ import {
   writers,
 } from "./registry.ts";
 import { seedCut } from "./seed.ts";
+import { launchedIn } from "./state.ts";
 
-/** `pid` and every process it started, the nearest first, from a `ps` table of pid and parent. */
 export function family(table: string, pid: number): number[] {
   const started = new Map<number, number[]>();
   for (const row of table.trim().split("\n")) {
@@ -49,11 +55,6 @@ export function family(table: string, pid: number): number[] {
   return found;
 }
 
-/**
- * The directories of the solves and sessions a run started and never finished: a stopped or killed
- * run leaves them, since only its own process would have let them go. A seed's log begins as its
- * source's, and what that run has open is the source's to hold.
- */
 export function unreleasedSandboxes(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?: string })[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
   const seats = unfinished(events).flatMap(({ of, id }) => {
@@ -67,10 +68,6 @@ export function unreleasedSandboxes(run: Pick<Run, "path" | "seed">): (SolveDirs
   ];
 }
 
-/** What a stopped process's run may go on with, by the command it ran. A round has no ending to
- *  write when it is stopped, so a stop inside a Builder session spends that session's id; the
- *  session is the stopped process's own, by its flags, since a log's last session may be another
- *  run's, and a campaign stopped by signal would otherwise lose a session that was running. */
 function after(run: Run, ran: readonly string[]): string {
   if (runsAs(ran, [EXAMINE, DRAFT])) {
     return "An Examiner session's id names one session: the next takes another --session";
@@ -92,10 +89,14 @@ export async function stopProcessTree(pid: number, table?: string): Promise<numb
   return left;
 }
 
-/** Ends `run`'s writers and all they started, the run's own process first, so that it starts nothing more. */
-async function end(run: Run, running: readonly Running[], yes: boolean): Promise<number> {
+async function end(
+  run: Run,
+  running: readonly Running[],
+  yes: boolean,
+): Promise<{ readonly count: number; readonly controller: boolean }> {
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,ppid="]);
   const found = writers(run, running);
+  let controller = false;
   for (const { pid, args } of found) {
     const pids = family(table, pid);
     console.log(
@@ -104,13 +105,25 @@ async function end(run: Run, running: readonly Running[], yes: boolean): Promise
     if (!yes) continue;
     const left = await stopProcessTree(pid, table);
     if (left > 0) console.log(`  ⚠ ${String(left)} of them would not end`);
-    console.log(`  stopped, its log as it was. ${after(run, args)}`);
+    console.log(`  stopped. ${after(run, args)}`);
+    controller ||= runsAs(args, [BUILDER]);
   }
-  return found.length;
+  return { count: found.length, controller };
 }
 
-/** Release sandbox directories left open by `run` (`unreleasedSandboxes`) once no live process
- *  writes to it, preserving interrupted Builder notes first. */
+export function recordStop(run: Run): boolean {
+  const events = logEvents(run.path);
+  if (
+    events.length === 0 ||
+    endingOf(events) !== null ||
+    pauseSince(events, launchedIn(run, events)) !== undefined
+  ) {
+    return false;
+  }
+  append(run.path, "campaign.ended", endedData(events, { ending: "stop", why: "runs stop" }));
+  return true;
+}
+
 export async function release(
   run: Run,
   running: readonly Running[],
@@ -138,7 +151,7 @@ export async function release(
   return left.length;
 }
 
-export async function stop(args: readonly string[]): Promise<void> {
+export async function stop(args: readonly string[], { record = false } = {}): Promise<void> {
   const { values, positionals: names } = parseArgs({
     args: [...args],
     allowPositionals: true,
@@ -147,17 +160,29 @@ export async function stop(args: readonly string[]): Promise<void> {
   if (names.length === 0) throw new Misused();
   const named = names.map((name) => runNamed(name));
   const running = processes();
-  // A run stopped by hand is not gone on with: its keeper ends with it (`keep.ts`), and first, since
-  // a keeper that outlived its writer would start the run again before the stop came to it.
-  for (const pid of values.yes ? named.flatMap(({ name }) => keepers(name, running)) : []) {
-    await terminateAndReapProcessGroupId(pid);
-    console.log(`  its keeper, pid ${String(pid)}, ended`);
-  }
   let acted = 0;
-  for (const run of named) acted += await end(run, running, values.yes);
+  for (const run of named) {
+    for (const pid of keepers(run.name, running)) {
+      acted += 1;
+      if (values.yes) {
+        await terminateAndReapProcessGroupId(pid);
+        console.log(`  its keeper, pid ${String(pid)}, ended`);
+      } else console.log(`${run.name} in ${run.tree}: keeper pid ${String(pid)}`);
+    }
+  }
+  const stoppedControllers = new Set<string>();
+  for (const run of named) {
+    const ended = await end(run, running, values.yes);
+    acted += ended.count;
+    if (record && values.yes && ended.controller) stoppedControllers.add(run.name);
+  }
   if (acted === 0) console.log("none of these is running");
-  // Read again: what ended no longer writes, and one that would not end still does.
   const left = processes();
-  for (const run of named) acted += await release(run, left, values.yes ? "release" : "describe");
+  for (const run of named) {
+    if (stoppedControllers.has(run.name) && writers(run, left).length === 0 && recordStop(run)) {
+      console.log(`  ${run.name}: recorded campaign.ended (stop)`);
+    }
+    acted += await release(run, left, values.yes ? "release" : "describe");
+  }
   if (acted > 0 && !values.yes) console.log("nothing is ended or released without --yes");
 }

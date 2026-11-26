@@ -6,6 +6,7 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { hashJsonValue, sameJsonValue, stableJson } from "../src/meta/stable-json.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { hasText, textOr } from "../src/meta/text.ts";
+import { runCaptured } from "../src/meta/subprocess.ts";
 import { isObject } from "../src/meta/json-shape.ts";
 
 describe("path containment", () => {
@@ -118,5 +119,30 @@ describe("warn", () => {
     expect(written(true)).toBe("\u001B[33mone host is silent\u001B[39m\n");
     expect(written(false)).toBe("one host is silent\n");
     expect(written(true, { NO_COLOR: "1" })).toBe("one host is silent\n");
+  });
+});
+
+describe("runCaptured", () => {
+  it("returns soon after its child exits while a grandchild still holds both pipes", async () => {
+    const started = performance.now();
+    const result = await runCaptured(["/bin/sh", "-c", "echo out; echo err >&2; sleep 30 & exit 3"]);
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(result).toEqual({ exitCode: 3, signal: null, stdout: "out\n", stderr: "err\n" });
+  });
+
+  it("drains a short post-exit burst, returns immediately on normal exit, and cuts a chatty grandchild", async () => {
+    const fast = await runCaptured(["/bin/echo", "fast"]);
+    expect(fast).toEqual({ exitCode: 0, signal: null, stdout: "fast\n", stderr: "" });
+    const flushed = await runCaptured(["/bin/sh", "-c", "(sleep 0.05; echo a; sleep 0.05; echo b) & exit 0"]);
+    expect(flushed).toEqual({ exitCode: 0, signal: null, stdout: "a\nb\n", stderr: "" });
+    const started = performance.now();
+    const chatty = await runCaptured([
+      "/bin/sh",
+      "-c",
+      "(i=0; while [ $i -lt 40 ]; do echo x; sleep 0.25; i=$((i+1)); done) & exit 0",
+    ]);
+    expect(performance.now() - started).toBeLessThan(4000);
+    expect(chatty.exitCode).toBe(0);
+    expect(chatty.stdout.split("\n").filter((line) => line === "x").length).toBeLessThan(20);
   });
 });

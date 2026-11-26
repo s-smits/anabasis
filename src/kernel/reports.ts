@@ -1,4 +1,5 @@
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import {
   carriedBy,
   draw,
@@ -132,6 +133,23 @@ export function endedOf(events: readonly LogEvent[]) {
 }
 
 export const endingOf = (events: readonly LogEvent[]): string | null => endedOf(events)?.ending ?? null;
+
+export function endedData(
+  events: readonly LogEvent[],
+  {
+    ending,
+    why,
+    answers,
+  }: { readonly ending: string; readonly why: string; readonly answers?: readonly number[] },
+): JsonObject {
+  return {
+    ending,
+    why,
+    reference: promoted(events) ?? "starter",
+    latest: latestBuilt(events),
+    ...keyIfDefined("answers", answers === undefined ? undefined : [...answers]),
+  };
+}
 
 export function referenceOf(events: readonly LogEvent[]): string | null {
   const current = promoted(events);

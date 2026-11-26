@@ -62,16 +62,21 @@ describe.concurrent("fleet workflows", () => {
     const made = fixture();
     mkdirSync(join(made.root, "anabasis-prompts"));
     writeFileSync(join(made.root, "anabasis-prompts", "sample-prompt.txt"), "fixture prompt\n");
+    const codexHome = join(made.root, "codex");
+    mkdirSync(codexHome);
+    const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString(
+      "base64url",
+    );
+    writeFileSync(
+      join(codexHome, "auth.json"),
+      JSON.stringify({ tokens: { access_token: `e30.${payload}.sig`, refresh_token: "r" } }),
+    );
     const fresh = (yes: boolean) =>
-      made.runScriptAsync(CLI, [
-        "fresh",
-        "sample",
-        "--model",
-        "gpt",
-        "--host",
-        "here",
-        ...(yes ? ["--yes"] : []),
-      ]);
+      made.runScriptAsync(
+        CLI,
+        ["fresh", "sample", "--model", "gpt", "--host", "here", ...(yes ? ["--yes"] : [])],
+        { CODEX_HOME: codexHome },
+      );
     const planned = (out: string) => /would make (\S+) at/.exec(out)?.[1];
     const tree = planned((await fresh(false)).out);
     expect(tree).toBeDefined();

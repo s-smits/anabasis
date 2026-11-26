@@ -108,10 +108,11 @@ function pointsOf(events: readonly LogEvent[]): string[] {
   return events.flatMap(({ kind, data }, index) => {
     const row = (...parts: unknown[]) => [[index, kind, ...parts].map(String).join(" ")];
     if (SESSION_STARTS.has(kind) || kind === "build.finished") return row(data.session);
+    if (kind === "build.checkpoint") return row(data.session, data.harness);
     if (kind === "harness.promoted") return row(data.harness);
     if (kind === "harness.reverted") return row("reverted", data.harness);
-    if (kind === "comparison.started" && starterReads.has(data.session)) {
-      return row(data.session, "starter read");
+    if (kind === "comparison.started") {
+      return row(data.session, ...(starterReads.has(data.session) ? ["starter read"] : []));
     }
     if (reports.has(index)) return row(data.session, reports.get(index));
     if (kind !== "referee.turn" || readers.has(data.reader)) return [];

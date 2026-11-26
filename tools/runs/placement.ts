@@ -5,6 +5,7 @@
  * the machines first, so one login's limit leaves every machine working. Missing readings refuse
  * placement.
  */
+import type { CodexAuthState } from "#src/agent/backends/codex-auth.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf, RUN_CAP } from "./host-config.ts";
@@ -188,6 +189,14 @@ export async function loginPresent(host: Host, login: string): Promise<boolean> 
   const answer = result.lines.join("\n");
   if (answer !== "true" && answer !== "false") throw new Error(`${host.name}: invalid login presence answer`);
   return answer === "true";
+}
+
+const CODEX_STATES: readonly CodexAuthState[] = ["ready", "expired", "missing", "invalid"];
+
+export async function codexPresent(host: Host): Promise<CodexAuthState | "unknown"> {
+  const [result] = await asked(["active", "--here", "--codex"], [host]);
+  const answer = result?.lines?.join("\n").trim() ?? "";
+  return CODEX_STATES.find((state) => answer === `"${state}"`) ?? "unknown";
 }
 
 /** The host a fresh run of `pack` named `named` goes to, this machine for `here`, refused where it

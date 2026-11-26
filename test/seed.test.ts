@@ -123,6 +123,7 @@ describe("the points a seed can be cut at", () => {
     expect(points(folder)).toEqual([
       "0 build.started b-1",
       "2 build.finished b-1",
+      "3 comparison.started g-1",
       "4 referee.turn solve v-1",
       "7 referee.turn solve with no finding",
       "8 comparison.reported g-1 step",

@@ -19,7 +19,7 @@ import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { endedOf, latestBuilt, promoted } from "#src/kernel/reports.ts";
+import { endedData, endedOf } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
@@ -199,13 +199,15 @@ function ended(
 ): void {
   // An ending on a word the operator just left is a new one, whatever the last event says.
   if (decided.answers === undefined && endedOf(events)?.ending === decided.ending) return;
-  append(log, ENDED, {
-    ending: decided.ending,
-    why: decided.why,
-    reference: promoted(events) ?? "starter",
-    latest: latestBuilt(events),
-    ...keyIfDefined("answers", decided.answers === undefined ? undefined : [...decided.answers]),
-  });
+  append(
+    log,
+    ENDED,
+    endedData(events, {
+      ending: decided.ending,
+      why: decided.why,
+      ...keyIfDefined("answers", decided.answers),
+    }),
+  );
 }
 
 async function converse(

@@ -22,7 +22,7 @@ import {
   unpromotedStep,
 } from "#src/campaign/signal.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
-import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -231,7 +231,13 @@ export async function start(
 }
 
 function dryRun(run: Run, flags: readonly string[], env: ReturnType<typeof loginEnv>, at: string) {
-  const command = [capturedExecPath, BUILDER, "--name", run.name, ...flags];
+  const d2 = "tools/d2/harness-builder.ts";
+  const script = existsSync(join(run.tree, BUILDER))
+    ? BUILDER
+    : existsSync(join(run.tree, d2))
+      ? d2
+      : BUILDER;
+  const command = [capturedExecPath, script, "--name", run.name, ...flags];
   const dry = runSync([...command, "--dry-run"], { cwd: run.tree, env });
   console.log(decodeOutput(dry.stdout).trim().split("\n").slice(-4).join("\n"));
   if (dry.exitCode !== 0) {

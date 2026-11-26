@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { rmSync } from "../src/meta/filesystem.ts";
+import { join } from "../src/meta/path.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const fixtures: string[] = [];
@@ -122,5 +123,55 @@ console.log(await freshLogin(process.env.FAKE_LOGIN, [], said("fetch failed")));
     expect(ok.out.trim()).toBe("runner here false false true");
     expect(blocked.err).toContain("no host has room");
     expect(bad.err).toContain("packs takes a list of pack names");
+  });
+
+  it("refuses same-family --admit-judge immediately and checks Codex auth readiness without printing secrets", async () => {
+    const judgeFixture = fixture();
+    const codexFixture = fixture();
+    const sameFamily =
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--host", "runner", "--model", "opus", "--", "--admit-judge"]);';
+    const cancelledJudge =
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--host", "runner", "--model", "opus", "--", "--admit-judge", "--no-admit-judge"]);';
+    const localCodex =
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--host", "here", "--model", "opus,opus,gpt,opus"]);';
+    const remoteCodex =
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--host", "runner", "--model", "gpt"]);';
+    const missingHome = join(codexFixture.root, "no-codex-home");
+    const [refusedJudge, allowedNoJudge, missingLocalDry, missingRemoteDry, unknownRemoteDry, codexCli] =
+      await Promise.all([
+        judgeFixture.runAsync(sameFamily),
+        codexFixture.runAsync(cancelledJudge, { CLAUDE_CODE_OAUTH_TOKEN: "fixture" }),
+        codexFixture.runAsync(localCodex, {
+          CLAUDE_CODE_OAUTH_TOKEN: "fixture",
+          CODEX_HOME: missingHome,
+        }),
+        codexFixture.runAsync(remoteCodex, {
+          FAKE_EXECUTE: "1",
+          FAKE_RUN_CLI: "1",
+          CODEX_HOME: missingHome,
+        }),
+        codexFixture.runAsync(remoteCodex),
+        codexFixture.runScriptAsync("tools/runs/cli.ts", ["active", "--here", "--codex"], {
+          CODEX_HOME: missingHome,
+        }),
+      ]);
+    expect(refusedJudge.code).toBe(1);
+    expect(refusedJudge.err).toContain("--admit-judge:");
+    expect(judgeFixture.recorded().some((call) => call.tool === "ssh")).toBe(false);
+    expect(allowedNoJudge.code).toBe(0);
+    expect(allowedNoJudge.out).toContain("nothing is launched without --yes");
+    expect(missingLocalDry.code).toBe(1);
+    expect(missingLocalDry.err).toContain("Codex login on this host is missing");
+    expect(missingLocalDry.out).not.toContain("nothing is done without --yes");
+    expect(missingRemoteDry.code).toBe(1);
+    expect(missingRemoteDry.err).toContain("Codex login on runner is missing");
+    expect(missingRemoteDry.out).not.toContain("nothing is launched without --yes");
+    expect(unknownRemoteDry.code).toBe(0);
+    expect(unknownRemoteDry.err).toContain(
+      "warning: could not verify Codex login on runner (no recognised answer)",
+    );
+    expect(unknownRemoteDry.out).toContain("nothing is launched without --yes");
+    expect(codexCli.code).toBe(0);
+    expect(codexCli.out.trim()).toBe('"missing"');
   });
 });

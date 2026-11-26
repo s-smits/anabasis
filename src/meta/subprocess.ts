@@ -147,6 +147,37 @@ export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptio
   return decodeOutput(result.stdout);
 }
 
+const PIPES_AFTER_EXIT_MS = 1000;
+
+async function drainBounded(stream: ReadableStream<Uint8Array>, exited: Promise<number>): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let done = false;
+  let text = "";
+  const cut = (): void => {
+    reader.cancel().catch(() => undefined);
+  };
+  exited.then(
+    () => {
+      if (done) return;
+      timer = setTimeout(cut, PIPES_AFTER_EXIT_MS);
+      timer.unref();
+    },
+    () => undefined,
+  );
+  try {
+    for (let next = await reader.read(); !next.done; next = await reader.read()) {
+      text += decoder.decode(next.value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    done = true;
+    clearTimeout(timer);
+    reader.releaseLock();
+  }
+}
+
 export async function runCaptured(
   cmd: readonly string[],
   options: Pick<RunSyncOptions, "cwd" | "env" | "timeout"> = {},
@@ -161,8 +192,8 @@ export async function runCaptured(
       ...keyIfDefined("timeout", options.timeout),
     });
     const [stdout, stderr, code] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
+      drainBounded(child.stdout, child.exited),
+      drainBounded(child.stderr, child.exited),
       child.exited,
     ]);
     const signal = child.signalCode == null ? null : String(child.signalCode);

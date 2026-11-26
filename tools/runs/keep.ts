@@ -13,7 +13,9 @@
 import type { LogEvent } from "#src/kernel/log.ts";
 import { endedOf } from "#src/kernel/reports.ts";
 import { nonRetryableProvider } from "#src/kernel/solve.ts";
+import { askedOf, type Seat, traced } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { envRunsFile } from "./host-config.ts";
@@ -31,6 +33,7 @@ import {
   type readLogins,
   readNotClosed,
   room,
+  seatModels,
   startRefusal,
 } from "./logins.ts";
 import type { Live } from "./live.ts";
@@ -56,15 +59,36 @@ interface Hands {
 const LOOK_MS = 60_000;
 const ASK_MS = 10 * 60_000;
 const BARREN = 3;
+const SEAT_ROLE: Readonly<Record<Seat, "builder" | "examiner" | "reviewer" | "solver">> = {
+  build: "builder",
+  exam: "examiner",
+  draft: "examiner",
+  referee: "reviewer",
+  solve: "solver",
+};
 
-/** Model turns the provider answered, of any seat. A failed launch still grows the log, so a keeper that
- *  counted its bytes would go on into one DNS failure again and again. */
+function refusalOnClaudeLogin(events: readonly LogEvent[], why: string, flags: readonly string[]): boolean {
+  if (!billsLogin(events, flags)) return false;
+  if (/disabled Claude subscription access/u.test(why)) return true;
+  const asked = askedOf(events);
+  const models = seatModels(events, flags);
+  for (let index = events.length - 2; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event === undefined || event.kind === "campaign.ended") break;
+    const err = event.data.error;
+    if (!event.kind.endsWith(".turn") || !isString(err) || !nonRetryableProvider(err) || !why.includes(err)) {
+      continue;
+    }
+    const turn = traced(event, index);
+    const model = turn === null ? undefined : (asked.get(turn.id) ?? models[SEAT_ROLE[turn.seat]]);
+    if (model !== undefined) return model.startsWith("claude/");
+  }
+  return false;
+}
+
 const turnsIn = (events: readonly LogEvent[]): number =>
   events.filter(({ kind, data }) => kind.endsWith(".turn") && data.stopReason !== "error").length;
 
-/** What a keeper does with a run that stands as `state` at `now`: it moves a run waiting on a
- *  provider for longer than `waitMs`, goes on with one nothing writes unless it ended on its own
- *  terms, and watches the rest. */
 export function turnOf(state: RunState, now: number, waitMs: number): Turn {
   if (state.kind === "waiting") {
     return state.wait.for === "provider" && state.wait.until - now > waitMs ? "move" : "watch";
@@ -113,7 +137,7 @@ export async function roomFor(
 }
 
 export const keeperActed = (line: string): boolean =>
-  /: (?:move|continue) (?:on login|without a login)|; left waiting$|no seat took a model turn: kept no longer$/u.test(
+  /: (?:move|continue) (?:on login|without a login)|; left waiting$|(?:no seat took a model turn|non-retryable provider refusal[^:]*): kept no longer$/u.test(
     line,
   );
 
@@ -142,16 +166,12 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     if (turn === "move" && current !== undefined && state.kind === "waiting") {
       spentUntil.set(current, state.wait.until);
     }
-    // A permanent provider refusal (disabled subscription, missing credits, unconfigured provider)
-    // never clears on retry, so mark the login spent and move to another roomy login instead of
-    // restarting into the same failure.
     const ended = endedOf(events);
-    if (
-      turn === "continue" &&
-      current !== undefined &&
-      ended?.ending === GOES_ON &&
-      nonRetryableProvider(ended.why)
-    ) {
+    if (turn === "continue" && ended?.ending === GOES_ON && nonRetryableProvider(ended.why)) {
+      if (current === undefined || !refusalOnClaudeLogin(events, ended.why, flags)) {
+        act(now, "non-retryable provider refusal outside the Claude login: kept no longer");
+        return true;
+      }
       spentUntil.set(current, Number.POSITIVE_INFINITY);
     }
     for (const [login, at] of spentUntil) {
@@ -182,6 +202,14 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       }
     }
     if (target === null || refusal !== null) {
+      if (
+        target === null &&
+        logins.length > 0 &&
+        logins.every((login) => spentUntil.get(login) === Number.POSITIVE_INFINITY)
+      ) {
+        act(now, "non-retryable provider refusal on every login: kept no longer");
+        return true;
+      }
       const reason = refusal ?? (why === "" ? "no login to go on with" : why);
       if (reason !== waitedOn) act(now, `${reason}; left waiting`);
       waitedOn = reason;

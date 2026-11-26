@@ -13,6 +13,7 @@ import { allowedLogins, asGathered, capOf, startRefusal } from "../tools/runs/lo
 import type { Host } from "../tools/runs/host-config.ts";
 import { leastOccupied } from "../tools/runs/placement.ts";
 import { packOf, type Run, runNamed } from "../tools/runs/registry.ts";
+import { seed } from "../tools/runs/seed.ts";
 import { decidedOn, planOn } from "../tools/runs/view.ts";
 import { EVENT_FORMATTERS } from "../tools/runs/summary.ts";
 
@@ -297,6 +298,61 @@ describe("a reported step that rests on set-aside tasks", () => {
       const line = report({ reading, aside, ...keyIfDefined("level", level), counted }) ?? "";
       const flips = reading === "step" && aside.length > 0 && n !== null && 2 ** -n > (level ?? 0.02);
       expect(line.includes(`with their rejections counted it reads ${String(n)}-0-0, no step`)).toBe(flips);
+    }
+  });
+});
+
+describe("runs seed --points", () => {
+  it("lists build.checkpoint and both candidate and starter comparison.started cuts", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ana-seed-points-"));
+    const originalLog = console.log;
+    const printed: string[] = [];
+    console.log = (...args: unknown[]) => {
+      printed.push(args.map(String).join(" "));
+    };
+    try {
+      const at = "2026-11-26T00:00:00.000Z";
+      const rows = [
+        { at, kind: "build.started", data: { session: "b-1" } },
+        { at, kind: "build.checkpoint", data: { session: "b-1", harness: "h1" } },
+        {
+          at,
+          kind: "comparison.started",
+          data: { session: "g-1", old: "starter", fresh: "h1", starter: "starter" },
+        },
+        { at, kind: "harness.promoted", data: { from: "starter", harness: "h1" } },
+        {
+          at,
+          kind: "comparison.started",
+          data: { session: "g-2", old: "h1", fresh: "starter", starter: "starter" },
+        },
+        {
+          at,
+          kind: "comparison.reported",
+          data: {
+            session: "g-2",
+            old: "h1",
+            fresh: "starter",
+            starter: "starter",
+            reading: "no-step",
+            level: 0.02,
+            scored: { wins: 0, losses: 5, ties: 0, differences: [-1, -1, -1, -1, -1] },
+          },
+        },
+      ];
+      writeFileSync(join(dir, "log.jsonl"), `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+      await seed(["--from", dir, "--points"]);
+      expect(printed.join("\n").split("\n")).toEqual([
+        "0 build.started b-1",
+        "1 build.checkpoint b-1 h1",
+        "2 comparison.started g-1",
+        "3 harness.promoted h1",
+        "4 comparison.started g-2 starter read",
+        "5 comparison.reported g-2 no-step",
+      ]);
+    } finally {
+      console.log = originalLog;
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

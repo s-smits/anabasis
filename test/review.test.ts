@@ -848,7 +848,7 @@ describe("adversarial draft audit", () => {
     });
     expect(gatedRes.verdict).toBe("sound");
     expect(read(gated.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(3);
-    expect(gated.sent[0]).toContain("already mechanically verified fixed");
+    expect(gated.sent[0]).toContain("one replayed probe, not a fresh test");
 
     // `replayDraftProbes` flags persisting defects, verifies fixed ones at $0, and leaves inconclusive/missing probes unverified.
     const sameStill = await replayDraftProbes(res, {
@@ -885,6 +885,50 @@ describe("adversarial draft audit", () => {
     expect(crashedReplay.stillBroken).toEqual([]);
     expect(crashedReplay.verifiedFixed).toEqual([]);
     expect(crashedReplay.unverified).toHaveLength(3);
+  });
+});
+
+describe("draft audit on a check that throws", () => {
+  it("accepts check-defect on the check a valid alternative makes throw, and only on that check", async () => {
+    const checks = programs.get(JSON.stringify([SPAN]));
+    if (checks === undefined) throw new Error("missing check program");
+    const throwing: Verifier = async (_task, answer) =>
+      asRecord(answer)?.span === -2
+        ? { kind: "faulty", check: "span", reason: "the check threw" }
+        : { kind: "pass", objective: 10 };
+    const s = setup([
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "-2" }] }),
+      reviewCall({
+        verdict: "defects",
+        findings: [{ kind: "check-defect", task: "t-1", check: "other", probe: 1, reason: "wrong check" }],
+        summary: "wrong check id",
+      }),
+      reviewCall({
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "t-1", probe: 1, reason: "a throw is no pass" }],
+        summary: "wrong kind for a throw",
+      }),
+      reviewCall({
+        verdict: "defects",
+        findings: [{ kind: "check-defect", task: "t-1", check: "span", probe: 1, reason: "span=-2 throws" }],
+        summary: "throwing check",
+      }),
+    ]);
+    const res = await reviewDraft(s.reader, {
+      session: "d-1",
+      pass: 1,
+      prompt: "Keep spans <= 12 m.",
+      contract: CONTRACT,
+      checks,
+      verify: throwing,
+      tasks: [TASK],
+      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+      notes: [],
+      log: s.log,
+    });
+    expect(res.findings).toMatchObject([{ kind: "check-defect", check: "span", probe: 1 }]);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(2);
+    expect(s.sent.join("\n")).toContain("made check span throw");
   });
 });
 

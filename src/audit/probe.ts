@@ -79,6 +79,10 @@ export function conclusive(row: ProbeRow): boolean {
   return decides(row.original) && decides(row.changed);
 }
 
+export function throwsIn(row: ProbeRow): string | null {
+  return decides(row.original) ? (faultyOf(row.changed)?.check ?? null) : null;
+}
+
 export function reaches(path: string, declared: readonly string[]): boolean {
   if (path.startsWith(FILE)) {
     return declared.some((field) => field === path || path.startsWith(`${field}/`) || field === `${FILE}$`);
@@ -169,7 +173,13 @@ function rowText(row: ProbeRow): string {
     row.moved.length === 0
       ? "  no check changed its verdict. That alone does not show the changed fields are unread: a check may decide the new values the same way"
       : `  ${plural(row.moved.length, "check")} moved: ${row.moved.join(", ")}`,
-    ...(conclusive(row) ? [] : ["  inconclusive: a side reached no verdict, so this probe is not evidence"]),
+    ...(conclusive(row)
+      ? []
+      : throwsIn(row) === null
+        ? ["  inconclusive: a side reached no verdict, so this probe is not evidence"]
+        : [
+            `  the changed answer made check ${String(throwsIn(row))} throw, so that side reached no pass or fail`,
+          ]),
   ].join("\n");
 }
 

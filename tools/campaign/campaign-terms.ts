@@ -13,6 +13,8 @@ import { type Opening, openingOf, planOf, SEATS, type Seat, TERMS } from "#src/c
 import { ANSWERED, type ControlSignal } from "#src/campaign/signal.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
+import { frozenChecker } from "#src/kernel/acceptance.ts";
+import { hasJudge } from "#src/kernel/contract.ts";
 import {
   append,
   CALL_KINDS,
@@ -36,8 +38,8 @@ import { promoteCommand } from "./promote.ts";
 import {
   type Campaign,
   COMPARISON_OPTIONS,
-  capRead,
   assertCrossFamily,
+  capRead,
   crossFamilyVendors,
   SESSION_OPTIONS,
   type Seated,
@@ -102,7 +104,6 @@ const OPTIONS = {
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
   hitl: { type: "boolean" },
-  "admit-judge": { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, effort: "high" } as const;
@@ -136,8 +137,8 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   minutes: "a Builder conversation's deadline in minutes of its own time (1440)",
   turns: "a Builder conversation's session turn limit (300)",
   practice: "practice tasks released after each reading or promotion, at most half of what is held",
-  admit: "checks admitted by name, under --hitl",
-  "admit-judge": "objective items a judging model scores, admitted for the campaign; kept once named",
+  admit:
+    "author-computed checks admitted by name under --hitl (judged items use tools/eval/accept.ts --admit-judge)",
   promotions: "the promotions after which the campaign ends on the operator's word; none to lift it (none)",
   moves: "the most campaign moves this run makes",
   handover: "a directory, outside the repository, to write what the campaign hands over at its end",
@@ -245,14 +246,23 @@ function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: 
   };
 }
 
-function validateOpening(opening: Opening, values: Values, seats: "paid" | "scripted"): void {
+function validateOpening(
+  opening: Opening,
+  values: Values,
+  seats: "paid" | "scripted",
+  events: readonly LogEvent[],
+): void {
   if (seats === "paid" && opening.seats.reviewer === null) {
     throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
   }
-  const { reviewer } = opening.seats;
-  const solver = opening.solver?.model;
-  if (opening.judged && reviewer !== null && solver !== undefined) {
-    assertCrossFamily(reviewer.model, solver, "--admit-judge: ");
+  if (
+    seats === "paid" &&
+    frozenChecker(events) !== null &&
+    hasJudge(draftOf(events)?.objective) &&
+    opening.seats.reviewer !== null &&
+    opening.solver !== null
+  ) {
+    assertCrossFamily(opening.seats.reviewer.model, opening.solver.model);
   }
   counted(
     opening.patience,
@@ -345,12 +355,7 @@ export function opened(
   const attended = values.hitl ?? was?.attended ?? false;
   const crossFamily =
     resolvedSeats.reviewer !== null && crossFamilyVendors(resolvedSeats.reviewer.model, solver.model);
-  if (was?.judged === true && values["admit-judge"] === false && draftOf(events) !== null) {
-    throw new Error(
-      "--no-admit-judge: judging was already admitted when this campaign drafted its exam and stays kept",
-    );
-  }
-  const judged = values["admit-judge"] ?? (was === null ? !attended && crossFamily : was.judged);
+  const judged = !attended && crossFamily;
   const opening: Opening = {
     project: projectOf(log, values.project, was),
     budget,
@@ -362,7 +367,7 @@ export function opened(
     solver,
     terms: resolveTerms(events, was, values),
   };
-  validateOpening(opening, values, seats);
+  validateOpening(opening, values, seats, events);
   persistOpening(log, events, opening, values["dry-run"] ? "dry-run" : "write", heard);
   return opening;
 }

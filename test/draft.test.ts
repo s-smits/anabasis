@@ -1024,7 +1024,7 @@ describe.concurrent("campaign draft lifecycle", () => {
         ],
       },
     };
-    expect(draftFaults(judgedDraft, "code-only")[0]).toContain("no cross-family judging reviewer admitted");
+    expect(draftFaults(judgedDraft)).toEqual([]);
 
     const staged = stageExam(join(root, "rubric-stage"), rubricDraft);
     const brief = readPack(staged.bundle).brief;

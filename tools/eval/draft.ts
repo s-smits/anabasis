@@ -31,7 +31,6 @@ import {
   stayAwake,
   worktreesOf,
 } from "../campaign/campaign.ts";
-import { assertCrossFamily } from "../campaign/round.ts";
 import { FORK_OPTIONS, seatForkPlan } from "../campaign/seat-fork.ts";
 import { keepReading } from "../eval/accept.ts";
 import { draftReading } from "../campaign/exam.ts";
@@ -121,9 +120,6 @@ function draftAuditReader(
   const model = values.reviewer ?? recorded?.model;
   if (model === undefined) return null;
   const effort = values["reviewer-effort"] ?? recorded?.effort ?? "high";
-  if (opening?.judged === true && opening.solver !== null) {
-    assertCrossFamily(model, opening.solver.model);
-  }
   return {
     model: modelNamed(model),
     // SAFETY: `effort` is a pi thinking level validated by the backend on call.
@@ -174,7 +170,6 @@ export async function draftCommand(
       id,
       mode: "draft",
       prompt,
-      judged: opening?.judged === true,
       budget: { modelTurns: modelTurns ?? null, minutes: wallSeconds / 60, solves: setting.solves },
       reading: async (draft, home) => {
         const { faults, read: seen } = await draftReading(dirname(log), draft, Number(values.jobs), home);

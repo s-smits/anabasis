@@ -19,7 +19,6 @@ import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { assertCrossFamily } from "#tools/campaign/round.ts";
 import { type Host, hostNamed, ownName } from "./host-config.ts";
 import { verbOn } from "./hosts.ts";
 import { preparedHost, publishedAt } from "./code.ts";
@@ -120,14 +119,13 @@ export function seats(model: string, effort: string | undefined): { label: strin
   };
 }
 
-const judgeFlagEnabled = (more: readonly string[]): boolean =>
-  more.lastIndexOf("--admit-judge") > more.lastIndexOf("--no-admit-judge");
-
 function preflightSeats(seated: readonly string[], more: readonly string[]): boolean {
-  const bySeat = seatFlagsOf([...seated, ...more]);
-  if (judgeFlagEnabled(more) && bySeat.reviewer !== undefined && bySeat.solver !== undefined) {
-    assertCrossFamily(bySeat.reviewer, bySeat.solver, "--admit-judge: ");
+  if (more.includes("--admit-judge") || more.includes("--no-admit-judge")) {
+    throw new Error(
+      "--admit-judge was removed: the Examiner chooses dynamically during d-1, and unattended cross-family openings auto-admit judged items",
+    );
   }
+  const bySeat = seatFlagsOf([...seated, ...more]);
   return Object.values(bySeat).some((model) => model?.startsWith(`${CODEX}/`) === true);
 }
 

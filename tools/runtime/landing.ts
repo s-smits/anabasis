@@ -7,7 +7,7 @@ import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { hold, holderOf, release } from "#src/meta/holder.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
-import { checkPlaces, namedPlaces, type Place } from "../runs/host-config.ts";
+import { benchesForRoot, checkPlaces, namedPlaces, type Place } from "../runs/host-config.ts";
 import { git, lines, type Proof, short } from "./gate.ts";
 import { beneath, chainAbove, openPulls, type Pull, stackStart } from "./pulls.ts";
 
@@ -140,8 +140,12 @@ export function watching(Interrupted: new (message: string) => Error, moved: () 
   return { signal: stop.signal, end };
 }
 
-/** Where a landing in `root` proves its commits (`checkPlaces`); a host list that cannot be read is
- *  refused, null, before anything is proved or posted. */
+const LAND_ALL_CONCURRENCY = 4;
+
+/** Where a landing in `root` proves its commits (`checkPlaces`); a host list that cannot be read
+ *  is refused, null. With remote non-benchmark hosts listed and `ANA_CHECK_HOST` unset, commits
+ *  lead locally under `all` (capped by `LAND_ALL_CONCURRENCY` and non-benchmark fleet capacity) so
+ *  test chunks spread breadth-first over every cool host without pinning any commit to one machine. */
 export function whereToProve(
   root: string,
   jobs: number | undefined,
@@ -150,7 +154,20 @@ export function whereToProve(
   try {
     const places = checkPlaces(root, jobs);
     if (places[0]?.remote !== undefined) {
-      say(`proving on ${namedPlaces(places)} at once; ANA_CHECK_HOST=<one> proves at that one.`);
+      const benched = new Set(
+        benchesForRoot(root).flatMap((bench) => (bench.host === undefined ? [] : [bench.host.name])),
+      );
+      const total = places.reduce(
+        (sum, { remote, slots }) => sum + (remote !== undefined && benched.has(remote) ? 0 : slots),
+        0,
+      );
+      if (total > 0) {
+        const pooled: readonly Place[] = [
+          { remote: "all", slots: Math.min(jobs ?? LAND_ALL_CONCURRENCY, total) },
+        ];
+        say(`proving on ${namedPlaces(pooled)} at once; ANA_CHECK_HOST=<one> proves at that one.`);
+        return pooled;
+      }
     }
     return places;
   } catch (error) {

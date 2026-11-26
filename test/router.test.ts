@@ -825,7 +825,7 @@ describe.concurrent("which host runs a task", () => {
   });
 
   it("learns each place's running mean of each test file's time from what its runs measured, cuts chunks by that time, weighs a new file at the median and forgets a removed one", async () => {
-    const sizes = { a: 40, b: 30, c: 20, d: 10, e: 5 };
+    const sizes = { a: 12, b: 10, c: 6, d: 4, e: 2 };
     type Name = keyof typeof sizes;
     const FIRST: readonly Name[] = ["a", "b", "c", "d"];
     const fileOf = (name: string): string => `test/${name}.test.ts`;
@@ -849,10 +849,10 @@ describe.concurrent("which host runs a task", () => {
         expect(first.stderr).toContain("4 test files in 2 chunks");
         expect(learned(sb)).toEqual({
           [MACHINE]: meansOf([
-            ["a", 40_000],
-            ["b", 30_000],
-            ["c", 20_000],
-            ["d", 10_000],
+            ["a", 12_000],
+            ["b", 10_000],
+            ["c", 6000],
+            ["d", 4000],
           ]),
         });
         writeFileSync(join(sb.home, "speed"), "2");
@@ -861,10 +861,10 @@ describe.concurrent("which host runs a task", () => {
         expect(second.stderr).toContain("4 test files in 1 chunks");
         expect(learned(sb)).toEqual({
           [MACHINE]: meansOf([
-            ["a", 52_000],
-            ["b", 39_000],
-            ["c", 26_000],
-            ["d", 13_000],
+            ["a", 15_600],
+            ["b", 13_000],
+            ["c", 7800],
+            ["d", 5200],
           ]),
         });
         rmSync(join(sb.source, fileOf("d")));
@@ -874,11 +874,11 @@ describe.concurrent("which host runs a task", () => {
         expect(third.stderr).toContain("4 test files in 2 chunks");
         const kept = {
           [MACHINE]: meansOf([
-            ["a", 60_400],
-            ["b", 45_300],
-            ["c", 30_200],
-            ["d", 13_000],
-            ["e", 10_000],
+            ["a", 18_120],
+            ["b", 15_100],
+            ["c", 9060],
+            ["d", 5200],
+            ["e", 4000],
           ]),
         };
         expect(learned(sb)).toEqual(kept);
@@ -933,13 +933,70 @@ describe.concurrent("which host runs a task", () => {
     });
   });
 
-  it("leads a gate under all here, outside any slot and unmarked, so its own steps are routed in turn", async () => {
+  it("leads a gate and runs fast static checks in a bounded local queue under all, validating ANA_HOSTS", async () => {
     const sb = makeCase();
-    const result = await sb.run(["run", "gate"], { ANA_CHECK_HOST: "all" });
-    expect(result.status, result.stderr).toBe(0);
-    expect(lastCall(sb.home)).toMatchObject({ active: "", args: "run gate" });
+    for (const [args, active, expected] of [
+      [["run", "gate"], "", "run gate"],
+      [["run", "secrets"], "1", "run secrets"],
+      [["run", "typecheck"], "1", "run typecheck"],
+      [["run", "lint", "--", "--strict"], "1", "run lint --strict"],
+    ] as const) {
+      const result = await sb.run(args, { ANA_CHECK_HOST: "all" });
+      expect(result.status, result.stderr).toBe(0);
+      expect(lastCall(sb.home)).toMatchObject({ active, args: expected });
+    }
     expect(sb.connections()).toEqual([]);
     expect(heldIn(sb.queueOf("local"))).toEqual([]);
+    expect(heldIn(sb.queueOf("local-static"))).toEqual([]);
+    const bad = await sb.run(["run", "typecheck"], { ANA_CHECK_HOST: "all", ANA_HOSTS: "not json" });
+    expect(bad.status).not.toBe(0);
+  });
+
+  it("spreads sharded chunks under all by live occupancy across cool hosts (even when slot-2 is held)", async () => {
+    const sb = makeCase({ copySource: true });
+    mkdirSync(join(sb.source, "test"), { recursive: true });
+    writeFileSync(join(sb.source, "test/a.test.ts"), "");
+    writeFileSync(join(sb.source, "test/b.test.ts"), "");
+    const hosts = JSON.stringify([
+      { name: "m1", ssh: "fake-mac", tree: "~/anabasis", bun: "~/.bun/bin/bun", checks: 2 },
+      { name: "zbook", ssh: "fake-linux", tree: "~/anabasis", bun: "~/.bun/bin/bun", checks: 2 },
+    ]);
+    sb.loaded("fake-mac", 2, 0);
+    sb.loaded("fake-linux", 4, 0);
+    const localQueue = sb.queueOf("local");
+    mkdirSync(localQueue, { recursive: true });
+    symlinkSync(String(runtimeProcess.pid), join(localQueue, "slot-1"));
+    const result = await sb.run(["test"], { ANA_CHECK_HOST: "all", ANA_HOSTS: hosts });
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls(sb.hostHome("fake-mac")).length).toBe(1);
+    expect(calls(sb.hostHome("fake-linux")).length).toBe(1);
+    const macQueue = sb.queueOf("fake-mac");
+    mkdirSync(macQueue, { recursive: true });
+    symlinkSync(String(runtimeProcess.pid), join(macQueue, "slot-2"));
+    const single = await sb.run(["test", "test/a.test.ts"], { ANA_CHECK_HOST: "all", ANA_HOSTS: hosts });
+    expect(single.status, single.stderr).toBe(0);
+    expect(calls(sb.hostHome("fake-mac")).length).toBe(1);
+    expect(calls(sb.hostHome("fake-linux")).length).toBe(2);
+  });
+
+  it("keeps load-ranked slot-2 ahead of a hot host's slot-1 under auto", async () => {
+    const sb = makeCase({ copySource: true });
+    const hosts = JSON.stringify([
+      { name: "m1", ssh: "fake-mac", tree: "~/anabasis", bun: "~/.bun/bin/bun", checks: 2 },
+      { name: "zbook", ssh: "fake-linux", tree: "~/anabasis", bun: "~/.bun/bin/bun", checks: 2 },
+    ]);
+    sb.loaded("fake-mac", 2, 0.1);
+    sb.loaded("fake-linux", 4, 8);
+    const localQueue = sb.queueOf("local");
+    mkdirSync(localQueue, { recursive: true });
+    symlinkSync(String(runtimeProcess.pid), join(localQueue, "slot-1"));
+    const macQueue = sb.queueOf("fake-mac");
+    mkdirSync(macQueue, { recursive: true });
+    symlinkSync(String(runtimeProcess.pid), join(macQueue, "slot-1"));
+    const result = await sb.run(["run", "typecheck"], { ANA_CHECK_HOST: "auto", ANA_HOSTS: hosts });
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls(sb.hostHome("fake-mac")).length).toBe(1);
+    expect(calls(sb.hostHome("fake-linux")).length).toBe(0);
   });
 
   it("starts a task here without the host list the router read for it, and with one its caller set", async () => {

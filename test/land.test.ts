@@ -575,16 +575,35 @@ describe.concurrent("bun run land", () => {
   });
   const hosts = JSON.stringify([host("alpha", 1), host("unset"), host("beta", 3)]);
 
-  it("spreads its proofs over every listed host where ANA_CHECK_HOST is unset or empty, sparing held benchmark hosts, two on one that sets no checks, the whole gate on the first", async () => {
+  it("pools proofs under all across non-benchmark check hosts where ANA_CHECK_HOST is unset or empty, capped by concurrency and capacity", async () => {
     for (const checkHost of [undefined, "   "]) {
       const { runLand, gateLog, statuses } = sandbox();
       const result = await runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: checkHost });
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain("proving on alpha (1), unset (2), beta (3) at once");
-      expect(wherePassesRan(gateLog)).toContain(`${upper} alpha`);
-      expect(logLines(gateLog)).toContain(`spare\t${upper}\talpha`);
+      expect(result.stdout).toContain("proving on all (4) at once");
+      expect(wherePassesRan(gateLog)).toContain(`${upper} all`);
+      expect(logLines(gateLog)).toContain(`spare\t${upper}\tall`);
       expect(statuses(COMMIT)).toContain(`success ${upper}`);
     }
+    const capped = sandbox();
+    const highJobs = await capped.runLand(["12", "--sanitize", "--jobs", "50"], {
+      ANA_HOSTS: hosts,
+      ANA_CHECK_HOST: undefined,
+    });
+    expect(highJobs.status).toBe(0);
+    expect(highJobs.stdout).toContain("proving on all (6) at once");
+    const small = sandbox();
+    const withBench = JSON.stringify([host("alpha", 1), host("bench", 4)]);
+    const evalRunner = JSON.stringify([
+      { name: "outside", host: "bench", store: "store", sitting: "sit", packs: ["outside"] },
+    ]);
+    const benchRun = await small.runLand(["12", "--sanitize"], {
+      ANA_HOSTS: withBench,
+      EVAL_RUNNER: evalRunner,
+      ANA_CHECK_HOST: undefined,
+    });
+    expect(benchRun.status).toBe(0);
+    expect(benchRun.stdout).toContain("proving on all (1) at once");
   });
 
   it("proves at the one place an explicit ANA_CHECK_HOST names, without ANA_RUNNER_SPARE_HELD, whatever the host list holds", async () => {

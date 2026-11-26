@@ -21,7 +21,10 @@ import { dirname, join } from "../src/meta/path.ts";
 import type { Campaign } from "../tools/campaign/round.ts";
 import { scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
 import { sweep } from "./helpers/examiner-seat.ts";
-import { seedCampaign, snapshotCampaign } from "../tools/runs/seed.ts";
+import { seed, seedCampaign, snapshotCampaign } from "../tools/runs/seed.ts";
+import { draftCommand } from "../tools/eval/draft.ts";
+import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
+import { capturedExecPath } from "../src/meta/process.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-rehearse-")));
@@ -30,6 +33,8 @@ const line = (kind: string, data: JsonObject) => JSON.stringify({ at: AT, kind, 
 const LINES = [
   line("task.proposed", { version: "v1" }),
   line("build.started", { session: "b-1" }),
+  line("build.checkpoint", { session: "b-1", harness: "abcdef123456" }),
+  line("comparison.started", { session: "g-1" }),
   line("build.finished", { session: "b-1", ended: "finished" }),
   line("exam.started", { session: "x-1" }),
   line("build.started", { session: "b-2" }),
@@ -81,6 +86,89 @@ describe("a seed", () => {
     const strange = campaignAt("source-3", [...LINES, line("round.imagined", {})]);
     expect(() => seedCampaign(strange, join(root, "seed-4"), {})).toThrow("is not a log event");
     expect(existsSync(join(root, "seed-4"))).toBe(false);
+  });
+
+  it("cuts before a comparison start and lists checkpoints and comparisons in --points", async () => {
+    const cut = seedCampaign(from, join(root, "seed-before-comp"), { before: "g-1" });
+    expect(cut.events).toBe(3);
+    const logged: string[] = [];
+    const orig = console.log;
+    console.log = (...parts: unknown[]) => {
+      logged.push(parts.map(String).join(" "));
+    };
+    try {
+      await seed(["--from", from, "--points"]);
+    } finally {
+      console.log = orig;
+    }
+    const out = logged.join("\n");
+    expect(out).toContain("2 build.checkpoint b-1 abcdef123456");
+    expect(out).toContain("3 comparison.started g-1");
+  });
+});
+
+describe("simulation CLI seams", () => {
+  it("prints usage for checkpoint.ts --help without crashing", () => {
+    const ran = runSync([
+      capturedExecPath,
+      join(import.meta.dir, "..", "tools", "campaign", "checkpoint.ts"),
+      "--help",
+    ]);
+    expect(ran.exitCode).toBe(0);
+    expect(decodeOutput(ran.stdout)).toContain("bun tools/campaign/checkpoint.ts --name <name> --id <id>");
+  });
+
+  it("enforces cross-family reviewer override in draft.ts on judged campaigns", async () => {
+    const name = `sim-draft-rev-${String(process.pid)}`;
+    const dir = join(import.meta.dir, "..", ".ana", "d2", name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, LOG_FILE),
+      `${line("campaign.opened", {
+        project: "p",
+        prompt: "Audit tables.",
+        judged: true,
+        seats: {
+          builder: { model: "claude/claude-opus-5-5", effort: "medium" },
+          examiner: { model: "claude/claude-opus-5-5", effort: "medium" },
+          reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "medium" },
+        },
+        solver: { model: "claude/claude-opus-5-5", effort: "medium" },
+      })}\n`,
+    );
+    try {
+      await expect(
+        draftCommand([
+          "--name",
+          name,
+          "--session",
+          "d-1",
+          "--examiner",
+          "claude/claude-opus-5-5",
+          "--reviewer",
+          "claude/claude-sonnet-5-5",
+        ]),
+      ).rejects.toThrow("another family");
+      const accepted = await draftCommand(
+        [
+          "--name",
+          name,
+          "--session",
+          "d-1",
+          "--examiner",
+          "claude/claude-opus-5-5",
+          "--reviewer",
+          "openai-codex/gpt-6-luna",
+          "--reviewer-effort",
+          "low",
+        ],
+        async () => ({ ended: "finished", puts: 0, held: [], refused: [] }),
+        null,
+      );
+      expect(accepted.ended).toBe("finished");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

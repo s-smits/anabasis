@@ -22,6 +22,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { campaignLog, examinerSession, REPO, stayAwake, worktreesOf } from "../campaign/campaign.ts";
+import { assertCrossFamily } from "../campaign/round.ts";
 import { keepReading } from "../eval/accept.ts";
 import { draftReading } from "../campaign/exam.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
@@ -37,6 +38,8 @@ const OPTIONS = {
   session: { type: "string" },
   examiner: { type: "string" },
   "examiner-effort": { type: "string", default: "high" },
+  reviewer: { type: "string" },
+  "reviewer-effort": { type: "string" },
   tries: { type: "string", default: "6" },
   minutes: { type: "string", default: "60" },
   turns: { type: "string", default: "40" },
@@ -99,6 +102,25 @@ function draftAuditGate(given: {
   };
 }
 
+function draftAuditReader(
+  values: { readonly reviewer?: string | undefined; readonly "reviewer-effort"?: string | undefined },
+  opening: ReturnType<typeof openingOf>,
+): Reader | null {
+  const recorded = opening?.seats.reviewer ?? null;
+  const model = values.reviewer ?? recorded?.model;
+  if (model === undefined) return null;
+  const effort = values["reviewer-effort"] ?? recorded?.effort ?? "high";
+  if (opening?.judged === true && opening.solver !== null) {
+    assertCrossFamily(model, opening.solver.model);
+  }
+  return {
+    model: modelNamed(model),
+    // SAFETY: `effort` is a pi thinking level validated by the backend on call.
+    effort: effort as ThinkingLevel,
+    models: examinerSession,
+  };
+}
+
 /** `session` and `audit` are injectable so tests can pass model-free stubs. */
 export async function draftCommand(
   args: readonly string[],
@@ -119,18 +141,9 @@ export async function draftCommand(
       `campaign ${name} did not open from a prompt, so there is nothing to draft its exam from: open it with tools/campaign/harness-builder.ts --prompt`,
     );
   }
-  const reviewer = opening?.seats.reviewer ?? null;
   const defaultAuditor: DraftAuditor | null = session === examine ? reviewDraft : null;
   const auditor: DraftAuditor | null = audit === undefined ? defaultAuditor : audit;
-  const auditReader: Reader | null =
-    reviewer === null
-      ? null
-      : {
-          model: modelNamed(reviewer.model),
-          // SAFETY: `reviewer.effort` is the pi thinking level recorded on `campaign.opened`.
-          effort: reviewer.effort as ThinkingLevel,
-          models: examinerSession,
-        };
+  const auditReader = draftAuditReader(values, opening);
   const setting = settingAsked(values, recordedSetting(events));
   const { wallSeconds, modelTurns } = setting.named.limits;
   /** The last entry is the accepted draft's reading. */

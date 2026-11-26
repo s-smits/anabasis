@@ -17,20 +17,22 @@ git worktree add --detach ../anabasis-before-<what> <before>   # bun install --f
 git worktree add --detach ../anabasis-after-<what> <after>
 ```
 
-Cut matching seeds named `sim-<what>-before` / `sim-<what>-after` from the same run and cut event (outside any open Examiner session; otherwise diverging `task.state`/`campaign.waited` counts confound the pair).
+Cut matching seeds with distinct names `sim-<what>-before` / `sim-<what>-after` from the same run and cut event (identical names across worktrees collide in `runs view`; cut outside any open Examiner session so diverging `task.state`/`campaign.waited` counts do not confound the pair).
 
 | Layer | Run in both arms | Read |
 | --- | --- | --- |
 | Test | Identical hostile test (`git show <after>:<test>`) in both | Fails before (not from missing import), passes after |
-| Reader | `runs view`, `wri.ts read --log`, `runs pulse`, `runs replay`, `close.ts` | Changed lines across N logs |
-| Decision | `harness-builder.ts --name <seed> --dry-run` | Decision row, move, inputs |
+| Log & fold parity | `bun run runs replay`, `runs view`, `wri.ts read --log`, `close.ts` | Schema errors and changed reader lines across N logs |
+| Reading flips | `bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <abs> --logs data/runs` | Comparison reading or promotion flips across the archive |
+| Prompt & schema | `scripts/live-seat.ts prompt --tree <arm> --name sim-<what>-<arm> -- tools/eval/examine.ts\|draft.ts ...` | Exact diff of system prompt, opening, tool descriptions, and parameter schemas |
+| Decision | `harness-builder.ts --name <seed> --dry-run` (or `runs view` `decidedOn` when seat credentials are absent) | Decision row, move, inputs |
 | Path | `bun run runs rehearse` with one script | Readings, endings, event counts |
 | Wall | `scripts/wall-probe.ts <before> <after>` | Commands whose exit/output changed |
-| Live seat | `scripts/live-seat.ts start` (operator approval) | Single sample = lead only; repeated rounds use [optimize](optimize.md) |
+| Live seat | `scripts/live-seat.ts start` (operator approval) | Single sample = path check only; repeated rounds use [optimize](optimize.md) |
 
-Run each reader twice per arm to filter jitter and ignore the host-code digest line (solve-path edits change `host` digest while keeping `sandbox` unchanged, `codeOf` in `tools/campaign/campaign.ts`). If the source run already executed at `before`, it can serve as baseline while seeding only `after` (note effort/login differences).
+Run each reader twice per arm to filter jitter and ignore the host-code digest line (solve-path edits change `host` digest while keeping `sandbox` unchanged, `codeOf` in `tools/campaign/campaign.ts`). `runs pulse` writes `.ana/runs-pulse.json` in the target tree; clean it if testing a scratch tree. If the source run already executed at `before`, it can serve as baseline while seeding only `after` (note effort/login differences).
 
-Pre-register intended effect, null effect and side-effect checks before running (rule 1); unmentioned shifts are findings and unchanged expected lines are `unreached`. Report commits, layer, input and matched outcome in the PR's **Validation and limits**.
+Pre-register intended effect, null effect, and side-effect checks before running (rule 1); unmentioned shifts are findings and unchanged expected lines are `unreached`. Report commits, layer, input, and matched outcome in the PR's **Validation and limits**.
 
 ## Before landing
 

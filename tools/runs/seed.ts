@@ -22,6 +22,7 @@ import { CAMPAIGNS, logEvents, Misused, SEED_FILE, wholeLines } from "./registry
 import { logAcross } from "./snapshots.ts";
 
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started", "draft.started"]);
+const CUT_BEFORE = new Set<unknown>([...SESSION_STARTS, "comparison.started"]);
 /** The endings that replace the Examiner's home (`src/examiner/shell.ts`). */
 const HOME_ENDS = new Set<unknown>(["exam.finished", "draft.finished"]);
 
@@ -45,9 +46,9 @@ function prefixLineCount(lines: readonly string[], cut: Cut): number {
   if (cut.before === undefined) return lines.length;
   const start = lines.findIndex((line) => {
     const event = asRecord(capturedJsonParse(line));
-    return SESSION_STARTS.has(event?.kind) && asRecord(event?.data)?.session === cut.before;
+    return CUT_BEFORE.has(event?.kind) && asRecord(event?.data)?.session === cut.before;
   });
-  if (start === -1) throw new Error(`the log holds no session ${cut.before}`);
+  if (start === -1) throw new Error(`the log holds no session or comparison ${cut.before}`);
   return start;
 }
 

@@ -85,10 +85,9 @@ level and the size, and what an exam may ask for.
    measures its own spread, at about half as much again as the standing sitting. That the
    benchmark's rubrics are all-or-nothing and that its judge reads a cut text were reported from
    outside and not recounted here.
-6. **The runtime of the outside baseline.** A campaign's solver runs under pi and the outside read
-   under an export to another runtime (`known-bench.md` names this handicap). Recommendation: none
-   yet. An arm that rolls the Starter under the campaign's own runtime outside would part the export
-   from the harness, and it waits on item 5's spread.
+6. **The runtime of the outside baseline.** Settled: both arms now roll natively on `pi-durable`
+   (#1102), and the export cuts the guide cleanly at the host-only heading. Under equal runtimes
+   `551ec4df` still read 288 beside the Starter's 304, so the deficit is not the runtime's.
 
 ## What is left out on purpose
 

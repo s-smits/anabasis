@@ -46,9 +46,12 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   prefixes closed so waiting launch scripts do not start them. On remote hosts, use
   `stop --host <name>` rather than `pkill -f` over SSH, which can match the SSH session's own
   command line.
-- `prompt --tree <worktree> --name sim-<what> -- tools/eval/examine.ts <its flags>` renders the exact
-  prompt that the Examiner session would receive under that tree's code without launching a model;
-  it currently supports only Examiner sessions.
+- `prompt --tree <worktree> --name sim-<what> -- tools/eval/examine.ts|draft.ts <its flags>` renders
+  the prompt (without the home `FROM_FILE` note for drafting or the reference copy for writing) that
+  an Examiner task-writing or drafting session would receive under that tree's code without
+  launching a model or writing log events. `start`, `read`, `watch`, `due` and `compare` likewise
+  report draft sessions (`draft.*`, `exam.drafted`, `referee.draft`, `contract.frozen`) and
+  comparison rounds (`comparison.*`, `solve.*`, `referee.finding`).
 - `compare <prefix>... [--gates N]`, `pairs <control>,<arm>...`, and `calls <log or folder>...`
   aggregate paired arm rounds ([optimize](optimize.md), steps 3 and 6).
 

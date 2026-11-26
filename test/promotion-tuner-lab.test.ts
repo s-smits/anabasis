@@ -1,7 +1,13 @@
 // A mechanism tried on the record reads as production does at today's values, and each form of a
 // resource does what its reading claims, on the cases that would make the claim false.
 import { describe, expect, it } from "bun:test";
-import { knobbed, type Mechanism, TODAY } from "#skills/promotion-tuner/scripts/mechanisms.ts";
+import {
+  knobbed,
+  knobsOf,
+  type Mechanism,
+  STANDARD,
+  TODAY,
+} from "#skills/promotion-tuner/scripts/mechanisms.ts";
 import { paired, type Solve, type Task } from "#skills/promotion-tuner/scripts/record.ts";
 import { differenceOf, flipP } from "../src/kernel/compare.ts";
 
@@ -71,5 +77,41 @@ describe("knobs at today's values", () => {
     expect(steps(today, won)).toBe(flipP(won.map(today.score)) <= LEVEL);
     expect(steps(today, won)).toBe(true);
     expect(steps(today, won.slice(1))).toBe(false);
+  });
+
+  it("keeps every STANDARD spec distinct from TODAY and enforces knob boundaries", () => {
+    const fail = (why: string): never => {
+      throw new Error(why);
+    };
+    for (const spec of STANDARD) {
+      expect(knobsOf(spec, fail)).not.toEqual(TODAY);
+    }
+    expect(STANDARD).toContain("test=flip");
+    expect(STANDARD).not.toContain("test=rank");
+    const capped = knobbed(knobsOf("mostBill=1.5", fail), "cap");
+    const atLimit = Array.from({ length: 6 }, () =>
+      task([solve(1, 10), solve(1, 10)], [solve(1.5, 20), solve(1.5, 20)], "higher"),
+    );
+    const overLimit = Array.from({ length: 6 }, () =>
+      task([solve(1, 10), solve(1, 10)], [solve(1.51, 20), solve(1.51, 20)], "higher"),
+    );
+    expect(steps(capped, atLimit)).toBe(true);
+    expect(steps(capped, overLimit)).toBe(false);
+    const rawFlip = knobbed(knobsOf("test=flip", fail), "raw-flip");
+    const rank = knobbed(TODAY, "rank");
+    const asymmetric = [
+      ...Array.from({ length: 3 }, () => validOnlyNew(1)),
+      ...Array.from({ length: 3 }, () =>
+        task([solve(1, 10), solve(1, 10)], [solve(1, 15), solve(1, 15)], "higher"),
+      ),
+      ...Array.from({ length: 2 }, () =>
+        task([solve(1, 12), solve(1, 12)], [solve(1, 10), solve(1, 10)], "higher"),
+      ),
+    ];
+    expect(rank.test?.(asymmetric.map(rank.score), LEVEL, asymmetric)).toBe(true);
+    expect(rawFlip.test?.(asymmetric.map(rawFlip.score), LEVEL, asymmetric)).toBe(false);
+    const noRetained = knobbed(knobsOf("retained=out", fail), "no-retained");
+    expect(noRetained.score({ ...validOnlyNew(1), retained: true })).toBe(0);
+    expect(noRetained.score({ ...validOnlyNew(1), retained: false })).toBe(600);
   });
 });

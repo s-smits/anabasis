@@ -4,7 +4,7 @@
  * so one script reads the same record under two scores and the tables differ only in what the trees
  * differ in.
  */
-import { type Paired, UNMEASURED } from "#src/kernel/compare.ts";
+import { type JudgeWeights, type ObjectiveRule, type Paired, UNMEASURED } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { gitText } from "#src/meta/git.ts";
@@ -17,7 +17,8 @@ interface Sides {
   readonly setting: string;
   readonly comparison: string;
   readonly halves: "mirrored";
-  readonly objective?: { readonly direction: "lower" | "higher" } | undefined;
+  readonly objective?: ObjectiveRule | undefined;
+  readonly judge?: JudgeWeights | undefined;
 }
 
 /** A task's points by measure; a tree that scores no bill reads here as no points by the bill. */
@@ -60,11 +61,19 @@ export async function loadTree(path: string): Promise<Tree> {
     kernel<object>("meter.ts"),
     kernel<object>("trace.ts"),
   ]);
-  // A tree's billing folds are its meter's, or in an older tree its trace's.
-  const billing: unknown = Reflect.get(meter, "billedBetween") ?? Reflect.get(trace, "billedBetween");
-  if (!isFunction(billing)) throw new Error(`${path} has no billedBetween in its meter or its trace`);
+  // A tree's billing folds are its meter's, or in an older tree its trace's or reports'.
+  const billing: unknown =
+    Reflect.get(meter, "billedBetween") ??
+    Reflect.get(trace, "billedBetween") ??
+    Reflect.get(reports, "billedBetween");
+  if (!isFunction(billing)) throw new Error(`${path} has no billedBetween in its meter, trace or reports`);
   if (!isFunction(compare.pointsOf) || asRecord(compare.WEIGHTS) === null) {
     throw new Error(`${path} scores no weighted measures (pointsOf, WEIGHTS): a tree from before 21 October`);
+  }
+  const stepOf: unknown = Reflect.get(compare, "stepOf");
+  const significant: unknown = Reflect.get(compare, "isSignificant") ?? Reflect.get(compare, "readsStep");
+  if (!isFunction(stepOf) && !isFunction(significant)) {
+    throw new Error(`${path} exports neither stepOf, isSignificant, nor readsStep in src/kernel/compare.ts`);
   }
   const changed = gitText(path, "status", "--porcelain", "--", "src") !== "";
   return {
@@ -77,11 +86,13 @@ export async function loadTree(path: string): Promise<Tree> {
     pairsOf: (events, versions, sides, solves) => compare.pairsOf(events, versions, sides, solves).pairs,
     points: (pair) => ({ bill: 0, ...compare.pointsOf(pair) }),
     flipP: (differences) => compare.flipP(differences),
-    // The tree's own rule: `stepOf` where it exports one, else `isSignificant` on the scores. A rule
-    // that needs scores without the bill where none can be read refuses them, and reads no step.
+    // The tree's own rule: `stepOf` where it exports one, else `isSignificant` (or pre-#1192 `readsStep`).
     isSignificant: (differences, unbilled, level) => {
-      const stepOf: unknown = Reflect.get(compare, "stepOf");
-      if (!isFunction(stepOf)) return compare.isSignificant(differences, level);
+      if (!isFunction(stepOf)) {
+        return (
+          isFunction(significant) && Reflect.apply(significant, undefined, [differences, level]) === true
+        );
+      }
       try {
         const frontier = unbilled === null ? { differences } : { differences, unbilled };
         return Reflect.apply(stepOf, undefined, [{ frontier, retained: UNMEASURED }, level]) === "step";

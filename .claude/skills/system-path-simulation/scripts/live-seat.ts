@@ -1,24 +1,10 @@
 #!/usr/bin/env bun
-/**
- * One live seat on a seed, and the reading of what it wrote (usage in `USAGE`). `start` runs a
- * campaign command on a seed in a worktree, on one login, niced and in its own process group, ends
- * the group at the seat's dollar cap or minutes, and prints the reading; run it under `bun
- * --env-file=<file>` as one background command, since its end is the one notice to wait for. `read`
- * reads any stretch of a log; `watch` (one line an event, for a line reader such as Monitor) and
- * `due` (what is unread since it last looked; `--hook` exits 2 for a Stop hook) report what a seat
- * wrote as it lands (`newsOf`); `stop` ends seats, closing any not yet seated. `compare` sets seats
- * side by side, cut at the same count of task admissions under `--gates`; `pairs` reads control/arm
- * pairs at the shorter arm's count and signs them per Examiner model, leaving out pairs thinner
- * than `THIN`; `calls` counts the Examiner's tool calls and failures, each once however many logs
- * hold it; `prompt` prints what an Examiner session would be told, composed by a tree's own code
- * with no model. `<prefix>.json` keeps where the seat began, and `<prefix>.out` and `.err` its
- * output, each emptied at a start; `--mention` counts the Examiner's calls whose arguments name the
- * text.
- */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { gateAnswers, measuredGate } from "#tools/wri/gate-era.ts";
+import type { drafting as Drafting } from "#src/examiner/draft.ts";
 import type { writing as Writing } from "#src/examiner/write.ts";
+import type { draftCommand as DraftCommand } from "#tools/eval/draft.ts";
 import type { examineCommand as ExamineCommand } from "#tools/eval/examine.ts";
 import type { solved as Solved } from "#tools/campaign/round.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
@@ -35,12 +21,12 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { processGroupExists } from "#src/meta/subprocess.ts";
-import { BUILDER, ROUND, SEED_FILE } from "#tools/runs/registry.ts";
+import { BUILDER, DRAFT, processes, ROUND, SEED_FILE } from "#tools/runs/registry.ts";
 import { codeLine, seedCut } from "#tools/runs/seed.ts";
 import { seats as seatFlags } from "#tools/runs/fresh.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { stopProcessTree } from "#tools/runs/stop.ts";
+import { release, stopProcessTree } from "#tools/runs/stop.ts";
 
 const USAGE = `usage:
   live-seat.ts start --tree <worktree> --name sim-<what> --out <prefix> --cap <dollars> --minutes <n>
@@ -52,7 +38,7 @@ const USAGE = `usage:
   live-seat.ts compare <prefix>... [--gates N]
   live-seat.ts pairs <control>,<arm>... [--gates N]
   live-seat.ts calls <log or campaign folder>...
-  live-seat.ts prompt --tree <worktree> --name sim-<what> -- tools/eval/examine.ts <its flags>
+  live-seat.ts prompt --tree <worktree> --name sim-<what> -- tools/eval/examine.ts|draft.ts <its flags>
 
 start runs <command> with --name in <tree>, on a seed only, and prints the reading when it ends.
 watch prints one line for each event worth reading as it lands, until the seat's process is gone.
@@ -66,7 +52,7 @@ the shorter arm's count of task admissions (or N), and counts for each Examiner 
 did more, fewer or as many; a pair under 6 task admissions is marked thin and left out of that count.
 calls counts the Examiner's tool calls, failed calls by tool and kind, and finishes the session
 went on after, over every log named, a seed's from its cut, each call once however many logs hold it.
-prompt prints the system prompt, opening, tools and nudges the Examiner command would seat, and
+prompt prints the system prompt, opening, tools and nudges the Examiner or draft command would seat, and
 seats nothing.`;
 const OPTIONS = {
   tree: "abs",
@@ -87,20 +73,11 @@ const OPTIONS = {
 } as const;
 const TICK_MS = 30_000;
 const QUIET_TICKS = 10;
-/** Task admissions where the author's answer beat the reference's best by at least the objective
- *  gap floor. */
 const GAP = `gap >= ${String(GAP_FLOOR * 100)}%`;
 const ERROR_LINE = /error|denied|not found|no such|not permitted|timed out|refused|invalid|cannot|failed/iu;
-/** The flags that say who sits in an Examiner seat: a pair is read only within one of them. */
 const SEATED = ["--examiner", "--examiner-effort", "--reviewer", "--reviewer-effort"] as const;
-/** Fewer task admissions than this leave a pair thin: shown, and left out of the sign over pairs. */
 const THIN = 6;
 const WRAPPER_GRACE_MS = 30_000;
-
-interface Stretch {
-  readonly log: string;
-  readonly from: number;
-}
 
 interface Reading {
   readonly events: readonly [number, number];
@@ -108,16 +85,17 @@ interface Reading {
   readonly billed: number;
   readonly sessions: readonly string[];
   readonly ended: readonly string[];
+  readonly drafted: number;
+  readonly audits: Readonly<Record<string, number>>;
+  readonly frozen: number;
+  readonly comparisons: readonly string[];
+  readonly reported: number;
+  readonly solves: { readonly started: number; readonly finished: number };
+  readonly rulings: Readonly<Record<string, number>>;
   readonly proposed: number;
-  /** Each task admission by what the reference's solves of its draft did: `every`, `some`, `none`,
-   *  `none, proved` (its author's answer passes), `package` (refused on its package before a solve)
-   *  or `unread`. */
   readonly gates: Readonly<Record<string, number>>;
   readonly held: number;
   readonly ran: readonly number[];
-  /** The author's gain by the objective over the reference's best valid answer at each task
-   *  admission that measured both (`reference.gap`): a graded loss where held drafts are too few to
-   *  read. */
   readonly gaps: readonly number[];
   readonly turns: readonly [number, number, number] | null;
   readonly calls: Readonly<Record<string, number>>;
@@ -126,10 +104,6 @@ interface Reading {
 
 const objectiveGaps = (gaps: readonly number[]) => gaps.filter((gap) => gap >= GAP_FLOOR).length;
 
-/** What a pair is read on, each a count where the arm doing more is the Examiner doing better:
- *  drafts held, admissions the reference answered in some solves or in none while its author's
- *  answer passed, the author ahead by the gap floor, and the median turns of the reference's valid
- *  room-solve answers. */
 const MEASURES: readonly (readonly [string, (reading: Reading) => number | null])[] = [
   ["held", ({ held }) => held],
   ["room on validity", ({ gates }) => (gates.some ?? 0) + (gates["none, proved"] ?? 0)],
@@ -154,25 +128,50 @@ function spread(values: readonly number[]): readonly [number, number, number] | 
   return [sorted[0] ?? 0, sorted[Math.floor((sorted.length - 1) / 2)] ?? 0, sorted.at(-1) ?? 0];
 }
 
-const examCalls = (events: readonly LogEvent[]) => callsOf(tracesIn(events), "exam");
+const hasDraftActivity = ({ drafted, audits, frozen }: Pick<Reading, "drafted" | "audits" | "frozen">) =>
+  drafted > 0 || Object.keys(audits).length > 0 || frozen > 0;
+const hasComparisonActivity = ({ comparisons, reported }: Pick<Reading, "comparisons" | "reported">) =>
+  comparisons.length > 0 || reported > 0;
 
 export function readingOf(events: readonly LogEvent[], from: number, mentions: readonly string[]): Reading {
   const stretch = events.slice(from);
-  const of = (kind: string) => stretch.flatMap((event) => (event.kind === kind ? [event.data] : []));
-  const admissions = of("task.gate");
-  const calls = examCalls(stretch);
-  const first = stretch[0]?.at;
-  const last = stretch.at(-1)?.at;
+  const kinds = (...names: string[]) => stretch.flatMap((e) => (names.includes(e.kind) ? [e.data] : []));
+  const strings = (rows: readonly JsonObject[], key: string) =>
+    rows.flatMap((row) => (isString(row[key]) ? [row[key]] : []));
+  const byKey = (rows: readonly JsonObject[], key: string) =>
+    countBy(rows, (row) => (isString(row[key]) ? row[key] : "unknown"));
+  const admissions = kinds("task.gate");
+  const traces = tracesIn(stretch);
+  const calls = [...callsOf(traces, "exam"), ...callsOf(traces, "draft")];
+  const [first, last] = [stretch[0]?.at, stretch.at(-1)?.at];
   const turns = [...gateAnswers(events, from - 1).values()].flatMap((answers) =>
     answers.flatMap(({ turns: used }) => (used === null ? [] : [used])),
+  );
+  const comparisons = strings(kinds("comparison.started"), "session");
+  const compIds = new Set(comparisons);
+  const compSolves = new Set(
+    kinds("solve.started").flatMap(({ solve, comparison }) =>
+      isString(solve) && isString(comparison) && compIds.has(comparison) ? [solve] : [],
+    ),
   );
   return {
     events: [from, events.length],
     minutes: first === undefined || last === undefined ? 0 : (Date.parse(last) - Date.parse(first)) / 60_000,
     billed: billedBetween(events, from),
-    sessions: of("exam.started").flatMap(({ session }) => (isString(session) ? [session] : [])),
-    ended: of("exam.finished").flatMap(({ ended }) => (isString(ended) ? [ended] : [])),
-    proposed: of("task.proposed").length,
+    sessions: strings(kinds("exam.started", "draft.started"), "session"),
+    ended: strings(kinds("exam.finished", "draft.finished"), "ended"),
+    drafted: kinds("exam.drafted").length,
+    audits: byKey(kinds("referee.draft"), "verdict"),
+    frozen: kinds("contract.frozen").length,
+    comparisons,
+    reported: kinds("comparison.reported").length,
+    solves: {
+      started: compSolves.size,
+      finished: kinds("solve.finished").filter(({ solve }) => isString(solve) && compSolves.has(solve))
+        .length,
+    },
+    rulings: byKey(kinds("referee.finding"), "ruling"),
+    proposed: kinds("task.proposed").length,
     gates: countBy(admissions, admissionWord),
     held: admissions.filter(({ outcome }) => heldAtGate(outcome)).length,
     ran: admissions.flatMap(({ reference }) => {
@@ -201,10 +200,20 @@ const listed = (counts: Readonly<Record<string, number>>) =>
     .join(", ") || "none";
 
 export function told(reading: Reading): string[] {
-  const { turns } = reading;
+  const { turns, solves } = reading;
   return [
     `events ${String(reading.events[0])} to ${String(reading.events[1])}, ${reading.minutes.toFixed(0)} min, $${reading.billed.toFixed(2)} billed`,
     `sessions ${reading.sessions.join(", ") || "none"}; ended ${reading.ended.join(", ") || "none yet"}`,
+    ...(hasDraftActivity(reading)
+      ? [
+          `exam drafted ${String(reading.drafted)}, audits ${listed(reading.audits)}, frozen ${String(reading.frozen)}`,
+        ]
+      : []),
+    ...(hasComparisonActivity(reading)
+      ? [
+          `comparisons ${reading.comparisons.join(", ") || "none"} (reported ${String(reading.reported)}), solves ${String(solves.finished)}/${String(solves.started)}, rulings ${listed(reading.rulings)}`,
+        ]
+      : []),
     `drafts proposed ${String(reading.proposed)}, task admissions ${listed(reading.gates)}; held ${String(reading.held)}`,
     `task admission ran ${String(reading.ran.reduce((sum, count) => sum + count, 0))} solves over ${String(reading.ran.length)} drafts${reading.ran.length === 0 ? "" : `: ${reading.ran.join(", ")}`}`,
     `the reference's valid room-solve answers took ${turns === null ? "no turns on record" : `${String(turns[0])} to ${String(turns[2])} turns, median ${String(turns[1])}`}`,
@@ -213,34 +222,42 @@ export function told(reading: Reading): string[] {
   ];
 }
 
+const SIMPLE_NEWS = new Map<string, string>([
+  ["exam.drafted", "exam drafted"],
+  ["referee.draft.refused", "draft audit refused"],
+  ["contract.frozen", "contract frozen"],
+]);
+
 export function newsOf(events: readonly LogEvent[], from: number): string[] {
   const text = (value: unknown) => (isString(value) ? value : JSON.stringify(value));
   return events.slice(from).flatMap(({ kind, data }) => {
+    const simple = SIMPLE_NEWS.get(kind);
+    if (simple !== undefined) return [simple];
     if (kind === "task.gate") {
       const ran = asRecord(data.reference)?.ran;
       return [
         `gate ${text(data.outcome)}, ${admissionWord(data)}${isNumber(ran) ? `, ${plural(ran, "solve")} ran` : ""}`,
       ];
     }
+    if (kind === "referee.draft") {
+      return [`draft audit ${text(data.verdict)}${isNumber(data.pass) ? ` pass ${String(data.pass)}` : ""}`];
+    }
     if (kind === "referee.finding") return [`ruling ${text(data.ruling)} on ${text(data.solve)}`];
     if (kind === "referee.refused") return [`ruling refused on ${text(data.solve)}`];
-    if (kind === "exam.finished" || kind === "build.finished") {
-      return [`${text(data.session)} ended ${text(data.ended)}`];
-    }
-    return [];
+    if (kind === "comparison.reported") return [`${text(data.session)} reported ${text(data.reading)}`];
+    return kind.endsWith(".finished") && kind !== "solve.finished"
+      ? [`${text(data.session)} ended ${text(data.ended)}`]
+      : [];
   });
 }
 
-/** A seed copies its source's events as they stand, so one call is one time at one place in a log
- *  however many copies hold it. A `finish` the session went on after was declined by the host,
- *  refused, or left drafts at the task admission. */
 export function censusOf(logs: readonly (readonly LogEvent[])[]) {
   const calls = new Map<string, Call>();
   const wentOn = new Set<string>();
   const sessions = new Set<string>();
   const key = ({ at, index }: { at: string; index: number }) => `${at} ${String(index)}`;
   for (const events of logs) {
-    const own = examCalls(events);
+    const own = callsOf(tracesIn(events), "exam");
     for (const [at, call] of own.entries()) {
       calls.set(key(call), call);
       if (call.tool === "finish" && own.slice(at + 1).some(({ id }) => id === call.id)) wentOn.add(key(call));
@@ -251,8 +268,6 @@ export function censusOf(logs: readonly (readonly LogEvent[])[]) {
   }
   const all = [...calls.values()];
   const failed = all.filter(({ isError }) => isError);
-  // The last line that reads as an error, above the turn and exit lines the host appends, or else the
-  // first, with its numbers and digests as N so that one error is one kind.
   const kindOf = (text: string) => {
     const lines = text.split("\n").filter((line) => line.trim() !== "");
     return (lines.findLast((line) => ERROR_LINE.test(line)) ?? lines[0] ?? "").trim();
@@ -273,14 +288,11 @@ export function censusOf(logs: readonly (readonly LogEvent[])[]) {
   };
 }
 
-/** A seat writes only to a seed (the skill's rule 4), and the name and `seed.json` are the guard. */
 function seedLog(tree: string, name: string, die: CommandArgs["die"]): string {
   const folder = join(tree, ".ana", "d2", name);
   if (!name.startsWith("sim-") || !existsSync(join(folder, SEED_FILE))) {
     die(`${folder} is no seed: a seat runs on sim-<what> with ${SEED_FILE} beside its log`);
   }
-  // A seed's exam and its kept harnesses' tool trees hold links; copied to another host as links, they
-  // point at nothing, and a seat there crashes on the missing file.
   const broken = ["checks", "exams", "states"].flatMap((part) =>
     existsSync(join(folder, part))
       ? readdirSync(join(folder, part), { recursive: true, withFileTypes: true }).flatMap((entry) => {
@@ -297,11 +309,49 @@ function seedLog(tree: string, name: string, die: CommandArgs["die"]): string {
   return join(folder, LOG_FILE);
 }
 
+interface SeatWatch {
+  readonly pid: number;
+  readonly log: string;
+  readonly from: number;
+  readonly cap: number;
+  readonly minutes: number;
+}
+
+async function watchSeat({ pid, log, from, cap, minutes }: SeatWatch): Promise<string | null> {
+  const began = Date.now();
+  let [seen, quiet] = [from, 0];
+  let stopped: string | null = null;
+  while (processGroupExists(pid)) {
+    for (let slept = 0; slept < TICK_MS && processGroupExists(pid); slept += 1000) await Bun.sleep(1000);
+    const events = read(log);
+    const [billed, elapsed, news] = [
+      billedBetween(events, from),
+      (Date.now() - began) / 60_000,
+      newsOf(events, seen),
+    ];
+    for (const line of news) console.log(`${line}, $${billed.toFixed(2)}`);
+    quiet = news.length > 0 ? 0 : quiet + 1;
+    seen = events.length;
+    if (quiet >= QUIET_TICKS) {
+      console.log(`${elapsed.toFixed(0)} min, $${billed.toFixed(2)}`);
+      quiet = 0;
+    }
+    if (billed > cap || elapsed > minutes) {
+      stopped =
+        billed > cap ? `its cap, $${billed.toFixed(2)} of $${String(cap)}` : `its ${String(minutes)} minutes`;
+      await stopProcessTree(pid);
+    }
+  }
+  return stopped;
+}
+
 async function start(args: CommandArgs, command: readonly string[]): Promise<number> {
-  const tree = args.required("tree");
-  const name = args.required("name");
-  const out = args.required("out");
-  const cap = Number(args.required("cap"));
+  const [tree, name, out, cap] = [
+    args.required("tree"),
+    args.required("name"),
+    args.required("out"),
+    Number(args.required("cap")),
+  ];
   const minutes = args.int("minutes") ?? args.die("--minutes is required");
   if (!Number.isFinite(cap) || cap <= 0) args.die("--cap is a number of dollars above 0");
   if (command.length === 0) args.die("name the command after --");
@@ -322,11 +372,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const log = seedLog(tree, name, args.die);
   console.log(codeLine(tree, dirname(log)));
   const from = read(log).length;
-  const env = {
-    ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined),
-    // An ANA_CHECK_HOST the caller set for its own checks would send the seat's check tasks elsewhere.
-    ANA_CHECK_HOST: "here",
-  };
+  const env = { ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined), ANA_CHECK_HOST: "here" };
   const child = capturedSpawn(["nice", "-n", "10", capturedExecPath, ...command, ...seated, "--name", name], {
     cwd: tree,
     env,
@@ -343,58 +389,18 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
     `${capturedJsonStringify({ tree, name, commit, command, from, pid: child.pid, wrapper: runtimeProcess.pid, at: new Date().toISOString() }, null, 2)}\n`,
   );
   console.log(`${name} at ${commit}: pid ${String(child.pid)}, from event ${String(from)}; ${out}.err`);
-  const began = Date.now();
-  let seen = from;
-  let quiet = 0;
-  let stopped: string | null = null;
-  while (processGroupExists(child.pid)) {
-    // A second at a time, so a group ended from outside is read at once; `child.exited` of an
-    // unreferenced child did not resolve when `stop` ended its group.
-    for (let slept = 0; slept < TICK_MS && processGroupExists(child.pid); slept += 1000) {
-      await Bun.sleep(1000);
-    }
-    const events = read(log);
-    const billed = billedBetween(events, from);
-    const elapsed = (Date.now() - began) / 60_000;
-    const news = newsOf(events, seen);
-    for (const line of news) console.log(`${line}, $${billed.toFixed(2)}`);
-    quiet = news.length > 0 ? 0 : quiet + 1;
-    seen = events.length;
-    if (quiet >= QUIET_TICKS) {
-      console.log(`${elapsed.toFixed(0)} min, $${billed.toFixed(2)}`);
-      quiet = 0;
-    }
-    if (billed > cap || elapsed > minutes) {
-      stopped =
-        billed > cap ? `its cap, $${billed.toFixed(2)} of $${String(cap)}` : `its ${String(minutes)} minutes`;
-      await stopProcessTree(child.pid);
-    }
+  const stopped =
+    (await watchSeat({ pid: child.pid, log, from, cap, minutes })) ??
+    (readFileSync(`${out}.stopped`, "utf8") || null);
+  if (stopped !== null) {
+    await release({ name, tree, path: log, end: "comparison.reported", seed: true }, processes(), "release");
   }
-  stopped ??= readFileSync(`${out}.stopped`, "utf8") || null;
   console.log(stopped === null ? `${name} ended by itself` : `${name} stopped at ${stopped}`);
   console.log(told(readingOf(read(log), from, args.list("mention"))).join("\n"));
   return stopped === null ? 0 : 1;
 }
 
 const cutOf = (log: string) => (existsSync(join(dirname(log), SEED_FILE)) ? seedCut(dirname(log)) : null);
-
-function stretchOf(args: CommandArgs): Stretch {
-  const seat = args.value("seat");
-  if (seat === null) {
-    const log = args.required("log");
-    // A seed's log begins with its source's events, whose task admissions are no seat's: read from its
-    // cut.
-    const from =
-      args.int("from") ??
-      cutOf(log) ??
-      args.die("--from is required with --log outside a seed: the event the seat began at");
-    return { log, from };
-  }
-  if (args.value("log") !== null || args.int("from") !== null) {
-    args.die("name a seat, or a log and an event, not both");
-  }
-  return keptSeat(seat, args.die);
-}
 
 function keptSeat(seat: string, die: CommandArgs["die"]) {
   const kept = asRecord(capturedJsonParse(readFileSync(`${seat}.json`, "utf8")));
@@ -424,9 +430,6 @@ async function watch(args: CommandArgs): Promise<number> {
   return 0;
 }
 
-/** What landed in each seat since `due` last looked, kept as an event count in `<prefix>.seen`. An
- *  agent's hook runs it between turns, so what a seat wrote is read before the agent stops waiting.
- */
 function due(args: CommandArgs, seats: readonly string[]): number {
   if (seats.length === 0) args.die("name the seats' prefixes");
   const lines = seats.flatMap((seat) => {
@@ -445,8 +448,6 @@ function due(args: CommandArgs, seats: readonly string[]): number {
   return 2;
 }
 
-/** A prefix nothing has seated yet is closed with the same word, which `start` refuses, so a round
- *  read and stopped takes the seats its scripts still wait to seat with it. */
 async function stop(args: CommandArgs, seats: readonly string[]): Promise<number> {
   if (seats.length === 0) args.die("name the seats' prefixes");
   let missed = 0;
@@ -511,26 +512,43 @@ function compare(args: CommandArgs, seats: readonly string[]): number {
     const { log, from, commit } = keptSeat(seat, args.die);
     return { seat, commit, reading: readingOf(cutAt(read(log), from, admissionLimit), from, []) };
   });
-  const words = [...new Set(readings.flatMap(({ reading }) => Object.keys(reading.gates)))].toSorted();
   const each = (row: (reading: Reading) => number | string) =>
     readings.map(({ reading }) => String(row(reading)));
   const perHeld = (reading: Reading) =>
     reading.held === 0 ? "none held" : `$${(reading.billed / reading.held).toFixed(2)}`;
+  const countRows = (prefix: string, pick: (reading: Reading) => Readonly<Record<string, number>>) =>
+    [...new Set(readings.flatMap(({ reading }) => Object.keys(pick(reading))))]
+      .toSorted()
+      .map((key): [string, readonly string[]] => [`${prefix}${key}`, each((r) => pick(r)[key] ?? 0)]);
+  const ifRows = (show: boolean, list: [string, readonly string[]][]) => (show ? list : []);
   const rows: [string, readonly string[]][] = [
     ["seat", readings.map(({ seat }) => basename(seat))],
     ["commit", readings.map(({ commit }) => commit)],
-    ["minutes", each((reading) => reading.minutes.toFixed(0))],
-    ["billed", each((reading) => `$${reading.billed.toFixed(2)}`)],
-    ["proposed", each((reading) => reading.proposed)],
-    ["gated", each((reading) => reading.ran.length)],
-    ...words.map((word): [string, readonly string[]] => [
-      `  ${word}`,
-      each((reading) => reading.gates[word] ?? 0),
-    ]),
-    ["held", each((reading) => reading.held)],
+    ["minutes", each((r) => r.minutes.toFixed(0))],
+    ["billed", each((r) => `$${r.billed.toFixed(2)}`)],
+    ...ifRows(
+      readings.some(({ reading }) => hasDraftActivity(reading)),
+      [
+        ["exam drafted", each((r) => r.drafted)],
+        ...countRows("  audit ", (r) => r.audits),
+        ["frozen", each((r) => r.frozen)],
+      ],
+    ),
+    ...ifRows(
+      readings.some(({ reading }) => hasComparisonActivity(reading)),
+      [
+        ["solves", each(({ solves }) => `${String(solves.finished)}/${String(solves.started)}`)],
+        ["reported", each((r) => r.reported)],
+        ...countRows("  ruling ", (r) => r.rulings),
+      ],
+    ),
+    ["proposed", each((r) => r.proposed)],
+    ["gated", each((r) => r.ran.length)],
+    ...countRows("  ", (r) => r.gates),
+    ["held", each((r) => r.held)],
     ["per held", each(perHeld)],
-    ["room solves", each((reading) => reading.ran.reduce((sum, count) => sum + count, 0))],
-    ["median turns", each((reading) => reading.turns?.[1] ?? "none")],
+    ["room solves", each((r) => r.ran.reduce((sum, count) => sum + count, 0))],
+    ["median turns", each((r) => r.turns?.[1] ?? "none")],
     [GAP, each(({ gaps }) => `${String(objectiveGaps(gaps))} of ${String(gaps.length)}`)],
     [
       "median gap",
@@ -547,8 +565,6 @@ function compare(args: CommandArgs, seats: readonly string[]): number {
   return 0;
 }
 
-/** The two must be one seat on one position: the same Examiner and Referee at the same efforts,
- *  from seeds cut at the same event of the same campaign, so the trees are the one variable. */
 function pairOf(spec: string, admissionLimit: number | null, die: CommandArgs["die"]) {
   const [first, second, ...rest] = spec.split(",");
   if (first === undefined || second === undefined || rest.length > 0) die(`${spec} is no <control>,<arm>`);
@@ -585,7 +601,6 @@ function pairOf(spec: string, admissionLimit: number | null, die: CommandArgs["d
   };
 }
 
-/** GPT is read only against GPT, Opus against Opus. */
 function pairs(args: CommandArgs, specs: readonly string[]): number {
   if (specs.length === 0) args.die("name each pair as <control>,<arm>");
   const readPairs = specs.map((spec) => pairOf(spec, args.int("gates"), args.die));
@@ -628,42 +643,48 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
   return 0;
 }
 
-/** The session stands in for `examine`, prints its mode, and exits before any turn, gate or event;
- *  the engines in its shell are left out. It is composed as `try_task`; an older tree composes
- *  `propose_tasks` here. */
 async function prompt(args: CommandArgs, command: readonly string[]): Promise<number> {
-  const tree = args.required("tree");
-  const name = args.required("name");
-  const [script, ...flags] = command;
-  if (script !== EXAMINE) {
-    args.die(`prompt composes an Examiner session: -- ${EXAMINE}`);
+  const [tree, name, [script, ...flags]] = [args.required("tree"), args.required("name"), command];
+  if (script !== EXAMINE && script !== DRAFT) {
+    args.die(`prompt composes an Examiner or draft session: -- ${EXAMINE} | ${DRAFT}`);
   }
   const log = seedLog(tree, name, args.die);
   const before = read(log).length;
-  // SAFETY: both paths are modules of an Anabasis tree, which export these two functions; a tree whose
-  // signatures differ fails the call below with the tree's own error.
-  const { examineCommand } = (await import(join(tree, script))) as { examineCommand: typeof ExamineCommand };
-  // SAFETY: as above.
-  const { writing } = (await import(join(tree, "src/examiner/write.ts"))) as { writing: typeof Writing };
-  // SAFETY: as above.
-  const { solved } = (await import(join(tree, ROUND))) as { solved: typeof Solved };
-  runtimeProcess.chdir(tree);
-  const composed: Parameters<typeof ExamineCommand>[1] = (request) => {
-    // An older tree takes a third argument, whether its home holds the reference's copy, which every
-    // campaign of it did; it is printed without the copy here.
-    const mode = writing(request, undefined);
+  const show = (mode: ReturnType<typeof Writing> | ReturnType<typeof Drafting>): never => {
     console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
     for (const tool of mode.tools) console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
-    console.log(`\n=== NUDGE ${mode.nudge}\n=== FINISH ${mode.finish}\n=== DECLINED ${mode.declined}`);
+    console.log(
+      `\n=== NUDGE ${mode.nudge}\n=== FINISH ${mode.finish}\n=== DECLINED ${String(mode.declined)}`,
+    );
     if (read(log).length !== before) {
       console.error(`${name}: composing wrote ${String(read(log).length - before)} events`);
     }
     return runtimeProcess.exit(0);
   };
+  runtimeProcess.chdir(tree);
+  if (script === DRAFT) {
+    // SAFETY: targets current Anabasis trees exporting `drafting(terms, within, home?)`.
+    const [{ draftCommand }, { drafting }] = (await Promise.all([
+      import(join(tree, script)),
+      import(join(tree, "src/examiner/draft.ts")),
+    ])) as [{ draftCommand: typeof DraftCommand }, { drafting: typeof Drafting }];
+    await draftCommand(
+      [...flags, "--name", name],
+      (request) => show(drafting(request, async (action) => await action(), undefined)),
+      null,
+    );
+    return 0;
+  }
+  // SAFETY: these paths are modules of an Anabasis tree; a tree whose signatures differ fails below.
+  const [{ examineCommand }, { writing }, { solved }] = (await Promise.all([
+    import(join(tree, script)),
+    import(join(tree, "src/examiner/write.ts")),
+    import(join(tree, ROUND)),
+  ])) as [{ examineCommand: typeof ExamineCommand }, { writing: typeof Writing }, { solved: typeof Solved }];
   // SAFETY: a tree before v0.14 takes its seats third, and the session exits before its first turn.
   await (examineCommand as (...given: unknown[]) => Promise<void>)(
     [...flags, "--name", name],
-    composed,
+    (request: Parameters<typeof Writing>[0]) => show(writing(request, undefined)),
     solved,
   );
   return 0;
@@ -675,8 +696,6 @@ async function census(args: CommandArgs, named: readonly string[]): Promise<numb
   for (const each of named) {
     const log = await logAcross(each);
     if (!existsSync(log)) args.die(`${log} does not exist`);
-    // A seed's history before its cut is its source's, and counted whole it would credit the seat with
-    // several times the calls it made.
     logs.push(read(log).slice(cutOf(log) ?? 0));
   }
   const found = censusOf(logs);
@@ -699,29 +718,47 @@ async function census(args: CommandArgs, named: readonly string[]): Promise<numb
 }
 
 async function readCommand(args: CommandArgs): Promise<number> {
-  const stretch = stretchOf(args);
+  const seat = args.value("seat");
+  if (seat !== null && (args.value("log") !== null || args.int("from") !== null)) {
+    args.die("name a seat, or a log and an event, not both");
+  }
+  const stretch =
+    seat === null
+      ? (() => {
+          const log = args.required("log");
+          const from =
+            args.int("from") ??
+            cutOf(log) ??
+            args.die("--from is required with --log outside a seed: the event the seat began at");
+          return { log, from };
+        })()
+      : keptSeat(seat, args.die);
   const log = await logAcross(stretch.log);
-  const { from } = stretch;
   if (!existsSync(log)) args.die(`${log} does not exist`);
-  const result = readingOf(read(log), from, args.list("mention"));
+  const result = readingOf(read(log), stretch.from, args.list("mention"));
   console.log(args.flag("json") ? capturedJsonStringify(result, null, 2) : told(result).join("\n"));
   return 0;
 }
 
-async function main(args: CommandArgs): Promise<number> {
-  const [verb, ...command] = args.positionals;
-  if (verb === "start") return start(args, command);
-  if (verb === "watch") return watch(args);
-  if (verb === "due") return due(args, command);
-  if (verb === "stop") return stop(args, command);
-  if (verb === "compare") return compare(args, command);
-  if (verb === "pairs") return pairs(args, command);
-  if (verb === "calls") return census(args, command);
-  if (verb === "prompt") return prompt(args, command);
-  if (verb === "read") {
+const VERBS = {
+  start,
+  watch: (args: CommandArgs) => watch(args),
+  due,
+  stop,
+  compare,
+  pairs,
+  calls: census,
+  prompt,
+  read: (args: CommandArgs, command: readonly string[]) => {
     if (command.length > 0) args.die("read takes no command");
     return readCommand(args);
-  }
+  },
+} satisfies Record<string, (args: CommandArgs, command: readonly string[]) => Promise<number> | number>;
+
+async function main(args: CommandArgs): Promise<number> {
+  const [verb, ...command] = args.positionals;
+  const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];
+  if (run !== undefined) return run(args, command);
   return args.die(
     `the verb is start, read, watch, due, stop, compare, pairs, calls or prompt, not ${verb ?? "none"}`,
   );

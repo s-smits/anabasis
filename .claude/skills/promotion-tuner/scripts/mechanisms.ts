@@ -93,7 +93,7 @@ export const STANDARD = [
   "room=0.05",
   "validity=0.45,objective=0.45",
   "test=sign",
-  "test=rank",
+  "test=flip",
   "level=0.01",
   "untied=8",
   "retained=out",

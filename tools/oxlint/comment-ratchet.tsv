@@ -24,7 +24,7 @@ path	count
 .claude/skills/main/cli.ts	11
 .claude/skills/main/logs.ts	6
 .claude/skills/main/print.ts	2
-.claude/skills/main/runs.ts	26
+.claude/skills/main/runs.ts	25
 .claude/skills/main/stats.ts	10
 .claude/skills/oracle-handover/scripts/bundle.ts	4
 .claude/skills/oracle-handover/scripts/document.ts	7
@@ -33,10 +33,10 @@ path	count
 .claude/skills/promotion-tuner/scripts/mechanisms.ts	7
 .claude/skills/promotion-tuner/scripts/outside.ts	5
 .claude/skills/promotion-tuner/scripts/record.ts	7
-.claude/skills/promotion-tuner/scripts/replay.ts	13
+.claude/skills/promotion-tuner/scripts/replay.ts	8
 .claude/skills/promotion-tuner/scripts/table.ts	3
 .claude/skills/promotion-tuner/scripts/time.ts	2
-.claude/skills/promotion-tuner/scripts/tree.ts	7
+.claude/skills/promotion-tuner/scripts/tree.ts	6
 .claude/skills/promotion-tuner/scripts/trend.ts	19
 .claude/skills/repository-practice/scripts/direction.ts	1
 .claude/skills/repository-practice/scripts/preflight.ts	7
@@ -46,7 +46,6 @@ path	count
 .claude/skills/stack-pr/scripts/republish.ts	7
 .claude/skills/stack-pr/scripts/stack.ts	1
 .claude/skills/system-audit/scripts/recent.ts	4
-.claude/skills/system-path-simulation/scripts/live-seat.ts	28
 .claude/skills/system-path-simulation/scripts/synthetic.ts	5
 .claude/skills/system-path-simulation/scripts/wall-probe.ts	10
 packages/ui/build.ts	1

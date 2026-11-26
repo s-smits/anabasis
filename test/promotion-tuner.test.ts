@@ -1,5 +1,8 @@
 import { expect, it } from "bun:test";
+import { treeMechanism } from "#skills/promotion-tuner/scripts/panel.ts";
+import { paired, selfTerms, type Task } from "#skills/promotion-tuner/scripts/record.ts";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
+import { epochLines } from "#skills/promotion-tuner/scripts/time.ts";
 import { loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
 import { type Paired, scored } from "../src/kernel/compare.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -184,5 +187,196 @@ it("uses a candidate tree's own stepOf without requiring a isSignificant export"
     }
   } finally {
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("loads a pre-rename worktree exporting readsStep without isSignificant", async () => {
+  const home = mkdtempSync(join(tmpdir(), "ana-tuner-legacy-"));
+  try {
+    const won = CHEAP.map((pair) => ({ ...pair, old: [false, false] }));
+    const tree = mkdtempSync(join(home, "tree-"));
+    mkdirSync(join(tree, "src", "kernel"), { recursive: true });
+    for (const file of ["log.ts", "reports.ts", "meter.ts", "trace.ts"]) {
+      writeFileSync(
+        join(tree, "src", "kernel", file),
+        `export * from "${join(ROOT, "src", "kernel", file)}";\n`,
+      );
+    }
+    writeFileSync(
+      join(tree, "src", "kernel", "compare.ts"),
+      `import * as real from "${join(ROOT, "src", "kernel", "compare.ts")}";\n` +
+        "export const { WEIGHTS, flipP, pairsOf, pointsOf } = real;\n" +
+        "export const readsStep = real.isSignificant;\n",
+    );
+    execTextSync("git", ["-C", tree, "init", "-q"]);
+    execTextSync("git", [
+      "-C",
+      tree,
+      "-c",
+      "user.email=t@t",
+      "-c",
+      "user.name=t",
+      "commit",
+      "-q",
+      "--allow-empty",
+      "-m",
+      "t",
+    ]);
+    const loaded = await loadTree(tree);
+    const totals = replay(loaded, won);
+    expect(totals.rightful + totals.doubted).toBe(1);
+    expect(replay(loaded, CHEAP).dropped).toBe(1);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("attributes judged pair, draft-audit, and unfinished referee turns without charging builder", async () => {
+  const tree = await loadTree(ROOT);
+  const turn = (at: string, reader: string, total: number): LogEvent => ({
+    at,
+    kind: "referee.turn",
+    data: { reader, turn: 1, usage: { input: 0, output: 0, cost: { total } } },
+  });
+  const events: LogEvent[] = [
+    { at: "2026-11-26T00:00:00.000Z", kind: "draft.started", data: { session: "d-1" } },
+    turn("2026-11-26T00:02:00.000Z", "r-d", 3),
+    {
+      at: "2026-11-26T00:05:00.000Z",
+      kind: "referee.draft",
+      data: { session: "d-1", reader: "r-d", billed: 3 },
+    },
+    turn("2026-11-26T00:05:30.000Z", "draft-d-1-2", 4),
+    { at: "2026-11-26T00:06:00.000Z", kind: "draft.finished", data: { session: "d-1", billed: 2 } },
+    { at: "2026-11-26T00:10:00.000Z", kind: "comparison.started", data: { session: "g-1" } },
+    turn("2026-11-26T00:15:00.000Z", "j-1:report:ab", 12),
+    {
+      at: "2026-11-26T00:20:00.000Z",
+      kind: "referee.pair",
+      data: { comparison: "g-1", reader: "j-1", readers: ["j-1:report:ab"], billed: 12 },
+    },
+    turn("2026-11-26T00:22:00.000Z", "judge-open:holistic:ab", 6),
+    turn("2026-11-26T00:23:00.000Z", "reader-open", 1.5),
+    { at: "2026-11-26T00:25:00.000Z", kind: "comparison.reported", data: { session: "g-1" } },
+    { at: "2026-11-26T00:26:00.000Z", kind: "harness.promoted", data: { from: "a", harness: "b" } },
+  ];
+  const { lines } = epochLines(tree, events, [events.length - 1]);
+  expect(lines.find((line) => line.includes("Examiner"))).toContain("$9.00");
+  expect(lines.find((line) => line.includes("comparisons"))).toContain("$18.00");
+  expect(lines.find((line) => line.includes("Builder alone"))).toContain("$0.00");
+  expect(lines.find((line) => line.includes("Builder alone"))).toContain("unattributed referee $1.50");
+});
+
+it("excludes dedicated noise A/A comparisons from candidate promotions while keeping their A/A controls", async () => {
+  const tree = await loadTree(ROOT);
+  const won = CHEAP.map((pair) => ({ ...pair, old: [false, false] }));
+  const events: LogEvent[] = [
+    {
+      at: "2026-11-26T00:00:00.000Z",
+      kind: "comparison.started",
+      data: { session: "g-noise", old: "ref", fresh: "ref", starter: "starter", noise: true },
+    },
+    {
+      at: "2026-11-26T00:05:00.000Z",
+      kind: "comparison.reported",
+      data: {
+        session: "g-noise",
+        old: "ref",
+        fresh: "ref",
+        starter: "starter",
+        setting: "s",
+        solves: 2,
+        versions: won.map(({ task }) => task),
+        frontier: { ...scored(won), of: won.map(({ task }) => task) },
+        retained: "unmeasured",
+        scored: scored(won),
+        level: 0.02,
+        reading: "no-step",
+        points: { validity: 0, objective: 0 },
+      },
+    },
+  ];
+  const totals = emptyTotals();
+  campaignLines(
+    { ...tree, read: () => events, pairsReported: () => [...won], pairsOf: () => [...won] },
+    { name: "noise-only", path: "unused" },
+    totals,
+  );
+  expect([totals.added, totals.toStep, totals.controls, totals.powered, totals.aaSteps]).toEqual([
+    0, 0, 1, 1, 1,
+  ]);
+});
+
+it("keeps per-half solves on starter-noise comparisons in selfTerms", () => {
+  const events: LogEvent[] = [
+    {
+      at: "2026-11-26T00:00:00.000Z",
+      kind: "comparison.started",
+      data: { session: "g-n", old: "ref", fresh: "ref", noise: true },
+    },
+  ];
+  const terms = selfTerms(events, {
+    session: "g-n",
+    index: 1,
+    data: { session: "g-n", old: "ref", fresh: "ref", setting: "s", solves: 3 },
+  });
+  expect(terms?.solves).toBe(3);
+  expect(
+    selfTerms([], {
+      session: "g-c",
+      index: 1,
+      data: { session: "g-c", old: "ref", fresh: "cand", setting: "s", solves: 3 },
+    }),
+  ).toBeNull();
+});
+
+it("scores judged unit-scale tasks through treeMechanism and reconciles via replay --try", async () => {
+  const tree = await loadTree(ROOT);
+  const mechanism = treeMechanism(tree, "tree");
+  const judgedTask: Task = {
+    task: "t-j",
+    family: "fam",
+    direction: "higher",
+    scale: "unit",
+    judged: {
+      weights: { code: 1, judge: 1 },
+      votes: [
+        { fresh: 0, old: 0, judge: 1, holistic: 1 },
+        { fresh: 1, old: 1, judge: 1, holistic: 0.5 },
+      ],
+    },
+    retained: false,
+    old: [
+      { valid: true, measure: 0.5, billed: 1, turns: 5, seconds: 10 },
+      { valid: true, measure: 0.5, billed: 1, turns: 5, seconds: 10 },
+    ],
+    fresh: [
+      { valid: true, measure: 0.5, billed: 1, turns: 5, seconds: 10 },
+      { valid: true, measure: 0.5, billed: 1, turns: 5, seconds: 10 },
+    ],
+  };
+  const points = tree.points(paired(judgedTask));
+  expect(mechanism.score(judgedTask)).toBe(Math.round(points.validity + points.objective + points.bill));
+  expect(mechanism.score(judgedTask)).toBeGreaterThan(0);
+  const logsDir = mkdtempSync(join(tmpdir(), "ana-tuner-panel-"));
+  try {
+    mkdirSync(join(logsDir, "empty-run"), { recursive: true });
+    writeFileSync(
+      join(logsDir, "empty-run", "log.jsonl"),
+      `${JSON.stringify({ at: "2026-11-25T00:00:00.000Z", kind: "campaign.opened", data: { judged: true } })}\n`,
+    );
+    const out = execTextSync(process.execPath, [
+      join(ROOT, ".claude/skills/promotion-tuner/scripts/replay.ts"),
+      "--logs",
+      logsDir,
+      "--from",
+      "2026-11-01",
+      "--try",
+      "test=flip",
+    ]);
+    expect(out).toContain("0 tasks, 0 differ");
+    expect(out).toContain("test=flip");
+  } finally {
+    rmSync(logsDir, { recursive: true, force: true });
   }
 });

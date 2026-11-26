@@ -11,11 +11,11 @@ Evaluates alternative scoring and promotion rules off-policy against archived so
 
 | Parameter | Production owner | `--try` knob |
 | --- | --- | --- |
-| Validity & objective weights | `WEIGHTS`, `src/kernel/compare.ts` (step 5) | `validity=`, `objective=` |
+| Validity & objective weights | `WEIGHTS`, `src/kernel/compare.ts` | `validity=`, `objective=` |
 | Resource metric as gain or guard | none in production | `bill=`, `turns=`, `seconds=` (`when=`, `side=`, `lead=`, `floor=`); `mostBill=`, `mostTurns=`, `mostSeconds=` |
-| Objective gap floor & gain curve | `GAP_FLOOR`, `gainOver`, `pointsOf` (a judged task keeps production's objective) | `room=`, `gain=` |
-| Test, unit & inclusion | `flipP` (exact signed-rank), one-sided `isSignificant`, `pairsOf` | `test=` (`rank`\|`flip`\|`sign`), `untied=`, `level=`, `unit=` (`family`\|`first`), `retained=` |
-| Custom rule or worktree | | `--mechanism <file>`, `--against <worktree>` |
+| Objective gap floor & gain curve | `GAP_FLOOR`, `gainOver`, `pointsOf` (judged tasks floor code gain before `judgedGain`, `JUDGE_STEP = 0.25`, equal-weight `holistic`, and keep production's objective under `room`/`gain`) | `room=`, `gain=` |
+| Test, unit & inclusion | `flipP` (exact Wilcoxon signed-rank), one-sided `isSignificant`, `pairsOf` | `test=` (`rank`\|`flip`\|`sign`; `STANDARD` tests `sign` and `flip` against `rank`), `untied=`, `level=`, `unit=` (`task`\|`family`\|`first`\|`cap2`\|`cap3`), `retained=` (`in`\|`out`) |
+| Custom rule or worktree | | `--mechanism <file>`, `--against <worktree>` (loads `isSignificant`, pre-`a6567557a` `readsStep`, and `stepOf`) |
 
 ## Commands
 
@@ -50,8 +50,10 @@ bun .claude/skills/promotion-tuner/scripts/simulate-scoring.ts \
 
 - **Reconciliation**: a tree reads `read otherwise than stored = 0` on the weighted reports of runs whose commit already scored as it does; older runs move wherever scoring changed after their commit. Readings read otherwise than recorded split into those the tree's test alone flips on the stored scores and those its scores move. Starter reads promote nothing and stay out of the promotion pairs.
 - **False-positive rate**: an A/A false step is the reference's mirrored halves read a step one-sided at the comparison's level, counted over the powered A/As (those that could read one), as production's `falsePromotion` (`src/campaign/climb.ts`) counts them. Every reader prints it as `steps/powered` with the 95% exact bound (`upperBound`) and the bar at twice the least level (`AGENTS.md` §1, item 2). The bar reads releases: `table.ts --rows releases` pools each release's whole runs; `trend.ts` counts its windows' runs to a common horizon.
-- **Panel columns**: total steps (`+`/`-`), baseline tallies on added steps (`ahead`, `lvl`, `0-0`, `bhd`), `starter` confirmation rate, `A/A (powered)` one-sided false steps of powered A/As by the mechanism's own test and level, of all A/As, with the exact bound, `repeat` sign agreement, median/per-step costs (`bill`, `turns`, `secs`, `$/step`, `h/step`), `by pack`.
-- **Trends (`trend.ts`)**: truncates cohorts to a common elapsed-hour horizon (`FLOOR` = 6h) and runs campaign-level permutation (`shiftOf`, `LEVEL` = 0.05: `moved` | `inside the spread` | `too few runs`). `guardOf` pairs promotion speed (`promotions a 100 active hours`) with starter confirmations and post-promotion win rate (`together` | `apart` | `no single direction` | `not read`). `--bench <store>` joins digests to external scores vs Starter spread.
+- **Panel columns**: total steps (`+`/`-`), baseline tallies on added steps (`ahead`, `lvl`, `0-0`, `bhd`), `starter` confirmation rate, `A/A (powered)` one-sided false steps of powered A/As by the mechanism's own test and level, of all A/As, with the exact bound, `repeat` sign agreement, median new/reference ratios (`bill`, `turns`, `secs`) and per-step averages (`$/step`, `h/step`), `by pack`.
+- **Trends (`trend.ts`)**: truncates cohorts to a common elapsed-hour horizon (`FLOOR` = 6h), separates `--admit-judge` runs from unjudged runs by `setting` unless `--any-setting` is passed, and runs campaign-level permutation (`shiftOf`, `LEVEL` = 0.05: `moved, better` | `moved, worse` | `within inter-run variance` | `too few runs`). `guardOf` pairs promotion speed (`promotions per 100 active hours`) with starter confirmations and post-promotion win rate (`together` | `apart` | `no single direction` | `not read`). `--bench <store>` joins digests to external scores vs same-runtime delivered baselines (`bareSolver` or `baseStarter`, via `scripts/outside.ts`).
+- **Epoch spend (`scripts/time.ts`)**: attributes `referee.pair`, `referee.brief`, and comparison solve spend to comparisons; `draft.*`, `referee.draft`, and `exam.*` to Examiner; `referee.finding` to its solve's owner (comparisons, Builder for practice, or Examiner for exam solves); and practice solves to Builder. Unfinished `referee.*` turns follow their reader prefix (`draft-` to Examiner, `judge-` to comparisons, otherwise unattributed rather than Builder).
+- **Reverted epochs (`.claude/skills/main/runs.ts`)**: matches each promotion to its own pre-promotion and post-promotion epochs by log index (`epochsOf`), measuring post-revert promotions from the revert boundary (`built.from`, matching `climb.ts`; `time.ts` spans promotion-to-promotion in `replay.ts`) and excluding `reverted` epochs from `reads` and `confirmed` counts.
 
 ## Tuning protocol
 
@@ -60,7 +62,7 @@ bun .claude/skills/promotion-tuner/scripts/simulate-scoring.ts \
 3. Judge against an explicit bar:
    - *Gain*: promotions up or hours/promotion down, A/A false steps no more than the tree's and their exact bound within the honesty bar, no added step contradicted on repeat.
    - *Simplification*: keeps all rightful promotions, no added A/A false step, maintains hours/promotion, lowers `reduce-complexity` metrics.
-4. Report aggregate counts, digests and campaign names only (no exam-side task measures); validate live only in a fresh run on operator approval (`AGENTS.md` §10, item 9).
+4. Report aggregate counts, digests and campaign names only (no exam-side task measures); validate live only in a fresh run on operator approval (`AGENTS.md` §10).
 
 ## Related skills
 

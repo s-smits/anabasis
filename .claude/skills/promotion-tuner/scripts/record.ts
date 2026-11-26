@@ -44,8 +44,8 @@ export interface Comparison {
   readonly pack: string;
   readonly opened: number;
   readonly session: string;
-  /** A candidate against the reference, or the reference against the starter, read the other way. */
-  readonly kind: "candidate" | "starter";
+  /** A candidate against the reference, the reference against the starter, or a dedicated A/A noise run. */
+  readonly kind: "candidate" | "starter" | "noise";
   readonly old: string;
   readonly fresh: string;
   readonly level: number;
@@ -122,8 +122,9 @@ function taskOf(
  *  report's objective and judge); null at an odd count of solves. */
 export function selfTerms(events: readonly LogEvent[], { session, data }: Reported) {
   const { old, setting, solves } = data;
-  if (!isString(old) || !isString(setting) || !isNumber(solves) || solves % 2 !== 0) return null;
   const start = startOf(events, session);
+  const noise = start?.noise === true;
+  if (!isString(old) || !isString(setting) || !isNumber(solves) || (!noise && solves % 2 !== 0)) return null;
   const sides = {
     old,
     fresh: old,
@@ -133,7 +134,7 @@ export function selfTerms(events: readonly LogEvent[], { session, data }: Report
     judge: start === undefined ? undefined : judgeIn(start),
     halves: "mirrored" as const,
   };
-  return { sides, solves: solves / 2 };
+  return { sides, solves: noise ? solves : solves / 2 };
 }
 
 export function readsStarter(events: readonly LogEvent[], { session, data }: Reported): boolean {
@@ -181,7 +182,7 @@ function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] 
         pack: packOf(name),
         opened,
         session: report.session,
-        kind: readsStarter(events, report) ? "starter" : "candidate",
+        kind: readsStarter(events, report) ? "starter" : old === fresh ? "noise" : "candidate",
         old,
         fresh,
         level: numberOr(level) ?? 0,
@@ -192,7 +193,10 @@ function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] 
           promoted: promotions.filter(({ index }) => index > report.index).map(({ harness }) => harness),
           readings: reports.length - at - 1,
         },
-        confirmed: next?.reference === fresh && next.starter_read !== null ? next.confirmed : null,
+        confirmed:
+          next?.reverted !== true && next?.reference === fresh && next.starter_read !== null
+            ? next.confirmed
+            : null,
       },
     ];
   });

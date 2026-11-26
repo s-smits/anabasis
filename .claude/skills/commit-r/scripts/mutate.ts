@@ -5,9 +5,9 @@
  * counts mutants per file. `run` appends one JSON line per mutant to `--out`, skipping recorded
  * ones so an interrupted run resumes; mutants spread over the check places (`checkPlaces`,
  * `tools/runs/host-config.ts`), one worker a slot on its own copy of the tree (`<out>.clone-<k>`,
- * or `--clones <prefix>`), running `bun test --bail` under `--timeout`, or on this machine where
- * `ANA_CHECK_HOST` is set or no host is listed; `--fleet` spreads over every listed host whatever
- * `ANA_CHECK_HOST` says (`fleetPlaces`). `--jobs N` caps workers; a place that gives no
+ * or `--clones <prefix>`), running `bun test --bail` under `--timeout`, or at the one place
+ * `ANA_CHECK_HOST` names (this machine for `here`) or this machine where no host is listed;
+ * `--fleet` spreads over every listed host whatever `ANA_CHECK_HOST` says (`fleetPlaces`). `--jobs N` caps workers; a place that gives no
  * verdict hands its mutant back and takes no more; `--until` stops taking mutants at that time. A
  * run with no pass, fail or bail count, or one `--timeout` ends, records `null` rather than a kill.
  * `report` tabulates per-file kills across `--old` and the other suites (or solo `killed / survived

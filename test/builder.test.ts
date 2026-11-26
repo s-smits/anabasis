@@ -47,6 +47,7 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import type { AuditFinding } from "../src/audit/auditor.ts";
 import { publicResource, text, tool } from "../src/tools/answer.ts";
 import { openHarness } from "../src/harness/open.ts";
+import { writeStarter } from "../src/harness/starter.ts";
 import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/sandbox/policy.ts";
@@ -58,6 +59,7 @@ const BUILD_FINISHED = "build.finished";
 const SOLVE_STARTED = "solve.started";
 const SOLVE_FINISHED = "solve.finished";
 const READ_TRACE = "read_trace";
+const READ_OPENING = "read_opening";
 const WRITE_FILE = "write";
 const GUIDE_PATH = "harness/agent/BUILT_AGENTS.md";
 
@@ -298,7 +300,7 @@ describe.concurrent("the Builder running its campaign", () => {
     const s = await setup([
       edit,
       call("examine", {}),
-      call("read_opening", {}),
+      call(READ_OPENING, {}),
       call("practice", { tasks: [late.task.taskId] }),
       finish,
     ]);
@@ -529,18 +531,18 @@ describe.concurrent("a Builder session", () => {
     const note = "A table of factors did not help.";
     const s = await setup([
       call(WRITE_FILE, { path: "MEMORY.md", content: `# Builder memory\n\n${note}\n` }),
-      call("read_opening", {}),
+      call(READ_OPENING, {}),
       finish,
     ]);
     await session({ ...s.request, campaign: () => ({ hook: () => "", tools: [] }) }, s, s.walled);
-    const opening = s.of(BUILD_CALL).find(({ tool: name }) => name === "read_opening")?.text;
+    const opening = s.of(BUILD_CALL).find(({ tool: name }) => name === READ_OPENING)?.text;
     expect(opening).toContain("Public rules of the domain:");
     expect(opening).not.toContain(note);
   });
 
   it("shows objective measures, author best and current reference practice records in openings and after a promotion", async () => {
     const promoted = "f".repeat(64);
-    const s = await setup([call("read_opening", {}), call("promote", {}), call("read_opening", {}), finish]);
+    const s = await setup([call(READ_OPENING, {}), call("promote", {}), call(READ_OPENING, {}), finish]);
     const contract = {
       ...s.request.contract,
       objective: { quantity: "interval width", direction: "lower" as const },
@@ -576,7 +578,7 @@ describe.concurrent("a Builder session", () => {
     );
     const [before, after] = s
       .of(BUILD_CALL)
-      .flatMap(({ tool: name, text: told }) => (name === "read_opening" && isString(told) ? [told] : []));
+      .flatMap(({ tool: name, text: told }) => (name === READ_OPENING && isString(told) ? [told] : []));
     const moved = "The reference harness has changed since this conversation began.";
     expect(before).not.toContain(moved);
     expect(before).not.toContain("Under the reference harness (ffffffff)");
@@ -651,7 +653,7 @@ describe.concurrent("a Builder session", () => {
         [
           call("practice", { tasks: ["t-2"] }),
           call(READ_TRACE, { solve: "s-3" }),
-          call("read_opening", {}),
+          call(READ_OPENING, {}),
           call("practice", { tasks: ["t-2"] }),
           finish,
         ],
@@ -1058,6 +1060,50 @@ describe.concurrent("a Builder session", () => {
     );
     expect(last).toContain("Measured the objective against the author's answer on record:");
     expect(last.split(quantity)).toHaveLength(2);
+  });
+
+  it("qualifies practice bands as code-scored when the contract mixes judged items, without leaking criteria", async () => {
+    const criterion = "SECRET-CRITERION-NEVER-SHOWN-TO-BUILDER";
+    const contract: Contract = {
+      ...CONTRACT,
+      objective: {
+        quantity: "quality",
+        direction: "higher",
+        scale: "unit",
+        items: [
+          { id: "accuracy", weight: 1 },
+          { id: "clarity", weight: 1, kind: "judge", criterion },
+        ],
+      },
+    };
+    const steps = [call("practice", { tasks: ["t-1", "t-1"] }), call(READ_OPENING, {}), finish];
+    const s = await setup(steps, [], false, CHECK, contract);
+    append(s.request.log, "task.feasible", {
+      version: "v1",
+      session: "x-1",
+      answer: { answer: "1" },
+      objective: { quantity: "quality", direction: "higher", scale: "unit", measure: 30 },
+    });
+    await session({ ...s.request, campaign: () => ({ hook: () => "", tools: [] }) }, s, s.walled);
+    const [practised] = s
+      .of(BUILD_CALL)
+      .flatMap(({ tool: toolName, text: told }) => (toolName === "practice" && isString(told) ? [told] : []));
+    expect(practised).toContain(
+      "Measured the code-scored part of the objective (quality) against the author's answer on record:",
+    );
+    expect(practised).toContain(
+      "Measured the code-scored part of the objective against the author's answer on record:",
+    );
+    expect(practised).toContain(
+      "passed 2 of 3, the code-scored part of the objective against the author's answer:",
+    );
+    expect(s.sent.join("\n")).not.toContain(criterion);
+    const [opening] = s
+      .of(BUILD_CALL)
+      .flatMap(({ tool: toolName, text: told }) =>
+        toolName === READ_OPENING && isString(told) ? [told] : [],
+      );
+    expect(opening).toContain("the code-scored part of the objective (quality) against the author's answer:");
   });
 
   it("names each valid answer's band by the gain a comparison reads, at every band and either way", async () => {
@@ -1477,7 +1523,7 @@ describe.concurrent("what crosses to the Builder", () => {
         call("practice", { tasks: ["t-1"], under: "reference" }),
         call(READ_TRACE, { solve: "s-3" }),
         call(READ_TRACE, { solve: "s-3", call: leak === "leaking" ? 2 : 1 }),
-        call("read_opening", {}),
+        call(READ_OPENING, {}),
         stop,
         finish,
       ],
@@ -1808,7 +1854,7 @@ describe.concurrent("what a practice solve used", () => {
       [
         call("practice", { tasks: ["t-1"] }),
         call("practice", { tasks: ["t-2"] }),
-        call("read_opening", {}),
+        call(READ_OPENING, {}),
         call("practice", { tasks: ["t-1"] }),
         finish,
       ],
@@ -1886,9 +1932,20 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
           ].join(" && "),
         }),
         call("check_harness", {}),
-        call("bash", { command: 'rm "$HOME/harness/.toolchain/bin/named"' }),
+        call("bash", {
+          command: [
+            'rm "$HOME/harness/.toolchain/bin/named"',
+            'echo "Record the answer." >> "$HOME/harness/agent/BUILT_AGENTS.md"',
+            'mkdir "$HOME/harness/.toolchain/lib"',
+            String.raw`printf 'VALUE = 42\n' > "$HOME/harness/.toolchain/lib/helper.py"`,
+            'printf \'export PYTHONPATH="${BASH_SOURCE%%/*}/lib:${PYTHONPATH:-}"\\n\' > "$HOME/harness/.toolchain/env.sh"',
+            String.raw`printf 'open("public/task.json")\n' > "$HOME/harness/.toolchain/lib/inspect.py"`,
+          ].join(" && "),
+        }),
         call("check_harness", {}),
-        call("bash", { command: "pwd -P; head -1 HARNESS.md" }),
+        call("bash", {
+          command: "python3 -c 'import helper; print(helper.VALUE)'; pwd -P; head -1 HARNESS.md",
+        }),
         call("edit", {
           path: GUIDE_PATH,
           edits: [{ oldText: "Multiply", newText: "Always multiply" }],
@@ -1923,10 +1980,10 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(calls[5]).toContain("installed-greeting");
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
     expect(calls[8]).toContain(
-      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 1 line (28 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 3 files, 6 lines.`,
+      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 2 lines (47 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 6 files, 9 lines.\nFiles in harness/ carry 1 reference to campaign files (lib/inspect.py).\nThe guide names 1 answer field (answer), with no`,
     );
-    expect(calls[8]).not.toContain("Files in harness/ carry");
     expect(calls[8]).not.toContain("Matches a practice task:");
+    expect(calls[9]).toContain(String.raw`42\n`);
     expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
     expect(calls[10]).toContain("Successfully replaced 1 block(s)");
     expect(calls[11]).toContain("Always multiply before you record.");
@@ -1951,7 +2008,7 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
 });
 
 describe("harness file checks and practice task mentions", () => {
-  it("reports host paths, heading leaks, and named or quoted practice tasks while staying silent on clean harnesses", () => {
+  it("reports host paths, heading leaks, and named or quoted practice tasks while staying silent on clean harnesses", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ana-harness-files-"));
     try {
       const clean = join(dir, "clean");
@@ -1993,6 +2050,7 @@ describe("harness file checks and practice task mentions", () => {
         hostShebangs: 0,
         plainBins: 0,
         brokenLinks: 0,
+        campaignRefs: 0,
       });
       expect(namedTasks(cleanInfo.written, tasks)).toEqual([]);
 
@@ -2020,23 +2078,53 @@ describe("harness file checks and practice task mentions", () => {
       );
       chmodSync(join(dirty, TOOL_TREE_DIR, "bin", "bad-bin"), 0o644);
       symlinkSync("/no/such/target", join(dirty, TOOL_TREE_DIR, "bin", "broken"));
+      writeFileSync(
+        join(dirty, TOOL_TREE_DIR, "bin", "inspect"),
+        "#!/usr/bin/env sh\ncat public/task.json\n",
+      );
+      chmodSync(join(dirty, TOOL_TREE_DIR, "bin", "inspect"), 0o755);
 
       const dirtyInfo = readHarnessFiles(dirty, answerKeys, ["R-1"]);
       expect(dirtyInfo).toMatchObject({
         hasSplit: false,
         keptHostRefs: 1,
+        keptHostRefNames: ["public/task.json"],
         keptFormatKeys: 1,
+        keptFormatKeyNames: ["estimateValue"],
         keptRuleIds: 1,
+        keptRuleIdNames: ["R-1"],
         hostPaths: 2,
         hostShebangs: 1,
         plainBins: 1,
         brokenLinks: 1,
+        campaignRefs: 1,
+        campaignRefFiles: ["bin/inspect"],
       });
       expect(namedTasks(dirtyInfo.written, tasks)).toEqual([
         "guide names task-alpha-1",
         'guide:2 uses code "S01-007" from task-alpha-1',
         'guide:2 quotes task-alpha-1 ("compute the quarterly regional payroll total accurately every month")',
       ]);
+
+      const envHome = join(dir, "env-home");
+      const envStates = join(dir, "env-states");
+      const envDir = join(envHome, HOME_TOOL_TREE);
+      writeStarter(join(envHome, "harness"));
+      mkdirSync(envDir, { recursive: true });
+      const snapEnv = () =>
+        snapshot({ request: { states: envStates }, home: envHome, tree: null, opened: null });
+      writeFileSync(join(envDir, "env.sh"), `export PYTHONPATH="${envHome}/lib"\n`);
+      await expect(snapEnv()).rejects.toThrow(/name your home/u);
+      writeFileSync(join(envDir, "env.sh"), 'export X="unterminated\n');
+      await expect(snapEnv()).rejects.toThrow(
+        /^the harness does not open: harness\/\.toolchain\/env\.sh: a bash syntax error: harness\/tree-/u,
+      );
+      writeFileSync(join(envDir, "env.sh"), 'export PYTHONPATH="${BASH_SOURCE%/*}/lib"\n');
+      expect((await snapEnv()).harness.digest).toHaveLength(64);
+      rmSync(join(envDir, "env.sh"));
+      writeFileSync(join(envDir, "real-env.sh"), "export X=1\n");
+      symlinkSync("real-env.sh", join(envDir, "env.sh"));
+      await expect(snapEnv()).rejects.toThrow(/must be a regular file/u);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

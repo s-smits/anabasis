@@ -17,7 +17,8 @@ const MAX_WRITTEN_BYTES = 256 * 1024;
 const GUIDE_PATH = `${AGENT_DIR}${GUIDE_FILE}`;
 const HOST_PATH_RE = /(?:\/Users\/|\/home\/|\/opt\/homebrew\/|\/private\/tmp\/|\/var\/folders\/|\.ana\/)/gu;
 const HOST_SHEBANG_RE = /^#!\s*\/(?:Users|home|opt\/homebrew|Library)\//u;
-const HOST_REF_RE = /(?:public\/task\.json|public\/files\/|public\/resources\/|answer\.json|\bsubmit\b)/gu;
+const CAMPAIGN_FILE_RE = /public\/(?:task\.json|files\/|resources\/)|answer\.json/gu;
+const HOST_REF_RE = new RegExp(`${CAMPAIGN_FILE_RE.source}|\\bsubmit\\b`, "gu");
 const MIN_KEY_LEN = 4;
 const WORD_RE = /[\p{L}\p{N}]+/gu;
 const TOKEN_RE = /[\p{L}\p{N}_](?:[\p{L}\p{N}_.:-]*[\p{L}\p{N}_])?/gu;
@@ -167,9 +168,8 @@ function walkTree(state: string, scope: "full" | "own") {
   return { root, paths: filterOwn(files, marks, recordOf).toSorted(), brokenLinks, treeFiles };
 }
 
-export function ownFiles(state: string): { readonly root: string; readonly paths: readonly string[] } {
-  return walkTree(state, "own");
-}
+export const ownFiles = (state: string): { readonly root: string; readonly paths: readonly string[] } =>
+  walkTree(state, "own");
 
 export function writtenFiles(state: string, scope: "full" | "own" = "full") {
   const { root, paths, brokenLinks, treeFiles } = walkTree(state, scope);
@@ -206,18 +206,28 @@ export function readHarnessFiles(
   ruleIds: readonly string[],
 ) {
   const { written, brokenLinks, treeFiles, size } = writtenFiles(stateDir);
-  let [hostPaths, hostShebangs, plainBins, filesWithKeys] = [0, 0, 0, 0];
+  let [hostPaths, hostShebangs, plainBins, filesWithKeys, campaignRefs] = [0, 0, 0, 0, 0];
   const matchedKeys = new Set<string>();
+  const campaignRefFiles: string[] = [];
   for (const { path, text, executable } of written) {
     hostPaths += (text.match(HOST_PATH_RE) ?? []).length;
     hostShebangs += Number(HOST_SHEBANG_RE.test(text));
     plainBins += Number(path.startsWith("bin/") && !executable);
+    if (path !== "guide") {
+      const refs = (text.match(CAMPAIGN_FILE_RE) ?? []).length;
+      campaignRefs += refs;
+      if (refs > 0) campaignRefFiles.push(path);
+    }
     const matched = answerKeys.filter((key) => text.includes(key));
     for (const key of matched) matchedKeys.add(key);
     filesWithKeys += Number(matched.length > 0);
   }
   const guideEntry = written.find(({ path }) => path === "guide");
   const kept = guideEntry === undefined ? "" : portableGuide(guideEntry.text);
+  const keptHostRefMatches = kept.match(HOST_REF_RE) ?? [];
+  const keptHostRefNames = [...new Set(keptHostRefMatches)].toSorted();
+  const keptFormatKeyNames = answerKeys.filter((key) => hasWholeToken(kept, key)).toSorted();
+  const keptRuleIdNames = ruleIds.filter((id) => hasWholeToken(kept, id)).toSorted();
   return {
     written,
     brokenLinks,
@@ -225,12 +235,17 @@ export function readHarnessFiles(
     size,
     hasSplit: guideEntry !== undefined && kept.length < guideEntry.text.length,
     keptLines: nonblank(kept),
-    keptHostRefs: (kept.match(HOST_REF_RE) ?? []).length,
-    keptFormatKeys: answerKeys.filter((key) => hasWholeToken(kept, key)).length,
-    keptRuleIds: ruleIds.filter((id) => hasWholeToken(kept, id)).length,
+    keptHostRefs: keptHostRefMatches.length,
+    keptHostRefNames,
+    keptFormatKeys: keptFormatKeyNames.length,
+    keptFormatKeyNames,
+    keptRuleIds: keptRuleIdNames.length,
+    keptRuleIdNames,
     hostPaths,
     hostShebangs,
     plainBins,
+    campaignRefs,
+    campaignRefFiles: campaignRefFiles.toSorted(),
     matchedKeys,
     filesWithKeys,
   };
@@ -243,9 +258,7 @@ export function stringsIn(value: JsonValue | undefined): string[] {
   return record === null ? [] : Object.entries(record).flatMap(([key, each]) => [key, ...stringsIn(each)]);
 }
 
-function wordsOf(text: string): string[] {
-  return text.toLowerCase().match(WORD_RE) ?? [];
-}
+const wordsOf = (text: string): string[] => text.toLowerCase().match(WORD_RE) ?? [];
 
 function bigramIndex(wanted: ReadonlySet<string> | null, length: number) {
   if (wanted === null || length < 2) return null;

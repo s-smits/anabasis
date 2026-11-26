@@ -1,7 +1,7 @@
 # The Built Harness's toolchain: source in the tree, environment and build by the harness
 
-Status (25 November 2026): step 0 is read; step 1 is present in source and proved without a model;
-steps 2 to 4 are planned. The counts come from the archived logs and kept states under `data/runs/`
+Status (26 November 2026): steps 0 and 1 are superseded by step 2, which is present in source and
+proved without a model; steps 3 and 4 are planned. The counts come from the archived logs and kept states under `data/runs/`
 (249 runs with shell calls, 21 of them opened on or after 18 November), read once with operator-side
 scripts that count events and file headers and quote nothing a seat wrote.
 
@@ -68,7 +68,7 @@ The plan gives the Builder two files and the host one rule for each.
    `matplotlib`, `scikit-learn`, `ortools`, `openpyxl`, `numdifftools`, `lifelines`, `viennarna`,
    `pyscipopt`, `pulp`, `phreeqpython`, `tabulate`, `torch`, `pymc`) resolve from binary wheels alone
    for Python 3.14 on macOS arm64 and Linux x86-64, 34 of 34. A Python lock needs no source build.
-1. **Put `.toolchain/lib` on the seats' import path** (present in source, proved without a model).
+1. **Put `.toolchain/lib` on the seats' import path** (superseded by step 2).
    - `toolTreeImports` (`src/sandbox/isolation.ts`) names the tree's `lib` when it exists. Three places
      read it: the seats' walled shells (`src/tools/command.ts:runSandboxed`), the bench's shell
      (`studies/shared/pi-solve.ts`) and the bundle's interpreter probe (`studies/shared/bundle.ts`).
@@ -82,19 +82,20 @@ The plan gives the Builder two files and the host one rule for each.
    - Prediction for the first fresh run at this commit: 0 solver `No module named <m>` where `<m>`
      is a module in that run's own `.toolchain/lib`. Falsified by any such miss.
    - This step is a stopgap with one language's name in host code. Step 2 replaces it.
-2. **Let the harness own its environment** (planned).
+2. **Let the harness own its environment** (present in source, proved without a model).
    - Every seat command already runs as `/bin/bash -c` inside the wall. Where a tool tree holds
-     `env.sh`, the host sets `BASH_ENV` to it, and bash sources it before every command, in the
-     solver's and Builder's shells and on the bench.
+     a regular file `env.sh`, the host sets `BASH_ENV` to it, and bash sources it before every
+     command, in the solver's and Builder's shells and on the native pi bench.
    - The Builder writes there whatever its programs and the solver need: `PYTHONPATH`,
      `R_LIBS_USER`, `CLASSPATH`, `NODE_PATH`, `LD_LIBRARY_PATH`, more of `PATH`. Paths are named
      relative to the file (`${BASH_SOURCE%/*}`).
    - Read on 25 November on macOS's bash 3.2: the file is sourced before `-c`,
      `${BASH_SOURCE%/*}` names its directory, and child processes, including `sh` and `python3`,
      inherit the exports.
-   - A failing line in the file does not fail the command (exit 0 after a sourced `false`). So at
-     freeze, `src/harness/files.ts` sources it once in the Builder's wall and refuses a harness whose
-     `env.sh` exits non-zero or names a path under the Builder's home.
+   - At freeze, `src/builder/store.ts` refuses symlinks, hardcoded Builder home paths, and bash
+     syntax errors (`bash -n`, executing no code). In `check_harness`, `src/builder/tools.ts`
+     sources `env.sh` inside the Builder's sandbox and checks a trailing marker so an `env.sh`
+     that calls `exit`, times out, or returns non-zero is surfaced immediately.
    - HARNESS.md states the fact once, in place of step 1's sentence. `toolTreeImports` and its
      three readers are deleted in the same change: one owner per fact (rule 12).
    - Kept trees without `env.sh` lose the import path step 1 gave them; no run before step 1 had it.

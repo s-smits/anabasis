@@ -4,6 +4,7 @@
  */
 import { UNAME_PLACES } from "#src/harness/place.ts";
 import { promoted } from "#src/kernel/reports.ts";
+import { PROGRAMS_OF } from "#tools/campaign/campaign.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -44,10 +45,9 @@ export interface Plan {
 interface HeldAsOptions {
   readonly as?: string | undefined;
   readonly modes?: ReadonlyMap<string, "claude" | "pi"> | undefined;
+  readonly programsOf?: ReadonlyMap<string, string> | undefined;
 }
 
-/** `sha256sum` where present, else `shasum -a 256`, so checksums match across Linux hosts without
- *  Perl and macOS hosts. */
 const SUMS = "$(command -v sha256sum || echo shasum -a 256)";
 
 function benchesFor(run: string, env: Env, named?: string): Bench[] {
@@ -79,15 +79,9 @@ export function settingsOf(
   };
 }
 
-/** The sender's command for an exported tree: SHA-256 sums for every file (since `bsdtar` does not
- *  verify gzip CRCs on extraction), then a tar of the tree, build record and sums to stdout,
- *  without macOS extended attributes or `.DS_Store`. */
 const sealed = (from: string, label: string) =>
   `cd ${from} && find ${quoted(label)} ${quoted(`${label}.build.json`)} -type f ! -name .DS_Store -exec ${SUMS} {} + > ${quoted(`${label}.sha256`)} && COPYFILE_DISABLE=1 tar -czf - --no-xattrs --exclude .DS_Store ${quoted(label)} ${quoted(`${label}.build.json`)} ${quoted(`${label}.sha256`)}`;
 
-/** The receiver's command on the benchmark host: extracts into a staging directory, verifies every
- *  checksum, refuses symlinks to absolute paths on the build machine, and moves the tree into place
- *  atomically without overwriting an existing label. */
 function opened(trees: string, label: string): string {
   const tree = `${trees}/${quoted(label)}`;
   const part = `${trees}/${quoted(`.part-${label}`)}`;
@@ -146,7 +140,7 @@ export function stepsOf(plan: Plan): Step[] {
 }
 
 export const probed = ({ sitting, store }: Pick<Plan, "sitting" | "store">): string =>
-  `uname -sm && ${sitting} python || exit; grep -EH '"(harness|mode)"' ${store}/trees/*/export.json; true`;
+  `uname -sm && ${sitting} python || exit; grep -EH '"(harness|mode|programsOf)"' ${store}/trees/*/export.json; true`;
 
 export async function walk(
   steps: readonly Step[],
@@ -163,26 +157,46 @@ export async function walk(
   }
 }
 
+const isFullHarness = (harness: string): boolean =>
+  harness.length === (harness.startsWith(PROGRAMS_OF) ? PROGRAMS_OF.length + 64 : 64);
+
+const shortOf = (harness: string): string =>
+  harness.startsWith(PROGRAMS_OF)
+    ? `${PROGRAMS_OF}${harness.slice(PROGRAMS_OF.length, PROGRAMS_OF.length + 8)}`
+    : harness.slice(0, 8);
+
 export function heldAs(
   store: ReadonlyMap<string, string>,
   harness: string,
   label: string,
-  { as, modes }: HeldAsOptions = {},
+  { as, modes, programsOf }: HeldAsOptions = {},
 ): { again: string[]; held: string | null; legacy: string[] } {
   const held = store.get(label) ?? null;
-  if (held !== null && harness.length === 64 && held !== harness) {
-    throw new Error(
-      `${label}: the store holds that label for ${held.slice(0, 8)}; a label binds one tree, so name another`,
-    );
-  }
+  const identity = (one: string, digest: string): string => {
+    const of = programsOf?.get(one);
+    return of === undefined ? digest : `${PROGRAMS_OF}${of}`;
+  };
   const isPi = (one: string) => (modes?.get(one) ?? "claude") === "pi";
-  if (held !== null && !isPi(label)) {
-    throw new Error(
-      `${label}: the store holds that label as a legacy claude export; name another label for native pi`,
-    );
+  if (held !== null) {
+    const stored = identity(label, held);
+    const matches = isFullHarness(harness)
+      ? stored === harness
+      : stored.startsWith(PROGRAMS_OF) === harness.startsWith(PROGRAMS_OF);
+    if (!matches) {
+      throw new Error(
+        `${label}: the store holds that label for ${shortOf(stored)}, not ${shortOf(harness)}; name another`,
+      );
+    }
+    if (!isPi(label)) {
+      throw new Error(
+        `${label}: the store holds that label as a legacy claude export; name another label for native pi`,
+      );
+    }
   }
   const sameHarness =
-    as === undefined ? [...store].filter(([one, of]) => of === harness && one !== label) : [];
+    as === undefined
+      ? [...store].filter(([one, digest]) => one !== label && identity(one, digest) === harness)
+      : [];
   const again = sameHarness.filter(([one]) => isPi(one)).map(([one]) => one);
   const legacy = sameHarness.filter(([one]) => !isPi(one)).map(([one]) => one);
   return { again, held, legacy };
@@ -236,6 +250,10 @@ async function exporterOf(run: string): Promise<Pick<Plan, "holder" | "tree" | "
   return { holder, tree: controller.tree, bun: treeBun(controller.bun) };
 }
 
+export function defaultBenchLabel(harness: string): string {
+  return isFullHarness(harness) ? `pi-${shortOf(harness).replace(PROGRAMS_OF, "programs-")}` : "";
+}
+
 async function planOf(
   run: string,
   values: {
@@ -253,8 +271,7 @@ async function planOf(
   const harness = values.harness ?? promoted(logEvents(readNamed(run).path));
   if (harness === null) throw new Error(`${run} has promoted no harness: there is nothing to read outside`);
   // A single-letter harness means something only beside `view`, so it needs an explicit `--as` label.
-  const defaultLabel = harness.length === 64 ? `pi-${harness.slice(0, 8)}` : "";
-  const label = values.as ?? defaultLabel;
+  const label = values.as ?? defaultBenchLabel(harness);
   if (!isSafePathSegment(label)) throw new Misused();
   const said = await runTextOrThrow(shellOn(settings.runner, probed(settings)));
   const [named = "", python = ""] = said.split("\n");
@@ -262,24 +279,28 @@ async function planOf(
   if (place === undefined) {
     throw new Error(`the benchmark's machine is '${named}', which no export is written for`);
   }
-  const rows = said.matchAll(/\/trees\/([^/\n]+)\/export\.json:\s*"harness":\s*"([^"]*)"/gu);
-  const modeRows = said.matchAll(/\/trees\/([^/\n]+)\/export\.json:\s*"mode":\s*"(pi|claude)"/gu);
-  const modes = new Map(
-    [...modeRows].map(([, one = "", mode = "claude"]) => [one, mode === "pi" ? "pi" : "claude"] as const),
+  const mapOf = (key: string) =>
+    new Map(
+      [...said.matchAll(new RegExp(`/trees/([^/\\n]+)/export\\.json:\\s*"${key}":\\s*"([^"]*)"`, "gu"))].map(
+        ([, one = "", value = ""]) => [one, value] as const,
+      ),
+    );
+  const modes = new Map<string, "claude" | "pi">(
+    [...mapOf("mode")].map(([one, mode]) => [one, mode === "pi" ? "pi" : "claude"]),
   );
-  const { again, held, legacy } = heldAs(
-    new Map([...rows].map(([, one = "", of = ""]) => [one, of])),
-    harness,
-    label,
-    { as: values.as, modes },
-  );
+  const { again, held, legacy } = heldAs(mapOf("harness"), harness, label, {
+    as: values.as,
+    modes,
+    programsOf: mapOf("programsOf"),
+  });
+  const shortHarness = shortOf(harness);
   if (again.length > 0) {
-    console.log(`${run}: ${harness.slice(0, 8)} is read already as ${again.join(", ")}; --as reads it again`);
+    console.log(`${run}: ${shortHarness} is read already as ${again.join(", ")}; --as reads it again`);
     return null;
   }
   if (legacy.length > 0) {
     console.log(
-      `${run}: ${harness.slice(0, 8)} was read before under legacy claude as ${legacy.join(", ")}; reading natively on pi-durable`,
+      `${run}: ${shortHarness} was read before under legacy claude as ${legacy.join(", ")}; reading natively on pi-durable`,
     );
   }
   const { logins, why } =

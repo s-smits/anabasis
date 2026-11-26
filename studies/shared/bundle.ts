@@ -7,14 +7,15 @@
  * copies it, and the copy must open as the same digest. The mount also records how the campaign
  * ended and whether the harness's epoch was confirmed (`epochsOf`), so a score is tied to a
  * campaign and a digest. A campaign that has not ended can still promote, so its reference is taken
- * only when named by digest or letter; `programs-of:` is refused, and nothing is written under a
- * campaign's folder. The solver is `pi-solve.ts` compiled with Bun's runtime for the container's
- * platform, so the container needs no Bun of its own.
+ * only when named by digest or letter; `programs-of:` builds the starter-guide + `.toolchain`
+ * control directly in the staging directory so nothing is written under a campaign's folder. The
+ * solver is `pi-solve.ts` compiled with Bun's runtime for the container's platform, so the container
+ * needs no Bun of its own.
  */
-import { copyHarness } from "#src/builder/store.ts";
+import { copyHarness, writeProgramsControl } from "#src/builder/store.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { read } from "#src/kernel/log.ts";
-import { promoted } from "#src/kernel/reports.ts";
+import { latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { existsSync, lstatSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -26,9 +27,9 @@ import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.
 import { openHarness } from "#src/harness/open.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { writeBare, writeStarter } from "#src/harness/starter.ts";
-import { toolTreeImports, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
+import { toolTreeEnv, toolTreeSearchDirs } from "#src/sandbox/isolation.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { resolveCheckpoint, PROMOTED } from "#tools/campaign/campaign.ts";
+import { PROGRAMS_OF, resolveCheckpoint, PROMOTED } from "#tools/campaign/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { packageFolders } from "./foreign-python.ts";
 
@@ -60,6 +61,7 @@ interface Origin {
   /** False until a starter comparison of it tallied a task, null where it led no epoch
    *  (`confirmed`, `src/campaign/climb.ts`). */
   readonly confirmed: boolean | null;
+  readonly programsOf?: string;
 }
 
 interface Source {
@@ -82,28 +84,40 @@ export async function placeHarness(dir: string, source: "base" | "starter" | Sou
     return { campaign: null, ending: null, confirmed: null };
   }
   const asked = source.harness ?? PROMOTED;
-  if (asked.startsWith("programs-of:")) {
-    throw new Error(
-      `${asked}: that control is made among the campaign's states, which the study does not write`,
-    );
+  const ablation = asked.startsWith(PROGRAMS_OF);
+  const target = ablation ? asked.slice(PROGRAMS_OF.length) : asked;
+  if (ablation && target.startsWith(PROGRAMS_OF)) {
+    throw new Error(`${asked}: nested ${PROGRAMS_OF} is not supported`);
   }
   const log = await logAcross(source.campaign);
   const events = read(log);
   const last = events.at(-1);
   const ending = last?.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : null;
-  if (ending === null && (asked === PROMOTED || asked === "latest")) {
+  if (ending === null && (target === PROMOTED || target === "latest")) {
     throw new Error(
-      `${source.campaign} has not ended, so its ${asked} harness may still move: name it by digest or letter`,
+      `${source.campaign} has not ended, so its ${target} harness may still move: name it by digest or letter`,
     );
   }
   const campaign = basename(dirname(log));
   // The starter, asked for or still the reference, is written as itself: `resolveCheckpoint` would keep a copy of
   // it among the campaign's states.
-  if (asked === "starter" || (asked === PROMOTED && promoted(events) === null)) {
+  const resolvesToStarter =
+    target === "starter" ||
+    (target === PROMOTED && promoted(events) === null) ||
+    (target === "latest" && latestBuilt(events) === null);
+  if (resolvesToStarter) {
+    if (ablation) {
+      throw new Error(`starter installed no program, so the control for its programs is the starter itself`);
+    }
     writeStarter(dir);
     return { campaign, ending, confirmed: null };
   }
-  const kept = await resolveCheckpoint({ log, states: join(dirname(log), "states") }, "--harness", asked);
+  const kept = await resolveCheckpoint({ log, states: join(dirname(log), "states") }, "--harness", target);
+  if (ablation) {
+    writeProgramsControl(dir, kept.dir, kept.digest);
+    await openHarness(dir);
+    return { campaign, ending, confirmed: null, programsOf: kept.digest };
+  }
   copyHarness(kept.dir, dir);
   const { digest } = await openHarness(dir);
   if (digest !== kept.digest) {
@@ -149,20 +163,20 @@ export async function ownPython(tree: string, env: Readonly<Record<string, strin
     .map((dir) => join(dir, "python3"))
     .find((path) => lstatSync(path, { throwIfNoEntry: false }) !== undefined);
   if (python === undefined) return null;
+  const envScript = toolTreeEnv(toolchain);
   const run = (words: readonly string[]) => {
-    const ran = runSync([python, "-c", ...words], {
+    const argv =
+      envScript === undefined
+        ? [python, "-c", ...words]
+        : ["/bin/bash", "-c", 'exec "$1" -c "${@:2}"', "_", python, ...words];
+    const ran = runSync(argv, {
       cwd: tmpdir(),
-      env: {
-        ...env,
-        PATH: [...dirs, env.PATH ?? ""].join(":"),
-        ...keyIfDefined("PYTHONPATH", toolTreeImports(toolchain)),
-      },
+      env: { ...env, PATH: [...dirs, env.PATH ?? ""].join(":"), ...keyIfDefined("BASH_ENV", envScript) },
       timeout: 300_000,
     });
-    const last = decodeOutput(ran.stderr).trim().split("\n").at(-1) ?? "";
     return {
       out: decodeOutput(ran.stdout),
-      why: `exit ${String(ran.exitCode)}: ${last}`,
+      why: `exit ${String(ran.exitCode)}: ${decodeOutput(ran.stderr).trim().split("\n").at(-1) ?? ""}`,
       ok: ran.exitCode === 0,
     };
   };

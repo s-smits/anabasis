@@ -184,12 +184,13 @@ describe("the solve isolation's policy", () => {
   );
 
   it.skipIf(Bun.which("python3") === null)(
-    "imports a kept tool tree's Python modules from its lib by name, from the seat's home",
+    "sources a kept tool tree's env.sh via BASH_ENV inside the wall so Python imports its lib by name",
     async () => {
       const repoRoot = workRepo();
       const tree = join(repoRoot, ".ana", "d2", "c", "states", "tree-abc");
       mkdirSync(join(tree, "lib"), { recursive: true });
       writeFileSync(join(tree, "lib", "ana_tree_mod.py"), "SAID = 'tree'\n");
+      writeFileSync(join(tree, "env.sh"), 'export PYTHONPATH="${BASH_SOURCE%/*}/lib:${PYTHONPATH:-}"\n');
       writeFileSync(join(repoRoot, "ana_repo_mod.py"), "SAID = 'repo'\n");
       await inSeat(repoRoot, [], async (wall, run) => {
         const command =

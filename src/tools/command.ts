@@ -16,7 +16,7 @@ import {
   commandIsolationPolicy,
   shellQuote,
   stageCommandIsolation,
-  toolTreeImports,
+  toolTreeEnv,
 } from "../sandbox/isolation.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { BUILT_COMMAND_SCRATCH_ROOT } from "../sandbox/policy.ts";
@@ -239,8 +239,8 @@ export async function runSandboxed(
       options.stage(into);
     }
     const walled = commandIsolationPolicy(wall.base, { ...dirs, toolTree: wall.toolTree });
-    const imports = keyIfDefined("PYTHONPATH", toolTreeImports(wall.toolTree));
-    const policy = { ...walled, environment: { ...walled.environment, ...imports } };
+    const envScript = keyIfDefined("BASH_ENV", toolTreeEnv(wall.toolTree));
+    const policy = { ...walled, environment: { ...walled.environment, ...envScript } };
     const line =
       into === null
         ? command

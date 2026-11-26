@@ -1,7 +1,13 @@
-import { existsSync, lstatSync, readHeadSync, readlinkSync } from "#src/meta/filesystem.ts";
-import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
+import { existsSync, lstatSync, readFileSync, readHeadSync, readlinkSync } from "#src/meta/filesystem.ts";
+import { TOOL_TREE_DIR, TOOL_TREE_ENV } from "#src/meta/bundle-layout.ts";
 import { dirname, isAbsolute, join, normalize } from "#src/meta/path.ts";
+import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { textOr } from "#src/meta/text.ts";
 import { pathsUnder } from "./open.ts";
+
+const MACOS_HOST_ROOT =
+  /(?:^|[\s"'=:(]|-[IL])(\/(?:Users|opt\/homebrew|usr\/local\/Cellar|Library|Applications|Volumes|System|var\/folders|private\/(?:var|tmp))\/)/u;
+const PORTABILITY_GUARD = /\b(?:uname|OSTYPE|Darwin)\b|\[\s*-[defx]\s+/u;
 
 export const UNAME_PLACES = new Map([
   ["Linux x86_64", "linux-x64"],
@@ -57,13 +63,47 @@ export function foreignFiles(tree: string, place: Place): Promise<{ path: string
       const to = normalize(join(dirname(path), target));
       if (isAbsolute(target) || to === ".." || to.startsWith("../")) {
         foreign.push({ path, why: `a link to ${target}, outside the tree` });
+      } else if (path === TOOL_TREE_ENV) {
+        foreign.push({ path, why: `${TOOL_TREE_ENV} must be a regular file` });
       }
     } else if (stat.isFile()) {
-      const why = foreignHead(readHeadSync(full, 128), place);
+      const why =
+        path === TOOL_TREE_ENV ? foreignEnv(full, place) : foreignHead(readHeadSync(full, 128), place);
       if (why !== null) foreign.push({ path, why });
     }
   }
   return Promise.resolve(foreign);
+}
+
+function stripShellComment(line: string): string {
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quote === null && ch === "\\") i += 1;
+    else if (quote === null && (ch === "'" || ch === '"')) quote = ch;
+    else if (ch === quote) quote = null;
+    else if (quote === null && ch === "#" && (i === 0 || /\s/u.test(line[i - 1] ?? ""))) {
+      return line.slice(0, i);
+    }
+  }
+  return line;
+}
+
+export function bashSyntaxFault(file: string): string | null {
+  const parsed = runSync(["/bin/bash", "-n", file], { timeout: 5000 });
+  if (parsed.exitCode === null || parsed.signal !== null) return "could not check bash syntax";
+  if (parsed.exitCode === 0) return null;
+  const detail = textOr(decodeOutput(parsed.stderr).trim().split("\n").at(0), "syntax error");
+  return `a bash syntax error: ${detail}`;
+}
+
+function foreignEnv(full: string, place: Place): string | null {
+  const syntax = bashSyntaxFault(full);
+  if (syntax !== null || place.mac) return syntax;
+  const active = readFileSync(full, "utf8").split("\n").map(stripShellComment).join("\n");
+  return !PORTABILITY_GUARD.test(active) && MACOS_HOST_ROOT.test(active)
+    ? "references a macOS host path"
+    : null;
 }
 
 export function foreignHead(head: Buffer, place: Place = CONTAINER): string | null {

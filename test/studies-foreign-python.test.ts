@@ -306,6 +306,45 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     expect(await rebuildForeignPython(tree, LINUX, python)).toBeNull();
     expect(asked).toStrictEqual([]);
   });
+
+  it("refuses symlinked, syntactically broken, or unguarded macOS-host-coupled env.sh on Linux while allowing portable env.sh", async () => {
+    const stage = (name: string, body: string) => {
+      const dir = join(root, name);
+      put(dir, { "env.sh": body });
+      return dir;
+    };
+
+    const allowed: readonly (readonly [string, string])[] = [
+      [
+        "env-comment-and-relative",
+        '# macOS note: /Users/ignored\nexport X=1 # trailing /opt/homebrew/bin comment\nexport PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib:${PYTHONPATH:-}"\n',
+      ],
+      [
+        "env-multiline-darwin",
+        'if [ "$(uname -s)" = "Darwin" ]; then\n  export PATH="/opt/homebrew/bin:$PATH"\nfi\n',
+      ],
+      ["env-ostype-case", 'case "$OSTYPE" in\n  darwin*) export LDFLAGS="-L/opt/homebrew/lib" ;;\nesac\n'],
+      ["env-dir-guard", 'if [ -d /opt/homebrew/bin ]; then\n  export PATH="/opt/homebrew/bin:$PATH"\nfi\n'],
+    ];
+    for (const [name, body] of allowed) {
+      await foreignPrograms(stage(name, body), LINUX);
+    }
+
+    const badHost = stage("env-mac-path", 'export CFLAGS="-I/opt/homebrew/include"\n');
+    await expect(foreignPrograms(badHost, LINUX)).rejects.toThrow(/macOS host path/u);
+    await expect(rebuildForeignPython(badHost, LINUX, standIn().python)).rejects.toThrow(PlatformRefusal);
+
+    const badQuoted = stage("env-quoted-hash", 'export X="keep # /opt/homebrew/bin"\n');
+    await expect(foreignPrograms(badQuoted, LINUX)).rejects.toThrow(/macOS host path/u);
+
+    const badSyntax = stage("env-syntax", "if true; then\n");
+    await expect(foreignPrograms(badSyntax, LINUX)).rejects.toThrow(/bash syntax error/u);
+
+    const linked = join(root, "env-link");
+    put(linked, { "real.sh": "export X=1\n" });
+    symlinkSync("real.sh", join(linked, "env.sh"));
+    await expect(foreignPrograms(linked, LINUX)).rejects.toThrow(/regular file/u);
+  });
 });
 
 describe("the folders a tool tree keeps its packages in", () => {

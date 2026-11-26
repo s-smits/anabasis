@@ -1,5 +1,5 @@
 import { GAP_FLOOR, gapBasis, type ObjectiveRule } from "../kernel/compare.ts";
-import { type Contract, objectiveLine } from "../kernel/contract.ts";
+import { type Contract, hasJudge, objectiveLine } from "../kernel/contract.ts";
 import { HOST_ONLY } from "../harness/starter.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
@@ -115,7 +115,7 @@ export function systemPrompt(modePrompts: ModePrompts, objective?: ObjectiveRule
     `${GOAL} Measured tasks are never practice tasks and include families not seen in practice. One hard rule: nothing in harness/ may name a task, copy its text, or embed its answer.`,
     [
       "Practice tasks are diagnostic samples of how the solver behaves in this domain; reading solver traces alongside task inputs and public rules exposes general gaps in method, tooling, or verification. One practice solve is noisy (the same harness can fail and then pass), anything edited after your last practice solve is measured untried, and narrow recipes or constants fitted to practice tasks fail to transfer to unseen tasks and families. General, composable programs under .toolchain/ transfer across unseen tasks and families, whereas single-family scripts sit idle outside the family they were written for. Every line of agent/BUILT_AGENTS.md enters every solve's prompt, so concise guides and pruning uninvoked programs or stale prose leave room for reading new tasks.",
-      `Kept harnesses are also exported and run on ordinary domain workspaces where public/task.json, public/files/, public/resources/, answer.json, submit, and campaign scoring do not exist. Export keeps agent/BUILT_AGENTS.md up to the heading "${HOST_ONLY}" and strips everything under it, so sections above that heading describe general domain tools and method over ordinary files while campaign-specific paths, rule IDs, checking, and submission belong under "${HOST_ONLY}".`,
+      `Kept harnesses are also exported and run on ordinary domain workspaces where public/task.json, public/files/, public/resources/, answer.json, submit, and campaign scoring do not exist. Export keeps agent/BUILT_AGENTS.md up to the heading "${HOST_ONLY}" and strips everything under it, so keep sections above that heading concise and limited to portable tools, libraries, and general domain verification over ordinary files; put campaign paths, answer fields, rule IDs, exam-specific wrappers, and submission strictly under "${HOST_ONLY}".`,
       "",
       "The solver is pi's coding agent. Your harness lives in harness/ (see HARNESS.md for shapes, conventions, a worked example, and the starter guide) and has three parts:",
       "- agent/tools-spec.json: selects pi coding tools for the solver (read, bash, edit, write).",
@@ -169,8 +169,12 @@ export function firstMessage(
   told: SessionLimits,
   past: Past,
 ): string {
-  const names = [contract.objective?.quantity ?? ""];
-  const name = () => names.shift() ?? "the objective";
+  const judged = hasJudge(contract.objective);
+  const label = judged ? "the code-scored part of the objective" : "the objective";
+  const names = [
+    judged ? `${label} (${contract.objective?.quantity ?? ""})` : (contract.objective?.quantity ?? ""),
+  ];
+  const name = () => names.shift() ?? label;
   const listed = tasks.map(({ taskId, family, solves, passed, measures, left, reference }) => {
     if (left) {
       return `- ${taskId} (family ${family}): no longer a practice task, since the Referee ruled a check defect on a practice answer to it; read_trace still opens its solves.`;

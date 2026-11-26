@@ -3,7 +3,16 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
-import { bench, heldAs, type Plan, probed, settingsOf, stepsOf, walk } from "../tools/runs/bench.ts";
+import {
+  bench,
+  defaultBenchLabel,
+  heldAs,
+  type Plan,
+  probed,
+  settingsOf,
+  stepsOf,
+  walk,
+} from "../tools/runs/bench.ts";
 import { completedBenchPairs } from "../tools/runs/bench-scores.ts";
 
 const scratch: string[] = [];
@@ -170,7 +179,7 @@ describe("runs bench", () => {
 
   test("heldAs deduplicates native pi trees, reports legacy claude reads, and refuses legacy label reuse", () => {
     expect(probed({ sitting: "bin/sitting.sh", store: "bench/store" })).toContain(
-      `grep -EH '"(harness|mode)"'`,
+      `grep -EH '"(harness|mode|programsOf)"'`,
     );
     const store = new Map([
       ["aaaaaaaa", DIGEST],
@@ -193,5 +202,51 @@ describe("runs bench", () => {
       legacy: ["aaaaaaaa"],
     });
     expect(() => heldAs(store, DIGEST, "aaaaaaaa", { modes })).toThrow("legacy claude export");
+    expect(defaultBenchLabel(DIGEST)).toBe("pi-aaaaaaaa");
+    expect(defaultBenchLabel(`programs-of:${DIGEST}`)).toBe("pi-programs-aaaaaaaa");
+    expect(defaultBenchLabel("B")).toBe("");
+    const OTHER = "b".repeat(64);
+    const progStore = new Map([["pi-programs-aaaaaaaa", "c".repeat(64)]]);
+    const progModes = new Map<string, "claude" | "pi">([["pi-programs-aaaaaaaa", "pi"]]);
+    const progMap = new Map([["pi-programs-aaaaaaaa", DIGEST]]);
+    expect(
+      heldAs(progStore, `programs-of:${DIGEST}`, "pi-programs-other", {
+        modes: progModes,
+        programsOf: progMap,
+      }),
+    ).toEqual({ again: ["pi-programs-aaaaaaaa"], held: null, legacy: [] });
+    expect(() =>
+      heldAs(progStore, `programs-of:${OTHER}`, "pi-programs-aaaaaaaa", {
+        modes: progModes,
+        programsOf: progMap,
+      }),
+    ).toThrow(/not programs-of:bbbbbbbb/u);
+    expect(() =>
+      heldAs(store, "programs-of:B", "pi-aaaaaaaa", {
+        as: "pi-aaaaaaaa",
+        modes,
+        programsOf: progMap,
+      }),
+    ).toThrow(/not programs-of:B/u);
+    expect(() =>
+      heldAs(store, "programs-of:B", "pi-aaaaaaaa", {
+        as: "pi-aaaaaaaa",
+        modes,
+      }),
+    ).toThrow(/not programs-of:B/u);
+    expect(() =>
+      heldAs(progStore, "B", "pi-programs-aaaaaaaa", {
+        as: "pi-programs-aaaaaaaa",
+        modes: progModes,
+        programsOf: progMap,
+      }),
+    ).toThrow(/for programs-of:aaaaaaaa, not B/u);
+    expect(
+      heldAs(progStore, "programs-of:B", "pi-programs-aaaaaaaa", {
+        as: "pi-programs-aaaaaaaa",
+        modes: progModes,
+        programsOf: progMap,
+      }),
+    ).toEqual({ again: [], held: "c".repeat(64), legacy: [] });
   });
 });

@@ -54,6 +54,7 @@ import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { type Reader, auditRejection } from "#src/audit/auditor.ts";
 import { type Asked, judgePair } from "#src/audit/judge.ts";
+import { writeProgramsControl } from "#src/builder/store.ts";
 import { writeStarter } from "#src/harness/starter.ts";
 import { stageExam } from "./exam.ts";
 import type { NamedSolver } from "./setting.ts";
@@ -101,7 +102,7 @@ interface Standing {
 }
 
 export const PROMOTED = "promoted";
-const PROGRAMS_OF = "programs-of:";
+export const PROGRAMS_OF = "programs-of:";
 
 export const LIMITS = {
   wallSeconds: 1800,
@@ -439,16 +440,9 @@ export async function resolveCheckpoint(campaign: Keeping, flag: string, asked: 
 }
 
 async function programsAblation(campaign: Keeping, source: Kept): Promise<Kept> {
-  const tree = join(source.dir, ".toolchain");
-  if (!existsSync(tree)) {
-    throw new Error(
-      `${source.digest} installed no program, so the control for its programs is the starter itself`,
-    );
-  }
   const scratch = mkdtempSync(join(campaign.states, "control-"));
   try {
-    writeStarter(scratch);
-    cpSync(tree, join(scratch, ".toolchain"), { recursive: true, verbatimSymlinks: true });
+    writeProgramsControl(scratch, source.dir, source.digest);
     const { digest } = await openHarness(scratch);
     const dir = join(campaign.states, digest);
     if (!existsSync(dir)) renameSync(scratch, dir);

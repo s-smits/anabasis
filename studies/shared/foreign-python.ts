@@ -16,6 +16,7 @@
  * `tools/runs/sync.ts`), and a test stands in for it through `PythonFor`.
  */
 import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
+import { TOOL_TREE_ENV } from "#src/meta/bundle-layout.ts";
 import { hostTool } from "#src/meta/host-tool.ts";
 import { homedir, tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join, normalize, relative } from "#src/meta/path.ts";
@@ -83,7 +84,11 @@ export async function rebuildForeignPython(
   }
   const interpreters = [...prefixes].map(([prefix, files]) => interpreterFor(tree, prefix, files, python));
   const refused = [
-    ...unowned.map((path) => `${path}, which no Python distribution or interpreter in the tree installed`),
+    ...unowned.map((entry) =>
+      entry.startsWith(`${TOOL_TREE_ENV} (`)
+        ? entry
+        : `${entry}, which no Python distribution or interpreter in the tree installed`,
+    ),
     ...interpreters.flatMap(({ refused: why }) => why),
     // A reinstall writes a distribution's packages into its folder, and nothing beside it or under `bin`.
     ...foreign.flatMap((path) => {

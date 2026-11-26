@@ -1,5 +1,5 @@
 import type { LogEvent } from "../kernel/log.ts";
-import { CORRECTNESS_MODEL_DIR, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
+import { CORRECTNESS_MODEL_DIR, TOOL_TREE_DIR, TOOL_TREE_ENV } from "../meta/bundle-layout.ts";
 import {
   cpSync,
   existsSync,
@@ -19,6 +19,8 @@ import { containsPath } from "../meta/path-containment.ts";
 import { basename, dirname, join, relative, resolve } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { type Harness, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
+import { bashSyntaxFault } from "../harness/place.ts";
+import { writeStarter } from "../harness/starter.ts";
 import { selectedCodingTools } from "../tools/coding.ts";
 import { short } from "../campaign/move.ts";
 import { namesOf } from "../campaign/names.ts";
@@ -96,15 +98,25 @@ export function parentToolTree(parent: string): string | null {
   return real;
 }
 
+export function writeProgramsControl(into: string, state: string, digest: string): void {
+  const tree = parentToolTree(state);
+  if (tree === null) {
+    throw new Error(`${digest} installed no program, so the control for its programs is the starter itself`);
+  }
+  writeStarter(into);
+  cpSync(tree, join(into, TOOL_TREE_DIR), { recursive: true, verbatimSymlinks: true });
+}
+
 export function refuseNamingHome(dir: string, home: string, under: string): void {
   const forms = [...new Set([home, realpathSync(home)])];
   const named = pathsUnder(dir).filter((path) => {
     const full = join(dir, path);
     const stat = lstatSync(full);
     if (stat.isSymbolicLink()) return forms.some((form) => readlinkSync(full).includes(form));
-    if (!stat.isFile() || (stat.mode & 0o111) === 0 || readHeadSync(full, 2).toString() !== "#!") {
-      return false;
-    }
+    if (!stat.isFile()) return false;
+    const checked =
+      path === TOOL_TREE_ENV || ((stat.mode & 0o111) !== 0 && readHeadSync(full, 2).toString() === "#!");
+    if (!checked) return false;
     const bytes = readFileSync(full);
     return forms.some((form) => bytes.includes(form));
   });
@@ -140,6 +152,15 @@ function keptTree(bench: Freezing): string | null {
   try {
     cpSync(real, dir, { recursive: true, verbatimSymlinks: true });
     refuseNamingHome(dir, bench.home, HOME_TOOL_TREE);
+    const envFile = join(dir, TOOL_TREE_ENV);
+    const envStat = lstatSync(envFile, { throwIfNoEntry: false });
+    if (envStat !== undefined) {
+      if (envStat.isSymbolicLink() || !envStat.isFile()) {
+        throw new Error(`${join(HOME_TOOL_TREE, TOOL_TREE_ENV)} must be a regular file`);
+      }
+      const syntax = bashSyntaxFault(envFile);
+      if (syntax !== null) throw new Error(`${join(HOME_TOOL_TREE, TOOL_TREE_ENV)}: ${syntax}`);
+    }
   } catch (error) {
     rmSync(dir, { recursive: true, force: true });
     throw error;
@@ -177,7 +198,7 @@ export async function frozen<T>(bench: Freezing, use: (kept: HarnessSnapshot) =>
     return await use({ dir, harness });
   } catch (error) {
     if (opened) throw error;
-    const why = errorMessage(error).replaceAll(dir ?? states, "harness");
+    const why = errorMessage(error).replaceAll(dir ?? realpathSync(states), "harness");
     throw new Error(`the harness does not open: ${why}`, { cause: error });
   } finally {
     if (dir !== null) rmSync(dir, { recursive: true, force: true });

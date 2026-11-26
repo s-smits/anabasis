@@ -381,7 +381,7 @@ tools/oxlint/rule-examples.ts	2
 tools/oxlint/staged-slop.ts	6
 tools/oxlint/tree-stale-reference.ts	4
 tools/runs/alerts.ts	20
-tools/runs/bench.ts	5
+tools/runs/bench.ts	2
 tools/runs/cli.ts	17
 tools/runs/code.ts	14
 tools/runs/degradations.ts	3

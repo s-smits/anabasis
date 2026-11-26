@@ -92,7 +92,7 @@ describe("an arm's harness, taken from a campaign", () => {
     expect(origin.ending).toBeNull();
   });
 
-  it("writes the starter where no promotion moved the reference, and writes nothing under the campaign", async () => {
+  it("writes the starter where no promotion moved the reference, supports read-only programs-of staging, and writes nothing under the campaign", async () => {
     const flat = await campaign("flat", (log) => {
       append(log, "campaign.ended", { ending: "stop", why: "patience" });
     });
@@ -104,10 +104,48 @@ describe("an arm's harness, taken from a campaign", () => {
     await expect(
       placeHarness(join(root, "arm-flat-programs"), {
         campaign: flat.log,
-        harness: `programs-of:${flat.child}`,
+        harness: `programs-of:${flat.starter}`,
       }),
-    ).rejects.toThrow(/does not write/u);
+    ).rejects.toThrow(/installed no program/u);
     expect(readdirSync(flat.states).toSorted()).toStrictEqual(before);
+
+    const withPrograms = await campaign(
+      "with-programs",
+      (log, starter, child) => {
+        append(log, "harness.promoted", { harness: child, from: starter, rests: ["g-1"] });
+        append(log, "campaign.ended", { ending: "budget", why: "spent", reference: child });
+      },
+      { ...MARKED, guide: "# Custom domain guide\n" },
+    );
+    const statesBefore = readdirSync(withPrograms.states).toSorted();
+    const staged = join(root, "arm-programs-of");
+    const ablated = await placeHarness(staged, {
+      campaign: withPrograms.log,
+      harness: `programs-of:${withPrograms.child}`,
+    });
+    expect(ablated).toStrictEqual({
+      campaign: "with-programs",
+      ending: "budget",
+      confirmed: null,
+      programsOf: withPrograms.child,
+    });
+    expect((await openHarness(staged)).digest).not.toBe(withPrograms.child);
+    expect((await openHarness(staged)).digest).not.toBe(withPrograms.starter);
+    expect(readFileSync(join(staged, ".toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
+    expect(readFileSync(join(staged, "agent", "BUILT_AGENTS.md"), "utf8")).not.toContain(
+      "Custom domain guide",
+    );
+    expect(readdirSync(withPrograms.states).toSorted()).toStrictEqual(statesBefore);
+
+    const unbuiltDir = join(root, "unbuilt");
+    const unbuiltStates = join(unbuiltDir, "states");
+    mkdirSync(unbuiltStates, { recursive: true });
+    const unbuiltLog = join(unbuiltDir, "log.jsonl");
+    append(unbuiltLog, "campaign.ended", { ending: "exam", why: "unaccepted" });
+    await expect(
+      placeHarness(join(root, "arm-unbuilt-latest"), { campaign: unbuiltLog, harness: "programs-of:latest" }),
+    ).rejects.toThrow(/installed no program/u);
+    expect(readdirSync(unbuiltStates)).toStrictEqual([]);
   });
 
   it("refuses a kept state that no longer opens as the digest it is kept under", async () => {
@@ -116,6 +154,32 @@ describe("an arm's harness, taken from a campaign", () => {
     await expect(
       placeHarness(join(root, "arm-misnamed"), { campaign: ended.log, harness: misnamed }),
     ).rejects.toThrow(/no longer opens/u);
+    await expect(
+      placeHarness(join(root, "arm-misnamed-programs"), {
+        campaign: ended.log,
+        harness: `programs-of:${misnamed}`,
+      }),
+    ).rejects.toThrow(/no longer opens/u);
+
+    const tampered = await campaign(
+      "tampered-programs",
+      (log, starter, child) => {
+        append(log, "harness.promoted", { harness: child, from: starter, rests: ["g-1"] });
+        append(log, "campaign.ended", { ending: "budget", why: "spent", reference: child });
+      },
+      { ...MARKED, guide: "# Tampered guide\n" },
+    );
+    writeFileSync(
+      join(tampered.states, tampered.child, ".toolchain", "bin", "mark"),
+      "#!/bin/sh\necho bad\n",
+    );
+    const statesBefore = readdirSync(tampered.states).toSorted();
+    const dest = join(root, "arm-tampered-programs");
+    await expect(
+      placeHarness(dest, { campaign: tampered.log, harness: `programs-of:${tampered.child}` }),
+    ).rejects.toThrow(/no longer opens/u);
+    expect(existsSync(dest)).toBe(false);
+    expect(readdirSync(tampered.states).toSorted()).toStrictEqual(statesBefore);
   });
 
   it("reads an arm's source from its two options, and refuses a kept harness of the starter", () => {

@@ -35,7 +35,7 @@ const UNUSED_API = undefined as never;
 const CANARY = "hidden-canary-r7";
 const TASK: Task = { taskId: "t-1", family: "beam", publicInput: { load: 5 }, hidden: { limit: CANARY } };
 const CONTRACT: Contract = {
-  answerFormat: {},
+  answerFormat: { type: "object" },
   conventions: "SI units.",
   rules: [{ id: "R1", statement: "A span is at most 12 m." }],
   scope: "Fixture.",
@@ -929,6 +929,51 @@ describe("draft audit on a check that throws", () => {
     expect(res.findings).toMatchObject([{ kind: "check-defect", check: "span", probe: 1 }]);
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(2);
     expect(s.sent.join("\n")).toContain("made check span throw");
+
+    const target = {
+      contract: CONTRACT,
+      tasks: [TASK],
+      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+    };
+    expect(await replayDraftProbes(res, { ...target, verify: throwing })).toMatchObject({
+      stillBroken: [expect.stringContaining("still reproduces")],
+      unverified: [],
+    });
+    const mended: Verifier = async () => ({ kind: "pass", objective: 10 });
+    expect((await replayDraftProbes(res, { ...target, verify: mended })).verifiedFixed).toHaveLength(1);
+  });
+
+  it("refuses check-defect on a throw from an answer the answer format already refuses", async () => {
+    const checks = programs.get(JSON.stringify([SPAN]));
+    if (checks === undefined) throw new Error("missing check program");
+    const s = setup([
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: '"x"' }] }),
+      reviewCall({
+        verdict: "defects",
+        findings: [
+          { kind: "check-defect", task: "t-1", check: "span", probe: 1, reason: "a string span throws" },
+        ],
+        summary: "throwing check",
+      }),
+      reviewCall({ verdict: "sound", findings: [], summary: "nothing a campaign reaches" }),
+    ]);
+    const res = await reviewDraft(s.reader, {
+      session: "d-1",
+      pass: 1,
+      prompt: "Keep spans <= 12 m.",
+      contract: { ...CONTRACT, answerFormat: { type: "object", properties: { span: { type: "number" } } } },
+      checks,
+      verify: async (_task, answer) =>
+        isNumber(asRecord(answer)?.span)
+          ? { kind: "pass", objective: 10 }
+          : { kind: "faulty", check: "span", reason: "the check threw" },
+      tasks: [TASK],
+      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+      notes: [],
+      log: s.log,
+    });
+    expect(res.findings).toEqual([]);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(1);
   });
 });
 

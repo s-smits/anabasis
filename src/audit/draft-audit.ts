@@ -2,7 +2,7 @@ import { type Static, Type } from "typebox";
 import type { Control } from "../kernel/acceptance.ts";
 import type { AnswerFile } from "../kernel/answer-files.ts";
 import { GAP_FLOOR, gainOver } from "../kernel/compare.ts";
-import { codeObjective, type Contract } from "../kernel/contract.ts";
+import { answerFormatFault, codeObjective, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
 import { blockingOf, objectiveOf, type Task, type Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
@@ -283,7 +283,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
     },
   });
   const probe = probeExamplesTool(
-    target.verify,
+    formedOnly(target.contract, target.verify),
     examples.map(({ task, control }) => ({
       task,
       answer: control.answer,
@@ -342,14 +342,23 @@ function reproduces(
 ): boolean {
   if (finding.kind === "vacuous-pass") return replayed.changed.kind === "pass";
   if (finding.kind === "check-defect") {
-    return (
-      replayed.changed.kind === "fail" &&
-      (finding.check === undefined || blockingOf(replayed.changed).includes(finding.check))
-    );
+    return finding.check === undefined
+      ? replayed.changed.kind === "fail"
+      : [...blockingOf(replayed.changed), throwsIn(replayed)].includes(finding.check);
   }
   if (replayed.changed.kind !== "pass" || objective === undefined) return false;
   const [before, after] = [objectiveOf(replayed.original), objectiveOf(replayed.changed)];
   return before !== null && after !== null && gainOver(objective, after, before) > -GAP_FLOOR;
+}
+
+function formedOnly(contract: Contract, verify: Verifier): Verifier {
+  return async (task, answer, signal, files) =>
+    answer !== undefined && answerFormatFault(contract.answerFormat, answer) !== null
+      ? {
+          kind: "non-result",
+          reason: "the changed answer breaks the answer format, so a campaign never checks it",
+        }
+      : verify(task, answer, signal, files);
 }
 
 export async function replayDraftProbes(
@@ -396,7 +405,7 @@ export async function replayDraftProbes(
       const replayed = await executeProbe({
         used: 0,
         budget: 1,
-        verify: target.verify,
+        verify: formedOnly(target.contract, target.verify),
         task,
         answer: control.answer,
         files,
@@ -408,7 +417,7 @@ export async function replayDraftProbes(
           return cached;
         },
       });
-      if (!conclusive(replayed)) {
+      if (!conclusive(replayed) && throwsIn(replayed) === null) {
         unverified.push(formatted);
       } else if (
         reproduces(finding, { task: finding.task, ...replayed }, codeObjective(target.contract.objective))

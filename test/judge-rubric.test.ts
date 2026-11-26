@@ -157,7 +157,7 @@ describe("referee.pair extract telemetry", () => {
     models.setProvider(faux.provider);
     const log = join(scratch, "log.jsonl");
     const firstFiles = keepAnswerFiles(log, [
-      ...textFiles([{ path: "big.txt", text: "X".repeat(30_000) }]),
+      ...textFiles([{ path: "big.txt", text: "X".repeat(100_000) }]),
       { path: "chart.png", base64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64") },
       ...textFiles([{ path: "broken.ipynb", text: "{not json" }]),
     ]);
@@ -172,7 +172,7 @@ describe("referee.pair extract telemetry", () => {
       solve: "s-2",
       task: "t-1",
       kind: "pass",
-      answer: { note: "Y".repeat(30_000) },
+      answer: { note: "Y".repeat(100_000) },
     });
     const contract: Contract = {
       answerFormat: {},

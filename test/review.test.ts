@@ -502,6 +502,17 @@ describe("rejection adjudication and evidence gates", () => {
     expect(coupledAnswer.left).toEndWith("bad");
   });
 
+  it("grounds no check-defect ruling on a probe whose change breaks the answer format", async () => {
+    const typed = { ...CONTRACT, answerFormat: { type: "object", properties: { span: { type: "number" } } } };
+    const s = setup([
+      callTool(PROBE, { changes: [{ path: SPAN, value: '"12"' }] }),
+      ruling({ ruling: "check-defect", check: "span", reason: "A span of 12 passes as text.", probes: [1] }),
+      ruling(UNSETTLED),
+    ]);
+    expect(await auditRejection(s.reader, s.fail({ contract: typed }))).toMatchObject({ ruling: "unclear" });
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
+  });
+
   it("handles submitted text files and archive members across replay, probes, and rulings", async () => {
     // Text file replay, packet preview without base64, and file-based earned ruling.
     const textFile = [{ path: "report.txt", base64: "YmFk", text: "bad" }];

@@ -26,7 +26,7 @@ import { containing, objectWith } from "./helpers/matchers.ts";
 
 const TASK: Task = { taskId: "t-1", family: "ledger", publicInput: {}, hidden: {} };
 const CONTRACT: Contract = {
-  answerFormat: {},
+  answerFormat: { type: "object" },
   conventions: "Plain text.",
   rules: [
     { id: "R1", statement: "No row of data.csv is marked bad." },

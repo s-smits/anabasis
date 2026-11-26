@@ -2,7 +2,7 @@ import { type Static, Type } from "typebox";
 import type { Control } from "../kernel/acceptance.ts";
 import type { AnswerFile } from "../kernel/answer-files.ts";
 import { GAP_FLOOR, gainOver } from "../kernel/compare.ts";
-import { answerFormatFault, codeObjective, type Contract } from "../kernel/contract.ts";
+import { codeObjective, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
 import { blockingOf, objectiveOf, type Task, type Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
@@ -17,6 +17,7 @@ import {
   executeProbe,
   FILE,
   fileTexts,
+  formedOnly,
   probeExamplesTool,
   taskContentDigest,
 } from "./probe.ts";
@@ -349,16 +350,6 @@ function reproduces(
   if (replayed.changed.kind !== "pass" || objective === undefined) return false;
   const [before, after] = [objectiveOf(replayed.original), objectiveOf(replayed.changed)];
   return before !== null && after !== null && gainOver(objective, after, before) > -GAP_FLOOR;
-}
-
-function formedOnly(contract: Contract, verify: Verifier): Verifier {
-  return async (task, answer, signal, files) =>
-    answer !== undefined && answerFormatFault(contract.answerFormat, answer) !== null
-      ? {
-          kind: "non-result",
-          reason: "the changed answer breaks the answer format, so a campaign never checks it",
-        }
-      : verify(task, answer, signal, files);
 }
 
 export async function replayDraftProbes(

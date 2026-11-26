@@ -1,12 +1,5 @@
-/**
- * Static command-to-program attribution for solve tool calls (`callPrograms`). Read by the Builder's
- * practice results (`callsText`, `src/builder/tools.ts`) and by the investigation: the calls table
- * (`tools/wri/calls.ts`), harness component attribution (`parts.ts`), provenance checks, and the
- * solve fold (`Solve.programs`, `folds.ts`).
- */
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 
-/** A shell word a segment may open with that runs no program of its own. */
 const SHELL_WORDS: ReadonlySet<string> = new Set([
   "if",
   "then",
@@ -22,7 +15,6 @@ const SHELL_WORDS: ReadonlySet<string> = new Set([
   "{",
   "}",
 ]);
-/** A segment opened by one of these runs no program: a directory change or a loop's or case's head. */
 const NO_PROGRAM: ReadonlySet<string> = new Set([
   "cd",
   "for",
@@ -33,7 +25,6 @@ const NO_PROGRAM: ReadonlySet<string> = new Set([
   "source",
   ".",
 ]);
-/** Words that run the program after them: their own options, and `timeout`'s duration, are skipped. */
 const PREFIXES: ReadonlySet<string> = new Set([
   "env",
   "time",
@@ -47,24 +38,20 @@ const PREFIXES: ReadonlySet<string> = new Set([
   "sudo",
 ]);
 const SHELLS: ReadonlySet<string> = new Set(["bash", "sh", "zsh", "dash"]);
-/** Interpreters whose first file argument is the program run. */
 const INTERPRETER = /^(python[\d.]*|bun|node|deno|ruby|perl|Rscript|php|tsx)$/;
 const PROGRAM_WORD = /^[\w./+@:-]+$/;
-/** A program's name, its path dropped: a letter or `_` somewhere, no leading `-`, and `+` only as a
- *  closing `++` (`g++`); so `..`, `1` and `i+1` name none. */
 const NAME = /^(?!-)(?:[\w.@:-]*[A-Za-z_][\w.@:-]*|[\w.-]*[A-Za-z][\w.-]*\+\+)$/;
 const ASSIGNMENT = /^\w+=/;
-/** A heredoc's body, kept to the rest of its first line: its body is data, never a command. */
 const HEREDOC = /(?<!<)<<-?\s*(['"]?)(\w+)\1([^\n]*)(?:\n(?:[^\n]*\n)*?[ \t]*\2[ \t]*(?=\n|$)|[\s\S]*$)/g;
 const REDIRECTION = /^\d*(?:[<>]+|&>>?)&?/;
 const FD_DUP = /&\d$/;
 const INLINE_FLAG = /^-\w*c\w*$/;
+const TIMEOUT_VALUE_FLAGS: ReadonlySet<string> = new Set(["-k", "-s", "--kill-after", "--signal"]);
+const VAR_PATH = /^(?:\$\{\w+\}|[$\w./+@:-])+\/[\w.@:+-]+$/;
 const DIGIT_START = /^\d/;
 const SPACE_CHARS: ReadonlySet<string> = new Set([" ", "\t", "\r", "\f", "\v"]);
 const BREAK_CHARS: ReadonlySet<string> = new Set(["\n", ";", "|", "&", "(", ")", "`"]);
 
-/** The programs one call ran: a `bash` call's, each once a segment, and any other tool's own name;
- *  `unattributed` counts the segments whose program the command's text does not name. */
 export interface CallPrograms {
   readonly programs: readonly string[];
   readonly unattributed: number;
@@ -77,7 +64,6 @@ interface Word {
 
 const REDIR_END = /[<>]$/;
 
-/** A command's words, segment by segment: a line, a list, a pipe, a subshell or a substitution ends one. */
 function segmentsOf(command: string): Word[][] {
   const segments: Word[][] = [];
   let current: Word[] = [];
@@ -119,13 +105,11 @@ function segmentsOf(command: string): Word[][] {
 
 const base = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
-/** A script's or module's name where it can be one, else the interpreter's or shell's own. */
 const named = (word: Word | undefined, fallback: string) =>
   word === undefined || !PROGRAM_WORD.test(word.text) || !NAME.test(base(word.text))
     ? fallback
     : base(word.text);
 
-/** A segment's words less its redirections: `2>&1`, `>out` and `> out`, `<in`, wherever they stand. */
 function withoutRedirections(words: readonly Word[]): Word[] {
   const kept: Word[] = [];
   for (let at = 0; at < words.length; at += 1) {
@@ -138,7 +122,6 @@ function withoutRedirections(words: readonly Word[]): Word[] {
     ) {
       kept.push(word);
     } else if (word.text.replace(REDIRECTION, "") === "" && !FD_DUP.test(word.text)) {
-      // An operator standing alone takes the next word for its file.
       at += 1;
     }
   }
@@ -153,7 +136,10 @@ function afterPrefixes(words: readonly Word[]): number {
     const prefix = words[at]?.text;
     if (prefix === undefined || !PREFIXES.has(prefix)) return at;
     at += 1;
-    while (at < words.length && /^[-]|^\w+=/.test(words[at]?.text ?? "")) at += 1;
+    while (at < words.length && /^[-]|^\w+=/.test(words[at]?.text ?? "")) {
+      const flag = words[at]?.text ?? "";
+      at += prefix === "timeout" && TIMEOUT_VALUE_FLAGS.has(flag) ? 2 : 1;
+    }
     if (prefix === "timeout" && DIGIT_START.test(words[at]?.text ?? "")) at += 1;
   }
   return -1;
@@ -162,14 +148,15 @@ function afterPrefixes(words: readonly Word[]): number {
 const firstTarget = (words: readonly Word[], skip = "") =>
   words.find(({ text }) => !text.startsWith("-") && text !== skip);
 
-/** The program a segment's words run, past assignments, shell words and prefixes, into a shell's
- *  `-c` text and an interpreter's script; `null` where the text names none, `[]` where none runs. */
 function segmentPrograms(all: readonly Word[]): readonly string[] | null {
   const words = withoutRedirections(all);
   const at = afterPrefixes(words);
   const first = words[at];
   if (first === undefined) return [];
-  if (first.quoted || !PROGRAM_WORD.test(first.text)) return null;
+  const validHead = first.quoted
+    ? VAR_PATH.test(first.text)
+    : PROGRAM_WORD.test(first.text) || VAR_PATH.test(first.text);
+  if (!validHead) return null;
   const program = base(first.text);
   if (NO_PROGRAM.has(program)) return [];
   if (!NAME.test(program)) return null;
@@ -200,7 +187,6 @@ function programsIn(command: string): CallPrograms {
   return { programs, unattributed };
 }
 
-/** The programs one call ran (`CallPrograms`). */
 export function callPrograms(call: { readonly tool: string; readonly args: JsonValue }): CallPrograms {
   if (call.tool !== "bash") return { programs: [call.tool], unattributed: 0 };
   const command = asRecord(call.args)?.command;

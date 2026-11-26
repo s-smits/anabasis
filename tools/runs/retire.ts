@@ -1,26 +1,15 @@
 /**
- * Retire what the checkouts no longer use, and keep every campaign's traces.
+ * Retires what the checkouts no longer use and keeps every campaign's traces.
  *
  *   bun --env-file=.env.runs run runs retire [--days 1] [--yes]
  *
- * A worktree other than the main one is then deleted once nothing has used it for `TREE_DAYS`: no
- * process works in it or names it on its command line, it holds no run log, and its last commit and
- * its top entries are older. One with a change no commit names stays for `DIRTY_DAYS`. Its
- * campaigns leave for the archive after `--days`, so the traces gather in one place within a day
- * while the tree waits a week for a session to come back to it (the operator's choice). The
- * controllers a host prepares are worktrees too, and pruning them is `code.ts`'s alone
- * (`controllersOf`).
- *
- * A local branch no worktree holds goes once nothing has used it for `TREE_DAYS`: its last commit
- * and its reflog are older. Every land, restack, park and Codex lane leaves one, so without this
- * they pile up by the thousand. A branch of an open pull request lives on the remote, so the local
- * copy is only a cache of it.
- *
- * A commit that a deleted tree or branch held, and that nothing else keeps reachable, keeps a local
- * tag `retired/<sha9>` (the repository is public, so the tag is not pushed). One rev-list decides
- * every such commit of a sweep, and the sweep reads the process table, the worktree listing and
- * every head's commit time once, rather than asking `ps`, `lsof` and `git log` once per tree and
- * `branch --contains` once per deleted tree, which took seconds for a dry run.
+ * A worktree other than the main one is deleted once nothing has used it for `TREE_DAYS` (no
+ * process works in or names it, it holds no run log, its last commit and top entries are older);
+ * one with an uncommitted change stays for `DIRTY_DAYS`. Its campaigns leave for the archive after
+ * `--days`, so traces gather within a day while the tree waits a week. Controllers are pruned by
+ * `code.ts` alone. A local branch no worktree holds goes after `TREE_DAYS` too. A commit only a
+ * deleted tree or branch held keeps a local, unpushed tag `retired/<sha9>`. One sweep reads the
+ * process table, worktree listing and head times once, and one rev-list decides every tag.
  */
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
@@ -30,17 +19,16 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { SCRATCH_ROOTS, SUITE_SCRATCH_ROOT } from "#src/wall/policy.ts";
-import { claimed, releaseLeft } from "#src/wall/seat-root.ts";
+import { SCRATCH_ROOTS, SUITE_SCRATCH_ROOT } from "#src/sandbox/policy.ts";
+import { claimed, releaseLeft } from "#src/sandbox/sandbox-root.ts";
 import { controllersOf } from "./code.ts";
 import { benchesOf, hostsOf, RUNNER_SLOTS } from "./host-config.ts";
 import { takeRetired, syncRuns } from "./snapshots.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { unlaunchedSeed } from "./receipt.ts";
 import { archived, archiveOf, HERE, Misused, processes, runs } from "./registry.ts";
-import { leftOpen, release } from "./stop.ts";
+import { release, unreleasedSandboxes } from "./stop.ts";
 
-/** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
   readonly main: string;
   readonly days: number;
@@ -48,20 +36,20 @@ export interface Sweep {
   readonly yes: boolean;
 }
 
-/** What each run's log names as open (`leftOpen`), by the log's path. */
-type Open = Map<string, ReturnType<typeof leftOpen>>;
+/** Unreleased sandbox directories recorded in each run's log, indexed by log path. */
+type Open = Map<string, ReturnType<typeof unreleasedSandboxes>>;
 
-/** A worktree or branch nothing uses stays this long, and a tree with a change no commit names twice
- *  as long: past it the system has moved too far for the change to apply (the operator's choice). */
+/** A worktree or branch nothing uses stays this long, and a tree with an uncommitted change twice
+ *  as long, after which the change is too far behind to apply. */
 const TREE_DAYS = 7;
 const DIRTY_DAYS = 14;
 
 const say = (sweep: Sweep, line: string) => console.log(`${sweep.yes ? "" : "would: "}${line}`);
 const daysSince = (sweep: Sweep, ms: number) => (sweep.now - ms) / DAY_MS;
 
-/** Every run no process writes or keeps whose log has not grown for `days`, moved to the archive,
- *  and every such seed no launch went on from, the archive's too, deleted, each after the roots it
- *  left `open` are released as a stop would. Returns the logs it moved or deleted, or would. */
+/** Moves to the archive every run no process writes or keeps whose log has not grown for `days`,
+ *  and deletes every such seed no launch went on from, each after the roots it left `open` are
+ *  released as a stop would. Returns the logs it moved or deleted, or would. */
 export async function archiveIdle(sweep: Sweep, open: Open): Promise<Set<string>> {
   const moved = new Set<string>();
   const taken = new Set<string>();
@@ -70,8 +58,7 @@ export async function archiveIdle(sweep: Sweep, open: Open): Promise<Set<string>
     if (daysSince(sweep, lstatSync(run.path).mtimeMs) < sweep.days) continue;
     // Read again for each run: one launched while the sweep ran is live.
     if (stillRunning(run, processes())) continue;
-    // A cut Builder session's notes are kept into the run's own folder, which then moves whole. A
-    // root a live process claims is held whatever the process table is read to say of its run.
+    // A root a live process claims is held, whatever the process table says of its run.
     const left = (open.get(run.path) ?? []).filter(({ root }) => !claimed(root));
     await release(run, processes(), sweep.yes ? "release" : "describe", left);
     const from = run.end === "solve.finished" ? run.path : dirname(run.path);
@@ -81,8 +68,8 @@ export async function archiveIdle(sweep: Sweep, open: Open): Promise<Set<string>
       if (sweep.yes) rmSync(from, { recursive: true, force: true });
       continue;
     }
-    // Its name, or its name after its tree's where that is taken, on disk or earlier in this sweep
-    // (two trees' live solve logs share a file name).
+    // Its name, or its name after its tree's where that is taken (two trees' live solve logs share a
+    // file name).
     const name = run.end === "solve.finished" ? join(".live", basename(run.path)) : run.name;
     const to = [name, `${name}.${basename(run.tree)}`]
       .map((each) => join(own, each))
@@ -96,26 +83,24 @@ export async function archiveIdle(sweep: Sweep, open: Open): Promise<Set<string>
     taken.add(to);
     if (!sweep.yes) continue;
     mkdirSync(dirname(to), { recursive: true });
-    // mv, which copies where the two lie on different volumes (a worktree under /tmp on Linux).
+    // mv, which copies across volumes (a worktree under /tmp on Linux).
     runTextSyncOrThrow(["mv", from, to]);
   }
   return moved;
 }
 
 /**
- * Every seat root and folder of the host's scratch on this machine that nobody will release
- * (`src/wall/seat-root.ts`), and what each run here left open, for the archive to release as it
- * takes the run (`archiveIdle`). A root a run here still names as open is that run's and is spared
- * until then. The rest go by their claims: a dead claimant's at once, an unclaimed one after
- * `TREE_DAYS` without a write, their count said before they go, as every line of the sweep is.
+ * Collects every seat root and scratch folder on this machine that nobody will release
+ * (`src/sandbox/sandbox-root.ts`), and what each run here left open, for `archiveIdle` to release as it
+ * takes the run. A root a run here still names as open is spared until then; the rest go by their
+ * claims: a dead claimant's at once, an unclaimed one after `TREE_DAYS` without a write.
  */
 export async function releaseScratch(sweep: Sweep, parents: readonly string[]): Promise<Open> {
   const open: Open = new Map();
   for (const run of runs(sweep.main)) {
     try {
-      open.set(run.path, leftOpen(run));
+      open.set(run.path, unreleasedSandboxes(run));
     } catch (error) {
-      // Unread, its roots cannot be told from those nobody holds, so none goes by its claim today.
       warn(`${run.name}: ${errorMessage(error)}, so no root is released by its claim in this sweep`);
       return open;
     }
@@ -137,8 +122,8 @@ function users(): string[] {
   return [...runTextSyncOrThrow(["ps", "-axo", "args="]).split("\n"), ...cwds];
 }
 
-/** Tags each of `tips` that nothing else keeps reachable: no ref but the branches `leaving`, and no
- *  head but `staying`'s. One rev-list answers for all of them. */
+/** Tags each of `tips` that nothing else keeps reachable (no ref but the branches `leaving`, no
+ *  head but `staying`'s), with one rev-list for all. */
 function keepCommits(
   sweep: Sweep,
   tips: readonly string[],
@@ -164,8 +149,8 @@ function keepCommits(
   }
 }
 
-/** The trees nothing has used for `TREE_DAYS`, outermost last so a nested tree goes first; a run log
- *  in `archiving` counts as gone. */
+/** The trees nothing has used for `TREE_DAYS`, outermost last so a nested tree goes first; a run
+ *  log in `archiving` counts as gone. */
 function idleTrees(sweep: Sweep, trees: readonly Tree[], archiving: ReadonlySet<string>): Tree[] {
   const logs = new Set(runs(sweep.main).flatMap((run) => (archiving.has(run.path) ? [] : [run.tree])));
   const controllers = controllersOf(sweep.main);
@@ -196,7 +181,6 @@ function idleTrees(sweep: Sweep, trees: readonly Tree[], archiving: ReadonlySet<
     .toSorted((a, b) => b.path.length - a.path.length);
 }
 
-/** The local branches none of `trees` holds that nothing has used for `TREE_DAYS`, with their tips. */
 function idleBranches(sweep: Sweep, trees: readonly Tree[]): { name: string; tip: string }[] {
   const held = new Set(trees.map((tree) => tree.branch));
   const logs = join(gitText(sweep.main, "rev-parse", "--path-format=absolute", "--git-common-dir"), "logs");
@@ -220,8 +204,8 @@ function idleBranches(sweep: Sweep, trees: readonly Tree[]): { name: string; tip
     });
 }
 
-/** Every worktree but the main one, and every local branch no worktree holds, that nothing has used
- *  for `TREE_DAYS`, deleted, their commits kept reachable where nothing else holds them. */
+/** Deletes every worktree but the main one, and every local branch no worktree holds, that nothing
+ *  has used for `TREE_DAYS`, tagging commits nothing else holds. */
 export function retireUnused(sweep: Sweep, archiving: ReadonlySet<string>): void {
   const [first, ...others] = worktreeList(sweep.main);
   const doomed = idleTrees(sweep, others, archiving);
@@ -233,7 +217,7 @@ export function retireUnused(sweep: Sweep, archiving: ReadonlySet<string>): void
     staying.flatMap((tree) => tree.head ?? []),
   );
   for (const tree of sweep.yes ? doomed : []) {
-    // Asked again: a session may have come back to it while the sweep deleted the others.
+    // Asked again: a session may have come back to it during the sweep.
     if (users().some((line) => line.includes(tree.path))) continue;
     // Toolchains and module caches hold entries without write permission.
     runSync(["chmod", "-R", "u+w", tree.path]);
@@ -290,7 +274,6 @@ export function trashIdleSlots(sweep: Sweep, home = homedir()): string[] {
   return doomed;
 }
 
-/** `bun run runs retire`. */
 export async function retire(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
     args: [...args],
@@ -299,8 +282,8 @@ export async function retire(args: readonly string[]): Promise<void> {
   const days = Number(values.days);
   if (!Number.isFinite(days) || days < 0) throw new Misused();
   const sweep: Sweep = { main: mainTree(runtimeProcess.cwd()), days, now: Date.now(), yes: values.yes };
-  // The machines that roll a benchmark, kept clear; read before the sweep, so a name no entry holds,
-  // which would leave that host to fill unseen, refuses before anything moves.
+  // The benchmark machines, kept clear; read before the sweep, so a name no entry holds refuses before
+  // anything moves.
   const cleared = new Set(benchesOf().flatMap(({ host }) => (host === undefined ? [] : [host.name])));
   console.log(
     `retire at ${new Date(sweep.now).toISOString()}${sweep.yes ? "" : ": nothing is done without --yes"}`,

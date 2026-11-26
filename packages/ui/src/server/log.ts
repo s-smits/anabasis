@@ -1,13 +1,10 @@
 /**
- * `GET /api/log?key=` and `GET /api/event?key=&index=`: the log as a timeline, one line a thing that
- * happened, and one event whole, which the exam tier alone answers (`EXAM_ONLY`, refused by the
- * router before this is asked).
- *
- * A line says what happened in words from what the default tier serves (counts, ids, states,
- * endings, readings, costs and times; `models.ts`), and a session's or a solve's turns, calls and
- * compactions are counted into its own line, which runs from its start to its end, and so is a
- * solve's wait for a loaded host. The author's answer behind `task.feasible` is the exam side's, so
- * its line says only that one is on record. A check's verdict, a condition and a ruling have no line.
+ * `GET /api/log?key=` and `GET /api/event?key=&index=`: the log as a timeline, one line a thing
+ * that happened, and one event whole (exam tier only, refused by the router before this is asked).
+ * A line is worded from what the default tier serves (`models.ts`); a session's or solve's turns,
+ * calls and compactions are counted into its own line, from its start to its end. The author's
+ * answer behind `task.feasible` is the exam side's, so its line says only that one is on record. A
+ * verdict, a condition and a ruling have no line.
  */
 import type { LogEvent } from "../../../../src/kernel/log.ts";
 import type { Seat } from "../../../../src/kernel/trace.ts";
@@ -19,7 +16,6 @@ import { type Reading, Unanswerable } from "./context.ts";
 import { once } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
 
-/** A line while the log is read: its counts and end time, filled in by events after its start. */
 interface Open {
   readonly row: TimelineRow;
   until: string | null;
@@ -31,7 +27,6 @@ interface Open {
 
 type LineFormatter = (data: LogEvent["data"], kind: string) => { group: TimelineGroup; what: string };
 
-/** Exhaustive seat labels: build, exam and draft open session lines; solve and referee are handled apart. */
 const SEAT_LABELS = new Map<string, string | null>(
   Object.entries({
     build: "Builder session",
@@ -43,7 +38,7 @@ const SEAT_LABELS = new Map<string, string | null>(
 );
 /** The kinds a line leaves out: what a solve's ending or the exam side already says. */
 const UNSAID: ReadonlySet<string> = new Set(["verdict", "condition.recorded", "referee.finding"]);
-/** Why the campaign waited, by a wait's `for` (`tools/d2/host.ts`, `src/solver/run.ts`). */
+/** Why the campaign waited, by a wait's `for` (`tools/campaign/host.ts`, `src/solver/run.ts`). */
 const WAITS = new Map([
   ["provider", "for the provider's limit to reset"],
   ["network", "after the network failed a session"],
@@ -56,7 +51,7 @@ const TRACE_PART = new Map<string, "turns" | "calls" | "compactions">([
 const TASK_NOTE = new Map<string, (data: LogEvent["data"]) => string | null>([
   ["task.proposed", (data) => `proposed in ${text(data.session) ?? "?"}`],
   ["task.state", (data) => text(data.state)],
-  ["task.feasible", () => "a valid answer on record"],
+  ["task.feasible", () => "valid answer recorded"],
 ]);
 
 const many = (value: unknown): number | null =>
@@ -78,8 +73,7 @@ const checkerLine: LineFormatter = (data, kind) => {
   };
 };
 
-/** Single-event timeline lines by kind. */
-const SAID = new Map<string, LineFormatter>(
+const EVENT_FORMATTERS = new Map<string, LineFormatter>(
   Object.entries({
     "campaign.opened": (data) => {
       const solver = text(isRecord(data.solver) ? data.solver.model : data.solver);
@@ -99,7 +93,7 @@ const SAID = new Map<string, LineFormatter>(
         "Setting fixed",
         isNumber(data.modelTurns) ? plural(data.modelTurns, "model turn") : null,
         isNumber(data.minutes) ? `${String(data.minutes)} min a solve` : null,
-        isNumber(data.solves) ? `${plural(data.solves, "solve")} a side` : null,
+        isNumber(data.solves) ? `${plural(data.solves, "rollout")} per arm` : null,
       ),
     }),
     "campaign.move": (data) => ({
@@ -153,7 +147,7 @@ const SAID = new Map<string, LineFormatter>(
         what: joined(
           "Comparison started",
           tasks === null ? null : plural(tasks, "task"),
-          isNumber(data.solves) ? `${plural(data.solves, "solve")} a side` : null,
+          isNumber(data.solves) ? `${plural(data.solves, "rollout")} per arm` : null,
         ),
       };
     },
@@ -172,7 +166,6 @@ function endingWords(ending: unknown): string {
   return text(ending.kind) ?? text(ending.outcome) ?? "ended";
 }
 
-/** What a finished session handed over, from its own fields. */
 function handedOver(seat: string, data: LogEvent["data"]): string | null {
   if (seat === "exam") {
     const tallies = [
@@ -192,14 +185,14 @@ function handedOver(seat: string, data: LogEvent["data"]): string | null {
   );
 }
 
-/** The owner a turn, call or compaction counts into, and the line it opens: a session, solve or Referee reading. */
+/** The owner a turn, call or compaction counts into, and the line it opens: a session, solve or
+ *  Referee reading. */
 function ownerOf(seat: string, data: LogEvent["data"]): string | null {
   if (seat === "solve") return isString(data.solve) ? `solve ${data.solve}` : null;
   if (seat === "referee") return isString(data.reader) ? `referee ${data.reader}` : null;
   return isString(data.session) ? `${seat} ${data.session}` : null;
 }
 
-/** Fold one finished solve or session onto its open timeline line. */
 function finishLine(line: Open, seat: string, event: LogEvent): void {
   const { data } = event;
   const outcome =
@@ -298,7 +291,7 @@ const linesIn = once(({ events }) => {
       if (known.row.index !== index) known.until = event.at;
       continue;
     }
-    const words = SAID.get(kind)?.(data, kind);
+    const words = EVENT_FORMATTERS.get(kind)?.(data, kind);
     const plain = kind.replaceAll(".", " ");
     start(
       index,
@@ -318,7 +311,6 @@ const linesIn = once(({ events }) => {
   }));
 });
 
-/** A whole number from nothing up, as a URL carries it. */
 function counted(value: string | undefined, name: string): number {
   if (value === undefined) return 0;
   const number = Number(value);

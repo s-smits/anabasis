@@ -29,7 +29,7 @@ digest, which promotes nothing (`AGENTS.md`, section 7).
 The setting every solve of v065-a ran under, and every solve here runs under, is the campaign's
 `campaign.setting`: solver `claude/claude-opus-5-5` at effort `medium`, 30 minutes and 20 model
 turns a solve, 24 scored tasks, the default window. The seeds carry that record, and a checkpoint
-reads it (`tools/d2/setting.ts`). The objective is the recipe's cost, lower is better.
+reads it (`tools/campaign/setting.ts`). The objective is the recipe's cost, lower is better.
 
 ## Why the probe first proposed cannot answer it
 
@@ -241,13 +241,13 @@ bun studies/transitivity/read.ts --log <tree>/.ana/d2/sim-tp-rh/log.jsonl --id r
 
 # 3. Arm A.
 bun --env-file=<env file> $SEAT start --tree <tree> --name sim-tp-epoch1 --out <out>/r-1 \
-  --cap 22 --minutes 240 --login <N> -- tools/d2/checkpoint.ts --id r-1 \
+  --cap 22 --minutes 240 --login <N> -- tools/campaign/checkpoint.ts --id r-1 \
   --reference $BF --new $FINAL --cap 20 --reserve 1 $REVIEW \
   --predict "P-A: without the bill at least 20 of 24 epoch-1 tasks tie and 6a42fac4 loses at most 2"
 
 # 4. Arm B's tasks: one Examiner session against bfeb41cd, as v065-a's x-6 was run.
 bun --env-file=<env file> $SEAT start --tree <tree> --name sim-tp-bfeb --out <out>/tx-1 \
-  --cap 25 --minutes 260 --login <M> -- tools/d1b/examine.ts --session tx-1 \
+  --cap 25 --minutes 260 --login <M> -- tools/eval/examine.ts --session tx-1 \
   --examiner claude/claude-opus-5-5 --examiner-effort high $REVIEW \
   --tasks 24 --proposals 36 --minutes 240 --turns 200 --reference-home on --results on
 
@@ -257,13 +257,13 @@ bun run runs seed --from <tree>/.ana/d2/sim-tp-bfeb --name sim-tp-bfeb-c
 
 # 6. Arm B.
 bun --env-file=<env file> $SEAT start --tree <tree> --name sim-tp-bfeb --out <out>/f-1 \
-  --cap 35 --minutes 300 --login <N> -- tools/d2/checkpoint.ts --id f-1 \
+  --cap 35 --minutes 300 --login <N> -- tools/campaign/checkpoint.ts --id f-1 \
   --reference $BF --new $FINAL --cap 32 --reserve 1 $REVIEW \
   --predict "P-B: without the bill 6a42fac4 beats bf461326 on the frontier at p <= 0.02"
 
 # 7. Arm C, only where P-B is falsified and its cap fits the $80.
 bun --env-file=<env file> $SEAT start --tree <tree> --name sim-tp-bfeb-c --out <out>/c-1 \
-  --cap 30 --minutes 300 --login <N> -- tools/d2/checkpoint.ts --id c-1 \
+  --cap 30 --minutes 300 --login <N> -- tools/campaign/checkpoint.ts --id c-1 \
   --reference $BFEB --new $BF --cap 28 --reserve 1 $REVIEW \
   --predict "P-C: without the bill bf461326 beats bfeb41cd on the frontier at p <= 0.02"
 

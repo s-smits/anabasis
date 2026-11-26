@@ -1,20 +1,12 @@
 /**
- * Open pull requests that repeat another open pull request's commits.
- *
- * A pull request shows the commits from its base to its head, so where its head holds the head of
- * another open pull request that is not on its chain of bases, it lists that one's commits as its
- * own. A `gh stack link` that appends a pull request above a top that never took in the one
- * beneath it does exactly that, and nothing says so until someone reads the list of commits.
- * Pull requests may stack in any order. What is refused is a head that holds another's without
- * standing on it: `bun run land` refuses a landing that holds one, and `stack.ts` lists them, each
- * with the base that mends it. Both run here rather than as a workflow on GitHub, since the check
- * needs no clean runner (the operator's choice).
+ * Open pull requests that repeat another open pull request's commits: a head that holds another's
+ * head without standing on it lists that one's commits as its own, as a `gh stack link` above a top
+ * that never took in the one beneath it does. `bun run land` refuses a landing that holds one, and
+ * `stack.ts` lists them, each with the base that mends it.
  */
 import { git, gitSays } from "./gate.ts";
 import { beneath, type Pull } from "./pulls.ts";
 
-/** Each open pull request whose head holds the head of another (`holds(head, other)`) that is
- *  neither beneath it nor stacked above it, with those others. */
 export function doubled(
   open: readonly Pull[],
   holds: (head: string, other: string) => boolean,
@@ -32,9 +24,9 @@ export function doubled(
   });
 }
 
-/** One line for each open pull request that repeats another's commits and that `about` keeps, read
- *  with this checkout's Git after fetching every open head, and naming the head it should stand on:
- *  of the pull requests it repeats, the one whose head holds all the others'. */
+/** One line for each open pull request that repeats another's commits, read after fetching every
+ *  open head, naming the head it should stand on: of the pull requests it repeats, the one whose
+ *  head holds all the others'. */
 export function doubledLines(
   root: string,
   open: readonly Pull[],

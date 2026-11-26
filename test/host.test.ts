@@ -1,12 +1,12 @@
 /**
- * What a campaign waits for (`tools/d2/host.ts`): the host's load before a solve, the campaign's
- * reserve and shared slots beside the solves in flight, a provider's named reset and a network
- * that failed a session. Queued solves leave on cancellation while the host's sleep remains unresolved;
- * only load waits record their elapsed time. Tests inject the host's sleeps and clock.
+ * What a campaign waits for (`tools/campaign/host.ts`): the host's load, the reserve and shared slots
+ * beside the solves in flight, a provider's named reset and a failed network. Queued solves leave
+ * on cancellation while the host's sleep is unresolved; only load waits record their time. Tests
+ * inject the host's sleeps and clock.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { resetOf } from "../src/agent/backends/claude.ts";
-import { crashedRun } from "../src/campaign/ground.ts";
+import { crashedRun } from "../src/campaign/state.ts";
 import { affords, flying } from "../src/campaign/opening.ts";
 import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";
@@ -14,10 +14,10 @@ import { mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
-import type { Kept } from "../tools/d2/campaign.ts";
+import type { Kept } from "../tools/campaign/campaign.ts";
 import { waitOut } from "../src/solver/run.ts";
-import { gated, type Host, waitCrashed } from "../tools/d2/host.ts";
-import type { Campaign, Seats } from "../tools/d2/round.ts";
+import { gated, type Host, waitCrashed } from "../tools/campaign/host.ts";
+import type { Campaign, Seats } from "../tools/campaign/round.ts";
 import { EXAMPLE, seat as examinerSeat, sweep } from "./helpers/examiner-seat.ts";
 import { anyOf, present } from "./helpers/matchers.ts";
 
@@ -30,8 +30,6 @@ const REPO = dirname(import.meta.dir);
 const logIn = (name: string) => join(mkdtempSync(join(tmpdir(), `ana-host-${name}-`)), "campaign.jsonl");
 const waits = (log: string) => read(log).filter(({ kind }) => kind === "campaign.waited");
 
-/** A host whose load is `load` at each look, whose sleeps are counted, return at once and call
- *  `slept` with their count, and whose clock reads `now` where one is given. */
 function hostOf(
   load: () => number,
   cores = 4,
@@ -52,8 +50,6 @@ function hostOf(
   return { ...host, slept: sleeps };
 }
 
-/** The gate on a seat that passes each solve, as a campaign's solves meet it; with no host, as a
- *  rehearsal's scripted solves meet it. */
 function gate(log: string, host: Host | undefined, loaded = false, concurrency = 4) {
   const calls: string[] = [];
   const seat: Seats = {
@@ -182,8 +178,6 @@ describe("load and reserve admission", () => {
     const log = logIn("load-then-slot");
     let [load, now] = [99, 0];
     const free = Promise.withResolvers<void>();
-    // Each sleep is ten seconds on the clock: the load clears after the first, and the slot stays
-    // full for three more.
     const host = hostOf(
       () => load,
       4,
@@ -272,7 +266,6 @@ describe("a pause's word", () => {
   it("lets solves start again once a pause that never stopped the run is past a solve's limit", async () => {
     const log = logIn("pause-abandoned");
     append(log, "campaign.opened", {});
-    // The host's clock reads two hours on from the pause's word.
     const seats = gate(
       log,
       hostOf(
@@ -370,11 +363,8 @@ describe("cancelling queued solves", () => {
   });
 
   it("holds no process past a cancelled load wait on this host's own sleep", () => {
-    // A process whose only solve waits twenty seconds a look on `HOST`, cancelled after 50 ms: it ends
-    // once the wait is left, rather than when a sleep nobody waits for runs out. The bound sits far
-    // below the sleep and far above a cold start, which took 3.4 seconds on a loaded host.
     const script = `
-      const { gated, HOST } = await import(${JSON.stringify(join(REPO, "tools/d2/host.ts"))});
+      const { gated, HOST } = await import(${JSON.stringify(join(REPO, "tools/campaign/host.ts"))});
       const seat = { builder: null, setting: "s", solve: async () => ({ solve: "s-1", ending: { outcome: "pass" } }) };
       const host = { ...HOST, load: () => 99, cores: 1, waitMs: 20_000 };
       const seats = gated({ seated: () => seat, loaded: false, host }, ${JSON.stringify(logIn("exit"))})({ limits: { concurrency: 4 } }, {});
@@ -443,9 +433,33 @@ describe("the provider's named reset", () => {
     expect(zoned("weekly limit · resets Oct 27 at 9pm (Europe/Amsterdam)", "2026-10-22T10:00:00Z")).toBe(
       "2026-10-27T20:00:00.000Z",
     );
-    for (const message of ["You've hit your limit", "socket hang up", "limit · resets 3pm (Mars/Olympus)"]) {
+    for (const message of [
+      "You've hit your limit",
+      "socket hang up",
+      "limit · resets 3pm (Mars/Olympus)",
+      "Rate limit reached. Please try again in 3 fortnights.",
+      "Please try again in 20s.",
+    ]) {
       expect(resetOf(message, NOW)).toBeNull();
     }
+  });
+
+  it("is read from the delay an OpenAI or Codex limit names, whatever its units", () => {
+    const after = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
+    for (const [message, ms] of [
+      ["Rate limit reached for gpt-6.1-sol. Please try again in 6.2s.", 6200],
+      ["Rate limit reached. Please try again in 1h2m3.5s.", 3_723_500],
+      ["Rate limit reached. Please try again in 120ms.", 120],
+      ["You've hit your usage limit. Try again in 2 days 3 hours.", 183_600_000],
+      ["usage limit: try again in 4 minutes and 30 seconds", 270_000],
+      ['{"type":"usage_limit_reached","resets_in_seconds":5400}', 5_400_000],
+      ["429 rate limit exceeded; Retry-After: 30", 30_000],
+    ] as const) {
+      expect(resetOf(message, NOW)?.toISOString()).toBe(after(ms));
+    }
+    expect(resetOf('{"type":"usage_limit_reached","resets_at":1791811800}', NOW)?.toISOString()).toBe(
+      "2026-10-12T13:30:00.000Z",
+    );
   });
 
   it("is waited out to a minute past it and on record, however far on, from what a move threw", async () => {
@@ -490,9 +504,8 @@ describe("the provider's named reset", () => {
     expect(crashedRun([crashed(1), waited({ load: 99 }), crashed(2)]).count).toBe(2);
   });
 
-  // Two Builder sessions crashed and the third is working: an Examiner session's crash beside it
-  // must not read as the third in a row, ending the campaign on its environment and stopping the
-  // working session.
+  // Two Builder sessions crashed and the third is working: an Examiner crash beside it must not read as
+  // the third in a row and end the campaign.
   it("starts the crash rule's count again at the first turn served to a session that does not crash", () => {
     const ending = (kind: LogEvent["kind"], session: string, ended: string): LogEvent => ({
       kind,
@@ -507,15 +520,11 @@ describe("the provider's named reset", () => {
     const two = [ending("build.finished", "b-1", "crashed"), ending("build.finished", "b-2", "crashed")];
     const beside = ending("exam.finished", "x-1", "crashed");
     expect(crashedRun([...two, turn("b-3"), beside]).count).toBe(1);
-    // The host's later stop of that session, at a pause, does not bring the two back.
     const stopped = ending("build.finished", "b-3", "stopped");
     expect(crashedRun([...two, turn("b-3"), beside, stopped]).count).toBe(1);
-    // A turn the provider failed serves nothing, and a session that crashes takes its turns with it.
     expect(crashedRun([...two, turn("b-3", "overloaded"), beside]).count).toBe(3);
     const crashed = ending("build.finished", "b-3", "crashed");
     expect(crashedRun([...two, turn("b-3"), beside, crashed]).count).toBe(4);
-    // Only a session's first served turn counts: three sessions that crash beside a Builder that
-    // is served a turn after each still end the campaign.
     const row = ["x-1", "x-2", "x-3"].flatMap((id) => [ending("exam.finished", id, "crashed"), turn("b-3")]);
     expect(crashedRun([turn("b-3"), ...row]).count).toBe(3);
   });

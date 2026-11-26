@@ -1,62 +1,28 @@
 #!/usr/bin/env bun
 /**
- * A whole comparison of harnesses on JobBench, on terms fixed before the first rollout. `score.ts`
- * solves and judges one arm; this says which arms, on which tasks, how often and in what order, and
- * reads the result.
- *
- *   bun studies/harness2/compare.ts plan --out <dir> --id <id> --jb <checkout> --arm <arm> --arm <arm>
- *     --salt <text> --predict <text> [--count <n> | --tasks <list>] [--burned <list>] [--repeats <n>]
- *   bun studies/harness2/compare.ts run --out <dir> --id <id> --jb <checkout> --api-base <url>
- *     [--judge-log <shim.jsonl>] [--dry-run] --yes
- *   bun studies/harness2/compare.ts read --out <dir> --id <id> [--unblind]
- *   bun studies/harness2/compare.ts rejudge --out <dir> --jb <checkout> --api-base <url> --of <label>
- *     --of <label> --times <n> [--tasks <list>] [--split] [--cap <chars>] [--judge-log <shim.jsonl>]
- *     --salt <text> --yes
- *   bun studies/harness2/compare.ts agree --out <dir> --of <label> --of <label> --times <n> [--cap <chars>]
- *   bun studies/harness2/compare.ts derive --from <tree> --guide <file> --into <dir>
- *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--tasks <list>]
- *     [--salt <text> [--unseal]]
- *
- * An arm is what `score.ts` takes as `--arm`. `levels` reads any two arms of a JobBench dataset at
- * every grain, with a sealed half withheld (`levelLines`, `levels.ts`). `read`, `agree`, `derive` and `levels` start nothing and call no
- * model, and what they print holds ids, weights and counts, never a rubric's text or a judge's reasons.
- *
- * Why. A promoted jobstat harness can score below the Starter with the reading unable to say what
- * that means, for four reasons this owns in turn:
- * - The eight tasks had been read to explain the result, so an arm built from that reading would be
- *   scored on the tasks it was fitted to, and 8 of 65 tasks in 3 of 35 professions are few. `plan`
- *   draws from the professions nobody read, at least 30% of the benchmark rounded up to a multiple of
- *   five, so 20 of 65 (the operator's words: "we need to benchmark at least 30% round off to good
- *   number"). It takes whole professions of two tasks or more, as Harness² runs each profession as one
- *   stream with its own library, so its held-out arm, which solves task N under the harness of task
- *   N-1, stands on the same tasks. A harness built for another domain read on these measures transfer
- *   out of its domain. So the first comparison names its tasks instead (`--tasks`, `--burned ""`): the
- *   professions closest to the campaign's prompt, ranked on their public instructions alone before any
- *   rollout (the operator's words: "the 20 queries in the domain groups that the prompt is most
- *   adhered to"). Tasks read to explain a result stay burned only for an arm derived from that
- *   reading.
- * - The same Starter digest had read 298 and 342 across a change of interpreter, so no clean A/A
- *   existed. `--repeats 2` gives every arm two sides, solved alike, and `read` prints their A/A beside
- *   the comparison.
- * - The arms ran on different days and nothing had fixed a primary measure, so a p of 0.25 on the
- *   criteria and one of 0.074 on the points were both quotable. `plan` fixes the terms once, with the
- *   benchmark's own points as the primary measure and the comparison's own level and test, and `run`
- *   solves block by block in an order that follows from the salt.
- * - Nothing said how much of the gap was the judge's. `rejudge` judges the existing deliverables
- *   again without a rollout, all their rubrics or only those two sides split, and `agree` reads what
- *   moved. That costs tens of dollars where new rollouts cost thousands. With `--cap` it judges them
- *   under a wider cut than judge.py's 200,000 characters a file, under names of their own that `agree
- *   --cap` reads, so the gap between the two readings says how much of a score the cut decides. The
- *   official score keeps judge.py's cut; the wider one is a second reading beside it, for every arm alike.
- *
- * Sides carry neutral labels (`x<hash>r<n>`), held apart from what they stand for in `key.json`, so a
- * session reads a result before it knows which arm led. A judge's prompt never holds the label, so
- * this blinds the reader, not the judge. The blindness is a habit a reader keeps rather than a wall,
- * and `read` keeps to it by default. `derive` makes the arms a review proposes (an exported tree under
- * another guide) as a copy beside the store: it edits no kept harness, and a solver running under a
- * changed guide still takes the operator's word (`AGENTS.md`, section 3).
- *
- * Not here: any model call in the tests, as with the rest of this study.
+ * A whole comparison of harnesses on JobBench, on terms fixed before the first rollout: `score.ts`
+ * solves and judges one arm (an arm is what it takes as `--arm`); this says which arms, on which
+ * tasks, how often and in what order, and reads the result. Verbs: `plan` (`--out --id --jb --arm
+ * --arm --salt --predict [--count | --tasks] [--burned] [--repeats]`), `run` (`--out --id --jb
+ * --api-base [--judge-log] [--dry-run] --yes`), `read` (`--out --id [--unblind]`), `rejudge` (`--out
+ * --jb --api-base --of --of --times [--tasks] [--split] [--cap] [--judge-log] --salt --yes`), `agree`
+ * (`--out --of --of --times [--cap]`),
+ * `derive` (`--from --guide --into`) and `levels` (`--dataset --of --of [--tasks] [--salt
+ * [--unseal]]`). `read`, `agree`, `derive` and `levels` start nothing and call no model, and print
+ * ids, weights and counts, never a rubric's text or a judge's reasons. `plan` draws whole
+ * professions of two tasks or more (Harness² runs each as one stream, its held-out arm solving task
+ * N under the harness of task N-1), at least 30% of the benchmark rounded up to a multiple of five,
+ * from professions no burned task belongs to; `--tasks` names them instead. `--repeats 2` gives
+ * every arm two sides solved alike, so `read` prints their A/A beside the comparison. `plan` fixes
+ * the benchmark's own points as the primary measure, with its level and test, and `run` solves
+ * block by block in the salt's order. `rejudge` judges existing deliverables again without a
+ * rollout, for tens of dollars where rollouts cost thousands, and `agree` reads what moved; with
+ * `--cap` it judges under a wider cut than judge.py's 200,000 characters a file, as a second
+ * reading beside the official one. Sides carry neutral labels (`x<hash>r<n>`), held apart from
+ * their arms in `key.json`, so a reader sees a result before knowing which arm led; a judge's
+ * prompt never holds the label. `derive` makes a proposed arm (an exported tree under another
+ * guide) as a copy beside the store and edits no kept harness; a solver under a changed guide still
+ * takes the operator's word (`AGENTS.md`, section 3).
  */
 import { sha256 } from "#src/meta/digest.ts";
 import {
@@ -103,7 +69,6 @@ const OPTIONS = {
 } as const;
 const AT_ONCE = 3;
 const MEASURE = "points";
-/** A step's level at a campaign's default (`AGENTS.md`, section 6). */
 const LEVEL = 0.02;
 
 export interface Terms {
@@ -141,7 +106,6 @@ const folderOf = (out: string, id: string): string => join(out, "comparisons", i
 /** The held-out arm solves under the harness of the task before, so a stream's first task is not its. */
 const owes = (arm: string | undefined, task: string): boolean => arm !== "heldout" || hasOneBefore(task);
 
-/** Every task the benchmark holds, by `<profession>/<task>`. */
 export function benchmarkTasks(jb: string): string[] {
   const tasksRoot = join(jb, "dataset", "main");
   return readdirSync(tasksRoot, { withFileTypes: true })
@@ -153,14 +117,9 @@ export function benchmarkTasks(jb: string): string[] {
     );
 }
 
-/** The smallest multiple of five at or above 30% of a benchmark's tasks. */
 export const defaultCount = (tasks: number): number => Math.ceil((tasks * 3) / 50) * 5;
 
-/**
- * `count` tasks as whole professions of two tasks or more, in the salt's order, from those no burned
- * task belongs to. A profession that would leave one task to find is passed over, since one task
- * cannot be a stream.
- */
+/** A profession that would leave one task to find is passed over, since one task cannot be a stream. */
 export function drawTasks(
   all: readonly string[],
   burned: readonly string[],
@@ -183,7 +142,6 @@ export function drawTasks(
   return drawn.toSorted();
 }
 
-/** The sides of each arm and what stands behind each tag. A tag follows from the salt and the arm alone. */
 export function sidesOf(arms: readonly string[], repeats: number, salt: string) {
   const key = new Map(arms.map((arm) => [`x${sha256(`${salt}\n${arm}`).slice(0, 6)}`, arm]));
   if (key.size !== arms.length) throw new Error("an arm is named twice; --repeats gives an arm two sides");
@@ -193,14 +151,13 @@ export function sidesOf(arms: readonly string[], repeats: number, salt: string) 
   return { sides, key };
 }
 
-/** The order of the rollouts: one task's sides together, so no arm runs on a day of its own. */
+/** One task's sides together, so no arm runs on a day of its own. */
 export function blocksOf(terms: Pick<Terms, "tasks" | "sides" | "salt">) {
   return inHashOrder(terms.tasks, (task) => `${terms.salt}\n${task}`).flatMap((task) =>
     inHashOrder(terms.sides, (side) => `${terms.salt}\n${task}\n${side}`).map((side) => ({ task, side })),
   );
 }
 
-/** A rollout's price as this store has recorded it, or null where it has recorded none. */
 function perRollout(out: string): { usd: number; records: number } | null {
   const root = join(out, "judged");
   const paid = (existsSync(root) ? readdirSync(root) : [])
@@ -215,7 +172,7 @@ function perRollout(out: string): { usd: number; records: number } | null {
   return { usd: paid.reduce((sum, usd) => sum + usd, 0) / paid.length, records: paid.length };
 }
 
-/** Writes the terms once: a second plan under one id is refused, since terms move before a result only. */
+/** A second plan under one id is refused, since terms move before a result only. */
 export function fixTerms(planned: Planned): string[] {
   const { out, id, arms, repeats, salt, prediction, tasks, burned } = planned;
   const folder = folderOf(out, id);
@@ -288,7 +245,6 @@ function termsIn(out: string, id: string): Terms {
   };
 }
 
-/** What each neutral tag stands for. */
 function armsIn(out: string, id: string): Map<string, string> {
   const key = capturedJsonParse(readFileSync(join(folderOf(out, id), "key.json"), "utf8"));
   return new Map(
@@ -298,7 +254,6 @@ function armsIn(out: string, id: string): Map<string, string> {
   );
 }
 
-/** Each task's mean across an arm's sides, over the tasks every side of both arms has a grading of. */
 function pooled(sidesA: readonly Map<string, Graded>[], sidesB: readonly Map<string, Graded>[]) {
   const every = [...sidesA, ...sidesB];
   const mean = (sides: readonly Map<string, Graded>[], task: string): number =>
@@ -307,7 +262,6 @@ function pooled(sidesA: readonly Map<string, Graded>[], sidesB: readonly Map<str
   return tasks.map((task) => mean(sidesA, task) - mean(sidesB, task));
 }
 
-/** A comparison's reading: the primary measure first, then each arm's A/A, then each pair's grains. */
 export function readLines(out: string, id: string, { unblind }: { readonly unblind: boolean }): string[] {
   const terms = termsIn(out, id);
   const arms = armsIn(out, id);
@@ -386,21 +340,19 @@ export function splitRubrics(dataset: string, a: string, b: string): Map<string,
   return split;
 }
 
-/** `--cap` as a judging's name carries it, refused where `score` would refuse it, before anything is copied. */
 const capName = (values: Options): string | undefined => {
   const cap = capOf(isString(values.cap) ? values.cap : undefined);
   return cap === undefined ? undefined : String(cap);
 };
-/** A further judging's name; one under a wider cut names the cut, so it never stands for one under judge.py's. */
+/** One under a wider cut names the cut, so it never stands for one under judge.py's. */
 const againOf = (label: string, time: number, cap: string | undefined): string =>
   cap === undefined ? `${label}-j${String(time)}` : `${label}-c${cap}-j${String(time)}`;
 const indexFile = (out: string, name: string, task: string): string =>
   join(out, "rejudged", name, `${keyOf(task)}.json`);
 
 /**
- * A deliverable placed for a further judging under its own name, and the rubrics it is judged on: a
- * file in the benchmark's shape with `indexes` beside it, since a judge numbers what it is handed from
- * nothing, and `agree` reads the two together.
+ * A file in the benchmark's shape with `indexes` beside it, since a judge numbers what it is handed
+ * from nothing, and `agree` reads the two together.
  */
 export function prepareAgain(place: {
   out: string;
@@ -430,7 +382,6 @@ export function prepareAgain(place: {
   return file;
 }
 
-/** Each rubric judged again, beside its first judging, and what the two labels' gap read each time. */
 export function agreeLines(
   out: string,
   labels: readonly [string, string],
@@ -491,7 +442,6 @@ export function agreeLines(
   ];
 }
 
-/** A copy of an exported tree under another guide, as an arm `tree:<dir>` reads. */
 export function deriveTree(from: string, guide: string, into: string): void {
   if (existsSync(into)) throw new Error(`${into} is there already; a derived tree is made once`);
   if (!existsSync(join(from, "CLAUDE.md"))) throw new Error(`${from} holds no CLAUDE.md, so it is no tree`);
@@ -558,7 +508,6 @@ async function runTerms(values: Options): Promise<void> {
   }
 }
 
-/** Each label's deliverables judged `times` more, one judgement at a time, in the salt's order. */
 async function rejudge(values: Options): Promise<void> {
   const labels = values.of;
   if (!Array.isArray(labels) || labels.length === 0) throw new Error("name --of");

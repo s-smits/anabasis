@@ -2,7 +2,7 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { everyStatementList, identifierName, singleConst } from "../shared/statements.ts";
 
-/** How many threaded steps make a chain worth a reader's attention. The dial the shape was queued with. */
+/** How many threaded steps make a chain worth a reader's attention. */
 const MINIMUM_LINKS = 3;
 
 /**
@@ -36,24 +36,21 @@ export const noSingleUseConstChainRule = defineRule({
     },
   },
   createOnce(context) {
-    /** The declarator a chain step is, or null when the statement is anything else. */
     function step(statement: ESTree.Statement): ESTree.VariableDeclarator | null {
       const single = singleConst(statement);
       if (single === null) return null;
       return single.declared.init === null ? null : single.declared;
     }
 
-    /** The name a declarator binds, which `step` has already proved is a plain identifier. */
     function bound(declarator: ESTree.VariableDeclarator): string {
       return identifierName(declarator.id) ?? "";
     }
 
-    /** A name matched where it is read: not after a dot, not before a colon, `...name` included. */
+    /** Not after a dot, not before a colon, `...name` included. */
     function spelling(name: string): RegExp {
       return new RegExp(String.raw`(?<![\w$])(?<!(?<!\.\.)\.)${name}(?![\w$:])`, "gu");
     }
 
-    /** The enclosing function or program, as source text, for counting a binding's reads. */
     function scopeText(node: ESTree.Node): string {
       for (let at: ESTree.Node | null = node.parent; at !== null; at = at.parent) {
         const kind = at.type;
@@ -65,16 +62,12 @@ export const noSingleUseConstChainRule = defineRule({
       return context.sourceCode.getText(node);
     }
 
-    /** Whether the binding is read exactly once in the scope that declares it. */
     function readOnce(declarator: ESTree.VariableDeclarator): boolean {
       const uses = scopeText(declarator).match(spelling(bound(declarator)));
-      // The declaration itself is one occurrence; a second is the single read that keeps it.
+      // The declaration itself is one occurrence; a second is the single read.
       return uses?.length === 2;
     }
 
-    /**
-     * Whether a comment sits on its own line above this statement, explaining the step.
-     */
     function explained(above: ESTree.Statement | undefined, statement: ESTree.Statement): boolean {
       if (above === undefined) return false;
       const between = context.sourceCode.getText().slice(above.end, statement.start);
@@ -82,17 +75,14 @@ export const noSingleUseConstChainRule = defineRule({
       return line !== -1 && /\/\/|\/\*/u.test(between.slice(line));
     }
 
-    /** Whether the initialiser holds a function body, which is not one expression to compose. */
     function carriesBody(declarator: ESTree.VariableDeclarator): boolean {
       return /=>|\bfunction\b/u.test(context.sourceCode.getText(declarator));
     }
 
-    /** Whether this step reads the name the step above it bound. */
     function threads(declarator: ESTree.VariableDeclarator, above: string): boolean {
       return declarator.init !== null && spelling(above).test(context.sourceCode.getText(declarator.init));
     }
 
-    /** The chain starting at `from`, as its declarators, longest first and possibly empty. */
     function chain(body: readonly ESTree.Statement[], from: number): ESTree.VariableDeclarator[] {
       const links: ESTree.VariableDeclarator[] = [];
       for (let at = from; at < body.length; at += 1) {
@@ -108,7 +98,6 @@ export const noSingleUseConstChainRule = defineRule({
       return links;
     }
 
-    /** Whether the statement below the run reads the last name the run bound. */
     function landsBelow(body: readonly ESTree.Statement[], after: number, last: string): boolean {
       const next = body[after];
       return next !== undefined && spelling(last).test(context.sourceCode.getText(next));

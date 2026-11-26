@@ -1,9 +1,7 @@
 /**
  * Every task a campaign's comparisons scored, with its public input and nothing of how it was
- * answered, so lane 14 grades reach before it reads an outcome, rather than finding the tasks' text
- * in the log and joining it to the scored sets by hand. It prints no hidden value, no check and no
- * answer, though the file stays on the exam
- * side with the log it reads.
+ * answered, so the blind grading lane grades reach before it reads an outcome. It prints no hidden
+ * value, check or answer, though the file stays on the exam side with the log it reads.
  *
  *   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> [--shape | --rows]
  *   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> --task <id | version prefix>
@@ -16,11 +14,9 @@ import { type LogEvent, read } from "#src/kernel/log.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
-import { exampleId } from "#tools/d2/exam.ts";
+import { exampleId } from "#tools/campaign/exam.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
-/** What one place in a public input holds across every value found there: its kinds, a list's
- *  lengths and a string's longest. */
 interface Place {
   readonly kinds: Set<string>;
   lengths: number[];
@@ -30,11 +26,9 @@ const USAGE = `usage:
   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> [--shape | --rows]
   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> --task <id | version prefix>`;
 const OPTIONS = { log: "text", task: "text", shape: "flag", rows: "flag" } as const;
-/** A public text shown whole up to this many characters: a requirement fits, a long table does not.
- *  The lane 14 packets cut at the same place. */
+/** A public text shown whole up to this many characters: a requirement fits, a long table does not. */
 export const VALUE_BYTES = 1500;
 
-/** Every task a log proposed, with what its author wrote. */
 export function proposedTasks(events: readonly LogEvent[]) {
   const drafted = new Map(
     (draftOf(events)?.tasks ?? []).map((example, index) => [exampleId(index), example]),
@@ -48,7 +42,6 @@ export function proposedTasks(events: readonly LogEvent[]) {
   }));
 }
 
-/** Each task a comparison scored, with what its author wrote and the comparisons that scored it. */
 export function scoredTasks(events: readonly LogEvent[]) {
   const scoredIn = new Map<string, string[]>();
   for (const { kind, data } of events) {
@@ -72,7 +65,6 @@ const taskLines = (
   `  public: ${input === undefined ? "none in the log (a pack's task: its public input is in the pack)" : JSON.stringify(input.publicInput)}`,
 ];
 
-/** Every key path of a value, a list's items folded into one `[]` path, values dropped. */
 function placesOf(value: JsonValue | undefined, path: string, into: Map<string, Place>): void {
   const place = into.get(path) ?? { kinds: new Set<string>(), lengths: [] };
   into.set(path, place);
@@ -105,7 +97,7 @@ const span = (lengths: readonly number[]) => {
 };
 
 /** One task's public input as its key paths, each with its kind, a list's length and a text's
- *  longest, and no value: what lanes 9 and 14 read a task's structure from. */
+ *  longest, and no value. */
 export function inputPaths(publicInput: JsonValue | undefined): string {
   const places = new Map<string, Place>();
   placesOf(publicInput, "", places);
@@ -123,7 +115,6 @@ export function inputPaths(publicInput: JsonValue | undefined): string {
     .join("; ");
 }
 
-/** One task's public input, indented, with any text past `VALUE_BYTES` cut and the cut said. */
 function wholeOf(value: JsonValue | undefined): string {
   return JSON.stringify(
     value ?? null,
@@ -135,7 +126,6 @@ function wholeOf(value: JsonValue | undefined): string {
   );
 }
 
-/** The scored tasks, then those practised and never scored, each with where it stood. */
 function listed(events: readonly LogEvent[]) {
   const scored = scoredTasks(events);
   const released = new Set(taskSets(events).released);
@@ -148,8 +138,8 @@ function listed(events: readonly LogEvent[]) {
   ];
 }
 
-/** The skeleton of lane 14's grade rows, as `gradesIn` and `wri.ts trajectory --grades` read them: a
- *  row a scored task and a row a version a comparison measured, grades blank, in the log's order. */
+/** The skeleton of the grade rows, as `gradesIn` and `wri.ts trajectory --grades` read them: a row
+ *  a scored task and a row a version a comparison measured. */
 function gradeRows(events: readonly LogEvent[], campaign: string): string[] {
   const starter = starterIn(events);
   const versions = [
@@ -161,7 +151,6 @@ function gradeRows(events: readonly LogEvent[], campaign: string): string[] {
   ];
 }
 
-/** Every task the log scored or released, a block each, or a line each of its structure (`shape`). */
 export function tasksLines(events: readonly LogEvent[], form: "shape" | "blocks" = "blocks"): string[] {
   const tasks = listed(events);
   const lines =

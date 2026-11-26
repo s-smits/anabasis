@@ -6,6 +6,7 @@
 // leaves its prompt byte-identical, and it refuses to open without its trigger.
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import type { JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { catalogueText, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
@@ -13,6 +14,8 @@ import { READERS, readerOutput, sourceOf } from "../tools/wri/derive.ts";
 import type { Trigger } from "../tools/wri/folds.ts";
 import { type Campaign, lanePrompt, selected, sharedPrompt } from "../tools/wri/investigation.ts";
 import { overview } from "../tools/wri/read.ts";
+import { domainReadinessOf } from "../tools/wri/domains.ts";
+import { analyzeRegressions, formatRegressionReport } from "../tools/wri/regressions.ts";
 import { wriCampaign } from "./helpers/wri-campaign.ts";
 
 type Secret = (tag: string) => string;
@@ -115,6 +118,65 @@ describe("the no-quote wall", () => {
     expect(two).toEqual(one);
     expect(one?.join("\n")).not.toContain("CANARY");
   });
+
+  it("renders scored external benchmark regression joins byte for byte alike without leaking log secrets", () => {
+    const store = join(base, "bench-wall");
+    const put = (file: string, value: JsonValue) => {
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(file, `${JSON.stringify(value)}\n`);
+    };
+    put(join(store, "judged", "pi-hd", "soc__t1.json"), {
+      arm: "pi-hd",
+      task: "soc/t1",
+      harness: "hd",
+      runtime: "pi-durable",
+      points: 20,
+      total: 50,
+      cut: [],
+    });
+    put(join(store, "judged", "base-pi-hd", "soc__t1.json"), {
+      arm: "base-pi-hd",
+      task: "soc/t1",
+      harness: "",
+      runtime: "pi-durable",
+      points: 45,
+      total: 50,
+      cut: [],
+      build: { of: "base", usd: 0 },
+    });
+    put(join(store, "dataset", "soc", "t1", "eval_result", "eval_pi-hd__soc__t1", "judge_judge.json"), {
+      rubrics: [{ index: 0, weight: 10, result: { passed: false, criteria_passed: 1, criteria_count: 3 } }],
+    });
+    const trajDir = join(store, "dataset", "soc", "t1", "model_traj", "pi-hd__soc__t1");
+    mkdirSync(trajDir, { recursive: true });
+    writeFileSync(
+      join(trajDir, "attempt1.jsonl"),
+      `${JSON.stringify({ kind: "solve.call", data: { tool: "bash", args: { command: "helper-tool run" } } })}\n`,
+    );
+    const campDir = join(base, "camp-wall");
+    mkdirSync(join(campDir, "states", "hd", ".toolchain", "bin"), { recursive: true });
+    writeFileSync(join(campDir, "states", "hd", ".toolchain", "bin", "helper-tool"), "#!/bin/sh\n");
+
+    const [first, second] = SECRETS.map((secret) => {
+      const events = wriCampaign(secret);
+      const ready = domainReadinessOf({
+        campaign: "buffer-a",
+        log: join(campDir, "log.jsonl"),
+        events,
+        repo: REPO,
+        benches: [],
+        storeOverride: store,
+        extensionsRoot: join(base, "no-ext"),
+      });
+      const report = analyzeRegressions(ready, events, campDir);
+      expect(report.status).toBe("scored");
+      return formatRegressionReport(report);
+    });
+    expect(second).toEqual(first);
+    expect(first).toContain("pi-hd (builtSolver");
+    expect(first).toContain("helper-tool:");
+    expect(first).not.toContain("CANARY");
+  });
 });
 
 describe("the isolated-lane wall", () => {
@@ -127,9 +189,13 @@ describe("the isolated-lane wall", () => {
     expect(ISOLATED.length).toBeGreaterThan(0);
     expect(BLIND.length).toBeGreaterThan(0);
     const plain = parts(SECRETS[0], shared("Why the step.", "the gap floor", "nothing yet"));
-    const leading = parts(SECRETS[1], shared("LEAD the Builder won", "LEAD the level moved", "LEAD read"), [
-      other,
-    ]);
+    const asked =
+      "## Operator questions\n\n| id | lanes | question |\n| --- | --- | --- |\n| Q1 | 1, 4, 20 | LEAD asked |";
+    const leading = parts(
+      SECRETS[1],
+      `${shared("LEAD the Builder won", "LEAD the level moved", "LEAD read")}\n\n${asked}`,
+      [other],
+    );
     /** The leads, with every trigger but the lane's own given another count. */
     const led = (number: number) => ({
       ...leading,
@@ -155,6 +221,10 @@ describe("the isolated-lane wall", () => {
     expect(sharedPrompt(leading)).toContain("LEAD the Builder won");
     expect(sharedPrompt(leading)).toContain("LEAD 3 of 3");
     expect(sharedPrompt(led(20))).toContain("REFUSED UNREAD (lane 17): LEAD ");
+    const open = lanes.find(({ number }) => number === 4);
+    expect(open === undefined ? "" : lanePrompt({ ...leading, lane: open })).toContain(
+      "| Q1 | 1, 4, 20 | LEAD asked |",
+    );
   });
 
   it("gives an isolated lane the campaign's rows and its own trigger, and a blind lane neither", () => {

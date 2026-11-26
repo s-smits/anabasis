@@ -1,23 +1,21 @@
 /**
- * Keep a campaign going until it ends on its own terms.
+ * Keeps a campaign going until it ends on its own terms.
  *
  *   bun --env-file=<file> run runs keep <name> [--logins 2,3,4] [--wait-hours 0.25] [--yes | --here]
  *
- * A keeper looks at the run once a minute and takes one of four turns (`turnOf`). While the run's
- * process lives and its log ends on a provider wait (`campaign.waited`, `for: "provider"`), whichever
- * limit named it, the week's or the five hours', and more than `--wait-hours` of it is left, it stops
- * the run and goes on with it on another login (the operator's choice). Less than that is left to the
- * login's own reset, since a move cuts the Builder's conversation. Where the process
- * is gone it goes on with the run on the same login, unless that login carries its cap of live
- * runs: after an ending on the environment, as the operator asked of every such run, and after no
- * ending at all, a process that died. Any other
- * ending is the campaign's own, and the keeper leaves. A run goes on from its log at the commit
- * its worktree stands at, on its kept flags, through the refusals of `runs continue`.
+ * Once a minute a keeper takes one of four turns (`turnOf`). Where the live run's log ends on a
+ * provider wait with more than `--wait-hours` left, it stops the run and goes on with it on another
+ * login; less is left to the login's own reset, since a move cuts the Builder's conversation.
+ * Where the process is gone after an environment ending or none, it goes on on the same login
+ * unless that login is at its cap; any other ending is the campaign's own, and the keeper leaves.
+ * A run goes on from its log at its worktree's commit, through the refusals of `runs continue`.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { endedOf } from "#src/kernel/reports.ts";
 import { nonRetryableProvider } from "#src/kernel/solve.ts";
+import { askedOf, type Seat, traced } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { envRunsFile } from "./host-config.ts";
@@ -35,6 +33,7 @@ import {
   type readLogins,
   readNotClosed,
   room,
+  seatModels,
   startRefusal,
 } from "./logins.ts";
 import type { Live } from "./live.ts";
@@ -44,7 +43,6 @@ import { stop } from "./stop.ts";
 
 export type Turn = "watch" | "move" | "continue" | "done";
 
-/** What a keeper's look reads and does, which a test scripts. */
 interface Hands {
   readonly events: () => readonly LogEvent[];
   readonly stands: (events: readonly LogEvent[], now: number) => RunState;
@@ -59,24 +57,38 @@ interface Hands {
 }
 
 const LOOK_MS = 60_000;
-/** How long a keeper with nowhere to go waits before it reads the logins again: a reading may cost a
- *  one-token request a login (`readLogins`), and a week's wait lasts for days. */
 const ASK_MS = 10 * 60_000;
-/** Goings-on in a row with no model turn, after which a keeper leaves its run. */
 const BARREN = 3;
+const SEAT_ROLE: Readonly<Record<Seat, "builder" | "examiner" | "reviewer" | "solver">> = {
+  build: "builder",
+  exam: "examiner",
+  draft: "examiner",
+  referee: "reviewer",
+  solve: "solver",
+};
 
-/**
- * The model turns `events` record that the provider answered, of any seat: what a going-on has to
- * add to count as work. A launch into a failure still writes its moves, its ending and a turn of
- * each seat it opened, stopped on `error`, so the log grows however little was done, and a keeper
- * that counted the log's bytes would go on into one DNS failure again and again and never leave.
- */
+function refusalOnClaudeLogin(events: readonly LogEvent[], why: string, flags: readonly string[]): boolean {
+  if (!billsLogin(events, flags)) return false;
+  if (/disabled Claude subscription access/u.test(why)) return true;
+  const asked = askedOf(events);
+  const models = seatModels(events, flags);
+  for (let index = events.length - 2; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event === undefined || event.kind === "campaign.ended") break;
+    const err = event.data.error;
+    if (!event.kind.endsWith(".turn") || !isString(err) || !nonRetryableProvider(err) || !why.includes(err)) {
+      continue;
+    }
+    const turn = traced(event, index);
+    const model = turn === null ? undefined : (asked.get(turn.id) ?? models[SEAT_ROLE[turn.seat]]);
+    if (model !== undefined) return model.startsWith("claude/");
+  }
+  return false;
+}
+
 const turnsIn = (events: readonly LogEvent[]): number =>
   events.filter(({ kind, data }) => kind.endsWith(".turn") && data.stopReason !== "error").length;
 
-/** What a keeper does at `now` with a run that stands as `state`: it moves one waiting on a provider
- *  for longer than `waitMs`, goes on with one nothing writes unless it ended on its own terms, and
- *  watches the rest. */
 export function turnOf(state: RunState, now: number, waitMs: number): Turn {
   if (state.kind === "waiting") {
     return state.wait.for === "provider" && state.wait.until - now > waitMs ? "move" : "watch";
@@ -85,15 +97,6 @@ export function turnOf(state: RunState, now: number, waitMs: number): Turn {
   return state.kind === "kept" || state.kind === "stopped" ? "continue" : "watch";
 }
 
-/**
- * The login a run goes on with after `turn`: none for a run that bills no login, else its own on a
- * continue, unless this keeper saw it spent or it is `full`, else the first of `roomy`, those with
- * capacity, or null to wait. A Codex run waits for no Claude login its seats never use, and is
- * counted against none. A dead run is not live, so its own login can fill its live-run cap
- * elsewhere, and the keeper does not go on above it. A run that bills no login has nowhere to move
- * and sits out its wait, rather than being stopped and restarted on the same account every look,
- * into the same limit.
- */
 export async function nextLogin(
   turn: Turn,
   { current, spent, billed }: { current: string | undefined; spent: ReadonlySet<string>; billed: boolean },
@@ -107,11 +110,6 @@ export async function nextLogin(
   return (await roomy())[0] ?? null;
 }
 
-/** The logins of `logins` a run may move to: those with capacity, less those this keeper saw `spent`,
- *  those at their live-run cap across the fleet (`atCap`) and those whose five hours run out or could
- *  not be read with this run added (`fiveHourWith`), or none while a host goes uncounted; and why any
- *  was left for its five hours, so that a keeper does not move a run onto a login that already
- *  carries its cap, which `fresh` refuses. */
 export async function roomFor(
   logins: readonly string[],
   spent: ReadonlySet<string>,
@@ -138,23 +136,17 @@ export async function roomFor(
   return { logins: room(readings, logins, new Set([...out, ...over, ...unread])), why: reasons.join("; ") };
 }
 
-/** Whether a line of `keep.out` says this keeper moved or restarted its run, left it waiting or gave it
- *  up (`keeperOf`), as against its error text and a run that ended by itself, which the log says. */
 export const keeperActed = (line: string): boolean =>
-  /: (?:move|continue) (?:on login|without a login)|; left waiting$|no seat took a model turn: kept no longer$/u.test(
+  /: (?:move|continue) (?:on login|without a login)|; left waiting$|(?:no seat took a model turn|non-retryable provider refusal[^:]*): kept no longer$/u.test(
     line,
   );
 
-/** A keeper of the run `name` on the logins `pool` gives at each move: each call is one look at `now`,
- *  and says whether it leaves. */
 export function keeperOf(name: string, pool: () => Promise<readonly string[]>, waitMs: number, hands: Hands) {
-  // A login this keeper moved off, until its limit resets.
   const spentUntil = new Map<string, number>();
   let barren = 0;
   let worked = -1;
   let waitedOn = "";
   let askAt = 0;
-  // Each act under the time of the look, since a wait and a giving up write no event.
   const act = (now: number, what: string) => hands.say(`${new Date(now).toISOString()} ${name}: ${what}`);
   return async (now: number): Promise<boolean> => {
     const events = hands.events();
@@ -174,16 +166,12 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     if (turn === "move" && current !== undefined && state.kind === "waiting") {
       spentUntil.set(current, state.wait.until);
     }
-    // A permanent provider refusal (disabled subscription, missing credits, unconfigured provider)
-    // never clears on retry, so mark the login spent and move to another roomy login instead of
-    // restarting into the same failure.
     const ended = endedOf(events);
-    if (
-      turn === "continue" &&
-      current !== undefined &&
-      ended?.ending === GOES_ON &&
-      nonRetryableProvider(ended.why)
-    ) {
+    if (turn === "continue" && ended?.ending === GOES_ON && nonRetryableProvider(ended.why)) {
+      if (current === undefined || !refusalOnClaudeLogin(events, ended.why, flags)) {
+        act(now, "non-retryable provider refusal outside the Claude login: kept no longer");
+        return true;
+      }
       spentUntil.set(current, Number.POSITIVE_INFINITY);
     }
     for (const [login, at] of spentUntil) {
@@ -214,6 +202,14 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       }
     }
     if (target === null || refusal !== null) {
+      if (
+        target === null &&
+        logins.length > 0 &&
+        logins.every((login) => spentUntil.get(login) === Number.POSITIVE_INFINITY)
+      ) {
+        act(now, "non-retryable provider refusal on every login: kept no longer");
+        return true;
+      }
       const reason = refusal ?? (why === "" ? "no login to go on with" : why);
       if (reason !== waitedOn) act(now, `${reason}; left waiting`);
       waitedOn = reason;
@@ -240,14 +236,9 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
   };
 }
 
-/**
- * The logins a keeper started without `--logins` may move its run to: those `ANA_LOGINS` names in
- * `file`, its host's `.env.runs`, at each call, where the pool it started with is the one that file
- * named; otherwise the pool it started with. So an edit of the pool reaches a running keeper, and a
- * pool carried from another host stays as carried, where a running keeper would otherwise go on
- * choosing from the logins it had been started with after the operator narrowed the pool.
- */
-export function poolOf(file: string, env: Env): () => Promise<readonly string[]> {
+/** Read again at each call, so an edit of the host's pool reaches a running keeper; a pool carried from
+ *  another host stays as carried. */
+function poolOf(file: string, env: Env): () => Promise<readonly string[]> {
   const named = async () =>
     /^ANA_LOGINS=["']?([^"'\s#]*)/mu.exec(
       await Bun.file(file)
@@ -265,7 +256,6 @@ export function poolOf(file: string, env: Env): () => Promise<readonly string[]>
   };
 }
 
-/** Keep `run` going on the logins `pool` gives until it ends on its own terms. */
 async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitMs: number): Promise<void> {
   const look = keeperOf(run.name, pool, waitMs, {
     events: () => logEvents(run.path),
@@ -282,7 +272,6 @@ async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitM
   while (!(await look(Date.now()))) await Bun.sleep(LOOK_MS);
 }
 
-/** `bun run runs keep`. */
 export async function keep(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],

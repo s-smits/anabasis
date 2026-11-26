@@ -4,19 +4,16 @@ import { literalValue } from "./statements.ts";
 
 /**
  * Which annotations and parameters hold a flag, for `ana/no-positional-boolean-parameter` and
- * the rules `max-boolean-fields` and `prefer-state-union` of `implicit-state-opinionated`. The reading of a
- * union and a default follows Foxglove's `no-boolean-parameters` (`THIRD_PARTY_NOTICES.md`), which asks the type checker for a type whose
- * parts are boolean beside `undefined`, `null` or `void`; a plugin rule never asks the checker, so
- * this reads the written annotation and the default instead.
+ * `implicit-state-opinionated`'s `max-boolean-fields` and `prefer-state-union`. Foxglove's
+ * `no-boolean-parameters` (`THIRD_PARTY_NOTICES.md`) asks the type checker; a plugin rule cannot,
+ * so this reads the written annotation and the default instead.
  */
 const EMPTY = new Set(["TSUndefinedKeyword", "TSNullKeyword", "TSVoidKeyword"]);
 
-/** Whether a type is `boolean`, `true` or `false`. */
 const flagPart = (type: ESTree.TSType): boolean =>
   type.type === "TSBooleanKeyword" ||
   (type.type === "TSLiteralType" && isBoolean(literalValue(type.literal)));
 
-/** Whether an annotation is a flag, alone or beside `undefined`, `null` or `void`. */
 export function isFlagType(type: ESTree.TSType | undefined): boolean {
   if (type === undefined) {
     return false;
@@ -28,7 +25,6 @@ export function isFlagType(type: ESTree.TSType | undefined): boolean {
   return rest.length > 0 && rest.every(flagPart);
 }
 
-/** The name a parameter binds where it holds a flag: annotated as one, or defaulted to a boolean. */
 export function flagBinding(parameter: ESTree.Node): ESTree.BindingIdentifier | null {
   const target = parameter.type === "AssignmentPattern" ? parameter.left : parameter;
   if (target.type !== "Identifier") {

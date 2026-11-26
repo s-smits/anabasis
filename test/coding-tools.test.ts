@@ -16,12 +16,12 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { CODING_TOOLS, codingTools, wallExec } from "../src/tools/coding.ts";
-import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
+import { type CommandSandbox, solveDirs, sandboxBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
-import { claimRoot } from "../src/wall/seat-root.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
+import { claimRoot } from "../src/sandbox/sandbox-root.ts";
 
-function caller(wall: CommandWall, env: ExecutionEnv) {
+function caller(wall: CommandSandbox, env: ExecutionEnv) {
   const tools = new Map(codingTools(wall, CODING_TOOLS).map((each) => [each.name, each]));
   return async (name: string, args: JsonObject, signal?: AbortSignal) => {
     const each = tools.get(name);
@@ -61,15 +61,15 @@ function caller(wall: CommandWall, env: ExecutionEnv) {
 }
 
 async function withSeat(
-  run: (wall: CommandWall, call: ReturnType<typeof caller>, repo: string) => Promise<void>,
+  run: (wall: CommandSandbox, call: ReturnType<typeof caller>, repo: string) => Promise<void>,
 ) {
   const repo = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));
   const dirs = solveDirs(`coding-${crypto.randomUUID()}`);
   const release = await claimRoot(dirs.root);
   let env: ExecutionEnv | undefined;
   try {
-    const base = await walledBase(dirs, { repoRoot: repo }, "the coding tool test");
-    const wall: CommandWall = {
+    const base = await sandboxBase(dirs, { repoRoot: repo }, "the coding tool test");
+    const wall: CommandSandbox = {
       base,
       dirs,
       toolTree: null,

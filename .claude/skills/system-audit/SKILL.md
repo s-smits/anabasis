@@ -16,10 +16,10 @@ Current metrics live in `docs/plan.md` ("The v1.0 bar, now"); rationales in `doc
 | `wall` | All wall tests pass on macOS & Linux at top; 0 `sandbox-crash` in measured runs | `bun run gate` (both OSes); `close.ts` |
 | `supply` | Post-setup comparisons score ≥6 untied tasks (at 0.02); ≥1 validity-won step (or release notes objective-only climb); stronger bare solver beats weaker beyond A/A spread on opening tasks | `reading.ts --zone`; `table.ts --rows runs`; `compare-systems/scripts/systems.ts` |
 | `climb` | 6 confirmed promotions (`confirmed`, `climb.ts`) in one fresh measured `jobstat` run + replicated in cold domain (`buffer`), with more `after` slices stepping for reference than starter | `barLines`; `starter-reads.ts`; `table.ts --rows cost` |
-| `honesty` | A/A false steps ≤1.1% (`falseRate`) across ≥50 powered A/As, split validity vs objective-only (using Starter A/A where reference ties), plus 0 A/A steps in the 10 comparisons post-6th promotion | `barLines`; `table.ts --rows runs` |
-| `verdicts` | Pooled blind human labels: ≥30 rejections (≥8 defects), ≥3/4 defects caught, ≤1/10 earned voided (PABAK & kappa); ≥20 sampled passes (`PASS_LABELS`), ≤1/10 wrong | `tools/d2/settle.ts` (`clears`, `agreement.ts`) |
-| `grounding` | One domain invoking its pinned reference engine with 0 authored checks (`--admit-authored` unused, rule 10) | `close.ts` (`unadmitted`); `tools/c/accept.ts` |
-| `economy` | Single-meter USD & active hours/promotion, ≤3 attempts/epoch after setup, reference solve cost ≤ Starter within spread | `close.ts`, `barLines`; `table.ts --rows cost`; `score.ts table` |
+| `honesty` | 95% exact upper bound on A/A false steps ≤2× level over powered A/As pooled across the release's measured campaigns, split validity vs objective-only (using Starter A/A where reference ties); each campaign reports all its A/As with the same bound | `trend.ts` / `table.ts --rows runs` (`falseSteps`); `barLines` |
+| `verdicts` | Pooled blind human labels: ≥30 rejections (≥8 defects), ≥3/4 defects caught, ≤1/10 earned voided (PABAK & kappa); ≥20 sampled passes (`PASS_LABELS`), ≤1/10 wrong | `tools/campaign/settle.ts` (`clears`, `agreement.ts`) |
+| `grounding` | One domain invoking its pinned reference engine with 0 authored checks (`--admit-authored` unused, rule 10) | `close.ts` (`unadmitted`); `tools/eval/accept.ts` |
+| `economy` | Single-meter USD & active hours/promotion, reference solve cost ≤ Starter within spread | `close.ts`; `table.ts --rows cost`; `score.ts table` |
 | `systems` | Cheaper builtSolver matches/beats dearer bareSolver on held-out tasks (`compare-systems`) + ablation vs `programs-of:<digest>` | `compare-systems/scripts/systems.ts`; `checkpoint.ts` |
 | `outside` | Measured `jobstat` confirmed references blind under JobBench judge beside same-sitting Starter & one-pass Builder: above both beyond Starter spread, then ≥ Harness² `heldout`, non-decreasing along promotions | `score.ts table`/`spread`; `compare.ts read`; `trend.ts --bench` |
 
@@ -43,6 +43,6 @@ Every lens also emits uncapped **Does not make sense** items (`path:line`, anoma
 
 ## Related skills
 
-- Subsystem invariants: [design-and-seats](../design-and-seats/SKILL.md), [comparison-reading](../comparison-reading/SKILL.md), [campaign-mechanics](../campaign-mechanics/SKILL.md)
+- Subsystem invariants & end-to-end stack contracts: [design-and-seats](../design-and-seats/SKILL.md), [comparison-reading](../comparison-reading/SKILL.md), [campaign-mechanics](../campaign-mechanics/SKILL.md), [stack-contracts.md](../run-improvement-campaign/references/stack-contracts.md)
 - Quantitative checks & per-run evidence: [promotion-tuner](../promotion-tuner/SKILL.md), [whole-run-investigation](../whole-run-investigation/SKILL.md), [harness-audit](../harness-audit/SKILL.md)
 - Applying approved fixes: [stack-pr](../stack-pr/SKILL.md), [commit-r](../commit-r/SKILL.md), [simplify](../simplify/SKILL.md), [reduce-complexity](../reduce-complexity/SKILL.md)

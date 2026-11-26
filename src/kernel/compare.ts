@@ -1,8 +1,3 @@
-/**
- * Paired comparison scoring (`pointsOf`, `WEIGHTS`), exact one-sided sign-flip test (`flipP`,
- * `readsStep`), power analysis (`power`, `detectable`), and log pair assembly (`pairsOf`).
- * Full semantics live in `.claude/skills/comparison-reading/references/tally-and-test.md`.
- */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -19,9 +14,9 @@ interface SolveCost {
 
 export interface ObjectiveRule {
   readonly direction: "lower" | "higher";
+  readonly scale?: "unit";
 }
 
-/** One task's counted solves under reference (`old`) and candidate (`fresh`), plus optional objective/ids/cost. */
 export interface Paired {
   readonly task: string;
   readonly old: readonly boolean[];
@@ -32,6 +27,20 @@ export interface Paired {
   };
   readonly solves?: { readonly old: readonly string[]; readonly fresh: readonly string[] };
   readonly used?: { readonly old: readonly SolveCost[]; readonly fresh: readonly SolveCost[] };
+  readonly judged?: { readonly weights: JudgeWeights; readonly votes: readonly Vote[] };
+}
+
+export interface JudgeWeights {
+  readonly code: number;
+  readonly judge: number;
+  readonly step?: number;
+}
+
+export interface Vote {
+  readonly fresh: number;
+  readonly old: number;
+  readonly judge: number;
+  readonly holistic: number;
 }
 
 export type Measures = Readonly<Record<"validity" | "objective", number>>;
@@ -47,25 +56,39 @@ interface Sides {
   readonly fresh: string;
   readonly setting: string;
   readonly comparison: string;
-  /** `mirrored` for A/A controls: splits reference solves in 4-element mirrored pattern across tasks. */
   readonly halves?: "mirrored" | undefined;
   readonly objective?: ObjectiveRule | undefined;
-  /** Optional log prefix cutoff (`pairsReported`). */
+  readonly judge?: JudgeWeights | undefined;
   readonly upTo?: number | undefined;
 }
 
+export function judgeIn(data: JsonObject): JudgeWeights | undefined {
+  const { code, judge, step } = asRecord(asRecord(data.judge)?.weights) ?? {};
+  if (!isNumber(code) || !isNumber(judge)) return undefined;
+  return { code, judge, ...keyIfDefined("step", isNumber(step) ? step : undefined) };
+}
+
+function votesIn(events: readonly LogEvent[], comparison: string, upTo: number) {
+  const votes = new Map<string, { readonly judge: number; readonly holistic: number }>();
+  for (const { event } of eventsOf(events, "referee.pair", upTo)) {
+    const { solve, old, judge, holistic } = event.data;
+    if (event.data.comparison !== comparison || !isString(solve) || !isString(old)) continue;
+    if (!isNumber(judge) || !isNumber(holistic)) continue;
+    votes.set(`${solve}\u0000${old}`, { judge, holistic });
+    votes.set(`${old}\u0000${solve}`, { judge: -judge, holistic: -holistic });
+  }
+  return votes;
+}
+
 const DETECTION_CHANCE = 0.8;
-/** Sentinel for a retained set with zero tallied tasks (distinct from zero losses). */
 export const UNMEASURED = "unmeasured" as const;
-/** Minimum relative objective improvement worth counting (`objectiveGain`, `informative`, `roomOf`). */
 export const GAP_FLOOR = 0.01;
-/** Floating-point dust floor below which two near-zero objectives read as tied rather than ±100% gain. */
 const ZERO_FLOOR = 1e-12;
-/** Part weights in `pointsOf`; each pairing contributes to validity or (if both valid) objective. */
 export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 const POINTS_SCALE = 1000;
+export const JUDGE_STEP = 0.25;
+const BOUND_TAIL = 0.05;
 
-/** Exact DP distribution of winning margin sums when each integer margin wins independently with `share`. */
 function plusTotalChances(sizes: readonly number[], share: number): Float64Array {
   const chances = new Float64Array(sumOf(sizes) + 1);
   chances[0] = 1;
@@ -87,7 +110,17 @@ const sumOf = (values: readonly number[]) => values.reduce((sum, one) => sum + o
 const chanceOfAtLeast = (chances: Float64Array, from: number) =>
   chances.subarray(Math.max(0, from)).reduce((sum, one) => sum + one, 0);
 
-/** Signed mid-ranks (doubled to integers) over untied task scores, dropping zeros. */
+export function upperBound(hits: number, trials: number): number {
+  const units = Array.from({ length: trials }, () => 1);
+  let [lo, hi] = [0, 1];
+  for (let halving = 0; halving < 40; halving += 1) {
+    const mid = (lo + hi) / 2;
+    if (chanceOfAtLeast(plusTotalChances(units, mid), hits + 1) < 1 - BOUND_TAIL) lo = mid;
+    else hi = mid;
+  }
+  return hi;
+}
+
 export function signedRanks(differences: readonly number[]): number[] {
   const untied = differences.filter((one) => one !== 0);
   const sizes = untied.map(Math.abs).toSorted((one, other) => one - other);
@@ -113,48 +146,41 @@ function stepThreshold(sizes: readonly number[], level: number): number {
   return from;
 }
 
-/** Exact one-sided raw-magnitude paired sign-flip p-value, kept for off-policy replay (`test=flip`). */
 export function rawFlipP(differences: readonly number[]): number {
   const { scaled, unit } = scaledMargins(differences);
-  // Scores sum to 2 * (winning margins) - (all margins).
   const from = Math.ceil((sumOf(differences) + sumOf(scaled) * unit) / (2 * unit));
   return Math.min(1, chanceOfAtLeast(plusTotalChances(scaled, 0.5), from));
 }
 
-/** Exact one-sided Wilcoxon signed-rank p-value over untied task scores (1 when no task is untied). */
 export function flipP(differences: readonly number[]): number {
   return rawFlipP(signedRanks(differences));
 }
 
-export function readsStep(scores: readonly number[], level: number): boolean {
+export function isSignificant(scores: readonly number[], level: number): boolean {
   return flipP(scores) <= level;
 }
 
-/** Whether an A/A control reads a step in either direction at `level`. */
-export function readsStepEitherWay(scores: readonly number[], level: number): boolean {
+export function isSignificantTwoSided(scores: readonly number[], level: number): boolean {
   return (
-    readsStep(scores, level) ||
-    readsStep(
+    isSignificant(scores, level) ||
+    isSignificant(
       scores.map((one) => -one),
       level,
     )
   );
 }
 
-/** Extracts task scores from a recorded test, preferring `unbilled` over legacy billed `differences`. */
 export function scoresIn(test: unknown): number[] {
   const { unbilled, differences } = asRecord(test) ?? {};
   const found = Array.isArray(unbilled) ? unbilled : differences;
   return Array.isArray(found) ? found.filter(isNumber) : [];
 }
 
-/** Chance of reading a step at `level` given per-task win probability `share` (0.5 gives nominal false rate). */
 export function power(differences: readonly number[], share: number, level: number): number {
   const { scaled } = scaledMargins(signedRanks(differences));
   return Math.min(1, chanceOfAtLeast(plusTotalChances(scaled, share), stepThreshold(scaled, level)));
 }
 
-/** Smallest win rate (0.01 grid) achieving `DETECTION_CHANCE` power at `level`, or null if undetectable. */
 export function detectable(differences: readonly number[], level: number): number | null {
   const { scaled } = scaledMargins(signedRanks(differences));
   const threshold = stepThreshold(scaled, level);
@@ -167,14 +193,12 @@ export function detectable(differences: readonly number[], level: number): numbe
   return lo <= 100 ? lo / 100 : null;
 }
 
-/** Minimum all-win untied task count needed to clear `level`. */
 export function sweepOf(level: number): number {
   let sweep = 1;
   while (0.5 ** sweep > level) sweep += 1;
   return sweep;
 }
 
-/** Returns the whole scored set when `falseRate` is present, falling back to `frontier` for legacy reports. */
 export function testedSet<S extends { readonly falseRate?: unknown }, F>(
   whole: S | null,
   frontier: F,
@@ -182,12 +206,22 @@ export function testedSet<S extends { readonly falseRate?: unknown }, F>(
   return whole?.falseRate === undefined ? frontier : whole;
 }
 
-export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
-  const { direction } = asRecord(data.objective) ?? {};
-  return direction === "lower" || direction === "higher" ? { direction } : undefined;
+export function objectiveRuleOf(declared: ObjectiveRule | undefined): ObjectiveRule | undefined {
+  return declared === undefined
+    ? undefined
+    : { direction: declared.direction, ...keyIfDefined("scale", declared.scale) };
 }
 
-/** Whether `side` still has room to improve on `pair` (partial validity, objective gap >= `GAP_FLOOR`, or known valid answer). */
+export function gapBasis(rule: ObjectiveRule | undefined): string {
+  return rule?.scale === "unit" ? "on the [0, 1] scale" : "of the larger measure";
+}
+
+export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
+  const { direction, scale } = asRecord(data.objective) ?? {};
+  if (direction !== "lower" && direction !== "higher") return undefined;
+  return { direction, ...keyIfDefined("scale", scale === "unit" ? "unit" : undefined) };
+}
+
 export function informative(
   pair: Paired,
   side: "old" | "fresh",
@@ -196,12 +230,11 @@ export function informative(
 ): boolean {
   const valid = pair[side].filter(Boolean).length;
   if (valid === 0) return knownValidAnswers.has(pair.task);
-  if (valid < pair[side].length) return true;
+  if (valid < pair[side].length || pair.judged !== undefined) return true;
   const other = pair.objective?.[side === "old" ? "fresh" : "old"] ?? [];
   return gapAgainst(pair, side, [...other, bests.get(pair.task) ?? null]);
 }
 
-/** Whether any valid solve on `side` is beaten by >= `GAP_FLOOR` by another solve of `side` or `against`. */
 export function gapAgainst(
   pair: Paired,
   side: "old" | "fresh",
@@ -214,42 +247,74 @@ export function gapAgainst(
   return own.some((mine) => known.some((other) => gainOver(rule, other, mine) >= GAP_FLOOR));
 }
 
-/** Relative objective gain of `one` over `other` in [-1, 1] (before `GAP_FLOOR`), or 0 if missing. */
 export function gainOver(
   rule: ObjectiveRule,
   one: number | null | undefined,
   other: number | null | undefined,
 ): number {
   if (!isNumber(one) || !isNumber(other)) return 0;
+  const delta = rule.direction === "lower" ? other - one : one - other;
+  if (rule.scale === "unit") return Math.max(-1, Math.min(1, delta));
   const larger = Math.max(Math.abs(one), Math.abs(other));
   if (larger < ZERO_FLOOR) return 0;
-  return Math.max(-1, Math.min(1, (rule.direction === "lower" ? other - one : one - other) / larger));
+  return Math.max(-1, Math.min(1, delta / larger));
 }
 
-function objectiveGain(pair: Paired, f: number, o: number): number {
+const floored = (gain: number) => (Math.abs(gain) < GAP_FLOOR ? 0 : gain);
+
+function codeGain(pair: Paired, f: number, o: number): number {
   const rule = pair.objective;
-  const gain = rule === undefined ? 0 : gainOver(rule, rule.fresh[f], rule.old[o]);
-  return Math.abs(gain) < GAP_FLOOR ? 0 : gain;
+  return rule === undefined ? 0 : gainOver(rule, rule.fresh[f], rule.old[o]);
 }
 
-/** Per-task validity and objective points (thousandths) averaged over all cross-arm pairings. */
+export function judgedGain(weights: JudgeWeights, code: number, vote: Vote): number {
+  if (weights.code === 0) return 0.5 * (vote.judge + vote.holistic);
+  const judged = (weights.step ?? JUDGE_STEP) * weights.judge * (vote.judge + vote.holistic);
+  return (weights.code * code + judged) / (weights.code + 2 * weights.judge);
+}
+
+export function judgedPairs(
+  key: string,
+  solves: { readonly old: readonly string[]; readonly fresh: readonly string[] },
+  valid: { readonly old: readonly boolean[]; readonly fresh: readonly boolean[] },
+): [fresh: number, old: number][] {
+  const ranked = (side: "old" | "fresh") =>
+    solves[side]
+      .flatMap((solve, at) => (valid[side][at] === true ? [{ at, rank: sha256(`${key}:${solve}`) }] : []))
+      .toSorted((one, other) => compareCodeUnits(one.rank, other.rank))
+      .map(({ at }) => at);
+  const old = ranked("old");
+  return ranked("fresh").flatMap((f, index) => {
+    const o = old[index];
+    return o === undefined ? [] : [[f, o]];
+  });
+}
+
 export function pointsOf(pair: Paired): Measures {
   let validity = 0;
   const gains: number[] = [];
   for (const [f, freshValid] of pair.fresh.entries()) {
     for (const [o, oldValid] of pair.old.entries()) {
       if (freshValid !== oldValid) validity += freshValid ? 1 : -1;
-      else if (freshValid) gains.push(objectiveGain(pair, f, o));
+      else if (freshValid) gains.push(floored(codeGain(pair, f, o)));
     }
   }
   const each = POINTS_SCALE / (pair.fresh.length * pair.old.length);
+  const { weights, votes = [] } = pair.judged ?? {};
+  const objective =
+    weights === undefined || votes.length === 0
+      ? orderFreeSum(gains)
+      : (orderFreeSum(
+          votes.map((vote) => judgedGain(weights, floored(codeGain(pair, vote.fresh, vote.old)), vote)),
+        ) *
+          gains.length) /
+        votes.length;
   return {
     validity: validity * WEIGHTS.validity * each,
-    objective: orderFreeSum(gains) * WEIGHTS.objective * each,
+    objective: objective * WEIGHTS.objective * each,
   };
 }
 
-/** Order-independent sum (smallest magnitude first per sign) so swapping sides negates exact half-points symmetrically. */
 function orderFreeSum(gains: readonly number[]): number {
   const sizes = (sign: number) =>
     gains
@@ -259,7 +324,6 @@ function orderFreeSum(gains: readonly number[]): number {
   return sumOf(sizes(1)) - sumOf(sizes(-1));
 }
 
-/** Rounds halves away from zero with no -0 so swapping sides exactly negates scores. */
 export function wholePoints(points: number): number {
   const rounded = Math.sign(points) * Math.round(Math.abs(points));
   return rounded === 0 ? 0 : rounded;
@@ -270,7 +334,6 @@ export function differenceOf(pair: Paired): number {
   return wholePoints(validity + objective);
 }
 
-/** Deciding part of a non-tied task (`validity` if its sign matches the total, else `objective`). */
 export function carriedBy({ validity, objective }: Measures): keyof Measures | null {
   const sign = Math.sign(wholePoints(validity + objective));
   if (sign === 0) return null;
@@ -299,7 +362,6 @@ export function scored(pairs: readonly Paired[]) {
   return { ...testOf(differences), differences };
 }
 
-/** Deterministic `count`-item subset of `versions` ranked by `sha256(seed:version)`. */
 export function draw(versions: readonly string[], count: number, seed: string): string[] {
   const pool = [...new Set(versions)];
   if (pool.length < count) {
@@ -312,14 +374,13 @@ export function draw(versions: readonly string[], count: number, seed: string): 
     .map(({ version }) => version);
 }
 
-/** Builds paired comparison records from the log, taking the first `solves` started per side and excluding disputed/short tasks. */
 export function pairsOf(
   events: readonly LogEvent[],
   versions: readonly string[],
   sides: Sides,
   solves: number,
 ) {
-  const { old, fresh, setting, comparison, halves, objective, upTo = events.length - 1 } = sides;
+  const { old, fresh, setting, comparison, halves, objective, judge, upTo = events.length - 1 } = sides;
   if (old === fresh && halves === undefined) {
     throw new Error(`a comparison sets two harnesses against each other, and both sides are ${old}`);
   }
@@ -342,6 +403,7 @@ export function pairsOf(
   );
   const disputed = versions.filter((task) => states.get(task) === "disputed");
   const short: string[] = [];
+  const cast = judge === undefined ? null : votesIn(events, comparison, upTo);
   const pairs = versions.flatMap((task, place): Paired[] => {
     const state = states.get(task);
     if (state === "disputed") return [];
@@ -355,8 +417,6 @@ export function pairsOf(
       throw new Error(`task ${task} ${why}; only a held-out task is scored`);
     }
     const under = (harness: string) => byKey.get(`${task}\u0000${harness}`) ?? [];
-    // Mirror A/A split across tasks (0,3 vs 1,2 mod 4): always putting earlier solves first showed
-    // order bias across 234 controls (446-363, p=0.004) vs balanced (405-404) when mirrored.
     const ran = old === fresh ? place * 2 * solves : 0;
     const first = (slot: number) => halves === undefined || (ran + slot) % 4 === 0 || (ran + slot) % 4 === 3;
     const reference = under(old);
@@ -372,11 +432,21 @@ export function pairsOf(
       fresh: after.slice(0, solves).map(of),
     });
     const measured = side(({ id }) => measures.get(id) ?? null);
+    const valid = side((solve) => passed(solve) === true);
+    const ids = side(({ id }) => id);
+    const votes =
+      cast === null
+        ? []
+        : judgedPairs(`${comparison}:${task}`, ids, valid).flatMap(([f, o]) => {
+            const vote = cast.get(`${ids.fresh[f] ?? ""}\u0000${ids.old[o] ?? ""}`);
+            return vote === undefined ? [] : [{ fresh: f, old: o, ...vote }];
+          });
     return [
       {
         task,
-        ...side((solve) => passed(solve) === true),
-        solves: side(({ id }) => id),
+        ...valid,
+        solves: ids,
+        ...keyIfDefined("judged", judge === undefined ? undefined : { weights: judge, votes }),
         used: side(({ end }): SolveCost => ({ billed: isNumber(end.billed) ? end.billed : null })),
         ...keyIfDefined("objective", objective === undefined ? undefined : { ...objective, ...measured }),
       },

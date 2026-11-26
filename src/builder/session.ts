@@ -1,23 +1,3 @@
-/**
- * One Builder session: the agent that changes a Built Harness, and the host around it.
- * Continuations share finish's counted practice evidence for the current exact digest, including
- * states restored after a different harness snapshot was frozen.
- *
- * What v1's Builder (harness-builder-v4 at 7af7315) did and this one does not: write tasks and
- * checks, set its solver's limits, and submit a candidate through checks. The Examiner writes
- * tasks, the checks are fixed, the host owns every limit, and a harness is judged by a comparison
- * rather than refused at submission.
- *
- * The session ends at `finish`, at its deadline, session turn limit or dollar cap, or when a
- * practice solve could not be run. A solve's prompt limit counts prompts, as v1's did; the session
- * turn limit counts model turns, since a Builder that keeps calling tools would otherwise have
- * only its deadline. The deadline, kill and halt reach a practice solve in flight, so the session
- * ends when they fall rather than a solve's whole time limit later. A solve still waiting in the
- * solve queue leaves on them unstarted, which is
- * the session's end and no host fault. A practice solve that throws anything else is the verifier
- * failing to decide, which stops a run: the session writes its record, freezes what it has, and
- * throws it again.
- */
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
@@ -35,24 +15,38 @@ import { isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import type { RefereeFinding } from "../referee/referee.ts";
-import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../tools/command.ts";
+import type { AuditFinding } from "../audit/auditor.ts";
+import {
+  type CommandSandbox,
+  networkReach,
+  type SolveDirs,
+  solveDirs,
+  sandboxBase,
+} from "../tools/command.ts";
 import type { PublicResource } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
 import { openHarness } from "../harness/open.ts";
 import { type PublicTask, publicView } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
-import { type Sat, type SeatTool, sessionClock, sit } from "../agent/session.ts";
-import { claimRoot } from "../wall/seat-root.ts";
-import { campaignOf } from "../campaign/handover.ts";
-import { copyHarness, harnessNow, type HarnessSnapshot, HOME_TOOL_TREE, seedKept, snapshot } from "./kept.ts";
+import { type AgentRun, type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
+import { claimRoot } from "../sandbox/sandbox-root.ts";
+import { openingOf } from "../campaign/opening.ts";
+import { campaignOf } from "../campaign/summary.ts";
+import {
+  copyHarness,
+  harnessNow,
+  type HarnessSnapshot,
+  HOME_TOOL_TREE,
+  seedSavedHarnesses,
+  snapshot,
+} from "./store.ts";
 import { builderMemoryBlock, keepMemory } from "./memory.ts";
-import { comparisonsTold, failsTold, startTold } from "./past.ts";
+import { formatComparisonHistory, formatPracticeFailures, formatSessionStart } from "./past.ts";
 import {
   continuation,
   firstMessage,
-  SAID,
+  MODE_PROMPTS,
   type Solver,
   systemPrompt,
   type Used,
@@ -73,24 +67,18 @@ import {
 
 const BUILD_FINISHED = "build.finished";
 
-/** The event a session starts with, which names its parent and what it practises on. */
 const BUILD_STARTED = "build.started";
 
-/** A released task the Builder may practise on: its version, and what a solver is shown of it. */
 export interface PracticeTask {
   readonly version: string;
   readonly task: PublicTask;
 }
 
-/** One practice solve: the id its events carry in the log, and how it ended. */
 export interface Practised {
   readonly solve: string;
   readonly ending: Ending;
 }
 
-/** The host's limits on a session: its deadline, session turn limit, shell limits and practice solves.
- *  `turns` caps the model's turns, where a solve's caps its
- *  prompts. `concurrency` is how many practice solves run at once. */
 interface BuildLimits extends Limits {
   readonly practiceSolves: number;
 }
@@ -98,104 +86,58 @@ interface BuildLimits extends Limits {
 type BuildClock = ReturnType<typeof sessionClock>;
 
 export interface BuildRequest {
-  /** Names the session in the log. */
   readonly id: string;
-  /** The harness state the session starts from, v1's format (`src/harness/open.ts`). */
   readonly parent: string;
-  /** The reference harness's kept state: what the harness the session leaves is compared with,
-   *  and what a practice solve may run under on request. */
   readonly reference: string;
-  /** Where a frozen harness is kept, under its digest. The caller's, outside every wall. */
   readonly states: string;
-  /** Where the campaign keeps each session's notes, a folder a session (`memory.ts`). The
-   *  caller's, outside every wall. */
   readonly memory: string;
-  /** Released tasks, and nothing else. */
   readonly tasks: readonly PracticeTask[];
   readonly contract: Contract;
-  /** The public resources each solve's home holds, which the session's home holds as one file. */
   readonly resources: readonly PublicResource[];
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: BuildLimits;
-  /** What a practice solve is held to, which `preview_harness` shows a solver being told. The
-   *  session's own deadline, session turn limit and command limits are `limits`. */
   readonly solve: Limits;
-  /** Who solves with the harness, in practice and in every comparison: the campaign's setting, as a
-   *  condition names the model. The opening tells it, since a guide that serves one solver well can
-   *  leave another short (`firstMessage`). */
   readonly solver: Solver;
-  /** The backends, built on the home the Builder's model process keeps its state in. */
-  readonly models: (home: string, shutdown: AbortSignal) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
   readonly log: string;
-  /** The repository, closed to every command, and its other worktrees and the stored pack, closed
-   *  with it (`Walled`). */
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
   readonly packRoots?: readonly string[] | undefined;
-  /** One solve of a released task under the test condition, with the harness frozen in `harness`
-   *  and digested as `digest`. The caller builds the condition and records it (`recordCondition`),
-   *  and hands `kill` to the solve, which the session aborts when it ends. A throw ends the session. */
   readonly practise: (
     task: PracticeTask,
     harness: string,
     digest: string,
     kill: AbortSignal,
   ) => Promise<Practised>;
-  /** The Referee, when the caller has a reader for it. `kill` is for its reader. */
   readonly referee?:
-    | ((solve: string, task: PracticeTask, kill: AbortSignal) => Promise<RefereeFinding>)
+    | ((solve: string, task: PracticeTask, kill: AbortSignal) => Promise<AuditFinding>)
     | undefined;
-  /** The dollar cap the session's spend is held to, where its solves are paid for: a round's own,
-   *  or the session's where it runs with no comparison after it. No practice solve starts that a
-   *  reserve for it would take past the cap (`practiceTool`), and no request of the Builder's own
-   *  once what the session billed has reached it (`before`). */
   readonly cap?: Cap | undefined;
-  /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
-  /** Campaign tools and advice, supplied by the host. The Builder remains the only build-side agent. */
   readonly campaign?: (bench: Bench) => {
-    readonly tools: SeatTool[];
+    readonly tools: AgentTool[];
     readonly hook: () => string;
-    /** Halts the conversation where the campaign has ended, as `hook` does, and renders nothing:
-     *  before each model request, where a status would be discarded. */
     readonly halts?: () => void;
-    /** Settles once no action of the campaign's runs: an Examiner session writing beside the
-     *  conversation ends on record before the conversation does, however the conversation ended. */
     readonly closing?: () => Promise<void>;
-    /** A move the host makes as the conversation opens, and what it said of it, which the opening
-     *  message carries, or nothing: the campaign's first Examiner session. */
     readonly start?: () => Promise<string>;
-    /** What `finish` tells the Builder where no comparison has read harness `digest` against the
-     *  reference, or null (`finishNotice`, `tools.ts`). */
     readonly unmeasured?: (digest: string) => Promise<string | null>;
   };
 }
 
 export interface Built {
-  /** The digest of what the session left, or of the last state it practised with when what it
-   *  left does not open; null when it has neither. */
   readonly harness: string | null;
-  /** Where the frozen harness is kept; null when nothing changed or nothing opens. */
   readonly dir: string | null;
   readonly changed: boolean;
-  /** How the session ended: by `finish`, at a limit, or otherwise. A session a practice solve
-   *  halted is logged as crashed and returns nothing: it throws. */
   readonly ended: "finished" | "wall" | "turns" | "killed" | "crashed" | "stopped";
 }
 
-/** How a session may end, the first that holds winning: `finish` over a limit that fell in the same turn. */
 const ENDINGS = ["finished", "killed", "wall", "crashed", "turns"] as const;
 
-/** A practice solve by the runner, with the id of the attempt that ended it: the id its trace and its
- *  verdict carry in the log, which the reviewers and `read_trace` are asked for. */
 export async function practised(request: SolveRequest): Promise<Practised> {
   const ending = await solve(request);
   const events = read(request.log, TRACE_KINDS);
   const last = endedSolves(solvesIn(events).filter(({ id }) => id.startsWith(`${request.id}-`))).at(-1);
-  // The condition says which harness the solve ran, and the solve says which it opened. A harness
-  // whose digest moved with where it sat once made the two differ, and a comparison counted by the
-  // first would have scored solves of the second.
   const named = conditionsOf(events).get(request.condition)?.harness;
   const opened = last?.end.harness;
   if (named !== undefined && isString(opened) && opened !== named) {
@@ -204,17 +146,9 @@ export async function practised(request: SolveRequest): Promise<Practised> {
   return { solve: last?.id ?? request.id, ending };
 }
 
-/** Keep the state an interrupted session's own practice solve last ran on as a harness snapshot, once,
- *  where it changed the parent and its saved state opens. A cut harness is passed over
- *  (`latestBuilt`) as one left half way through an edit, but a practised state is no half-edit,
- *  and a session that crashed or was stopped with one would otherwise leave the next to rebuild it
- *  from its notes or begin from the starter. */
 export async function keepPractised(log: string, id: string, states: string): Promise<void> {
   const events = read(log, TRACE_KINDS);
   const mine = events.filter(ownedBy(events, id));
-  // Practice under the parent or reference is not this session's edit (`under`, `tools.ts`): every session's
-  // parent and every harness promoted stand before this session's own. One that ran before the
-  // session's last harness snapshot ran a harness that snapshot already keeps or supersedes.
   const earlierHarnesses = new Set(
     events.flatMap(({ kind, data }) =>
       kind === BUILD_STARTED ? [data.parent] : isReferenceChange(kind) ? [data.harness] : [],
@@ -234,20 +168,12 @@ export async function keepPractised(log: string, id: string, states: string): Pr
   append(log, "build.checkpoint", { session: id, harness });
 }
 
-/** Keep the notes of session `id`, cut by a stop or a lost process, from its home while the home
- *  stands, as its own end would have (`keepMemory`), since a stop releases the home with the notes
- *  in it and the next session would open on the starter's. */
 export function keepCutNotes(log: string, id: string): void {
   const { home } = sessionDirs(log, id);
   if (existsSync(home)) keepMemory(home, join(dirname(log), "memory"), id);
 }
 
-/** The released tasks' public parts as `practice/<task>.json` of a Builder's home, laid afresh. A
- *  session lays them as it opens and a campaign again after a release, so a link a Builder left
- *  there is removed, never written through. */
 export function layPractice(home: string, tasks: readonly PracticeTask[]): void {
-  // Laid beside the folder and renamed in, so a Builder's shell never lists it empty; the old one,
-  // or a link planted in its place, is moved aside whole and removed without being followed.
   const [folder, next, old] = [
     join(home, "practice"),
     join(home, ".practice-next"),
@@ -262,20 +188,15 @@ export function layPractice(home: string, tasks: readonly PracticeTask[]): void 
     );
   }
   if (existsSync(folder)) renameSync(folder, old);
-  // A dangling link, which `existsSync` does not see.
   rmSync(folder, { force: true });
   renameSync(next, folder);
   rmSync(old, { recursive: true, force: true });
 }
 
-/**
- * The session over a home and a host-only folder that already exist. `walled` supplies the tools
- * that need the command wall, so that everything else here runs, and is tested, without one.
- */
 export async function session(
   request: BuildRequest,
   dirs: Pick<SolveDirs, "home" | "host">,
-  walled: (bench: Bench) => SeatTool[],
+  walled: (bench: Bench) => AgentTool[],
   env?: ExecutionEnv,
 ): Promise<Built> {
   const { log, limits, model } = request;
@@ -295,24 +216,25 @@ export async function session(
   copyHarness(request.parent, join(dirs.home, "harness"));
   layPractice(dirs.home, request.tasks);
   writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
-  // The account of a harness's files is this host's, whichever harness the session forks.
   writeFileSync(join(dirs.home, "HARNESS.md"), HARNESS_ACCOUNT);
-  seedKept(dirs.home, request.states, before, parent.digest);
+  seedSavedHarnesses(dirs.home, request.states, before, parent.digest);
+  const { practiceSolves, ...sessionLimits } = limits;
+  const boundedByBudget = request.campaign !== undefined && openingOf(before)?.budget != null;
   append(log, BUILD_STARTED, {
     session: request.id,
     parent: parent.digest,
     tasks: request.tasks.map(({ version }) => version),
     model: priceKey(model),
     effort: request.effort,
-    limits: { ...limits },
+    limits: {
+      ...sessionLimits,
+      ...keyIfDefined("practiceSolves", boundedByBudget ? undefined : practiceSolves),
+    },
   });
-  // The deadline counts the Builder's own time: its clock stops while a campaign action runs, which is
-  // the host's time (`Bench.within`). The session arms one timer, so no second clock cuts a
-  // Builder with a comparison in flight.
   const clock = sessionClock(began, limits.wallSeconds);
   const bench: Bench = {
     request,
-    said: SAID[request.campaign === undefined ? "host" : "builder"],
+    modePrompts: MODE_PROMPTS[request.campaign === undefined ? "host" : "builder"],
     tasks: request.tasks,
     reference: { dir: request.reference, harness: await openHarness(request.reference) },
     home: dirs.home,
@@ -331,7 +253,6 @@ export async function session(
   return await converse(bench, dirs.host, clock, walled, env);
 }
 
-/** Rebuilt from public facts, including tasks released while the conversation stays open. */
 function openingFor(bench: Bench): string {
   const { request } = bench;
   const recorded = read(request.log, CALL_KINDS);
@@ -350,7 +271,6 @@ function openingFor(bench: Bench): string {
       { parent: bench.parent, reference: bench.reference.harness.digest },
       request.contract,
     ),
-    // The count it opens with is the one `practice` holds it to (`practiceLeft`).
     {
       ...request.limits,
       practiceSolves: practiceLeft(bench, recorded),
@@ -358,13 +278,12 @@ function openingFor(bench: Bench): string {
       solve: request.solve,
     },
     {
-      start: `${startTold(campaign, bench.parent, request.id)}${moved}`,
-      fails: failsTold(
+      start: `${formatSessionStart(campaign, bench.parent, request.id)}${moved}`,
+      fails: formatPracticeFailures(
         campaign.fails,
         new Map(bench.tasks.map(({ version, task }) => [version, task.taskId])),
       ),
-      comparisons: comparisonsTold(campaign.steps),
-      // The notes of the sessions this campaign started before this one, from its own store.
+      comparisons: formatComparisonHistory(campaign.steps),
       memory: builderMemoryBlock(
         request.memory,
         recorded
@@ -377,12 +296,11 @@ function openingFor(bench: Bench): string {
   );
 }
 
-/** The live conversation; its clock pauses while a campaign action owns the host. */
 async function converse(
   bench: Bench,
   host: string,
   clock: BuildClock,
-  walled: (bench: Bench) => SeatTool[],
+  walled: (bench: Bench) => AgentTool[],
   env: ExecutionEnv | undefined,
 ): Promise<Built> {
   const { request } = bench;
@@ -391,10 +309,6 @@ async function converse(
   const campaign = request.campaign?.(bench);
   const first = opening();
   const turns: AssistantMessage[] = [];
-  // What the session has used of its limits, as every turn's tool results and every continuation
-  // say it. A session under a cap reads what its practice solves billed from the log. Every
-  // session counts a turn before its tools run, so while they run its count holds the turn they
-  // belong to. `usedLine` adds one to the completed-turn count it is given.
   const used = (moment: "during-tools" | "between-turns" = "between-turns"): Used => ({
     turns: turns.length - (moment === "during-tools" ? 1 : 0),
     seconds: clock.seconds(),
@@ -404,9 +318,6 @@ async function converse(
     ),
     practised: bench.opened?.harness.digest ?? null,
   });
-  // The line goes under the first result of each turn, once a turn, rather than under every call or
-  // the last, which a call pi refuses before it runs (a tool the session lacks, arguments its schema
-  // refuses) never reaches. A result is a result whichever call made it.
   let told = false;
   let compacted = false;
   const footer = () => {
@@ -422,7 +333,7 @@ async function converse(
     openingTool(() => {
       compacted = false;
       return campaign === undefined ? first : opening();
-    }, bench.said.opening),
+    }, bench.modePrompts.opening),
     finishTool(bench, campaign?.unmeasured),
     ...(campaign?.tools ?? []),
   ].map((each) => endingWith(each, footer));
@@ -438,35 +349,28 @@ async function converse(
     if (bench.halt.signal.aborted) throw new Error("The session has ended at a bound.");
   };
   const started = (await campaign?.start?.()) ?? "";
-  const sat = await sit({
+  const sat = await runAgent({
     models: request.models,
     home: join(host, "model"),
+    cwd: bench.home,
     id: request.id,
     model,
     effort: request.effort,
-    system: systemPrompt(bench.said),
+    system: systemPrompt(bench.modePrompts, request.contract.objective),
     opening: [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
     tools,
     ...keyIfDefined("env", env),
     trace: { log, of: "build" },
-    // A campaign conversation's bounds are the campaign's, asked of the table (`halts`), and a
-    // session by hand is held to its dollar cap, before a request and again after a compaction, which
-    // bills too, rather than practice alone, which would let a session bill turns past a campaign's
-    // total until its finish, its turn limit or its deadline. A campaign
-    // conversation's cap is what was left when it opened, and the operator's word can raise the
-    // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
-    // already has it.
     before: halted,
     turns,
     most: limits.turns,
-    // A finish or a host fault ends after the round, even beside another call in that round.
     over: () => bench.note !== null || bench.fatal !== null,
     next: async () => {
       if (bench.note !== null) return null;
       const harness = await harnessNow(bench);
       const practice =
         isString(harness) && hasPractice(bench, read(log, TRACE_KINDS), harness) ? "counted" : "uncounted";
-      return [continuation(used(), limits, harness, bench.said, practice), campaign?.hook() ?? ""]
+      return [continuation(used(), limits, harness, bench.modePrompts, practice), campaign?.hook() ?? ""]
         .filter((part) => part !== "")
         .join("\n\n");
     },
@@ -483,20 +387,10 @@ async function converse(
   return await finishSession(bench, sat, clock, turns.length);
 }
 
-/** Freeze and record whatever the bounded session left, including its last usable practice state. */
-async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: number): Promise<Built> {
+async function finishSession(bench: Bench, sat: AgentRun, clock: BuildClock, turns: number): Promise<Built> {
   const { request } = bench;
   const { log, limits } = request;
   const crash = (sat.cut ? null : sat.thrown) ?? bench.fatal?.message ?? sat.crash;
-  // Whatever ended the session, what `harness/` holds is frozen: a session cut at its deadline still
-  // made its edits, and the comparison is what says whether they count.
-  //
-  // Where what it holds does not open, the session is not lost with it: the last state it
-  // practised with is what is measured, and `broken` says why the final one was not. That a harness
-  // opens is all that is left of v1's submission check, and there a round that ended refused measured
-  // nothing: 13 firmware rounds, 3,803 minutes, by v1's count. A session cut at its deadline half way
-  // through an edit ends so, and the state before it was one real solves ran on. A session that
-  // never practised has no such state, and leaves none.
   let frozen: HarnessSnapshot | null;
   let broken: string | null = null;
   try {
@@ -524,7 +418,6 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
   const ended: Built["ended"] =
     bench.fatal === null ? (ENDINGS.find((reason) => by[reason]) ?? "stopped") : "crashed";
   if (INTERRUPTED.has(ended)) await keepPractised(log, request.id, request.states);
-  // Kept before the session is recorded as ended, so a session on record as ended has its notes.
   keepMemory(bench.home, request.memory, request.id);
   append(log, BUILD_FINISHED, {
     session: request.id,
@@ -548,13 +441,6 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
   };
 }
 
-/**
- * Why no command will go on with session `id` from this log, or null when it never started, or
- * ended whole. A command asks before it starts the session, and a stop to say what it cut. One
- * that started and never finished is refused, since its harness is gone and a second session under
- * one id would be a second try. So is one that was killed or that crashed: what it froze is half a
- * session's work.
- */
 export function spent(events: readonly LogEvent[], id: string): string | null {
   const mine = events.filter(({ data }) => data.session === id);
   if (!mine.some(({ kind }) => kind === BUILD_STARTED)) return null;
@@ -567,10 +453,6 @@ export function spent(events: readonly LogEvent[], id: string): string | null {
     : null;
 }
 
-/** What session `id` left, from the log: undefined when it never ran, and otherwise the harness to
- *  compare, null when it left none, with why when what it left does not open. A session whose last
- *  state does not open leaves the last state it practised with, when it has one, so a harness and
- *  a `broken` may come back together. */
 async function left(events: readonly LogEvent[], request: BuildRequest, parent: string) {
   const mine = events.filter(({ data }) => data.session === request.id);
   const started = mine.find(({ kind }) => kind === BUILD_STARTED)?.data;
@@ -590,13 +472,6 @@ async function left(events: readonly LogEvent[], request: BuildRequest, parent: 
   return { kept: { dir, digest: finished.harness }, broken };
 }
 
-/**
- * Run session `request.id` once, and say what it left. A session the log already holds is not run
- * again: it is read from the log, whether it ran now or in an earlier run of the command, and one
- * that did not end whole is refused (`spent`). It is the session of a round, which then compares
- * what it left, and the whole of a session run with no comparison after it, since several sessions
- * can be measured together in one standalone comparison.
- */
 export async function sessionOnce(
   request: BuildRequest,
   builder?: (request: BuildRequest) => Promise<Built>,
@@ -610,22 +485,15 @@ export async function sessionOnce(
   return built;
 }
 
-/** The directories of session `id` of the campaign whose log is `log`, named for both. Named for
- *  the id alone, a session stopped on one campaign refused its id to every campaign on the host:
- *  its root stayed, and the claim on a root is how a second session under one id is refused. */
 export const sessionDirs = (log: string, id: string): SolveDirs =>
   solveDirs(`build-${basename(dirname(log))}-${id}`);
 
-/** One session under the solver's command wall: claim its root, run, tear down. The Builder's
- *  home is in its root, as a solve's is, so its edits last between commands and are closed to
- *  every other solve. */
 export async function build(request: BuildRequest): Promise<Built> {
   const dirs = sessionDirs(request.log, request.id);
-  // Before the try: a claim refused because another round's session holds this id cleans up nothing.
   const release = await claimRoot(dirs.root);
   try {
-    const wall: CommandWall = {
-      base: await walledBase(
+    const wall: CommandSandbox = {
+      base: await sandboxBase(
         dirs,
         { repoRoot: request.repoRoot, otherTrees: request.otherTrees, packRoots: request.packRoots },
         "a Builder",

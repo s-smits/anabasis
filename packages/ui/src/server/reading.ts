@@ -1,40 +1,24 @@
 /**
- * One campaign's reading: its row in the list, and the whole of what the Campaign pane draws.
- *
- * Every number is a fold's, or computed from one (`folds.ts`): the steps, the supply and the two
- * harnesses are `campaignOf`'s, the next move is the decision table's asked as `bun run runs view`
- * asks it (`decidedOn`, `tools/runs/view.ts`), so that the page and the view name one move on one
- * log by construction.
- *
- * A campaign's project is the one its opening names (`Opening.project`, `--project` on the campaign
- * command). An older opening names none, and a campaign run by the
- * hand commands alone has no opening: both stand under `NO_PROJECT`, and no project is guessed for
- * them from a prompt or a name.
- *
- * The reason of a campaign that ended on its environment: it is the
- * error that ended it (`errorMessage`, `tools/d2/harness-builder.ts`), free text that may quote
- * whatever the failing step saw, where every other ending's reason is worded by the controller or
- * is the operator's own word. The next move is held to the same rule (`reasonSaid`): the table's
- * environment ending quotes the last crashed session's error (`decide.ts`), and it names that
- * ending before the campaign has logged it.
- *
- * An A/A control reads a step, for the counter, as the whole-run reader reads one: where either
- * side's scores clear the level (`readsStepEitherWay`, `compare.ts`; `tools/wri/read.ts`, "REFERENCE
- * AGAINST ITSELF"), since a step either way between two samples of one harness is a false one. The
- * report's own `p` is one-sided.
+ * One campaign's reading: its row in the list, and the whole of what the Campaign pane draws. Every
+ * number is a fold's or computed from one (`folds.ts`), and the next move is the decision table's
+ * asked as `bun run runs view` asks it (`decidedOn`), so the page and the view name one move on one
+ * log. A campaign with no opening project stands under `NO_PROJECT`, never guessed from a prompt or
+ * a name. An environment ending's reason is the error that ended the campaign and may quote
+ * whatever the failing step saw, so the default tier is not sent it, in a row or a next move
+ * (`reasonSaid`). An A/A control reads a step, for the counter, where its one-sided test clears
+ * the level (`isSignificant`), as `climb.ts` and the release bar read one.
  */
-import { type Decided, decidedLine, type Ending } from "../../../../src/campaign/move.ts";
-import { BARS } from "../../../../src/campaign/climb.ts";
-import { openSteps } from "../../../../src/campaign/handover.ts";
+import { type ScheduledAction, decidedLine, type Ending } from "../../../../src/campaign/move.ts";
+import { openSteps } from "../../../../src/campaign/summary.ts";
 import { reported } from "../../../../src/campaign/comparison.ts";
 import { namesOf } from "../../../../src/campaign/names.ts";
 import { budgetLeft } from "../../../../src/campaign/opening.ts";
-import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
+import { isSignificant } from "../../../../src/kernel/compare.ts";
 import { endedOf, patienceOf } from "../../../../src/kernel/reports.ts";
 import { billedAll, billedParts } from "../../../../src/kernel/meter.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
-import { recordedSetting } from "../../../../tools/d2/setting.ts";
+import { recordedSetting } from "../../../../tools/campaign/setting.ts";
 import { decidedOn } from "../../../../tools/runs/view.ts";
 import {
   type CampaignReading,
@@ -73,24 +57,20 @@ const WORDED: ReadonlySet<Ending> = new Set([
   "control",
   "finished",
 ]);
-/** What the default tier is sent of an environment ending's reason in a next move, whose type
- *  holds a reason for every move. */
+/** What the default tier is sent of an environment ending's reason in a next move, whose type holds
+ *  a reason for every move. */
 const ENVIRONMENT_WITHHELD = "withheld in the default tier: it quotes the error that ended a session";
 
-/** Whether `tier` is sent the reason of `ending`: every ending's in the exam tier, and in the
- *  default tier those the controller words itself (`WORDED`). */
 const reasonSaid = (ending: Ending, tier: Tier): boolean => examTier(tier) || WORDED.has(ending);
 
-/** How a campaign ended (`endedOf`), among the endings the page knows. */
 function endingOf(log: Log): { readonly ending: Ending; readonly why: string } | null {
   const ended = endedOf(log.events);
   const ending = ENDINGS.find((each) => each === ended?.ending);
   return ended === null || ending === undefined ? null : { ending, why: ended.why };
 }
 
-/** What a campaign's row holds of its log alone, kept with the log, and by the list in place of the
- *  log (`campaigns.ts`): the list is polled every few seconds, and most logs have not moved since
- *  the last poll. */
+/** What a campaign's row holds of its log alone, kept with the log and by the list in its place
+ *  (`campaigns.ts`), since most logs have not moved since the last poll. */
 export const factsIn = once((log) => {
   const { events } = log;
   const opening = openingIn(log);
@@ -114,8 +94,6 @@ export const factsIn = once((log) => {
   };
 });
 
-/** A campaign's row in the list, from its log's facts (`factsIn`), in `tier`, with `process` as
- *  the processes on the host say: `open` while one writes its log. */
 export function campaignRow(
   found: Found,
   { project, ending, opened: _opened, ...facts }: ReturnType<typeof factsIn>,
@@ -137,7 +115,6 @@ export function campaignRow(
   };
 }
 
-/** The table's next move as the view asks for it, or why it could not be asked. */
 const nextIn = once((log) => {
   try {
     return { decided: decidedOn(log.events), issue: null };
@@ -146,8 +123,7 @@ const nextIn = once((log) => {
   }
 });
 
-/** The next move as `tier` is sent it, its line built from the reason the tier may see. */
-function nextShown(decided: Decided, tier: Tier): NextMove {
+function nextShown(decided: ScheduledAction, tier: Tier): NextMove {
   const shown =
     decided.move === "end" && !reasonSaid(decided.ending, tier)
       ? { ...decided, why: ENVIRONMENT_WITHHELD }
@@ -155,8 +131,9 @@ function nextShown(decided: Decided, tier: Tier): NextMove {
   return { ...shown, line: decidedLine(shown) };
 }
 
-/** Who solves: the setting's solver (`recordedSetting`), else the opening's; the tasks a comparison
- *  scores, which only the setting records; and why the setting could not be read, where it could not. */
+/** Who solves (the setting's solver, `recordedSetting`, else the opening's), the tasks a comparison
+ *  scores, which only the setting records, and why the setting could not be read, where it could
+ *  not. */
 const solverIn = once((log) => {
   try {
     const setting = recordedSetting(log.events);
@@ -174,7 +151,6 @@ const solverIn = once((log) => {
   }
 });
 
-/** What is left of the campaign's total, and what the last comparison the cap did not cut billed. */
 function runwayIn(log: Log): Counters["runway"] {
   const left = budgetLeft(log.events);
   const last = reportsIn(log).findLast(({ data }) => data.capped !== true);
@@ -183,7 +159,6 @@ function runwayIn(log: Log): Counters["runway"] {
   return { left: left.dollars, each, comparison: last.session };
 }
 
-/** Everything of the reading that the tier does not change. */
 const coreIn = once((log) => {
   const campaign = campaignIn(log);
   const bars = barsIn(log);
@@ -192,7 +167,6 @@ const coreIn = once((log) => {
     prompt: openingIn(log)?.prompt ?? null,
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
-    bars: BARS,
     supply: { ...campaign.supply, doubted: doubtedIn(log).size },
     reference: campaign.reference,
     starter: starterIn(log),
@@ -208,18 +182,14 @@ const coreIn = once((log) => {
       patience: patienceOf(log.events),
       labels: { tasks: campaign.supply.awaiting, rejections: unsettledCount(log) },
       controls: bars.filter((bar) => bar.noise !== null).length,
-      controlSteps: bars.filter(
-        ({ noise, level }) => noise !== null && readsStepEitherWay(noise.scores, level),
-      ).length,
-      // What the promotion attempts under the current reference risk together (`falsePromotion`,
-      // `climb.ts`).
+      controlSteps: bars.filter(({ noise, level }) => noise !== null && isSignificant(noise.scores, level))
+        .length,
       risk: epochsIn(log).at(-1)?.falsePromotion ?? null,
       runway: runwayIn(log),
     },
   };
 });
 
-/** The whole reading of a campaign, in `tier`, with `row` as the list has it. */
 export function campaignReading(
   found: Found,
   log: Log,

@@ -1,6 +1,5 @@
-// A rejection's standing has one reader, `rulingsOf`, so a comparison's `rejections` and
-// practice's `rejectionAside` cannot disagree over a finding with no ruling, which a killed or
-// failed Referee leaves, behind an earned ruling before it.
+// A rejection's standing has one reader, `rulingsOf`, so a comparison's `rejections` and practice's
+// `rejectionAside` cannot disagree over a finding with no ruling behind an earned one.
 import { describe, expect, it } from "bun:test";
 import { rejections, type Fixed } from "../src/campaign/comparison.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";

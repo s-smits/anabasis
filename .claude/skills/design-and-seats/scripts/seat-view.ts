@@ -1,16 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Trace which seats import changed files and identify their information-boundary tests.
- *
- *   bun .claude/skills/design-and-seats/scripts/seat-view.ts [--base <rev>] [--file <path>]...
- *
- * Rule 3 requires Builder and solver messages to remain byte-identical when protected exam facts
- * change. This script uses the gate's importsOf reader to trace changed files from each seat's
- * owners. It prints the shortest import chain, relevant wall tests and their bun run test command.
- *
- * By default, compare the working tree, including untracked files, with HEAD's upstream merge base,
- * falling back to origin/main. --base selects another revision; repeated --file selects paths.
- * The import graph always comes from the working tree.
+ * Traces which seats import changed files and names their wall tests: `seat-view.ts [--base <rev>]
+ * [--file <path>]...`. Rule 3 keeps Builder and solver messages byte-identical when protected exam
+ * facts change; this follows the gate's `importsOf` from each seat's owners and prints the shortest
+ * import chain, the relevant wall tests and their test command. By default it compares the working
+ * tree, untracked files included, with the merge base of HEAD's upstream, else `origin/main`; the
+ * import graph always comes from the working tree.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -20,44 +15,41 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { importsOf, lines } from "#tools/runtime/gate.ts";
 
-/** A model seat whose messages the wall governs (`AGENTS.md` section 3). */
 type Seat = "Builder" | "solver" | "Examiner" | "Referee";
 
-/** One test that proves what the wall keeps from a seat: its file, and its `describe` or `it` name. */
+/** One test that proves what the wall keeps from a seat: its file, and its `describe` or `it` name.
+ */
 interface WallTest {
   readonly file: string;
   readonly name: string;
 }
 
 interface SeatEntry {
-  /** The modules that compose what the seat reads: its prompt, its tools and its session. */
   readonly owners: readonly string[];
   readonly tests: readonly WallTest[];
 }
 
-/** What a seat is reached by: each changed file it imports, with the chain from an owner to it. */
 interface Reach {
   readonly seat: Seat;
   readonly files: readonly { readonly file: string; readonly chain: readonly string[] }[];
   readonly tests: readonly WallTest[];
-  /** Changed files that are this seat's own wall tests. */
   readonly testsChanged: readonly string[];
 }
 
 type ImportsOf = (file: string) => readonly string[];
 
-/** "1 changed file reaches", "2 changed files reach". */
 const reaching = (count: number) => `${plural(count, "changed file")} ${count === 1 ? "reaches" : "reach"}`;
 
-/** Each seat's owners and wall tests, as the tree holds them; a moved seat file moves its row. */
 export const SEATS = {
   Builder: {
     owners: [
       "src/builder/prompt.ts",
       "src/builder/tools.ts",
       "src/builder/session.ts",
-      "tools/d2/campaign-actions.ts",
-      "tools/d2/harness-builder.ts",
+      "tools/campaign/campaign-actions.ts",
+      "tools/campaign/campaign-status.ts",
+      "tools/campaign/campaign-terms.ts",
+      "tools/campaign/harness-builder.ts",
     ],
     tests: [
       { file: "test/builder.test.ts", name: "what crosses to the Builder" },
@@ -111,7 +103,7 @@ export const SEATS = {
     ],
   },
   Referee: {
-    owners: ["src/referee/referee.ts", "src/referee/draft-audit.ts"],
+    owners: ["src/audit/auditor.ts", "src/audit/draft-audit.ts"],
     tests: [
       {
         file: "test/review.test.ts",
@@ -121,13 +113,12 @@ export const SEATS = {
   },
 } satisfies Record<Seat, SeatEntry>;
 
-/** The repository files each file imports, read as the CI gate's `--static` pass reads them. */
 export function importsIn(root: string): ImportsOf {
   return (file) => importsOf(root, file);
 }
 
-/** Every file the owners reach at any depth, with the shortest chain of imports from an owner to it,
- *  the owner first and the file last. */
+/** Every file the owners reach, with the shortest chain of imports from an owner to it, the owner
+ *  first and the file last. */
 function reachOf(owners: readonly string[], graph: ImportsOf): Map<string, readonly string[]> {
   const chains = new Map<string, readonly string[]>(owners.map((owner) => [owner, [owner]]));
   let layer = [...owners];
@@ -145,7 +136,6 @@ function reachOf(owners: readonly string[], graph: ImportsOf): Map<string, reado
   return chains;
 }
 
-/** For each seat, the changed files it reaches and the changed files that are its own wall tests. */
 export function seatsOf(changed: readonly string[], graph: ImportsOf): Reach[] {
   return Object.entries(SEATS).map(([seat, entry]): Reach => {
     const chains = reachOf(entry.owners, graph);
@@ -163,7 +153,6 @@ export function seatsOf(changed: readonly string[], graph: ImportsOf): Reach[] {
   });
 }
 
-/** The owners and wall tests the table names that the tree at `root` no longer holds. */
 export function absentFrom(root: string): string[] {
   return Object.values(SEATS).flatMap((entry): string[] => [
     ...entry.owners.filter((owner) => !existsSync(join(root, owner))),
@@ -174,8 +163,6 @@ export function absentFrom(root: string): string[] {
   ]);
 }
 
-/** What is said of `reaches` over `changed`: a block a seat reached, the files no seat reaches, and
- *  the test line. */
 export function seatLines(changed: readonly string[], reaches: readonly Reach[]): string[] {
   const touched = reaches.filter((reach) => reach.files.length > 0 || reach.testsChanged.length > 0);
   const reached = new Set(touched.flatMap((reach) => reach.files.map(({ file }) => file)));
@@ -211,7 +198,6 @@ export function seatLines(changed: readonly string[], reaches: readonly Reach[])
   ];
 }
 
-/** The files the working tree changed since `base`, untracked ones included. */
 function changedSince(root: string, base: string): string[] {
   return [
     ...new Set([
@@ -221,7 +207,6 @@ function changedSince(root: string, base: string): string[] {
   ].toSorted();
 }
 
-/** The merge base of HEAD with its upstream, else with `origin/main`. */
 function defaultBase(root: string): string {
   const upstream = gitMaybe(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
   const base = gitMaybe(root, "merge-base", "HEAD", upstream ?? "origin/main");

@@ -1,40 +1,23 @@
 /**
- * A light forecast of how much of each login's week every hour of the next `HORIZON` spends: an
- * xgboost-like predictor that costs next to no CPU (the operator's choice), to say on the day
- * whether use will rise. It is boosted regression trees of depth 2 of the rise an
- * hour (`fit`), on squared loss with xgboost's histogram splits, fitted afresh on every `runs usage` from the last 7, 14 or 28
- * days of readings, whichever reads the held-out hours best (`WINDOWS`): one model over every login,
- * applied to each login's own state. A longer window holds more weeks, a shorter one only the
- * pattern of the present release and its runs.
- *
- * The pool (`modelLines`, printed by `bun run runs usage`): a run moves to another login when one is
- * spent, so demand is one rate, in % of one login's week an hour, summed over the logins with room
- * left; the forecast spends it in five-minute steps for the next 4 weeks from the login whose week
- * resets soonest, each refilled at its reset. The pool is the logins a run may spend: those
- * `ANA_LOGINS` names and any that carries live runs already. A login out of the pool with no run is
- * a person's to spend, so it is neither demand nor room, and only its own lines forecast it. One
- * forecast is printed, the one that read the last hours held out best: the model's, where it beats
- * both older paces; otherwise the better of the week's pace (each login's share over its window so
- * far, floored at 12 hours, so a window minutes old does not extrapolate) and the per-run rate times
- * each login's live runs. Where the model is printed, each login's head line names the hour its week
- * ends by the model (`modelLines`), so the head and the forecast name one hour.
+ * A light forecast of how much of each login's week every hour of the next `HORIZON` spends, cheap
+ * enough for every `runs usage`: depth-2 boosted regression trees over the rise an hour, refitted
+ * from whichever of `WINDOWS` reads the held-out hours best. A run moves to another login when one
+ * is spent, so the pool's demand is one rate; a login outside `ANA_LOGINS` with no live run is a
+ * person's to spend. The model's forecast is printed only where it beats both older paces on the
+ * held-out hours.
  */
 import { HOUR_MS } from "#src/meta/clock.ts";
 
 export interface Snapshot {
   readonly at: number;
   readonly weeks: Record<string, { pct: number; reset: number }>;
-  /** Each login's live runs when the reading was taken; older readings hold none. */
   readonly runs?: Record<string, number>;
-  /** Each closed login's reset (`login-state.ts`); older readings hold none. */
-  readonly closed?: Record<string, number>;
 }
 
 interface Row {
   readonly at: number;
   readonly hours: number;
   readonly runs: number;
-  /** The login's week pace at the reading, in % of its week an hour, and what its week had left. */
   readonly pace: number;
   readonly left: number;
   readonly x: readonly number[];
@@ -50,8 +33,6 @@ interface Model {
   readonly trees: readonly Tree[];
 }
 
-/** How the model and the two older paces did on the held-out hours, and the model refitted on every
- *  row where it beat both there. */
 interface Assessment {
   readonly held: number;
   readonly days: number;
@@ -65,12 +46,9 @@ export interface Week {
   readonly login: string;
   readonly pct: number;
   readonly reset: number;
-  /** Whether a run may spend this week: the login is in the pool or carries live runs already. The
-   *  pool's demand and room are these weeks alone (`poolLine`, `modelLines`). */
   readonly room?: boolean;
 }
 
-/** A login's week end by the model, and whether its live runs kept going brought it sooner. */
 export interface End {
   readonly at: number | null;
   readonly runs: boolean;
@@ -80,7 +58,6 @@ const WEEK = 168 * HOUR_MS;
 const AHEAD = 4 * WEEK;
 const STEP = HOUR_MS / 12;
 const HORIZON = 24;
-/** The days a fit may read, each tried, the one with the lower held-out error kept. */
 const WINDOWS = [7, 14, 28] as const;
 const HELD = 48;
 const ROUNDS = 60;
@@ -89,28 +66,19 @@ const DEPTH = 2;
 const LEAF = 8;
 const CUTS = 32;
 const NONE = -1;
-/** The hours back the rise before a reading is read over. */
 const BEFORE = { least: 3, most: 6 } as const;
-/** Readings closer than this to the last one kept are a burst, and make no row of their own. */
 const APART = HOUR_MS / 2;
 
 /** The share of its week `week` has spent an hour since it opened, at `at`, floored at 12 hours so
  *  a window minutes old does not extrapolate. */
 export const weekPace = (week: { pct: number; reset: number }, at: number) =>
   week.pct / Math.max(12, (at - (week.reset - 168 * HOUR_MS)) / HOUR_MS);
-/** Whether reading `later` of a login's week is in the window of reading `earlier`: their resets
- *  agree within an hour and its use has not fallen. A fall is a window opened afresh without a new
- *  reset, as when a login's plan is upgraded and its use falls to 0% under one reset, so a rise read
- *  across it would be counted as none. */
 export const sameWindow = (earlier: { pct: number; reset: number }, later: { pct: number; reset: number }) =>
   Math.abs(earlier.reset - later.reset) < HOUR_MS && later.pct >= earlier.pct;
 const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
-/** The readings of `history` that counted live runs, in time order. */
 export const byTime = (history: readonly Snapshot[]) =>
   history.filter(({ runs }) => runs !== undefined).toSorted((one, other) => one.at - other.at);
 
-/** The rise an hour of `login` up to reading `index` of `sorted`, from the nearest reading `BEFORE`
- *  it in the same window, or `NONE`. */
 function riseBefore(sorted: readonly Snapshot[], index: number, login: string): number {
   const now = sorted[index]?.weeks[login];
   const at = sorted[index]?.at ?? 0;
@@ -125,7 +93,6 @@ function riseBefore(sorted: readonly Snapshot[], index: number, login: string): 
   return (now.pct - was.pct) / ((at - then.at) / HOUR_MS);
 }
 
-/** The features of `login` at reading `index` of `sorted`, before the horizon is added. */
 function stateOf(sorted: readonly Snapshot[], index: number, login: string): number[] {
   const { at, runs = {}, weeks } = sorted[index] ?? { at: 0, weeks: {} };
   const date = new Date(at);
@@ -143,7 +110,6 @@ const withHorizon = (state: readonly number[], at: number, hours: number) => [
   new Date(at + hours * HOUR_MS).getHours(),
 ];
 
-/** A row for each login and horizon at each reading at least `APART` after the last one kept. */
 function rowsOf(sorted: readonly Snapshot[]): Row[] {
   const kept: number[] = [];
   for (const [index, one] of sorted.entries()) {
@@ -180,7 +146,6 @@ function rowsOf(sorted: readonly Snapshot[]): Row[] {
   });
 }
 
-/** At most `CUTS` thresholds between the distinct values of `column`, spread over them. */
 function cutsOf(column: readonly number[]): number[] {
   const values = [...new Set(column)].toSorted((one, other) => one - other);
   const mids = values.slice(1).map((value, at) => (value + (values[at] ?? value)) / 2);
@@ -188,31 +153,38 @@ function cutsOf(column: readonly number[]): number[] {
   return mids.filter((_, at) => Math.floor(at % step) === 0);
 }
 
-/** The split of the rows `of` that most lowers the squared error of their residuals, read from
- *  each feature's histogram, or null with none that leaves `LEAF` rows a side. */
+function sumOf(of: readonly number[], values: Float64Array): number {
+  let sum = 0;
+  for (const at of of) sum += values[at] ?? 0;
+  return sum;
+}
+
 function bestSplit(
   of: readonly number[],
-  bins: readonly (readonly number[])[],
-  residuals: readonly number[],
+  bins: readonly Int32Array[],
+  residuals: Float64Array,
   cuts: readonly (readonly number[])[],
 ) {
   let best: { feature: number; bin: number; gain: number } | null = null;
-  const total = { n: of.length, sum: of.reduce((all, at) => all + (residuals[at] ?? 0), 0) };
+  const totalSum = sumOf(of, residuals);
   for (const [feature, row] of cuts.entries()) {
-    const count = Array.from({ length: row.length + 1 }, () => 0);
-    const sum = Array.from({ length: row.length + 1 }, () => 0);
+    const column = bins[feature] ?? new Int32Array(0);
+    const count = new Int32Array(row.length + 1);
+    const sum = new Float64Array(row.length + 1);
     for (const at of of) {
-      const bin = bins[at]?.[feature] ?? 0;
+      const bin = column[at] ?? 0;
       count[bin] = (count[bin] ?? 0) + 1;
       sum[bin] = (sum[bin] ?? 0) + (residuals[at] ?? 0);
     }
-    const low = { n: 0, sum: 0 };
+    let lowN = 0;
+    let lowSum = 0;
     for (let bin = 0; bin < row.length; bin += 1) {
-      low.n += count[bin] ?? 0;
-      low.sum += sum[bin] ?? 0;
-      const high = { n: total.n - low.n, sum: total.sum - low.sum };
-      if (low.n < LEAF || high.n < LEAF) continue;
-      const gain = (low.sum * low.sum) / low.n + (high.sum * high.sum) / high.n;
+      lowN += count[bin] ?? 0;
+      lowSum += sum[bin] ?? 0;
+      const highN = of.length - lowN;
+      if (lowN < LEAF || highN < LEAF) continue;
+      const highSum = totalSum - lowSum;
+      const gain = (lowSum * lowSum) / lowN + (highSum * highSum) / highN;
       if (best === null || gain > best.gain) best = { feature, bin, gain };
     }
   }
@@ -221,15 +193,16 @@ function bestSplit(
 
 function grow(
   of: readonly number[],
-  bins: readonly (readonly number[])[],
-  residuals: readonly number[],
+  bins: readonly Int32Array[],
+  residuals: Float64Array,
   cuts: readonly (readonly number[])[],
   depth: number,
 ): Tree {
   const split = depth === 0 || of.length < 2 * LEAF ? null : bestSplit(of, bins, residuals, cuts);
-  if (split === null) return { value: mean(of.map((at) => residuals[at] ?? 0)) };
+  if (split === null) return { value: sumOf(of, residuals) / of.length };
   const { feature, bin } = split;
-  const below = (at: number) => (bins[at]?.[feature] ?? 0) <= bin;
+  const column = bins[feature] ?? new Int32Array(0);
+  const below = (at: number) => (column[at] ?? 0) <= bin;
   return {
     feature,
     cut: cuts[feature]?.[bin] ?? 0,
@@ -247,43 +220,33 @@ function grow(
 const valueOf = (tree: Tree, x: readonly number[]): number =>
   "value" in tree ? tree.value : valueOf((x[tree.feature] ?? 0) < tree.cut ? tree.low : tree.high, x);
 
-/** The model of a login's rise an hour over each row's horizon. A model of the rise itself split
- *  the horizon too coarsely for the first hours, forecasting about two points at one hour where an
- *  hour mostly adds 0 or 1; the rate's held-out error is lower over nearly every horizon and cut,
- *  above all at one hour. */
 function fit(rows: readonly Row[]): Model {
   const xs = rows.map(({ x }) => x);
   const cuts = (xs[0] ?? []).map((_, feature) => cutsOf(xs.map((x) => x[feature] ?? 0)));
-  // Each row's bin, feature by feature: how many of that feature's cuts lie at or below its value,
-  // so a row is below cut `b` exactly when its bin is at most `b`.
-  const bins = xs.map((x) =>
-    cuts.map((row, feature) => row.filter((cut) => cut <= (x[feature] ?? 0)).length),
+  const bins = cuts.map((row, feature) =>
+    Int32Array.from(xs, (x) => row.filter((cut) => cut <= (x[feature] ?? 0)).length),
   );
   const all = rows.map((_, at) => at);
   const rates = rows.map(({ y, hours }) => y / hours);
   const base = mean(rates);
   const trees: Tree[] = [];
-  let guesses = rows.map(() => base);
+  const guesses = new Float64Array(rows.length).fill(base);
+  const residuals = new Float64Array(rows.length);
   for (let round = 0; round < ROUNDS; round += 1) {
-    const residuals = rates.map((rate, at) => rate - (guesses[at] ?? base));
+    for (const [at, rate] of rates.entries()) residuals[at] = rate - (guesses[at] ?? base);
     const tree = grow(all, bins, residuals, cuts, DEPTH);
     trees.push(tree);
-    guesses = guesses.map((guess, at) => guess + SHRINK * valueOf(tree, xs[at] ?? []));
+    for (const [at, x] of xs.entries()) guesses[at] = (guesses[at] ?? base) + SHRINK * valueOf(tree, x);
   }
   return { base, trees };
 }
 
-/** The rise `model` reads over `hours` from features `x`, never below none nor above `left`. */
 const predict = (model: Model, x: readonly number[], hours: number, left: number) =>
   Math.min(
     left,
     hours * Math.max(0, model.base + SHRINK * model.trees.reduce((sum, tree) => sum + valueOf(tree, x), 0)),
   );
 
-/** Fits on the rows of each of `WINDOWS` that end before the last `HELD` hours, and reads the mean
- *  absolute error on the rows of those hours for a login with room, of the fit with the lower one, of
- *  the week pace, and of `rateOf` the earlier readings times each row's runs, each capped at what the
- *  week has left. Null with no row to hold out or none to fit before it. */
 export function assess(
   history: readonly Snapshot[],
   now: number,
@@ -297,7 +260,6 @@ export function assess(
   const held = rows.filter(({ at, left }) => at >= cut && left > 0);
   const errorOf = (guess: (row: Row) => number) => mean(held.map((row) => Math.abs(guess(row) - row.y)));
   const since = (days: number) => rows.filter(({ at }) => now - at < days * 24 * HOUR_MS);
-  // A window reaching past the oldest reading reads what a shorter one did, so it is not fitted.
   const oldest = sorted[0]?.at ?? now;
   const tried = WINDOWS.filter(
     (_, at) => at === 0 || now - oldest >= (WINDOWS[at - 1] ?? 0) * 24 * HOUR_MS,
@@ -316,9 +278,7 @@ export function assess(
   return { held: held.length, days: best.days, error: best.error, week, run, model };
 }
 
-/** Each login's rise after the last reading of `history`, by `model`, hour by hour to `HORIZON`:
- *  never falling from one hour to the next, and never more than its week has left. */
-export function ahead(model: Model, history: readonly Snapshot[]): Record<string, number[]> {
+function ahead(model: Model, history: readonly Snapshot[]): Record<string, number[]> {
   const sorted = byTime(history);
   const last = sorted.at(-1);
   if (last === undefined) return {};
@@ -338,9 +298,6 @@ export function ahead(model: Model, history: readonly Snapshot[]): Record<string
   );
 }
 
-/** The hour `week` runs out from `at`, by `curve`, its rise hour by hour to `HORIZON`, or by `held`,
- *  the rise an hour its live runs would keep up, whichever is sooner, and past `HORIZON` at the mean
- *  rate of what those read by then. Null where it reaches its reset first. */
 function weekEnd(
   curve: readonly number[],
   week: { pct: number; reset: number },
@@ -374,7 +331,6 @@ const stamp = (at: number): string =>
     })
     .replace(" at ", " ");
 
-/** When the pool of `weeks` runs dry at `rate`, in % of one login's week an hour. */
 function forecast(weeks: readonly Week[], rate: number, now: number): string {
   if (weeks.length === 0) return "no login is in the pool or carries a run";
   const pool = weeks.map((week) => ({
@@ -395,7 +351,8 @@ function forecast(weeks: readonly Week[], rate: number, now: number): string {
       need -= take;
     }
     const open = gaps.at(-1)?.to === null ? gaps.at(-1) : undefined;
-    // A step that opens with no room is out even where a spent login's runs count no demand (`poolPace`).
+    // A step that opens with no room is out even where a spent login's runs count no demand
+    // (`poolPace`).
     if (need > 1e-9 || room <= 1e-9) {
       if (open === undefined) gaps.push({ from: at, to: null, by: "" });
     } else if (open !== undefined) {
@@ -423,11 +380,9 @@ function forecast(weeks: readonly Week[], rate: number, now: number): string {
 
 const roomy = (week: Week) => week.room !== false;
 const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
-/** The pool's rate at the week's pace, in % of one login's week an hour. */
 const poolPace = (weeks: readonly Week[], now: number) =>
   weeks.reduce((sum, week) => sum + (week.pct >= 100 ? 0 : weekPace(week, now)), 0);
 
-/** The pool's head line over `weeks`. */
 export function poolLine(weeks: readonly Week[], unread: number, now: number): string {
   const pool = weeks.filter(roomy);
   return `pool  ${perDay(poolPace(pool, now))} of one login's week at the week's pace; ${String(pool.length)} login${pool.length === 1 ? "" : "s"} refill ~${String(Math.round((pool.length * 100) / 7))}%/day${
@@ -437,15 +392,9 @@ export function poolLine(weeks: readonly Week[], unread: number, now: number): s
 
 export const endWords = (end: End, now: number) =>
   end.at === null
-    ? "lasts, by the model"
-    : `ends in ${spanOf(Math.round((end.at - now) / 60_000))} (${clock(end.at)}) by the model${end.runs ? " if its runs keep going" : ""}`;
+    ? "projected to last until reset"
+    : `projected to exhaust in ${spanOf(Math.round((end.at - now) / 60_000))} (${clock(end.at)})${end.runs ? " at current run pace" : ""}`;
 
-/** The one forecast: where the model beats both older paces on the hours held out, when the pool
- *  runs out at its pace over the next `HORIZON` hours and each login's rise at a few of those hours,
- *  with the hour each login's week ends, the sooner of its curve and the rise its live runs keep up
- *  at `rate` (`weekEnd`), which its head line says in place of its week's pace, so the head and the
- *  forecast name one hour; otherwise the pool at whichever of the week pace and the per-run rate read
- *  those hours better, what kept the model off, and no ends. */
 export function modelLines(
   weeks: readonly Week[],
   recorded: readonly Snapshot[],

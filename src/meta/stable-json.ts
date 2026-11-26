@@ -7,22 +7,10 @@ const { isArray } = Array;
 const objectKeys = Object.keys;
 const prototypeOf = Object.getPrototypeOf;
 
-/** Deterministic UTF-16 code-unit order. Locale collation must not shape persisted identities. */
 export function compareCodeUnits(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/**
- * Sorted-key JSON text, the one encoder behind every recorded identity and evidence digest. Keys
- * sort by UTF-16 code unit so identity is independent of locale; sorting with `localeCompare`
- * instead lets the host's own collation reach a recorded digest.
- *
- * The two encodings differ only in `undefined`. Identity (`"omit"`) drops undefined object
- * properties and writes any other undefined as null, so adding an optional field and leaving it
- * unset preserves the digest: campaign epoch keys and candidate handoffs are compared on exactly
- * that. Evidence (`"keep"`) writes `undefined` literally, so a truth check can tell an unresolved
- * path from a path holding null.
- */
 function encodeSorted(value: unknown, undefinedValues: "omit" | "keep"): string {
   if (isArray(value)) {
     return `[${Array.from(value, (item) => encodeSorted(item, undefinedValues)).join(",")}]`;
@@ -41,8 +29,6 @@ function encodeSorted(value: unknown, undefinedValues: "omit" | "keep"): string 
   return stringify(value) ?? (undefinedValues === "keep" ? "undefined" : "null");
 }
 
-/** Deterministic evidence encoding shared by comparison sessions and truth checks: a missing value
- *  stays distinct from null. It validates nothing; `stableJson` is the identity encoding that does. */
 export function canonicalJson(value: unknown): string {
   return encodeSorted(value, "keep");
 }
@@ -66,26 +52,19 @@ function isPlainFiniteJson(
   return valid;
 }
 
-/** Stable bytes for JSON-shaped values. Optional object fields may be undefined and are omitted. */
 export function stableJson(value: unknown): string {
   if (!isPlainFiniteJson(value, "allowed")) throw new Error("value is not stable finite JSON");
   return encodeSorted(value, "omit");
 }
 
-/** Semantic equality for JSON-shaped values; object insertion order is irrelevant. */
 export function sameJsonValue(left: unknown, right: unknown): boolean {
   return stableJson(left) === stableJson(right);
 }
 
-/** Stable content identity for in-memory JSON values; object key order does not shape the hash. */
 export function hashJsonValue(value: unknown): string {
   return sha256(stableJson(value));
 }
 
-/** Validate values received from vendor objects or untyped readers before recording them. A
- *  non-JSON value is refused explicitly rather than encoded: JSON.stringify drops a function or
- *  symbol property without a word, which changes what the snapshot records and leaves nothing to
- *  say that it did. */
 export function requireJsonValue(value: unknown): JsonValue {
   if (!isPlainFiniteJson(value, "rejected")) throw new Error("value is not plain finite JSON");
   return /* SAFETY: isPlainFiniteJson just admitted the complete finite JSON closure. */ value as JsonValue;

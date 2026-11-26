@@ -17,7 +17,6 @@ import { standing } from "../views/format.ts";
 import { AnabasisMark, AnabasisWordmark } from "./brand.tsx";
 import { Picker } from "./picker.tsx";
 
-/** The four panes, in this order and with these labels. */
 const NAV: readonly { readonly id: Pane; readonly label: string; readonly icon: typeof Activity }[] = [
   { id: "campaign", label: "Campaign", icon: Activity },
   { id: "moves", label: "Moves", icon: ListOrdered },
@@ -25,7 +24,6 @@ const NAV: readonly { readonly id: Pane; readonly label: string; readonly icon: 
   { id: "log", label: "Log", icon: FileJson },
 ];
 
-/** A campaign's name without its project's, which heads its group or the page's eyebrow. */
 function shortName(row: CampaignRow): string {
   const prefix = `${row.project}-`;
   return row.name.startsWith(prefix) && row.name.length > prefix.length
@@ -33,9 +31,8 @@ function shortName(row: CampaignRow): string {
     : row.name;
 }
 
-/** The campaigns grouped by project, in the list's order of projects, a group's running campaigns
- *  first. Each option says the campaign's state and its last reading, and its worktree where its
- *  name repeats in another. */
+/** The campaigns grouped by project, in the list's order of projects, running ones first; each
+ *  option says its state, last reading and, where its name repeats, its worktree. */
 function groupsOf(campaigns: readonly CampaignRow[], now: number) {
   const repeated = countBy(campaigns, (row) => row.name);
   const projects = [...new Set(campaigns.map((row) => row.project))];
@@ -65,11 +62,6 @@ function groupsOf(campaigns: readonly CampaignRow[], now: number) {
   });
 }
 
-/** The sidebar: the brand, one campaign picker over every project, and the navigation. A Project
- *  picker above a Campaign picker that listed the project's campaigns by bare name would make
- *  finding a live one, among hundreds, a guess at its project and a scroll. One picker, grouped by
- *  project, filtered by typing, and saying each campaign's state,
- *  answers which campaign is live in one place. */
 export function ProjectSidebar({
   campaigns,
   campaign,
@@ -79,7 +71,6 @@ export function ProjectSidebar({
   collapsed,
   onCollapse,
 }: {
-  /** Every campaign, newest first, or null while the list is read. */
   campaigns: readonly CampaignRow[] | null;
   campaign: string | null;
   onCampaign: (key: string) => void;

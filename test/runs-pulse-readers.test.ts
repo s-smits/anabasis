@@ -18,14 +18,14 @@ import {
 import { hostname, tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
-import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
+import { type CommandSandbox, solveDirs, sandboxBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
-import { claimRoot } from "../src/wall/seat-root.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
+import { claimRoot } from "../src/sandbox/sandbox-root.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { pulse } from "../tools/runs/pulse.ts";
-import { pruneObservers, readersSaid, resultOf, underLock } from "../tools/runs/pulse-readers.ts";
+import { formatReaderLines, pruneObservers, resultOf, underLock } from "../tools/runs/pulse-readers.ts";
 import type { Run } from "../tools/runs/registry.ts";
 import { READERS } from "../tools/wri/derive.ts";
 import { passOver } from "../tools/wri/pass.ts";
@@ -86,7 +86,7 @@ describe("what a pass costs a host", () => {
     expect(readdirSync(folder).toSorted()).toEqual(["notes.txt", `slow.json.${live}.tmp`]);
   });
 
-  it("runs moment-wrapped WRI readers through passOver + readersSaid and surfaces watched pulse alarms", async () => {
+  it("runs moment-wrapped WRI readers through passOver + formatReaderLines and surfaces watched pulse alarms", async () => {
     const root = scratch();
     const camp = join(root, "camp");
     const store = join(root, "store");
@@ -129,7 +129,7 @@ describe("what a pass costs a host", () => {
     ]) {
       expect({ name, ok: resultOf(store, log, name)?.ok }).toEqual({ name, ok: true });
     }
-    const read = readersSaid({
+    const read = formatReaderLines({
       store,
       log,
       size: Bun.file(log).size,
@@ -171,7 +171,6 @@ describe.skipIf(!osIsolationSupport().ok)("what a look wrote, through a seat's w
   const SECRET = "reader-output-must-stay-hidden";
   const context = BACKGROUND_CONTEXT;
 
-  /** Whether a seat can read `path`, in a shell and by its file tools. */
   async function readable(env: ExecutionEnv, path: string): Promise<boolean> {
     let output = "";
     const shell = await env.exec(
@@ -207,8 +206,8 @@ describe.skipIf(!osIsolationSupport().ok)("what a look wrote, through a seat's w
     const release = await claimRoot(dirs.root);
     let env: ExecutionEnv | undefined;
     try {
-      const base = await walledBase(dirs, { repoRoot }, "the pulse's wall test");
-      const wall: CommandWall = {
+      const base = await sandboxBase(dirs, { repoRoot }, "the pulse's wall test");
+      const wall: CommandSandbox = {
         base,
         dirs,
         toolTree: null,

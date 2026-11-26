@@ -31,7 +31,6 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** A check program whose one check covers `families` and cites `cited`. */
 function program(families: string[] | "all", cited: string[] | undefined): string {
   const dir = join(root, `program-${++programs}`);
   mkdirSync(dir);

@@ -4,7 +4,6 @@ import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 
-/** Each case asks a fresh process, whose cache no earlier file has filled. */
 const MODULE = join(import.meta.dir, "../src/meta/host-tool.ts");
 const scratch: string[] = [];
 afterEach(() => {
@@ -18,8 +17,8 @@ describe("hostTool", () => {
     mkdirSync(fakeDir, { recursive: true });
     const fake = join(fakeDir, "git");
     writeFileSync(fake, "#!/bin/sh\nexit 0\n");
-    // A fresh process: the suite's workers share one global across files, and any file that asked
-    // for git earlier has already fixed this process's answer in the cache.
+    // A fresh process: the suite's workers share one global across files, so an earlier file asking for
+    // git has already fixed the cached answer.
     const child = Bun.spawn({
       cmd: [
         runtimeProcess.execPath,
@@ -43,8 +42,8 @@ describe("hostTool", () => {
   it.skipIf(runtimeProcess.platform !== "darwin")(
     "takes a tool from wherever the developer directory holds it, and keeps the shim where it holds none",
     () => {
-      // A full Xcode keeps nm in usr/bin and otool in its default toolchain. The GitHub macOS runner
-      // selects one, and the unchecked usr/bin/otool failed every runtime-closure attestation there.
+      // A full Xcode keeps nm in usr/bin and otool only in its default toolchain, which the GitHub
+      // macOS runner selects.
       const developer = join(
         tmpdir(),
         `ana-hosttool-xcode-${Date.now()}-${Math.random().toString(36).slice(2)}`,

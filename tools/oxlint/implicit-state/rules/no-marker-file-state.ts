@@ -28,14 +28,12 @@ import {
  */
 const EXISTS = new Set(["existsSync", "pathExists", "pathExistsSync"]);
 const JOINS = new Set(["join", "resolve"]);
-/** Calls that bring a path into being: a write, a copy, a link or a folder made. */
 const MAKES = "writeFile|copyFile|cp|mkdir|symlink|link|outputFile|outputJson|writeJson|ensureDir|ensureFile";
 const CREATES = new RegExp(String.raw`\b(?:${MAKES})(?:Sync)?\(`, "u");
 /** Calls that change which paths exist: those, a removal, a rename, or any `write…` (`Bun.write`, a
  *  module's own `writeCompleted`). */
 const CHANGES = new RegExp(`^(?:${MAKES}|rm|rmdir|unlink|rename|remove|move)(?:Sync)?$|^write`, "u");
 
-/** A folder and the file named in it, read off a path expression. */
 interface Place {
   folder: string;
   file: string;
@@ -68,7 +66,6 @@ export const noMarkerFileStateRule = defineRule({
 
     const text = (node: ESTree.Node): string => context.sourceCode.getText(node).replaceAll(/\s+/gu, "");
 
-    /** Whether a call asks the platform whether a path exists, directly or through a local wrapper. */
     function existence(call: ESTree.CallExpression): ESTree.Node | null {
       const name = calleeName(call);
       if (name !== null && (EXISTS.has(name) || wrappers.has(name))) {
@@ -84,7 +81,6 @@ export const noMarkerFileStateRule = defineRule({
       return file.arguments[0] ?? null;
     }
 
-    /** The folder and file a path expression names, or null where it names neither. */
     function placeOf(path: ESTree.Node, depth = 0): Place | null {
       const bare = innermost(path);
       if (bare.type === "Identifier") {
@@ -115,7 +111,6 @@ export const noMarkerFileStateRule = defineRule({
       return cut <= 0 ? null : { folder, file: whole.slice(cut + 1) };
     }
 
-    /** A function of this file whose body only returns an existence check of its first parameter. */
     function noteWrapper(name: string, fn: ESTree.Function | ESTree.ArrowFunctionExpression): void {
       const [parameter] = fn.params;
       const body = fn.body;
@@ -142,9 +137,9 @@ export const noMarkerFileStateRule = defineRule({
     }
 
     /**
-     * Whether the condition the check sits in hands the same path to another call: `if
-     * (existsSync(p)) copy(p)` and `existsSync(p) ? read(p) : null` read an optional file, which is
-     * no phase. Read on the text, where the check itself is one argument list holding the path.
+     * `if (existsSync(p)) copy(p)` and `existsSync(p) ? read(p) : null` read an optional file,
+     * which is no phase. Read on the text, where the check itself is one argument list holding the
+     * path.
      */
     function guardsItsOwnUse(call: ESTree.CallExpression, argument: ESTree.Node): boolean {
       let region: ESTree.Node = call;
@@ -168,10 +163,8 @@ export const noMarkerFileStateRule = defineRule({
     }
 
     /**
-     * Whether the check is `if (!exists(p)) create(p)`: a negated test with no `else` whose arm
-     * writes, copies or makes a path in the same folder under the same name. Run again, it
-     * converges, so the file's presence is no phase. Read on the text, as `guardsItsOwnUse` is,
-     * since the arm may spell the path with another join (`join` against `resolve`).
+     * `if (!exists(p)) create(p)` with no `else` converges when run again, so the file's presence
+     * is no phase. Read on the text, since the arm may spell the path another way.
      */
     function createsIfMissing(call: ESTree.CallExpression, place: Place): boolean {
       const negation = outermost(call).parent;
@@ -197,7 +190,6 @@ export const noMarkerFileStateRule = defineRule({
       const owner = enclosingFunction(call) ?? context.sourceCode.ast;
       const folders = found.get(owner) ?? new Map<string, { files: Set<string>; at: ESTree.Node }>();
       const entry = folders.get(place.folder) ?? { files: new Set<string>(), at: call };
-      // A file is named bare however it is spelled: `"a"`, `"/a"` or the tail of a template.
       entry.files.add(place.file.replaceAll(/^["'`]\/?|["'`]$/gu, ""));
       if (entry.files.size === 2) {
         entry.at = call;
@@ -251,7 +243,7 @@ export const noMarkerFileStateRule = defineRule({
         for (const folders of found.values()) {
           for (const [folder, { files, at }] of folders) {
             // A phase is recorded by the process that reads it: files this module never writes or
-            // removes are its input (a lockfile format, a candidate source), probed and not kept.
+            // removes are its input, probed and not kept.
             const kept = [...files].some((file) => changes.some((call) => call.includes(file)));
             if (files.size < 2 || !kept) {
               continue;

@@ -1,15 +1,14 @@
 /**
- * What a landing does around its proofs, kept out of `gate.ts`: a pass is remembered under a
- * digest of the CI gate and every file it imports, read from the landing's checkout, so any edit
- * there proves every commit of the stack again, though the CI gate that the passes record has not
- * changed. Nothing here runs inside a pass.
+ * What a landing does around its proofs, kept out of `gate.ts`, whose digest with every file it
+ * imports keys each pass: an edit here would otherwise prove every commit of the stack again.
+ * Nothing here runs inside a pass.
  */
 import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { hold, holderOf, release } from "#src/meta/holder.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
-import { checkHost, checkSlots, type Host, hostsFor } from "../runs/host-config.ts";
-import { git, lines, type Place, type Proof, short } from "./gate.ts";
+import { checkPlaces, namedPlaces, type Place } from "../runs/host-config.ts";
+import { git, lines, type Proof, short } from "./gate.ts";
 import { beneath, chainAbove, openPulls, type Pull, stackStart } from "./pulls.ts";
 
 /** What a holder says of itself in the lock, after its record, and whether a newer one may end it. */
@@ -19,29 +18,25 @@ interface Claim {
 }
 /** How often a landing reads the open pull requests, while it proves commits and while it follows. */
 const WATCH_MS = Number(runtimeProcess.env.ANA_LAND_WATCH_MS) || 60_000;
-/** What a landing proves, by how much it writes; a landing that merges is never ended by another. */
+/** The kinds of landing, by how much each writes; a landing that merges is never ended by another. */
 const KINDS = ["proving", "sanitizing", "merging"];
 
-/** Hold this clone's `who` alone until the returned release, waiting while another live one holds
- *  it. Two landings of one stack proving one commit at once on two runners into one log would let
- *  the one whose flaky test failed post red over a head the other had passed, so the later landing
- *  waits, then finds the earlier one's passes remembered. Where `claim.over` reads the
- *  holder's note as work the newer one covers, it ends the holder (SIGTERM) instead of waiting it
- *  out, since a landing beneath it on the same chain can prove for hours. */
+/** Holds this clone's `who` alone until the returned release, waiting while another live one holds
+ *  it, so two landings never post over one commit's verdict from two runners. Where `claim.over`
+ *  reads the holder's note as work the newer one covers, it ends the holder (SIGTERM) rather than
+ *  waiting it out. */
 export async function holdAlone(
   root: string,
-  who: string,
   say: (line: string) => void,
   pauseMs = 15_000,
   claim: Claim | null = null,
 ): Promise<() => void> {
   const [common = ""] = lines(git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]));
-  const lock = join(common, `ana-${who}.lock`);
+  const lock = join(common, "ana-land.lock");
   let ended = 0;
   for (let looks = 0; ; looks += 1) {
-    // The run CLI's lock (`holder.ts`): a holder is a live process of this host with the start its
-    // record names, and a dead one's lock is taken over under a `flock` of the folder, so of two
-    // landings that find it dead one takes it and the other waits.
+    // The run CLI's lock (`holder.ts`): a dead holder's lock is taken over under a `flock` of the
+    // folder, so of two landings that find it dead one takes it and the other waits.
     if (hold(lock, claim?.note)) return () => release(lock);
     const found = holderOf(lock);
     if (found === null) continue;
@@ -49,22 +44,21 @@ export async function holdAlone(
     if (ended !== holder && held !== "" && claim?.over(held) === true) {
       ended = holder;
       say(
-        `another ${who} (pid ${String(holder)}, ${held}) covers less than this one; ending it, its passes kept`,
+        `another land (pid ${String(holder)}, ${held}) covers less than this one; ending it, its passes kept`,
       );
       runtimeProcess.kill(holder, "SIGTERM");
       await Bun.sleep(Math.min(pauseMs, 1000));
       continue;
     }
     if (looks % 20 === 0) {
-      say(`another ${who} (pid ${String(holder)}) is running in this clone; waiting for it to end`);
+      say(`another land (pid ${String(holder)}) is running in this clone; waiting for it to end`);
     }
     await Bun.sleep(pauseMs);
   }
 }
 
-/** `say`, with each line that names a commit of `proofs` also naming its pull request, so a long
- *  landing shows which pull request it has reached. The line runs bottom to top and a pull
- *  request's commits end at its head, so a commit belongs to the lowest pull request not yet ended. */
+/** `say`, with each line that names a commit of `proofs` also naming its pull request. Proofs run
+ *  bottom to top, so a commit belongs to the lowest pull request not yet ended. */
 export function sayingPulls(
   proofs: readonly Proof[],
   pulls: readonly Pick<Pull, "headRefOid" | "number">[],
@@ -88,9 +82,8 @@ export function sayingPulls(
 
 /** The lock's note for a landing of `target` (`#<pull request> <kind>`, `+` after the number where
  *  `--auto` may land above it), and which held landings it ends: one that does not merge or follow
- *  the top, writes no more than it, and lands part of what it proves (from `--from`, or from the
- *  native stack holding the top, `stackStart`), since every pass it made is remembered and the newer
- *  landing reads the chain as it stands now. The chain is read only once a holder is found. */
+ *  the top, writes no more than it, and lands part of what it proves (from `--from`, or from
+ *  `stackStart`). The chain is read only once a holder is found. */
 export function claimOf(
   root: string,
   target: number,
@@ -119,10 +112,9 @@ export function claimOf(
 }
 
 /**
- * A stop for a landing's proofs: `moved` is called every `WATCH_MS` and its error, where it returns one,
- * ends them, as SIGINT or SIGTERM does with an `Interrupted` error; each proof runs in a process group of its
- * own, so it ends whole, and the landing starts again with every pass so far kept. A move read only
- * as the next proof started would let a whole gate over a stale top run to its end.
+ * A stop for a landing's proofs: `moved` is called every `WATCH_MS` and its error ends them, as
+ * SIGINT or SIGTERM does with an `Interrupted` error. Each proof runs in its own process group, so
+ * it ends whole, and the landing restarts with every pass kept.
  */
 export function watching(Interrupted: new (message: string) => Error, moved: () => Error | null) {
   const stop = new AbortController();
@@ -148,45 +140,25 @@ export function watching(Interrupted: new (message: string) => Error, moved: () 
   return { signal: stop.signal, end };
 }
 
-/**
- * Where a landing in `root` proves its commits. `ANA_CHECK_HOST` set, `here` among its values, is one
- * place to the landing, which hands each pass to the runner, so under `auto` each pass picks its own
- * least loaded slot; unset, the passes spread over every host `ANA_HOSTS` lists, each taking
- * as many at once as `checkSlots` gives it, and with no host listed they stay on this machine.
- * `--jobs N` is the most at once: N on one place, or N dealt in turn over the hosts' slots. A list
- * that cannot be read is refused, null, before anything is proved or posted.
- */
+/** Where a landing in `root` proves its commits (`checkPlaces`); a host list that cannot be read is
+ *  refused, null, before anything is proved or posted. */
 export function whereToProve(
   root: string,
   jobs: number | undefined,
   say: (line: string) => void,
 ): readonly Place[] | null {
-  const one = [{ slots: jobs ?? 1 }];
-  if ((checkHost()?.trim() ?? "") !== "") return one;
-  let listed: readonly Host[];
   try {
-    listed = hostsFor(root);
+    const places = checkPlaces(root, jobs);
+    if (places[0]?.remote !== undefined) {
+      say(`proving on ${namedPlaces(places)} at once; ANA_CHECK_HOST=<one> proves at that one.`);
+    }
+    return places;
   } catch (error) {
     console.error(
       `land: ${errorMessage(error)}; ANA_CHECK_HOST=here proves on this machine. Nothing was merged.`,
     );
     return null;
   }
-  const hosts = listed.map((host) => ({ name: host.name, checks: checkSlots(host) }));
-  if (hosts.length === 0) return one;
-  const dealt = new Map(hosts.map((host) => [host, 0]));
-  for (let left = jobs ?? Infinity; left > 0 && [...dealt].some(([host, slots]) => slots < host.checks); ) {
-    for (const [host, slots] of dealt) {
-      if (left > 0 && slots < host.checks) {
-        dealt.set(host, slots + 1);
-        left -= 1;
-      }
-    }
-  }
-  const places = [...dealt].flatMap(([host, slots]) => (slots === 0 ? [] : [{ remote: host.name, slots }]));
-  const named = places.map(({ remote, slots }) => `${remote} (${String(slots)})`).join(", ");
-  say(`proving on ${named} at once; ANA_CHECK_HOST=<one> proves at that one.`);
-  return places;
 }
 
 /** The open pull requests by number, base and head, which say whether any of them moved. */
@@ -206,13 +178,10 @@ function openOrNull(root: string): Pull[] | null {
 }
 
 /**
- * Lands with `round`, then again each time an open pull request moves, opens or closes, read every
- * `WATCH_MS`, until `target` is no longer open or SIGINT or SIGTERM ends it, where `--watch` is
- * named. A landing lands once by default (on the operator's word: "standard just let it run and not
- * iterate", since a loop left running re-proves every move during heavy sessions and can hold the
- * main checkout from following the stack), and a `--merge` lands once. A round costs only
- * what moved, since every pass is remembered by tree; a round under way ends through `watching`,
- * a wait at once.
+ * Under `--watch`, lands with `round`, then again each time an open pull request moves, opens or
+ * closes, read every `WATCH_MS`, until `target` closes or SIGINT or SIGTERM ends it. Without it,
+ * and always under `--merge`, a landing lands once. A round costs only what moved, since every pass
+ * is remembered by tree.
  */
 export async function follow(
   root: string,

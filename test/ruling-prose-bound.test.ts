@@ -10,12 +10,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { referee } from "../src/referee/referee.ts";
+import { auditRejection } from "../src/audit/auditor.ts";
 import { containing } from "./helpers/matchers.ts";
 
 const TASK: Task = { taskId: "t-1", family: "span", publicInput: {}, hidden: {} };
 const CONTRACT: Contract = {
-  answerFormat: {},
+  answerFormat: { type: "object" },
   conventions: "SI units.",
   rules: [{ id: "R1", statement: "The span is at most 10 m." }],
   scope: "Spans.",
@@ -89,7 +89,7 @@ async function run(responses: ReturnType<typeof fauxAssistantMessage>[]) {
     blocking: ["span"],
     answer: { span: 12 },
   });
-  const finding = await referee(
+  const finding = await auditRejection(
     { model: faux.getModel(), effort: "medium", models: () => models },
     {
       solve: "s-1",

@@ -1,7 +1,6 @@
 /**
- * Check sample-size figures against production readers, re-evaluate synthetic comparison
- * reports under the current rules, and draw the next comparison's set. These tests read no
- * campaign logs.
+ * Sample-size figures against production readers, synthetic reports re-read under the current
+ * rules, and the next comparison's draw. These tests read no campaign logs.
  */
 import { describe, expect, it } from "bun:test";
 import { drawLines } from "#skills/comparison-reading/scripts/draw.ts";
@@ -21,12 +20,10 @@ const STARTER = "a".repeat(64);
 const NEW = "b".repeat(64);
 const AT = "2026-10-30T00:00:00.000Z";
 
-/** `wins` tasks won and `losses` lost, each by `margin`. */
 function scores(wins: number, losses: number, margin = 600): number[] {
   return [...Array.from({ length: wins }, () => margin), ...Array.from({ length: losses }, () => -margin)];
 }
 
-/** A tested set as a report records it. */
 function set(differences: readonly number[], unbilled: readonly number[] | null): JsonObject {
   const count = (sign: number) => differences.filter((one) => Math.sign(one) === sign).length;
   return {
@@ -84,7 +81,6 @@ describe("a promotion's starter read, split by what its tasks had been through",
   const chose = Array.from({ length: 7 }, (_, nth) => `chose-${String(nth)}`);
   const log: LogEvent[] = [
     ...[...chose, "undrawn"].flatMap((task) => gate(task)),
-    // The reference won its own promotion on seven tasks, from the new side.
     ...comparison("g-1", [STARTER, NEW], Object.fromEntries(chose.map((task) => [task, "FF PP"])), {
       reading: "step",
       differences: scores(7, 0),
@@ -92,8 +88,8 @@ describe("a promotion's starter read, split by what its tasks had been through",
     { at: AT, kind: "harness.promoted", data: { harness: NEW, from: STARTER, rests: [] } },
     ...gate("lost", "x-1"),
     ...gate("tied", "x-2"),
-    // Then the starter, on the new side, loses those seven again and the task never drawn, and the
-    // reference loses one written since: 8 to 1 clears the level, and 1 to 1 does not.
+    // The starter, on the new side, loses those seven again and the task never drawn, and the reference
+    // loses one written since: 8 to 1 clears the level, 1 to 1 does not.
     ...comparison(
       "g-2",
       [NEW, STARTER],
@@ -109,13 +105,22 @@ describe("a promotion's starter read, split by what its tasks had been through",
 
   it("says so and exits clean on a log with no promotion, since the derived readers run it on every log", () => {
     const folder = mkdtempSync(join(tmpdir(), "starter-reads-"));
+    const promoted = mkdtempSync(join(tmpdir(), "starter-reads-"));
     const promotedAt = log.findIndex(({ kind }) => kind === "harness.promoted");
     const unpromoted = log.slice(0, promotedAt).map((event) => capturedJsonStringify(event));
     writeFileSync(join(folder, LOG_FILE), `${unpromoted.join("\n")}\n`);
+    writeFileSync(
+      join(promoted, LOG_FILE),
+      `${log.map((event) => capturedJsonStringify(event)).join("\n")}\n`,
+    );
     const reads = join(import.meta.dir, "..", ".claude/skills/comparison-reading/scripts/starter-reads.ts");
     const ran = runSync([capturedExecPath, reads, folder]);
     expect(ran.exitCode).toBe(0);
     expect(decodeOutput(ran.stdout)).toContain("no promotion");
+    const several = runSync([capturedExecPath, reads, folder, promoted]);
+    expect(several.exitCode).toBe(0);
+    expect(decodeOutput(several.stdout)).toContain("all of them");
+    expect(decodeOutput(several.stdout)).toContain("in 1 campaign");
   });
 });
 

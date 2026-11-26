@@ -9,6 +9,7 @@ import {
   type Measures,
   carriedBy,
   differenceOf,
+  gainOver,
   gapAgainst,
   type Paired,
   pointsOf,
@@ -17,7 +18,7 @@ import {
   testOf,
   unsolved,
 } from "#src/kernel/compare.ts";
-import { campaignOf } from "#src/campaign/handover.ts";
+import { campaignOf } from "#src/campaign/summary.ts";
 import { OPENING, proposalsOf } from "#src/kernel/history.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, poolOf, type Reported } from "#src/kernel/reports.ts";
@@ -29,24 +30,19 @@ import { median } from "#src/meta/tally.ts";
 /** The kind of a tied task, by its solves. */
 type TieKind = "both-invalid" | "exact-repeat" | "within-room" | "both-valid" | "cancelling";
 
-/** One side of one comparison, read against the best on record. */
 export interface SideGap {
   /** The median over tasks of a task's median ratio to the best; null where no task gave one. */
   readonly ratio: number | null;
   readonly atBest: number;
-  /** The tasks that gave a ratio. */
   readonly read: number;
-  /** The tasks the side answered validly that gave none: no best on record, or a measure at or below zero. */
+  /** Validly answered tasks that gave no ratio: no best on record, or a measure at or below zero. */
   readonly unread: number;
 }
 
-/** A comparison's family grain, as production reads it (`grain`, `src/campaign/handover.ts`). */
 type Grain = { readonly largest: number; readonly of: number } | null;
 
-/** A finished counted solve, with the place its start stands in the log. */
 type Counted = Ran & { readonly finished: number; readonly end: JsonObject };
 
-/** What every row of one comparison reads beside its own pair. */
 interface Context {
   readonly session: string;
   readonly read: "candidate" | "starter";
@@ -57,11 +53,10 @@ interface Context {
   readonly stored: ReadonlyMap<string, number>;
   readonly aa: ReadonlyMap<string, Paired>;
   readonly self: ReadonlyMap<string, Paired>;
-  /** The best measure on record by task (`poolOf`). */
   readonly bests: ReadonlyMap<string, number>;
 }
 
-/** How close two measures stand to read as one, past a float's own noise (`answers.ts`). */
+/** How close two measures stand to read as one, past a float's own noise. */
 const EXACTLY = 1e-6;
 const APART = ["aside", "short", "disputed", "flagged", "withdrawn"] as const;
 const KINDS: readonly TieKind[] = ["exact-repeat", "within-room", "both-valid", "both-invalid", "cancelling"];
@@ -89,7 +84,6 @@ const HEAD = [
 const NONE = "-";
 const PASS = "pass";
 
-/** The pair of the `o`th solve of the reference and the `f`th of the new side. */
 function pairingOf(pair: Paired, o: number, f: number): Paired {
   const objective = pair.objective;
   return {
@@ -107,13 +101,10 @@ function pairingOf(pair: Paired, o: number, f: number): Paired {
   };
 }
 
-/** The measures of a pair's two sides, null where a solve has none. */
 function measuresOf(pair: Paired): (number | null)[] {
   return pair.objective === undefined ? [] : [...pair.objective.old, ...pair.objective.fresh];
 }
 
-/** Of a task its score ties (`differenceOf`), the kind of tie its solves make; null for one it
- *  does not tie. */
 function tieKind(pair: Paired): TieKind | null {
   if (differenceOf(pair) !== 0) return null;
   if (unsolved(pair)) return "both-invalid";
@@ -127,11 +118,8 @@ function tieKind(pair: Paired): TieKind | null {
   return within ? "within-room" : "cancelling";
 }
 
-/** Whether a side's solves of a task disagree on validity. */
 const flipped = (valid: readonly boolean[]) => valid.includes(true) && valid.includes(false);
 
-/** Whether a side repeated its measure: exactly, within the floor (`gapAgainst`), or apart; none
- *  where it has fewer than two or a solve without one. */
 function repeatOf(pair: Paired, side: "old" | "fresh"): string {
   const measures = pair.objective?.[side] ?? [];
   const known = measures.filter(isNumber);
@@ -140,23 +128,22 @@ function repeatOf(pair: Paired, side: "old" | "fresh"): string {
   return gapAgainst(pair, side, []) ? "apart" : "within";
 }
 
-/** The spread of every measure of a task over both sides, as a share of the larger magnitude. */
-function howOftenValid(pair: Paired): string {
+/** The spread of a task's measures over both sides: raw on a unit scale, else as a share of the
+ *  larger magnitude. */
+function measureSpread(pair: Paired): string {
   const known = measuresOf(pair).filter(isNumber);
   if (known.length < 2) return NONE;
   const [low, high] = [Math.min(...known), Math.max(...known)];
+  if (pair.objective?.scale === "unit") return (high - low).toFixed(3);
   const larger = Math.max(Math.abs(low), Math.abs(high));
   return larger === 0 ? "0" : ((high - low) / larger).toFixed(3);
 }
 
-/** Dollars to the cent over `bills`, none where none is recorded. */
 function billedOf(bills: readonly (number | null | undefined)[]): string {
   const known = bills.filter(isNumber);
   return known.length === 0 ? NONE : known.reduce((sum, bill) => sum + bill, 0).toFixed(2);
 }
 
-/** The ending of a solve that does not count as valid, as a row names it: `wrong-pass` where a
- *  settled wrong pass counts it a fail, its kind, or its outcome. */
 function endingOf(solve: Counted | undefined): string {
   const ending = solve?.ending;
   if (ending?.outcome === PASS) return "wrong-pass";
@@ -164,18 +151,15 @@ function endingOf(solve: Counted | undefined): string {
   return isString(named) ? named : NONE;
 }
 
-/** The columns a row gives every task: where it was written and what part it took. */
 function placeOf(context: Context, part: string, task: string): string[] {
   return [context.session, context.read, part, task.slice(0, 8), ...originOf(context, task)];
 }
 
-/** The session that wrote a task and the task's family. */
 function originOf(context: Context, task: string): [string, string] {
   const writer = context.writers.get(task);
   return [writer?.session ?? "not recorded", writer?.family ?? NONE];
 }
 
-/** The row of a tallied task. */
 function pairRow(context: Context, pair: Paired): string {
   const side = (which: "old" | "fresh") =>
     pair[which]
@@ -186,8 +170,6 @@ function pairRow(context: Context, pair: Paired): string {
   const rebuilt = context.aa.get(pair.task);
   const self = context.self.get(pair.task);
   const stored = context.stored.get(pair.task);
-  // Each side's median ratio to the task's best on record (`sideGap`); `-` for a side with no valid
-  // measured answer, or a task with no best.
   const best = (which: "old" | "fresh") => sideGap([pair], which, context.bests).ratio?.toFixed(2) ?? NONE;
   return [
     ...placeOf(context, context.retained.has(pair.task) ? "retained" : "frontier", pair.task),
@@ -200,14 +182,13 @@ function pairRow(context: Context, pair: Paired): string {
     self === undefined ? NONE : String(differenceOf(self)),
     `${flipped(pair.old) ? "1" : "0"}/${flipped(pair.fresh) ? "1" : "0"}`,
     `${repeatOf(pair, "old")}/${repeatOf(pair, "fresh")}`,
-    howOftenValid(pair),
+    measureSpread(pair),
     `${best("old")}/${best("fresh")}`,
     billedOf([...(pair.used?.old ?? []), ...(pair.used?.fresh ?? [])].map(({ billed }) => billed)),
     tieKind(pair) ?? NONE,
   ].join("\t");
 }
 
-/** The row of a task the report did not tally: each side's counted solves, and no score. */
 function unpairedRow(context: Context, part: string, task: string, sides: readonly [string, string]): string {
   const solves = context.byTask.get(`${context.session}\0${task}`) ?? [];
   const said = (harness: string) =>
@@ -225,31 +206,27 @@ function unpairedRow(context: Context, part: string, task: string, sides: readon
   ].join("\t");
 }
 
-/** The `share`th quantile of `values` by nearest rank. */
 function quantile(values: readonly number[], share: number): number {
   const sorted = values.toSorted((a, b) => a - b);
   return sorted[Math.max(0, Math.ceil(share * sorted.length) - 1)] ?? 0;
 }
 
-/** A tally of task scores and its sign-flip p, as a summary says it. */
-function testSaid(differences: readonly number[]): string {
+/** A tally of task scores and its sign-flip p-value. */
+function formatDifferenceTest(differences: readonly number[]): string {
   const { wins, losses, ties, p } = testOf(differences);
   return `${String(wins)}-${String(losses)}-${String(ties)} p ${p.toFixed(4)}`;
 }
 
-/** The tally of each side's first solves alone and of its second alone: a description of those
- *  solves, which reads no step and no reading, since only the comparison reads (rule 1). None where
- *  a pair holds fewer than two a side. */
-function samplesSaid(pairs: readonly Paired[]): string {
+/** The tally of each arm's first rollouts alone and second rollouts alone: descriptive only,
+ *  never a decision reading (rule 1). */
+function formatSplitHalves(pairs: readonly Paired[]): string {
   if (pairs.length === 0 || pairs.some(({ old, fresh }) => old.length < 2 || fresh.length < 2)) {
-    return "solve halves: not split, fewer than two solves a side";
+    return "solve halves: not split, fewer than two rollouts per arm";
   }
   const at = (index: number) => pairs.map((pair) => differenceOf(pairingOf(pair, index, index)));
-  return `solve halves, a description and not a reading: first solves ${testSaid(at(0))}, second solves ${testSaid(at(1))}`;
+  return `solve halves (descriptive only): first rollouts ${formatDifferenceTest(at(0))}, second rollouts ${formatDifferenceTest(at(1))}`;
 }
 
-/** The new side's wins by where each `diff` stands against its own task's rebuilt A/A
- *  (`|difference|`): inside it, level with it or outside it, and apart where the task has no A/A. */
 function winsAgainstNoise(context: Context, pairs: readonly Paired[]): string {
   const counts = { inside: 0, level: 0, outside: 0, none: 0 };
   for (const pair of pairs) {
@@ -260,8 +237,6 @@ function winsAgainstNoise(context: Context, pairs: readonly Paired[]): string {
   return `== ${context.session} wins of the new side against their own task's rebuilt A/A: inside ${String(inside)}, level ${String(level)}, outside ${String(outside)}, no A/A ${String(none)}`;
 }
 
-/** Where a win of the new side stands against its own task's rebuilt A/A; null for a pair it did
- *  not win. */
 function againstNoise(context: Context, pair: Paired): "inside" | "level" | "outside" | "none" | null {
   const [win, aa] = [differenceOf(pair), context.aa.get(pair.task)];
   if (win <= 0) return null;
@@ -270,15 +245,9 @@ function againstNoise(context: Context, pair: Paired): "inside" | "level" | "out
   return win < noise ? "inside" : win === noise ? "level" : "outside";
 }
 
-/**
- * One comparison's tally by the session that wrote each task, or by its family: the new side's
- * won, lost and tied, its summed `diff`, its wins outside their task's A/A and its retained tasks,
- * the largest group first. A group counts every tallied task, and a report's family tallies, which
- * `runs view`'s grain reads, the frontier alone.
- */
-function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "family"): string {
+function formatGroupBreakdown(context: Context, pairs: readonly Paired[], by: "writer" | "family"): string {
   const groups = Map.groupBy(pairs, ({ task }) => originOf(context, task)[by === "writer" ? 0 : 1]);
-  const said = [...groups]
+  const lines = [...groups]
     .toSorted(([, one], [, other]) => other.length - one.length)
     .map(([key, some]) => {
       const diffs = some.map((pair) => differenceOf(pair));
@@ -288,16 +257,10 @@ function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "
       const retained = some.filter(({ task }) => context.retained.has(task)).length;
       return `${key} ${count(1)}-${count(-1)}-${count(0)}, diff ${net > 0 ? "+" : ""}${String(net)}, ${String(outside)} outside${retained === 0 ? "" : `, ${String(retained)} retained`}`;
     });
-  return `== ${context.session} by ${by} (won-lost-tied of the new side, summed diff, wins outside their task's A/A): ${said.join("; ")}`;
+  return `== ${context.session} by ${by} (won-lost-tied of the new arm, summed diff, wins outside their task's A/A): ${lines.join("; ")}`;
 }
 
-/**
- * One comparison's grain in a line that names no family: production's (`grain`, as `runs view` gives
- * it), and whether one task's `diff` is larger than the others' together, in which case that task
- * alone sets the summed score's sign. The test counts siblings as independent draws and weighs a task
- * by its `diff`, so both say what a reading rests on, a no-step as much as a step.
- */
-function grainSaid(context: Context, pairs: readonly Paired[], grain: Grain): string {
+function formatGranularityBreakdown(context: Context, pairs: readonly Paired[], grain: Grain): string {
   const [largest = 0, ...rest] = pairs
     .map((pair) => Math.abs(differenceOf(pair)))
     .toSorted((one, other) => other - one);
@@ -313,7 +276,6 @@ function grainSaid(context: Context, pairs: readonly Paired[], grain: Grain): st
   return `== ${context.session} grain, naming no family: ${family}; ${carried}`;
 }
 
-/** The summary line of one comparison's tallied pairs. */
 function summaryOf(
   context: Context,
   report: JsonObject,
@@ -321,9 +283,9 @@ function summaryOf(
   untallied: string,
 ): string {
   const kinds = pairs.flatMap((pair) => tieKind(pair) ?? []);
-  const kindSaid = KINDS.map((kind) => `${kind} ${String(kinds.filter((one) => one === kind).length)}`).join(
-    ", ",
-  );
+  const tieKindsSummary = KINDS.map(
+    (kind) => `${kind} ${String(kinds.filter((one) => one === kind).length)}`,
+  ).join(", ");
   const rebuilt = pairs.flatMap(({ task }) => {
     const aa = context.aa.get(task);
     return aa === undefined ? [] : [Math.abs(differenceOf(aa))];
@@ -332,25 +294,25 @@ function summaryOf(
     const [aa, stored] = [context.aa.get(task), context.stored.get(task)];
     return aa !== undefined && stored !== undefined && differenceOf(aa) !== stored;
   }).length;
-  const aaSaid =
+  const aaSummary =
     rebuilt.length === 0
       ? "A/A not rebuilt"
       : `A/A |difference| rebuilt median ${String(quantile(rebuilt, 0.5))}, p75 ${String(quantile(rebuilt, 0.75))}, p90 ${String(quantile(rebuilt, 0.9))}, max ${String(quantile(rebuilt, 1))} over ${String(rebuilt.length)}; stored ${context.stored.size === 0 ? "not recorded" : `differs from rebuilt on ${String(differ)} of ${String(rebuilt.length)}`}`;
   const tied = pairs.filter((pair) => differenceOf(pair) === 0);
   const billed = (some: readonly Paired[]) => {
-    const said = billedOf(
+    const amount = billedOf(
       some.flatMap((pair) =>
         [...(pair.used?.old ?? []), ...(pair.used?.fresh ?? [])].map(({ billed: one }) => one),
       ),
     );
-    return said === NONE ? "none recorded" : `$${said}`;
+    return amount === NONE ? "none recorded" : `$${amount}`;
   };
   const retained = pairs.filter(({ task }) => context.retained.has(task)).length;
   return [
     `== ${context.session} ${context.read} ${isString(report.reading) ? report.reading : "unread"}: tallied ${String(pairs.length)} (frontier ${String(pairs.length - retained)}, retained ${String(retained)})${untallied}`,
-    `ties ${String(tied.length)}: ${kindSaid}`,
-    aaSaid,
-    samplesSaid(pairs),
+    `ties ${String(tied.length)}: ${tieKindsSummary}`,
+    aaSummary,
+    formatSplitHalves(pairs),
     `billed ${billed(tied)} on tied tasks, ${billed(pairs.filter((pair) => differenceOf(pair) !== 0))} on untied`,
   ].join("; ");
 }
@@ -364,13 +326,36 @@ function storedOf(data: JsonObject): Map<string, number> {
     : new Map<string, number>();
 }
 
-/** The task versions a list of a report or start holds. */
 function versionsIn(value: JsonValue | undefined): string[] {
   return Array.isArray(value) ? value.filter(isString) : [];
 }
 
-/** One comparison's rows and its summary, from its last report, or from its start alone where it
- *  has none. */
+function judgeSummaryOf(events: readonly LogEvent[], session: string): string[] {
+  const ofSession = (kind: "referee.pair" | "referee.brief") =>
+    eventsOf(events, kind).flatMap(({ event: { data } }) => (data.comparison === session ? [data] : []));
+  const [pairs, briefs] = [ofSession("referee.pair"), ofSession("referee.brief")];
+  if (pairs.length === 0 && briefs.length === 0) return [];
+  const done = pairs.filter((data) => isNumber(data.judge) && isNumber(data.holistic));
+  const votes = done.reduce((sum, data) => sum + Object.keys(asRecord(data.criteria) ?? {}).length, 0);
+  const disagreed = done.reduce(
+    (sum, data) => sum + (Array.isArray(data.disagreed) ? data.disagreed.length : 0),
+    0,
+  );
+  const billed = [...pairs, ...briefs].reduce(
+    (sum, data) => sum + (isNumber(data.billed) ? data.billed : 0),
+    0,
+  );
+  const extracts = pairs.map((data) => asRecord(data.extracts)).filter((ext) => ext !== null);
+  const extSum = (key: string) => extracts.reduce((sum, ext) => sum + (isNumber(ext[key]) ? ext[key] : 0), 0);
+  const extPart =
+    extracts.length === 0
+      ? ""
+      : `, extracts ${String(extSum("files"))} files (${String(extSum("empty"))} empty, ${String(extSum("faults"))} faults, ${String(extSum("truncated"))} truncated)`;
+  return [
+    `== ${session} judge: ${String(done.length)}/${String(pairs.length)} pairs (${String(pairs.length - done.length)} null), swap disagreements ${String(disagreed)}/${String(votes)} votes${extPart}, billed $${billed.toFixed(2)}`,
+  ];
+}
+
 function comparisonRows(
   events: readonly LogEvent[],
   start: JsonObject,
@@ -391,11 +376,13 @@ function comparisonRows(
     self: report === undefined ? new Map() : byTask(pairsReported(events, report, "fresh")),
   };
   const sides = [old, fresh] as const;
+  const judged = judgeSummaryOf(events, context.session);
   if (report === undefined) {
     const rows = versionsIn(start.tasks).map((task) => unpairedRow(context, "open", task, sides));
     return [
       ...rows,
       `== ${context.session} ${context.read} open: no report; ${String(rows.length)} tasks named at its start`,
+      ...judged,
     ];
   }
   const pairs = pairsReported(events, report);
@@ -416,14 +403,14 @@ function comparisonRows(
     ...apart,
     ...loose,
     winsAgainstNoise(context, pairs),
-    groupsSaid(context, pairs, "writer"),
-    groupsSaid(context, pairs, "family"),
-    grainSaid(context, pairs, grain),
+    formatGroupBreakdown(context, pairs, "writer"),
+    formatGroupBreakdown(context, pairs, "family"),
+    formatGranularityBreakdown(context, pairs, grain),
     summaryOf(context, report.data, pairs, untallied),
+    ...judged,
   ];
 }
 
-/** The rows of every comparison `events` holds, in the order they started. */
 export function pairRows(events: readonly LogEvent[]): string[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
   const starts = new Map(
@@ -460,7 +447,6 @@ export function pairRows(events: readonly LogEvent[]): string[] {
   ];
 }
 
-/** What `pairs` read of `side`, against `bests` by task. */
 export function sideGap(
   pairs: readonly Paired[],
   side: "old" | "fresh",
@@ -471,13 +457,18 @@ export function sideGap(
   for (const { task, objective } of pairs) {
     const measures = objective?.[side].filter((measure) => measure !== null) ?? [];
     if (measures.length === 0) continue;
-    const best = bests.get(task) ?? 0;
-    const own = measures.filter((measure) => measure > 0);
-    const ratio = median(
-      own.map((measure) => (objective?.direction === "lower" ? measure / best : best / measure)),
-    );
-    if (best > 0 && ratio !== null) ratios.push(ratio);
-    else unread += 1;
+    const best = bests.get(task);
+    let entry: number | null = null;
+    if (best !== undefined && objective?.scale === "unit") {
+      entry = median(measures.map((measure) => 1 + gainOver(objective, best, measure)));
+    } else if (best !== undefined && best > 0) {
+      const own = measures.filter((measure) => measure > 0);
+      entry = median(
+        own.map((measure) => (objective?.direction === "lower" ? measure / best : best / measure)),
+      );
+    }
+    if (entry === null) unread += 1;
+    else ratios.push(entry);
   }
   return {
     ratio: median(ratios),

@@ -1,8 +1,7 @@
 /**
- * Host CPU and load-average sampling and streaming watcher primitives (`watchersOf`,
- * `keepFollowing`, `firstReadings`, `minuteLoads`). Powers both `bun run runs loadwatch` and
- * `ANA_CHECK_HOST=auto` host selection so interactive monitoring and automated task placement read
- * identical metrics.
+ * Host CPU and load sampling and the streaming watcher (`watchersOf`, `keepFollowing`,
+ * `firstReadings`, `minuteLoads`), read by both `bun run runs loadwatch` and the check runner's
+ * `auto`, so monitoring and placement read the same numbers.
  */
 import { capturedSpawn } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
@@ -16,11 +15,11 @@ interface Sample {
   readonly loads: readonly [number, number, number];
   /** The share of the CPU busy over the last interval, in percent. */
   readonly busy: number;
+  readonly system: string;
 }
 export type State<S = Sample> = S | "connecting" | "unreachable";
 export interface Watched<S = Sample> {
   readonly label: string;
-  /** The host sampled, or undefined for this machine. */
   readonly host: Host | undefined;
   readonly argv: readonly string[];
   /** One reading from a block of the loop's output and the reading before it, or null for a block
@@ -32,7 +31,7 @@ export interface Watched<S = Sample> {
 
 /** Each load average by its window, and its place in a sample's `loads`. */
 export const WINDOWS = { "1m": 0, "5m": 1, "15m": 2 } as const;
-export type Window = (typeof WINDOWS)[keyof typeof WINDOWS];
+type Window = (typeof WINDOWS)[keyof typeof WINDOWS];
 
 const SILENT_MS = 20_000;
 const RETRY_MS = 3000;
@@ -56,20 +55,20 @@ else
 fi
 `;
 // One-shot load reading for `minuteLoads`: same block format as `LOOP`, without `iostat`'s 1s or
-// `/proc/stat`'s 0.3s CPU-busy sleep, which `minuteLoads` never reads.
+// `/proc/stat`'s 0.3s CPU-busy sleep, which `minuteLoads` never reads, and with the system's name.
 const ONCE = String.raw`
 if [ -r /proc/loadavg ]; then
   read -r a b c _ < /proc/loadavg
-  printf '%s\n%s %s %s\n0\n---\n' "$(nproc)" "$a" "$b" "$c"
+  printf '%s\n%s %s %s\n0\n%s\n---\n' "$(nproc)" "$a" "$b" "$c" "$(uname -s)"
 else
   n=$(sysctl -n hw.ncpu 2>/dev/null || true)
   l=$(sysctl -n vm.loadavg 2>/dev/null | tr -d '{}' || true)
-  printf '%s\n%s\n0\n---\n' "$n" "$l"
+  printf '%s\n%s\n0\n%s\n---\n' "$n" "$l" "$(uname -s)"
 fi
 `;
 
-/** Null after `ms`, on a timer that does not hold the process open once the race it is in is over:
- *  a `Bun.sleep` there kept a pick that had its answers alive for the whole silence. */
+/** Null after `ms`, on a timer that does not hold the process open once its race is over, as a
+ *  `Bun.sleep` would. */
 function lapse(ms: number): Promise<null> {
   return new Promise((resolve) => {
     setTimeout(() => {
@@ -81,15 +80,19 @@ function lapse(ms: number): Promise<null> {
 /** One sample from the loop's block, or null for a block that is not one, a count of no cores
  *  among them. */
 export function sampleOf(block: string): Sample | null {
-  const [cores, loads, idle] = block.trim().split("\n");
+  const [cores, loads, idle, system = ""] = block.trim().split("\n");
   const [one, five, fifteen] = (loads ?? "").trim().split(/\s+/u).map(Number);
   const numbers = [Number(cores), one, five, fifteen, Number(idle)];
   if (!numbers.every((value) => value !== undefined && Number.isFinite(value))) return null;
   if (one === undefined || five === undefined || fifteen === undefined || !(Number(cores) > 0)) return null;
-  return { cores: Number(cores), loads: [one, five, fifteen], busy: Math.max(0, 100 - Number(idle)) };
+  return {
+    cores: Number(cores),
+    loads: [one, five, fifteen],
+    busy: Math.max(0, 100 - Number(idle)),
+    system: system.trim(),
+  };
 }
 
-/** The sampling loop, a sample every `seconds`. */
 export const watchedScript = (seconds: number): string =>
   LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5))).replaceAll(
     "@W@",
@@ -113,7 +116,7 @@ export function watchersOf<S>(
   }));
 }
 
-/** Follow each connection for good, opening one that closes or falls silent again after a pause. */
+/** Follows each connection for good, opening one that closes or falls silent again after a pause. */
 export function keepFollowing<S>(watched: readonly Watched<S>[], intervalMs: number): void {
   for (const each of watched) {
     (async () => {
@@ -125,8 +128,8 @@ export function keepFollowing<S>(watched: readonly Watched<S>[], intervalMs: num
   }
 }
 
-/** Read one connection's blocks, each ended by a `---` line, until it closes or falls silent, or
- *  until a reading is `ready`; each read block in turn is the watched state. */
+/** Reads one connection's blocks, each ended by `---`, until it closes, falls silent, or a reading
+ *  is `ready`; each block in turn is the watched state. */
 async function follow<S>(
   watched: Watched<S>,
   intervalMs: number,
@@ -187,11 +190,11 @@ export async function firstReadings<S>(
 export function byLoad(
   watched: readonly Watched[],
   at: Window,
-): { label: string; host: Host | undefined; load: number; cores: number }[] {
+): { label: string; host: Host | undefined; load: number; cores: number; system: string }[] {
   const read = watched.flatMap(({ label, host, state }) =>
     state === "connecting" || state === "unreachable"
       ? []
-      : [{ label, host, load: state.loads[at], cores: state.cores }],
+      : [{ label, host, load: state.loads[at], cores: state.cores, system: state.system }],
   );
   return read.toSorted((a, b) => a.load / a.cores - b.load / b.cores);
 }
@@ -202,13 +205,17 @@ export function byLoad(
 export async function minuteLoads(
   hosts: readonly (Host | undefined)[],
   waitMs: number,
-): Promise<{ order: { label: string; host: Host | undefined; share: number }[]; silent: string[] }> {
+): Promise<{
+  order: { label: string; host: Host | undefined; share: number; system: string }[];
+  silent: string[];
+}> {
   const watched = watchersOf(hosts, ONCE, sampleOf);
   await firstReadings(watched, 1000, () => true, waitMs);
-  const order = byLoad(watched, WINDOWS["1m"]).map(({ label, host, load, cores }) => ({
+  const order = byLoad(watched, WINDOWS["1m"]).map(({ label, host, load, cores, system }) => ({
     label,
     host,
     share: load / cores,
+    system,
   }));
   const silent = watched.flatMap(({ label }) => (order.some((each) => each.label === label) ? [] : [label]));
   return { order, silent };

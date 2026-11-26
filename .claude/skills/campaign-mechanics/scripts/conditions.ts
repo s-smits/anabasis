@@ -1,13 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Inspects solve settings and identifies condition differences within comparisons.
- *
- *   bun .claude/skills/campaign-mechanics/scripts/conditions.ts <log.jsonl | campaign name>
- *
- * Scalar fields (`model`, `effort`, `compaction`, `side`) are printed verbatim; changed keys in
- * `limits` and `runtime` are listed explicitly; remaining fields are represented by short digests.
- * A changed `host` digest indicates a host code change between conditions. Output omits tasks,
- * answers, and checks, but remains exam-side and must stay untracked.
+ * Inspects solve settings and identifies condition differences within comparisons: `conditions.ts
+ * <log.jsonl | campaign name>`. Scalar fields (`model`, `effort`, `compaction`, `side`) print
+ * verbatim, changed `limits` and `runtime` keys are listed, and other fields print as short
+ * digests; a changed `host` digest is a host code change. Output omits tasks, answers and checks
+ * but remains exam-side and must stay untracked.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { short } from "#src/campaign/move.ts";
@@ -23,7 +20,7 @@ const USAGE = `usage: conditions.ts <log.jsonl | campaign name>
 
 The settings a campaign's solves ran under, and what each comparison's solves differ in.`;
 
-/** Fields included in a `Setting` (`condition.ts`), ordered to match `settingId` hashing. */
+/** Fields of a `Setting` (`condition.ts`), in `settingId`'s hashing order. */
 const SETTING = [
   "contract",
   "model",
@@ -37,18 +34,15 @@ const SETTING = [
   "host",
   "side",
 ] as const satisfies readonly (keyof Condition)[];
-/** Scalar fields printed in full rather than as short hashes. */
 const WORDS: ReadonlySet<string> = new Set(["model", "effort", "compaction", "side"]);
 
 type Field = (typeof SETTING)[number];
 
-/** Started solve record with its resolved condition and associated session ID, or null if ungrouped. */
 interface Started {
   readonly condition: Condition;
   readonly comparison: string | null;
 }
 
-/** Extracts every started solve whose condition is present in the log. */
 function startedOf(events: readonly LogEvent[]): Started[] {
   const conditions = conditionsOf(events);
   return events.flatMap(({ kind, data }) => {
@@ -59,7 +53,6 @@ function startedOf(events: readonly LogEvent[]): Started[] {
   });
 }
 
-/** Returns a key-value map for the `limits` or `runtime` field of a condition. */
 function keysOf(
   field: "limits" | "runtime",
   side: Condition,
@@ -69,7 +62,6 @@ function keysOf(
     : new Map(Object.entries(side.runtime));
 }
 
-/** Describes how a single setting field changed between two conditions, or returns null if unchanged. */
 function moved(field: Field, before: Condition, after: Condition): string | null {
   const [was, now] = [before[field], after[field]];
   if (hashJsonValue(was) === hashJsonValue(now)) return null;
@@ -84,12 +76,11 @@ function moved(field: Field, before: Condition, after: Condition): string | null
   return `${field} ${short(hashJsonValue(was))} to ${short(hashJsonValue(now))}`;
 }
 
-/** Returns the setting fields (excluding harness, tool tree, and task) that vary across `conditions`. */
+/** The setting fields, excluding harness, tool tree and task, that vary across `conditions`. */
 export function differing(conditions: readonly Condition[]): Field[] {
   return SETTING.filter((field) => new Set(conditions.map((each) => hashJsonValue(each[field]))).size > 1);
 }
 
-/** Formats the condition summary lines for `events`. */
 export function conditionLines(events: readonly LogEvent[]): string[] {
   const started = startedOf(events);
   const settings = new Map<string, { condition: Condition; solves: number }>();

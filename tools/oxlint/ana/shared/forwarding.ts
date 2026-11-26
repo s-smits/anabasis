@@ -2,19 +2,14 @@ import type { ESTree } from "@oxlint/plugins";
 import { bindingName, bindsName } from "./statements.ts";
 
 /**
- * Whether a value handed to a function the file declares ends up at a named destination.
- *
- * Two ownership rules ask this. A script that keeps a testable `main(argv)` hands the process
- * arguments to the library parser through it, and a script with a local `readOptional(path)` hands a
- * path to a JSON reader through it. Trusting the local name would admit a hand parser called
- * `parse`; ignoring local functions would report the testable shape the library's own callers use.
- * So the parameter is followed by name and position into every call inside that function's body,
- * through as many local functions as it passes, and the answer is whatever the chain reaches.
+ * Whether a value handed to a function the file declares ends up at a named destination: a script
+ * that keeps a testable `main(argv)` hands the process arguments to the library parser through it.
+ * The parameter is followed by name and position into every call in that function's body, through
+ * as many local functions as it passes, so neither a hand parser called `parse` nor the testable
+ * shape is misread.
  */
 type Callable = ESTree.Function | ESTree.ArrowFunctionExpression;
 
-/** One call in the file: the name it calls, which arguments are bare identifiers, and every
- *  function it sits inside. */
 interface CallSite {
   node: ESTree.CallExpression;
   callee: string;
@@ -110,10 +105,8 @@ export function forwardingTracker() {
       }
       calls.push({ node, callee, identifiers, within });
     },
-    /** Whether argument `index` of a call to `name` arrives at a call `target` accepts. */
     reaches: (name: string, index: number, target: (name: string) => boolean): boolean =>
       reaches(name, index, target, new Set()),
-    /** Every recorded call passing the identifier `name`, with the position it is passed at. */
     passing(name: string): { node: ESTree.CallExpression; index: number }[] {
       return calls.flatMap((site) =>
         [...site.identifiers].flatMap(([index, argument]) =>

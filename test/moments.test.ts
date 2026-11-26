@@ -1,6 +1,6 @@
 /**
- * Check route matching for Claude Code and Codex inputs, once-per-session delivery, silence
- * for unrelated calls and successful exit on unreadable input.
+ * Route matching for Claude Code and Codex inputs, once-per-session delivery, silence for unrelated
+ * calls and a clean exit on unreadable input.
  */
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../src/meta/json-runtime.ts";
@@ -42,6 +42,15 @@ describe("the areas a call enters", () => {
       ids({ command: "*** Begin Patch\n*** Update File: src/kernel/compare.ts\n@@ x\n*** End Patch" }),
     ).toEqual(["measurement", "code"]);
     expect(ids({ command: ["bash", "-lc", "bun run test -- test/x.test.ts"] })).toEqual(["suite"]);
+    expect(ids({ command: "bun -e 'read(\"data/runs/h/r/log.jsonl\")'" })).toEqual(["reading"]);
+    expect(ids({ command: "bun tools/campaign/signal.ts --stop r1" })).toEqual(["run"]);
+    expect(ids({ command: "bun tools/eval/examine.ts --name r1" })).toEqual(["run"]);
+    expect(ids({ file_path: "/w/anabasis/tools/campaign/harness-builder.ts" })).toEqual([
+      "seats",
+      "campaign",
+      "code",
+    ]);
+    expect(ids({ file_path: "/w/anabasis/src/sandbox/base.ts" })).toEqual(["wall", "code"]);
   });
 
   it("omits unrelated calls and routes already delivered", () => {

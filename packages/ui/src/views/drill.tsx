@@ -8,21 +8,13 @@ import type { Navigation, RouteChange } from "../route.ts";
 import { digestText } from "./campaign-data.ts";
 import type { Ending as SolveEnding } from "../../../../src/kernel/solve.ts";
 
-/*
- * The drill-down the Moves and Tasks panes share: a list whose
- * row opens its detail in place, the list hidden rather than pushed above it, and a way back that
- * restores the list and the focus on the row, as v1's task view did (`views/cases.tsx` at 5bc9988).
- *
- * v1 kept the selection in component state. Here it is the URL's (`route.ts`), so the browser's back
- * button is a way back too, and the page's own Back button goes back through the history where the
- * page itself made the entry, so that the two never disagree about where "back" is. A detail opened
- * from a link has no such entry, and its Back button names the list as a new one.
- *
- * A level waits for its answer with the one before it on screen (`late.ts`), and the list comes
- * back in the frame the detail leaves; the history puts its scroll back.
- */
+// The drill-down the Moves and Tasks panes share: a list whose row opens its detail in place, the list
+// hidden rather than pushed above it, and a way back that restores the list and the focus on its row.
+// The selection is the URL's (`route.ts`), so the browser's back button is a way back too, and the
+// page's Back goes back through the history where the page itself made the entry; a detail opened from
+// a link has none, and its Back names the list as a new entry. A level waits for its answer with the
+// one before it on screen (`late.ts`).
 
-/** A label and the tone it is drawn in. */
 export interface Toned {
   readonly label: string;
   readonly tone: Tone;
@@ -38,14 +30,11 @@ const SIDE_LABELS = {
   other: "reference again",
 } as const;
 
-/** Open a detail: a new history entry the page may later leave by going back. */
 export function enter(navigation: Navigation, change: RouteChange): void {
   navigation.push(change);
   entered.add(window.location.search);
 }
 
-/** Leave a detail for its list: back through the history where the page entered it, else a new
- *  entry that names the list. */
 function leave(navigation: Navigation, change: RouteChange): void {
   if (entered.delete(window.location.search)) {
     window.history.back();
@@ -55,14 +44,10 @@ function leave(navigation: Navigation, change: RouteChange): void {
 }
 
 /**
- * Focus as the list and its detail take turns: the detail when one opens, and the row it was
- * opened from when the list returns. Rows carry `data-row` with their key. `selected` is what is
- * shown, not what the route asks for, so that focus never lands on a level still being read.
- *
- * The turn is a route's, a click's or the browser's back button's alike, so no handler owns it:
- * `marker`, rendered after the list and the detail, is keyed by the turn, and its ref moves focus as
- * it attaches, in the commit and before the frame is painted, rather than in a layout effect run
- * after every render that changed `selected`.
+ * Focus as the list and its detail take turns: the detail as it opens, the row it came from as the
+ * list returns (rows carry `data-row`). `selected` is what is shown, so focus never lands on a
+ * level still being read. No handler owns the turn: `marker`, keyed by it, moves focus from its ref
+ * in the commit, before the frame is painted.
  */
 export function useDrill(selected: string | null) {
   const list = useRef<HTMLDivElement>(null);
@@ -96,7 +81,6 @@ export function useDrill(selected: string | null) {
   };
 }
 
-/** The head of a detail: the way back, the title with what it is, its badges, and one line. */
 export function DetailHead({
   navigation,
   back,
@@ -107,13 +91,11 @@ export function DetailHead({
   children,
 }: {
   navigation: Navigation;
-  /** The route change that returns to the list. */
   back: RouteChange;
   backLabel: string;
   title: string;
   kind: string;
   badges?: ReactNode;
-  /** The one qualifying line under the title. */
   children?: ReactNode;
 }) {
   return (
@@ -133,14 +115,12 @@ export function DetailHead({
   );
 }
 
-/** The issues an answer carries: shown, never swallowed. */
 export function AnswerIssues({ answer }: { answer: Answer }) {
   return answer.issues.map((issue) => (
     <IssueCallout key={`${issue.source}:${issue.message}`} issue={issue} />
   ));
 }
 
-/** What stands in a detail's place while its answer is not the one asked for. */
 export function Pending<Value>({ live, what }: { live: Live<Value>; what: string }) {
   if (live.error !== null) {
     return (
@@ -152,7 +132,6 @@ export function Pending<Value>({ live, what }: { live: Live<Value>; what: string
   return <NoSignal title={`Reading ${what}`}>The detail is loading</NoSignal>;
 }
 
-/** How a solve ended, as a badge says it: a valid answer, a fail by its kind, or a non-result. */
 export function endingOf(ending: SolveEnding | null): Toned {
   if (ending === null) return { label: "open", tone: "info" };
   if (ending.outcome === "pass") return { label: "valid", tone: "good" };
@@ -166,12 +145,10 @@ export function EndingBadge({ ending }: { ending: SolveEnding | null }) {
   return <Badge tone={tone}>{label}</Badge>;
 }
 
-/** Where a solve stood, in the Terms' words. */
 export function sideLabel(side: keyof typeof SIDE_LABELS): string {
   return SIDE_LABELS[side];
 }
 
-/** A harness as a reader knows it (`digestText`), or "none" where nothing is named. */
 export function harnessLabel(reading: Pick<CampaignReading, "names"> | null, digest: string | null): string {
   return digest === null ? "none" : digestText(digest, reading?.names ?? {});
 }

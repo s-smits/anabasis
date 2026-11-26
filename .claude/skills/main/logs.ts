@@ -1,7 +1,4 @@
-/**
- * Shared campaign log discovery across the archive and worktrees for skill scripts (`replay.ts`,
- * `table.ts`, `trend.ts`, `starter-reads.ts`).
- */
+/** Campaign log discovery across the archive and worktrees for skill scripts. */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -12,12 +9,11 @@ import { readableAcross } from "#tools/runs/snapshots.ts";
 
 export type Found = Pick<Run, "name" | "path" | "archived">;
 
-/** Tail byte window read to extract a log's final event timestamp without reading the entire file. */
+/** Tail byte window read for a log's last event timestamp without reading the whole file. */
 const [TAIL, NEWLINE] = [65_536, 0x0a];
 const LEFT_OUT = ["sim-", "rh-", "test-"] as const;
 
-/** Returns the `at` timestamp of the last complete event in `path` (reading from the tail when
- *  possible, growing the window if the final event exceeds `TAIL`), or `""` if empty. */
+/** Grows the window when the final event exceeds `TAIL`; `""` if empty. */
 export function lastAt(path: string): string {
   const fd = openSync(path, "r");
   try {
@@ -43,8 +39,7 @@ export function lastAt(path: string): string {
   }
 }
 
-/** Discovers all campaign logs under `home` (keeping the largest file per campaign name and
- *  excluding unnamed seeds and `LEFT_OUT` prefixes). */
+/** Keeps the largest file per campaign name and excludes unnamed seeds and `LEFT_OUT` prefixes. */
 function everyLog(
   home: string,
   names: readonly string[],
@@ -68,7 +63,7 @@ function everyLog(
     .toSorted((a, b) => (a.name < b.name ? -1 : 1));
 }
 
-/** Returns discovered campaign logs filtered by explicit `names` (when non-empty) or `lastAt >= since`. */
+/** Filtered by explicit `names` when given, else by `lastAt >= since`. */
 export async function campaignLogs(
   home: string | null,
   names: readonly string[],
@@ -84,10 +79,13 @@ export async function campaignLogs(
             (match === null || match(run.name)),
         )
       : everyLog(home, names, match);
-  return all.filter(({ name, path }) => (names.length > 0 ? names.includes(name) : lastAt(path) >= since));
+  return all.filter(
+    ({ name, path }) =>
+      names.includes(name) || ((match !== null || names.length === 0) && lastAt(path) >= since),
+  );
 }
 
-/** Returns `true` when `events` came from a scripted rehearsal (`faux/` seat or solver model). */
+/** A scripted rehearsal is one with a `faux/` seat or solver model. */
 export function rehearsed(events: readonly LogEvent[]): boolean {
   const models = events.flatMap(({ kind, data }) => {
     if (kind === "campaign.setting") return [asRecord(data.solver)?.model];

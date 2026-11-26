@@ -1,7 +1,6 @@
-// Enforces the five push-gating source policies: file-size and function-size ceilings, banned
-// literals and calls that would reintroduce retired systems, unused exports in authored roots, and
-// retirement of stale copied-file ceiling exemptions once a file fits within the standard limits.
-// Provenance and history belong to Git rather than policy metadata.
+// Enforces the push-gating source policies: file- and function-size ceilings, banned literals and calls
+// that would reintroduce retired systems, dependency and security layer boundaries, and retirement of
+// stale copied-file ceiling exemptions.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -11,55 +10,35 @@ import { countNonBlank } from "./nonblank-loc.ts";
 import sourcePolicy from "./source-policy.json" with { type: "json" };
 import { scanTokens } from "./token-facts.ts";
 
-// File and function ceilings scaled for `biome format` at `lineWidth: 110`. The earlier 600-line
-// file and 80-line function ceilings assumed manual line breaks; automatic wrapping at 110 columns
-// expands deeply indented functions disproportionately (90th-percentile multipliers of 1.330 per
-// file and 1.425 per function across formatted files), giving 800 and 115 when rounded up.
-// Measurements across 100 to 160 columns showed 96.5% of authored lines already fit within 110
-// columns, so the ceilings were adjusted rather than widening the formatter.
+// Ceilings scaled for `biome format` at `lineWidth: 110`: wrapping expands deeply indented functions
+// disproportionately (90th-percentile multipliers of 1.330 per file and 1.425 per function), which
+// takes the 600-line file and 80-line function ceilings to 800 and 115.
 export const NEW_FILE_CEILING = 800;
 export const NEW_FUNCTION_CEILING = 115;
 export const AGENTS_MD_BYTE_CEILING = 24_000;
-const AGENTS_MD = "AGENTS.md";
+export const AGENTS_MD = "AGENTS.md";
 
 const SOURCE_ROOTS = ["src", "tools", "vendor", ".claude/skills"] as const;
 /** Production roots whose source files must not import helper or test trees (`AGENTS.md` §12). */
 export const PRODUCTION_ROOTS = ["src", "vendor", "packages", "tools"] as const;
 const HELPER_ROOTS = [".claude/", "tools/wri/", "studies/", "test/"] as const;
+const CHECK_CHILD = "src/kernel/check-child.ts";
+const META_LAYER = "src/meta/";
+const ISOLATED_LAYERS = ["src/kernel/", "src/sandbox/"] as const;
+const FORBIDDEN_FROM_ISOLATED = [
+  "src/builder/",
+  "src/examiner/",
+  "src/audit/",
+  "src/solver/",
+  "src/campaign/",
+] as const;
 const SOURCE_EXT = /\.[cm]?[jt]sx?$/u;
 
-/** Authored roots owned by this repository whose unused exports are reported as findings. `vendor`
- *  is pinned verbatim and `starters` is copied into Builder workspaces with external consumers, so
- *  neither is checked for unused exports. The simplification census scans these roots plus
- *  `.claude`. */
+/** Authored roots owned by this repository; `vendor` is pinned verbatim. The simplification census
+ *  scans these roots plus `.claude`. */
 export const AUTHORED_ROOTS = ["src", "tools", "packages/ui/src"] as const;
 
-/** Roots searched for references to exported names. Intentionally broader than the TypeScript
- *  import graph because skill scripts under `.claude` and configuration files may reference
- *  repository exports. */
-export const READER_ROOTS = [
-  "src",
-  "tools",
-  "vendor",
-  "starters",
-  "test",
-  "packages",
-  "scripts",
-  ".claude",
-  "studies",
-] as const;
-
-/** Matches named `export` declarations. Excludes `export { ... }` re-export lists (which repeat
- *  existing names) and `export default` (which introduces no bound name). */
-const EXPORTED =
-  /^export (?:declare )?(?:async )?(?:interface|type|function|const|let|class|enum|abstract class) ([A-Za-z_$][\w$]*)/gm;
-
-const IDENTIFIER = /[A-Za-z_$][\w$]*/g;
-
-export const READ_AS_SOURCE = [".ts", ".tsx", ".mts", ".mjs", ".js", ".py", ".json"];
-/** Per-file line ceilings for legacy or copied files exempt from the standard authored limits.
- *  Also consulted by `tree-findings.ts` before suggesting code moves into a file. */
-export const copiedFileLimits: Readonly<Record<string, number>> = sourcePolicy.copiedFileLimits;
+const copiedFileLimits: Readonly<Record<string, number>> = sourcePolicy.copiedFileLimits;
 const refusedLiterals: ReadonlySet<string> = new Set(sourcePolicy.refusedLiterals);
 const refusedCalls: ReadonlySet<string> = new Set(sourcePolicy.refusedCalls);
 
@@ -70,7 +49,6 @@ interface SourcePolicyFinding {
     | "literal-cut"
     | "call-cut"
     | "stale-copy-limit"
-    | "unused-export"
     | "dependency-direction";
   path: string;
   detail: string;
@@ -80,17 +58,26 @@ const helperOf = (path: string): string | null =>
   HELPER_ROOTS.find((root) => path.startsWith(root)) ??
   (/^packages\/[^/]+\/test\//u.test(path) ? "test/" : null);
 
-/** Whether `path` is a production source file (`AGENTS.md` §12). */
+const boundaryOf = (file: string, imported: string): string | null => {
+  const helper = helperOf(imported);
+  if (helper !== null) return helper;
+  if (file === CHECK_CHILD && !imported.startsWith(META_LAYER)) return "offline-cell";
+  if (file.startsWith(META_LAYER) && !imported.startsWith(META_LAYER)) return META_LAYER;
+  if (ISOLATED_LAYERS.some((layer) => file.startsWith(layer))) {
+    return FORBIDDEN_FROM_ISOLATED.find((layer) => imported.startsWith(layer)) ?? null;
+  }
+  return null;
+};
+
 export const production = (path: string): boolean =>
   SOURCE_EXT.test(path) &&
   PRODUCTION_ROOTS.some((root) => path.startsWith(`${root}/`)) &&
   helperOf(path) === null;
 
-/** Each import of `files` from production into a helper or test root, by `graph`. */
 export function breaches(files: readonly string[], graph: (file: string) => readonly string[]) {
   return files.filter(production).flatMap((file) =>
     graph(file).flatMap((imported) => {
-      const root = helperOf(imported);
+      const root = boundaryOf(file, imported);
       return root === null ? [] : [{ file, imported, root }];
     }),
   );
@@ -105,52 +92,19 @@ function walkFiles(root: string): string[] {
   }
   const files: string[] = [];
   for (const name of entries.toSorted()) {
-    // Skip installed dependencies, build output, and nested dot-directories (including `.git` and
-    // temporary test scratch directories, which would otherwise distort counts and race with test
-    // cleanup). Top-level roots such as `.claude` are passed directly and remain included.
+    // Nested dot-directories include `.git` and test scratch directories, which would distort counts
+    // and race with test cleanup; top-level roots such as `.claude/skills` are passed directly.
     if (name === "node_modules" || name === "dist" || name.startsWith(".")) continue;
     const path = join(root, name);
-    // Skip nested Git checkouts (for example agent worktrees under `.claude/worktrees/`) so
-    // duplicated repository files are not scanned twice.
+    // Nested Git checkouts (agent worktrees under `.claude/worktrees/`) would scan the repository
+    // twice.
     if (!statSync(path).isDirectory()) files.push(path);
     else if (!existsSync(join(path, ".git"))) files.push(...walkFiles(path));
   }
   return files;
 }
 
-/**
- * Reports exported declarations that no other file references.
- */
-export function unusedExports(
-  declaring: ReadonlyMap<string, string>,
-  readers: ReadonlyMap<string, string>,
-): SourcePolicyFinding[] {
-  const home = new Map<string, string | null>();
-  for (const [path, text] of declaring) {
-    for (const match of text.matchAll(EXPORTED)) {
-      const name = match[1] ?? "";
-      home.set(name, home.has(name) ? null : path);
-    }
-  }
-  for (const [path, text] of readers) {
-    for (const match of text.matchAll(IDENTIFIER)) {
-      if (home.get(match[0]) !== undefined && home.get(match[0]) !== path) home.set(match[0], null);
-    }
-  }
-  return [...home]
-    .flatMap(([name, path]) => (path === null ? [] : [{ check: "unused-export" as const, path, name }]))
-    .toSorted((left, right) =>
-      left.path === right.path ? left.name.localeCompare(right.name) : left.path.localeCompare(right.path),
-    )
-    .map((row) => ({
-      check: row.check,
-      path: row.path,
-      detail: `\`${row.name}\` is exported and no other file names it; drop the \`export\``,
-    }));
-}
-
-/** Reads all files matching `suffixes` under `roots` into a path-to-content map. Shared with
- *  `tools/oxlint/tree-findings.ts` so both scans inspect the same file corpus. */
+/** Shared with `tools/oxlint/tree-findings.ts` so both scans inspect the same file corpus. */
 export function corpus(roots: readonly string[], suffixes: readonly string[]): Map<string, string> {
   const files = new Map<string, string>();
   for (const root of roots) {
@@ -214,19 +168,14 @@ function cutFindings(path: string, text: string): SourcePolicyFinding[] {
   return findings;
 }
 
-export function sourceTextFindings(
-  path: string,
-  text: string,
-  copiedLimit: number | undefined = copiedFileLimits[path],
-): SourcePolicyFinding[] {
-  return [...sizeFindings(path, text, copiedLimit), ...cutFindings(path, text)];
+export function sourceTextFindings(path: string, text: string): SourcePolicyFinding[] {
+  return [...sizeFindings(path, text, copiedFileLimits[path]), ...cutFindings(path, text)];
 }
 
 /**
- * Reports entries in `copiedFileLimits` that no longer have any effect, either because the named
- * file was deleted or because it now satisfies both standard authored ceilings. Because a copied
- * ceiling also disables the function-size check for that file, stale exemptions are refused rather
- * than retained.
+ * Entries in `copiedFileLimits` that no longer have any effect: the file was deleted or now meets
+ * both standard ceilings. A copied ceiling also disables the function-size check, so a stale one is
+ * refused.
  */
 function staleCopyLimits(read: (path: string) => string | null): SourcePolicyFinding[] {
   const findings: SourcePolicyFinding[] = [];
@@ -249,21 +198,6 @@ function staleCopyLimits(read: (path: string) => string | null): SourcePolicyFin
   return findings;
 }
 
-/** Finds unused exports across the tree rooted at `base` (defaulting to the current working
- *  directory), returning paths relative to `base`. Shared by the source gate and commit preflight. */
-export function unreadExports(base = ""): SourcePolicyFinding[] {
-  const read = (roots: readonly string[], suffixes: readonly string[]) => {
-    const files = corpus(
-      roots.map((top) => join(base, top)),
-      suffixes,
-    );
-    return base === ""
-      ? files
-      : new Map([...files].map(([path, text]) => [path.slice(base.length + 1), text]));
-  };
-  return unusedExports(read(AUTHORED_ROOTS, [".ts", ".tsx", ".mts"]), read(READER_ROOTS, READ_AS_SOURCE));
-}
-
 function sourcePolicyFindings(): SourcePolicyFinding[] {
   const cwd = runtimeProcess.cwd();
   const paths = SOURCE_ROOTS.flatMap((root) => walkFiles(root));
@@ -272,7 +206,6 @@ function sourcePolicyFindings(): SourcePolicyFinding[] {
     ...paths.flatMap((path) => sourceTextFindings(path, readFileSync(path, "utf8"))),
     ...(existsSync(AGENTS_MD) ? sourceTextFindings(AGENTS_MD, readFileSync(AGENTS_MD, "utf8")) : []),
     ...staleCopyLimits((path) => (onDisk.has(path) ? readFileSync(path, "utf8") : null)),
-    ...unreadExports(),
     ...breaches(
       PRODUCTION_ROOTS.flatMap((root) => walkFiles(root)),
       (file) => importsOf(cwd, file),

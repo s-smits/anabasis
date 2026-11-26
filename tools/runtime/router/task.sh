@@ -1,6 +1,7 @@
-# One check task, where it runs: `task.sh <here|host> <folder> <bun pin> <deadline seconds> <task>
+# One check task, where it runs: `task.sh <here|lead|host> <folder> <bun pin> <deadline seconds> <task>
 # [arguments...]`. `run.ts` starts it on this machine over the checkout itself (`here`, an absolute
-# folder), and on a host over that host's slot (`host`, a folder under its home), where it first
+# folder; `lead` likewise, leaving `bun` the router so the task's own check steps are routed in turn),
+# and on a host over that host's slot (`host`, a folder under its home), where it first
 # checks out the snapshot `run.ts` pushed and makes sure of the slot's dependencies. Either way the
 # task is `bun run <task>` on the Bun the tree pins, under one deadline, with the orphans of earlier
 # tasks ended first. It stays within bash 3.2, a Mac's /bin/bash: no associative arrays, no `${x,,}`,
@@ -8,7 +9,7 @@
 set -euo pipefail
 where="$1" dir="$2" pin="$3" wall_seconds="$4" task="$5"
 shift 5
-export ANA_RUNNER_ACTIVE=1
+[[ "$where" == lead ]] || export ANA_RUNNER_ACTIVE=1
 
 # Tailscale SSH, which serves the Macs, reports 0 as every session's exit status, so a suite that
 # exited 1 there would read 0 here. So a host's status goes back as a file beside the slot,
@@ -54,12 +55,38 @@ if [[ -n "$pin" ]]; then
     rm -rf "$staging"
   fi
 fi
-export PATH="$bun_dir:$PATH"
+[[ "$where" == lead ]] || export PATH="$bun_dir:$PATH"
 cd "$dir"
+
+# starts: whether a program written just now begins within ten seconds. A Mac whose check of new
+# programs has stalled holds every program a test writes until each test times out, so a task there
+# says nothing of the tree: it exits 69, before it runs or where it failed, and run.ts reads that as
+# no verdict.
+starts() {
+  local pid guard ok=0
+  rm -f "$dir.probe"
+  printf '#!/bin/sh\n' >"$dir.probe"
+  chmod +x "$dir.probe"
+  "$dir.probe" &
+  pid=$!
+  (sleep 10; kill -9 "$pid") >/dev/null 2>&1 &
+  guard=$!
+  disown "$guard"
+  wait "$pid" 2>/dev/null || ok=$?
+  # SAFETY: SIGKILL. A TERM that reaches the guard before it has reset the traps it inherited runs
+  # this shell's EXIT trap there, which wrote the guard's 0 as a failed task's status on Linux.
+  kill -9 "$guard" 2>/dev/null || true
+  return "$ok"
+}
+stalled() {
+  printf "runner: %s did not start a new program in 10s, so this is no verdict\n" "$(uname -n)" >&2
+  exit 69
+}
 
 marker=""
 if [[ "$where" == host ]]; then
   marker="$dir"
+  starts || stalled
   # A non-interactive ssh shell starts with a bare PATH. The Builder's isolated-command tests resolve
   # `rg` through the wall's toolchain roots, so the package managers' folders must be on it, and
   # Bubblewrap is often in /usr/local/bin.
@@ -171,7 +198,8 @@ kill_tree() {
 # terminal, and ^C delivers INT. package.json owns each command: a restated test command once
 # dropped --path-ignore-patterns.
 status=0
-${keep_awake[@]+"${keep_awake[@]}"} bun run "$task" "$@" &
+[[ "$where" != host ]] || cp -f test/.test-timings.json "$dir.times" 2>/dev/null || : >"$dir.times"
+${keep_awake[@]+"${keep_awake[@]}"} "$bun_dir/bun" run "$task" "$@" &
 walled_task=$!
 (
   sleep "$wall_seconds"
@@ -183,4 +211,5 @@ disown "$walled_guard" # its kill below is routine; keep bash from reporting it 
 trap 'kill_tree "$walled_task"; kill_tree "$walled_guard"; exit 130' HUP INT TERM
 wait "$walled_task" || status=$?
 kill_tree "$walled_guard"
+[[ "$where" != host || "$status" == 0 ]] || starts || stalled
 exit "$status"

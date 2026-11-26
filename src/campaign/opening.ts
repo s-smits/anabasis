@@ -1,75 +1,32 @@
-/**
- * What a campaign runs by: its opening, as the Harness Builder's command records it
- * (`campaign.opened`, `tools/d2/harness-builder.ts`), and the plan move 7 decides on, read from
- * that opening and the log (`Plan`, `ground.ts`).
- *
- * The opening is the operator's conditions for the whole campaign, recorded once and again where
- * a command names another: the total budget, who sits in each seat, whether the operator's word is
- * waited for, and, for a campaign that opens from a prompt, the prompt and who solves. None of them
- * moves a comparison's reading. The setting is the log's own record (`campaign.setting`), and the
- * one record of a solve's limits, the scored tasks and the solves a side: the campaign command
- * records it as it starts (`tools/d2/harness-builder.ts`), so the opening keeps no copy of them.
- *
- * It also keeps the terms of the campaign's moves as a command last named them (`TERMS`): the
- * limits of a Builder conversation, the comparison's level, the practice tasks and the operator's
- * cap of promotions. Without them, a campaign continued by its name alone would run each move by
- * its default and silently drop what it was opened with. An older opening's other terms
- * (`defects`, `practice-solves`, the Examiner's `exam-proposals`, `exam-minutes` and `exam-turns`,
- * `cost`, `exam-tasks` and `sessions`) are read past, since each is its move's default now or went
- * with the rule that read it.
- */
 import { CALL_KINDS, type EventKind, eventsOf, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, patienceOf } from "../kernel/reports.ts";
 import { billedAll } from "../kernel/meter.ts";
 import { SIZE } from "../kernel/size.ts";
 import { unadmitted } from "../kernel/acceptance.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import type { Plan } from "./ground.ts";
+import type { Plan } from "./state.ts";
 
-/** Who sits in a seat: a model and its effort. */
 export interface Seat {
   readonly model: string;
   readonly effort: string;
 }
-/** What a campaign runs by, as `campaign.opened` records it (`tools/d2/harness-builder.ts`). */
 export interface Opening {
-  /** The project the campaign belongs to (`--project`); null for the oldest openings, which name
-   *  none. */
   readonly project: string | null;
-  /** The dollars the campaign may bill in all, and the reserve one solve is held at; null for a
-   *  rehearsal's, whose seats are paid nothing. */
   readonly budget: Cap | null;
-  /** The improvement patience and supply patience: moves without a gain and readings that left
-   *  nothing to gain (`roomless`) before the campaign ends (`--patience`; `PATIENCE`). */
   readonly patience: number;
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
-  /** Whether the operator is in the loop (`--hitl`): the freeze, a drafted exam's checks and a
-   *  promotion then wait for the operator's word. It is kept here and not read off the running
-   *  command's flag alone, so that a reopen that does not name the flag still waits; `--no-hitl`
-   *  gives it back. The record keeps the key the flag had under its older name, `--attended`. */
   readonly attended: boolean;
-  /** The operator's prompt, for a campaign that opened from one: its exam is drafted from it
-   *  (`src/examiner/draft.ts`). Null for a campaign that opened over a stored pack. */
+  readonly judged: boolean;
   readonly prompt: string | null;
-  /** Who solves, where no stored cycle says: a campaign from a prompt names it at its opening. */
   readonly solver: Seat | null;
-  /** The terms of the campaign's moves, each as a command last named it; a move runs by its
-   *  default for a term no command has named. */
   readonly terms: Terms;
 }
 
-/** The flags of a campaign's moves that its opening keeps: a comparison's level; a Builder
- *  conversation's deadline and session turn limit; the practice tasks; and the operator's cap of
- *  promotions, `none` to lift it. */
 export const TERMS = ["level", "minutes", "turns", "practice", "promotions"] as const;
 export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 
-/** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
 export const SEATS = ["builder", "examiner", "reviewer"] as const;
 const SETTING = "campaign.setting";
-/** The paid solves of each campaign in flight in this process, by its log: a Builder's practice
- *  and a comparison's solves share one budget, so every solve in flight holds a reserve and two
- *  callers cannot both spend the last of it. */
 const FLYING = new Map<string, number>();
 
 const UNBILLED: ReadonlySet<EventKind> = new Set([
@@ -83,27 +40,20 @@ const UNBILLED: ReadonlySet<EventKind> = new Set([
   "task.state",
 ]);
 
-/** How many paid solves of the campaign whose log is `log` are in flight in this process. */
 export function inFlight(log: string): number {
   return FLYING.get(log) ?? 0;
 }
 
-/** What is left of the campaign's total once every billed dollar in `events` is subtracted, with
- *  its reserve, or null where the opening names no budget. The one reading of it for the plan, a
- *  solve's admission, the Builder's practice, the Examiner's next request and the page's runway. */
 export function budgetLeft(events: readonly LogEvent[], opening = openingOf(events)): Cap | null {
   const budget = opening?.budget;
   return budget == null ? null : { dollars: budget.dollars - billedAll(events), reserve: budget.reserve };
 }
 
-/** Whether the campaign whose log is `log` holds a reserve for `count` more solves beside those in
- *  flight. A log whose opening names no budget holds every one. */
 export function affords(log: string, count: number): boolean {
   const left = budgetLeft(read(log, UNBILLED));
   return left === null || left.dollars >= (inFlight(log) + count) * left.reserve;
 }
 
-/** `run`, counted in flight for the campaign whose log is `log` while it runs. */
 export async function flying<T>(log: string, run: () => Promise<T>): Promise<T> {
   FLYING.set(log, inFlight(log) + 1);
   try {
@@ -113,7 +63,6 @@ export async function flying<T>(log: string, run: () => Promise<T>): Promise<T> 
   }
 }
 
-/** What a log's last opening holds a campaign to run by, or null where it holds none. */
 export function openingOf(events: readonly LogEvent[]): Opening | null {
   const data = eventsOf(events, "campaign.opened").at(-1)?.event.data;
   if (data === undefined) return null;
@@ -131,6 +80,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     patience: patienceOf(events),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: data.attended === true,
+    judged: data.judged === true,
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
     terms: Object.fromEntries(
@@ -142,22 +92,14 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
   };
 }
 
-/**
- * What move 7 reads beside a log: the campaign's plan from its opening, the dollars left of its
- * total, the size its setting asks a comparison for, and what only the caller knows. A campaign
- * with no opening on record, as the oldest have, runs by the defaults and no total.
- */
 export function planOf(
   events: readonly LogEvent[],
   beside: {
-    /** Whether the campaign's pack holds a task its log does not. */
     readonly unprepared: boolean;
     readonly level: number;
-    /** The tasks to score, where the log's setting names none yet. */
     readonly target?: number | undefined;
     readonly pastStop?: string | undefined;
     readonly admits?: readonly string[] | undefined;
-    /** The practice tasks the campaign is brought to, where the caller holds a count. */
     readonly practice?: number | undefined;
   },
   opening: Opening | null = openingOf(events),
@@ -165,6 +107,8 @@ export function planOf(
   const recorded = eventsOf(events, SETTING).at(-1)?.event.data;
   const named = recorded?.target;
   const cap = Number(opening?.terms.promotions);
+  const autoAuthor = opening?.attended === true ? [] : unadmitted(events, undefined, "author");
+  const autoJudge = opening?.judged === true ? unadmitted(events, undefined, "judge") : [];
   return {
     patience: patienceOf(events),
     unprepared: beside.unprepared,
@@ -176,12 +120,7 @@ export function planOf(
     left: budgetLeft(events, opening),
     prompted: opening?.prompt != null,
     pastStop: beside.pastStop ?? null,
-    // A launch without `--hitl` is the operator's word for every check its author decides
-    // (`--admit-authored`), so a reading taken under `--hitl` that left
-    // some unadmitted is read again.
-    admits: [
-      ...new Set([...(beside.admits ?? []), ...(opening?.attended === true ? [] : unadmitted(events))]),
-    ],
+    admits: [...new Set([...(beside.admits ?? []), ...autoAuthor, ...autoJudge])],
     practice: beside.practice ?? null,
     promotions: Number.isInteger(cap) && cap > 0 ? cap : null,
   };

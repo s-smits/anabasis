@@ -28,7 +28,7 @@ Cut matching seeds named `sim-<what>-before` / `sim-<what>-after` from the same 
 | Wall | `scripts/wall-probe.ts <before> <after>` | Commands whose exit/output changed |
 | Live seat | `scripts/live-seat.ts start` (operator approval) | Single sample = lead only; repeated rounds use [optimize](optimize.md) |
 
-Run each reader twice per arm to filter jitter and ignore the host-code digest line (solve-path edits change `host` digest while keeping `sandbox` unchanged, `codeOf` in `tools/d2/campaign.ts`). If the source run already executed at `before`, it can serve as baseline while seeding only `after` (note effort/login differences).
+Run each reader twice per arm to filter jitter and ignore the host-code digest line (solve-path edits change `host` digest while keeping `sandbox` unchanged, `codeOf` in `tools/campaign/campaign.ts`). If the source run already executed at `before`, it can serve as baseline while seeding only `after` (note effort/login differences).
 
 Pre-register intended effect, null effect and side-effect checks before running (rule 1); unmentioned shifts are findings and unchanged expected lines are `unreached`. Report commits, layer, input and matched outcome in the PR's **Validation and limits**.
 

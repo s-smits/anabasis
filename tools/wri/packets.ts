@@ -1,5 +1,5 @@
 /**
- * Lane 14 across campaigns: blind packets for several graders, and the join of what they graded.
+ * Blind grading across campaigns (lane 1): packets for several graders, and the join of what they graded.
  *
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
  *   bun tools/wri/wri.ts packets --out <dir> --join
@@ -22,7 +22,7 @@ const ANCHORS = 6;
 /** The grade from which a task the Starter answers every time is regraded: specialist work. */
 const HIGH = 5;
 
-export interface Campaign {
+interface Campaign {
   readonly name: string;
   readonly log: string;
   readonly events: readonly LogEvent[];
@@ -33,7 +33,6 @@ interface Key {
     string,
     { readonly name: string; readonly log: string; readonly grader: string }
   >;
-  /** What each grader holds, as `label<TAB>id`, its anchors apart. */
   readonly graders: Record<
     string,
     {
@@ -202,7 +201,6 @@ function launch(
   writeFileSync(join(out, file), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-/** Writes every grader's packets and prompt, the key and the manifest, and says what each holds. */
 export function buildPackets(campaigns: readonly Campaign[], outDir: string, count: number): string[] {
   const out = resolve(outDir);
   if (!Number.isInteger(count) || count < 2) {
@@ -266,7 +264,6 @@ export function buildPackets(campaigns: readonly Campaign[], outDir: string, cou
   return lines;
 }
 
-/** One grader's rows of one kind, as `label<TAB>id` to grade. */
 function rowsIn(text: string, kind: string): Map<string, number> {
   return new Map(
     text.split("\n").flatMap((line) => {
@@ -277,7 +274,6 @@ function rowsIn(text: string, kind: string): Map<string, number> {
   );
 }
 
-/** Tasks whose every solve under the Starter was valid, by id, at least two solves. */
 function starterAnswers(events: readonly LogEvent[]): Set<string> {
   const starter = starterIn(events);
   const tally = new Map<string, { valid: number; results: number }>();
@@ -304,7 +300,6 @@ Append one row each to \`${reportOf(out, grader, laneNumber)}\`, changing nothin
 `;
 }
 
-/** Joins the graders' rows under the campaigns' names and reads how far the graders differ. */
 export function joinPackets(outDir: string, read: (log: string) => readonly LogEvent[]): string[] {
   const out = resolve(outDir);
   const laneNumber = blindLane().number;

@@ -106,9 +106,6 @@ function collectTypeBindings(
   }
 }
 
-/**
- * Every type name a program declares, and the scope each declaration sits in.
- */
 export function createTypeAliasEnvironment(
   program: ESTree.Program,
   visitorKeys: VisitorKeys,
@@ -169,8 +166,8 @@ export function visibleTypeAlias(
 }
 
 /**
- * Whether the name is taken where it is used, which is how a rule tells a local `Record` or
- * `Array` from the built-in of the same name.
+ * Whether the name is taken where it is used, which is how a rule tells a local `Record` or `Array`
+ * from the built-in of the same name.
  */
 export function hasVisibleTypeBinding(
   name: string,
@@ -183,8 +180,6 @@ export function hasVisibleTypeBinding(
   );
 }
 
-/** The identifier a type reference names, or null where it is qualified: `A.B` names no
- *  single binding this environment can look up. Three modules ask it. */
 export function typeReferenceName(type: ESTree.TSTypeReference): string | null {
   return type.typeName.type === "Identifier" ? type.typeName.name : null;
 }
@@ -204,7 +199,6 @@ function aliasSubstitutions(
     const explicitArgument = typeArguments[index];
     const argument = explicitArgument ?? parameter.default;
     if (argument === null) return null;
-    // Explicit arguments were written at the reference; defaults inside the alias.
     const isDefault = explicitArgument === undefined;
     next.set(parameter.name.name, {
       type: argument,
@@ -215,10 +209,6 @@ function aliasSubstitutions(
   return next;
 }
 
-/**
- * Run a matcher over a written type with its aliases followed and their type parameters bound to
- * the arguments each use supplies.
- */
 export function resolvedTypeMatches(
   type: ESTree.TSType,
   environment: TypeAliasEnvironment,

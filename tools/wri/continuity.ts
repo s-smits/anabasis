@@ -1,6 +1,6 @@
 /**
- * Seat continuity, context compaction, post-compaction `read_opening` recovery, resting Examiner
- * multi-ask conversations, and interrupted Builder handovers (lane 15):
+ * Seat continuity (lane 13): context compactions and the `read_opening` that recovers from them,
+ * resting Examiner conversations across asks, and interrupted Builder handovers:
  *
  *   bun tools/wri/wri.ts reader continuity --log <log>
  */

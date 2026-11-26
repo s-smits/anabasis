@@ -1,8 +1,7 @@
 /**
- * Cron-driven alert monitor that reports every promotion, starter-comparison reading, campaign
- * ending, and stall across all configured hosts without involving a model. Because campaigns have no
- * automatic cap on promotions, an operator or controller session needs timely notification to decide
- * when to pause; `pulse` only reports to an actively polling session.
+ * Cron-driven monitor of every promotion, starter-comparison reading, campaign ending and stall
+ * across all configured hosts, without a model. Campaigns have no cap on promotions, so an operator
+ * needs timely word to decide when to pause; `pulse` reports only to a session that polls.
  *
  *   bun run runs alerts [--state .ana/runs-alerts.json]
  *   bun run runs alerts --rows
@@ -26,12 +25,12 @@ import { type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
 import { lastLaunch } from "./receipt.ts";
-import { climbed, ENDED, type Promotion, promotionsOf, word } from "./said.ts";
+import { climbed, ENDED, type Promotion, promotionsOf, word } from "./summary.ts";
 import {
   archived,
   HERE,
   isCampaign,
-  keptFile,
+  keeperLogPath,
   logEvents,
   processes,
   type Run,
@@ -40,43 +39,37 @@ import {
   writers,
 } from "./registry.ts";
 
-/** Snapshot of a single run as observed by the host holding it. */
 export interface Row {
   readonly name: string;
   readonly promotions: readonly Promotion[];
-  /** Current lifecycle state (`runState`): actively written, kept, ended, or stopped. */
   readonly state: RunState;
-  /** Whether this run should have an attached keeper (`keepsItself`); runs with no fallback login do not. */
+  /** Whether this run should have a keeper attached (`keepsItself`); a run with no fallback login
+   *  should not. */
   readonly owed: boolean;
   readonly lastAt: string | null;
-  /** Keeper action lines recorded for this run, ordered oldest first. */
   readonly kept: readonly string[];
-  /** Whether a pause stopped the run (`stateOf`), transmitted separately for compatibility with older peers. */
+  /** Whether a pause stopped the run (`stateOf`), sent separately for older peers. */
   readonly paused: boolean;
-  /** All campaign endings recorded in the log, ordered oldest first. */
   readonly endings: readonly string[];
 }
 
-/** Response from a single host: its active rows together with every campaign directory it holds
- *  (including closed runs older than a day that are omitted from `rows`), preventing false vanished-run alerts. */
+/** One host's answer: its active rows and every campaign folder it holds, including closed runs
+ *  older than a day that `rows` omits, so they never read as vanished. */
 export interface HostRows {
   readonly rows: readonly Row[];
   readonly held: readonly string[];
-  /** Campaigns moved into this host's local archive by `runs retire`, so leaving the active registry
-   *  does not register as a disappearance. */
+  /** Campaigns `runs retire` moved into this host's archive, so leaving the registry is no disappearance. */
   readonly retired: readonly string[];
 }
 
-/** Result of querying one host; `said` is null if the host did not return a readable payload. */
 interface Answer {
   readonly host: string;
   readonly said: HostRows | null;
 }
 
-/** Default state file path when `--state` is not supplied. */
 const STATE = join(".ana", "runs-alerts.json");
 const MAYBE_TEXT = Type.Union([Type.String(), Type.Null()]);
-/** Previously observed state of a single run; `reads` holds the session IDs of starter comparisons already reported. */
+/** A run as last seen; `reads` holds the sessions of starter comparisons already reported. */
 const SEEN = Type.Object({
   host: Type.String(),
   promotions: Type.Number(),
@@ -88,19 +81,18 @@ const SEEN = Type.Object({
   endings: Type.Optional(Type.Number()),
 });
 type Seen = Static<typeof SEEN>;
-/** Serialised alert state: unreachable hosts, consecutive missed-poll counts per host, and last-seen run records. */
 const ALERT_STATE = Type.Object({
   down: Type.Array(Type.String()),
   looks: Type.Optional(Type.Record(Type.String(), Type.Number())),
   runs: Type.Record(Type.String(), SEEN),
 });
-/** Consecutive missed polls before re-reporting an unreachable host that holds an open run
- *  (six ten-minute polls equals one hour). */
-const SAID_AGAIN = 6;
+/** Missed polls before an unreachable host holding an open run is reported again (six ten-minute
+ *  polls, one hour). */
+const REPEAT_ALERT_CYCLES = 6;
 export type AlertState = Static<typeof ALERT_STATE>;
 
-/** Schema for a host's `alerts --rows` payload. Requires fields absent from older checkouts
- *  (such as `state` and `endings`) so incompatible peers register as unreachable. */
+/** A host's `alerts --rows` answer. It requires fields older checkouts lack (such as `state` and
+ *  `endings`), so an incompatible peer reads as unreachable. */
 const HOST_ROWS = Type.Object({
   rows: Type.Array(
     Type.Unsafe<Row>(
@@ -123,11 +115,10 @@ const HOST_ROWS = Type.Object({
   retired: Type.Array(Type.String()),
 });
 
-/** Builds the alert row for `run` from its log at timestamp `now` and the live process table `running`. */
 function rowOf(run: Run, running: readonly Running[], now: number): Row {
   const events = logEvents(run.path);
   const last = events.at(-1);
-  const file = keptFile(run);
+  const file = keeperLogPath(run);
   const state = runState(run, events, running, now);
   return {
     name: run.name,
@@ -141,19 +132,17 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
   };
 }
 
-/** Collects alert rows, held campaign names, and retired archive names for the local host. */
 function rowsHere(now: number): HostRows {
   const running = processes();
   const held = runs().filter(isCampaign);
   const rows = held.flatMap((run) => {
-    // A log may disappear between directory enumeration and stat (for example during test teardown),
-    // so skip missing entries instead of aborting the whole poll.
+    // A log may vanish between listing and stat (as in test teardown), so a missing one is skipped
+    // rather than ending the poll.
     const log = statSync(run.path, { throwIfNoEntry: false });
     if (log === undefined) return [];
     const writing = writers(run, running).length > 0 ? "open" : "closed";
-    // Filter runs to match `status` while requiring a launch receipt (`keepReceipt`). Rehearsal
-    // seeds and test campaigns use scripted seats and write no receipt, keeping synthetic
-    // promotions out of operator notifications.
+    // Only runs `status` shows that hold a launch receipt (`keepReceipt`): rehearsal seeds and test
+    // campaigns write none, which keeps their scripted promotions out of the alerts.
     const read = lastLaunch(run.path) !== undefined && onStatus(run, writing, now - log.mtimeMs);
     return read ? [rowOf(run, running, now)] : [];
   });
@@ -161,17 +150,16 @@ function rowsHere(now: number): HostRows {
   return { rows, held: held.map(({ name }) => name), retired };
 }
 
-/** Type guard indicating whether a process is actively writing the run's log (carrying keeper presence). */
 const written = (state: RunState): state is Extract<RunState, { kept: boolean }> => "kept" in state;
 
-/** Returns the log's terminal ending string, whether or not a keeper continued past it. */
+/** The log's last ending, whether or not a keeper went on past it. */
 const endingOf = (state: RunState): string | null => {
   if (state.kind === "kept") return state.ending ?? null;
   return state.kind === "ended" ? state.ending : null;
 };
 
-/** Describes any liveness or keeper defect for an unfinished run. Narrowing is exhaustive so adding
- *  a new variant to `RunState` produces a compile error here. */
+/** Any liveness or keeper defect of an unfinished run. The narrowing is exhaustive, so a new
+ *  `RunState` variant fails to compile here. */
 function gapOf({ state, owed, paused }: Row): string | null {
   if (written(state)) return owed && !state.kept ? "no keeper" : null;
   if (state.kind === "ended") return null;
@@ -194,19 +182,18 @@ function seenOf(row: Row, host: string): Seen {
   };
 }
 
-/** Produces new alert lines for `row` relative to the previous snapshot `seen`. A run observed for
- *  the first time summarises its existing promotions in a single line rather than replaying history. */
+/** New alert lines for `row` against the previous snapshot `seen`. A run seen for the first time
+ *  sums up its promotions in one line rather than replaying them. */
 function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
   const last = row.promotions.at(-1);
   const first =
     last === undefined
       ? []
       : [`first seen with ${plural(row.promotions.length, "promotion")}, the last ${last.digest}`];
-  // Report newly entered liveness gaps and transitions into the quiet state.
   const gap = now.gap === seen?.gap ? null : now.gap;
   const quiet = now.quiet && seen?.quiet !== true;
-  // Emit each ending added since `seen` (including intermediate endings a keeper resumed past); fall
-  // back to the current ending when reading an older state snapshot without `endings` counts.
+  // Every ending added since `seen`, including those a keeper went on past; an older snapshot without
+  // `endings` falls back to the current ending.
   const fresh = now.ending === null || now.ending === seen?.ending ? [] : [now.ending];
   const gained = seen?.endings === undefined ? fresh : row.endings.slice(seen.endings);
   const stands = now.ending === null ? -1 : gained.length - 1;
@@ -224,8 +211,8 @@ function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
 }
 
 /**
- * Pure state-transition fold for one alert poll: combines the prior state (`null` on first poll)
- * with each host's response (`null` when unreachable) to produce output lines and the next state.
+ * One poll's state fold: the prior state (null on the first poll) and each host's answer (null
+ * where unreachable) give the lines and the next state.
  */
 export function alertsOf(
   before: AlertState | null,
@@ -236,7 +223,7 @@ export function alertsOf(
   const answered = new Set(heard.map(({ host }) => host));
   const held = new Set(heard.flatMap(({ said }) => said.held));
   const retired = new Set(heard.flatMap(({ said }) => said.retired));
-  // When a campaign exists on two hosts or worktrees (for example mid-move), prefer the actively written copy.
+  // A campaign on two hosts or worktrees (mid-move) is read from its written copy.
   const current = new Map(
     heard
       .flatMap(({ host, said }) => said.rows.map((row) => ({ host, row })))
@@ -250,10 +237,10 @@ export function alertsOf(
     const silent = looks[host] ?? 1;
     const open = Object.values(before?.runs ?? {}).some((seen) => seen.host === host && seen.ending === null);
     if (before !== null && !before.down.includes(host)) {
-      lines.push(`${host}: gave no answer this tree reads; its runs stay as last seen`);
-    } else if (open && silent % SAID_AGAIN === 0) {
+      lines.push(`${host}: unreachable from this checkout; retaining last known run status`);
+    } else if (open && silent % REPEAT_ALERT_CYCLES === 0) {
       lines.push(
-        `${host}: gave no answer this tree reads for ${String(silent)} looks, with a run last seen open there`,
+        `${host}: unreachable for ${String(silent)} consecutive polls while a run was last seen active`,
       );
     }
   }
@@ -281,15 +268,14 @@ export function alertsOf(
   return { lines, next: { down, looks, runs: next } };
 }
 
-/** Reads the previous alert state from `path`. Returns `before: null` if missing or unreadable;
- *  `torn` is true when the file exists but fails schema validation. */
+/** The previous alert state at `path`: `before` is null where it is missing or unreadable, and
+ *  `torn` where it exists but fails the schema. */
 function lastLook(path: string): { before: AlertState | null; torn: boolean } {
   if (!existsSync(path)) return { before: null, torn: false };
   const before = answerOf(ALERT_STATE, [readFileSync(path, "utf8")]);
   return { before, torn: before === null };
 }
 
-/** Polls this host and every peer in `ANA_HOSTS` for their current alert rows. */
 async function looked(): Promise<Answer[]> {
   const away = await asked(["alerts", "--rows"]);
   return [
@@ -301,7 +287,6 @@ async function looked(): Promise<Answer[]> {
   ];
 }
 
-/** Entry point for `bun run runs alerts`. */
 export async function alerts(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
     args: [...args],

@@ -4,7 +4,7 @@
   "fromEvent": 6440,
   "startedAt": "2026-10-25T23:09:28.391Z",
   "command": [
-    "tools/d2/checkpoint.ts",
+    "tools/campaign/checkpoint.ts",
     "--id",
     "r-1",
     "--reference",

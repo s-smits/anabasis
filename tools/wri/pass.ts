@@ -1,15 +1,12 @@
 /**
- * Incremental background runner for event-triggered WRI log readers, invoked by
- * `tools/runs/pulse-readers.ts`. Calls no model, writes no log events, and makes no campaign
- * decisions; reader outputs are cached under `--store` for observer commands.
+ * Incremental background runner for event-triggered readers, started by
+ * `tools/runs/pulse-readers.ts`. It calls no model, writes no log event and decides nothing:
  *
  *   bun tools/wri/pass.ts --store <dir> --budget <ms> <log> [<log> ...]
  *
- * For each log, scans only the byte range appended since the least-advanced reader's last offset
- * for matching `"kind":"<kind>"` substrings (`at`, `derive.ts`), avoiding full parses of large
- * closed logs when no relevant event occurred. Due readers execute sequentially within `--budget`
- * while host load permits (`room`), sharing a single parsed `Source` per log for in-process
- * readers. If another pass already holds the store lock, exits immediately.
+ * It scans only the bytes appended since the least-advanced reader's offset for the kinds readers
+ * wait on (`at`, `derive.ts`), so a large closed log is not parsed for nothing, and runs due readers
+ * in turn within `--budget` while the load leaves room. Another pass holding the lock ends it at once.
  */
 import { closeSync, openSync, readSync, statSync } from "#src/meta/filesystem.ts";
 import { resolve } from "#src/meta/path.ts";
@@ -19,15 +16,12 @@ import { READERS, type Reader, readerOutput, type Source, sourceOf } from "./der
 
 type Ended = Parameters<typeof endPass>[1];
 
-/** One reader on one log that a moment has moved past. */
 interface Due {
   readonly log: string;
   readonly reader: Reader;
-  /** How long it last took, 0 where it never ran. */
   readonly ms: number;
 }
 
-/** The bytes of `log` from `from` to `to`. */
 function bytesOf(log: string, from: number, to: number): Buffer {
   const bytes = Buffer.alloc(Math.max(0, to - from));
   const handle = openSync(log, "r");
@@ -39,8 +33,6 @@ function bytesOf(log: string, from: number, to: number): Buffer {
   return bytes;
 }
 
-/** What `readers` owe on `logs`: on each log in turn, the readers with a moment past what they read,
- *  in the list's order. The scan starts where the reader that has read least stopped. */
 function dueOf(store: string, logs: readonly string[], readers: readonly Reader[]): Due[] {
   const timed = readers.filter(({ at }) => at !== undefined);
   return logs.flatMap((log) => {
@@ -62,8 +54,7 @@ function dueOf(store: string, logs: readonly string[], readers: readonly Reader[
   });
 }
 
-/** Run `queue` until it is done, the budget is spent or the load leaves no room. */
-export async function runQueue(
+async function runQueue(
   queue: readonly Due[],
   ways: {
     readonly budgetMs: number;
@@ -88,8 +79,7 @@ export async function runQueue(
   return ended;
 }
 
-/** Read one log with one reader and keep what it said. A reader its limit cut read nothing, so its
- *  last result stands and only its time moves. */
+/** A reader its limit cut read nothing, so its last result stands and only its time moves. */
 async function readInto(store: string, source: Source, reader: Reader, timeoutMs: number): Promise<void> {
   const { log } = source;
   const started = performance.now();
@@ -100,7 +90,6 @@ async function readInto(store: string, source: Source, reader: Reader, timeoutMs
   keepResult(store, log, reader.name, { ...read, at: Date.now(), ms }, cut ? null : text);
 }
 
-/** One pass over `logs`, unless another holds the host. */
 export async function passOver(
   store: string,
   logs: readonly string[],
@@ -117,7 +106,6 @@ export async function passOver(
   const repo = resolve(import.meta.dir, "..", "..");
   await underLock(store, async () => {
     keepReaders(store, readers);
-    // One parse a log for every reader of this pass that runs in this process.
     const sources = new Map(logs.map((log) => [log, sourceOf(log, repo)]));
     const ended = await runQueue(dueOf(store, logs, readers), {
       budgetMs,

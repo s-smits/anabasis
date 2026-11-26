@@ -1,18 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Background log waiter: polls a campaign log until it records `count` events of kind `--at`
- * (default 1; pass `:next` to target `currentCount + 1` at startup for per-promotion chaining),
- * reaches `campaign.ended`, or exceeds `--hours` wall-clock hours since opening, then prints a
- * single status line with live counts to wake the calling session. Tolerates transient log-swap
- * read errors during concurrent fetches. `--say` appends a note for context without conferring
- * operator authority.
+ * Background log waiter: `until.ts <log | folder | name> [--at <kind>[:<count>|:next]] [--hours
+ * <n>] [--say <text>]` polls a campaign log until it records `count` events of the kind (1 by
+ * default; `:next` targets one more than at startup, for per-promotion chaining), reaches
+ * `campaign.ended`, or passes `--hours` since opening, then prints one status line with live counts
+ * to wake the calling session. `--say` appends a note without conferring operator authority.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { type EventKind, isKind, type LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { logEvents } from "#tools/runs/registry.ts";
-import { PROMOTED, REPORTED, TRIGGER_AT } from "#tools/runs/said.ts";
+import { PROMOTED, REPORTED, TRIGGER_AT } from "#tools/runs/summary.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 interface BoundSpec {
@@ -31,7 +30,7 @@ const MAX_READ_FAILS = 10;
 const USAGE =
   "usage: until.ts <log | folder | name> [--at <kind>[:<count>|next]] [--hours <n>] [--say <text>]";
 
-/** The `--at` asked; a kind no log holds is refused, since a mistyped one would wait for good. */
+/** A kind no log holds is refused, since a mistyped one would wait for good. */
 function boundOf(text: string): BoundSpec {
   const [kind = "", count = "1"] = text.split(":");
   if (!isKind(kind)) throw new Error(`--at ${text}: ${kind} is no event kind`);
@@ -42,7 +41,6 @@ function boundOf(text: string): BoundSpec {
   return { kind, target: Number(count) };
 }
 
-/** The line that ends the wait on `events` at `now`, or null while it goes on. */
 function untilLine(name: string, events: readonly LogEvent[], wait: Wait, now: number): string | null {
   const { bound, hours, say } = wait;
   const count = events.filter(({ kind }) => kind === bound?.kind).length;
@@ -69,7 +67,7 @@ function untilLine(name: string, events: readonly LogEvent[], wait: Wait, now: n
   return `UNTIL (automated, not operator input) at ${at}: ${name} reached ${why}${counted}${summary}; ${raw}.${decision}${say === null ? "" : ` ${say}`}`;
 }
 
-/** Reads `log` when its file signature moved, returning null on transient swap or partial-line errors. */
+/** Reads `log` when its file signature moved, or null on transient swap or partial-line errors. */
 function pollLog(
   log: string,
   prev: { readonly sig: string; readonly events: LogEvent[] },

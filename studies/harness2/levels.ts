@@ -1,40 +1,28 @@
 /**
- * A rubric-graded benchmark's result for two arms, at each grain, with a sealed half of the tasks
- * withheld. It starts no solve and calls no model, and it prints ids, weights and counts, never a
- * rubric's text or a grader's reasons, so its output may go into a ledger or a pull request.
- *
- *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--tasks <list>]
- *     [--salt <text> [--unseal]]
- *
- * It reads JobBench's layout: `<dataset>/<group>/<task>/eval_result/eval_<arm>__<group>__<task>/`,
- * one `*judge.json` in it, and the rollout's trajectory beside it under `model_traj/`.
- *
- * Why. A review of a promoted harness otherwise takes many throwaway scripts to find that a few
- * criteria have become many points, and nobody can say afterwards how many cuts were looked at.
- * So one command prints every grain side by side, in the same order whichever side leads, and lists
- * every split rubric both ways, so that reading only the losses takes extra work. Each block prints
- * for both arms the commands that name the export's program folder and those of them that only
- * look at it, since a count by hand of the commands that ran one of a harness's programs comes out
- * near and not exact. The count reads a shell line without a parser and proves no use: the guide
- * reaches a rollout whatever its commands do. Since the export puts the programs on the solver's
- * path, a program started by its name alone names no folder, so a command that starts one counts
- * too, by the names the arm's tree in the store (`<store>/trees/<arm>`) lists; a copy of the store
- * without its trees says so.
- *
- * The seal is what keeps a pattern from confirming itself. `--salt` orders the tasks by a hash of the
- * salt and the task, opens the first half and withholds the rest: no score of a sealed task is printed
- * or pooled until `--unseal`, and even then in a block of its own. The salt is the digest of the first
- * version of the review's ledger, fixed before any task is read (comparison-review, step 2). The tests
- * are the comparison's own (`testOf`), each read both ways.
+ * A rubric-graded benchmark's result for two arms at each grain, with a sealed half of the tasks
+ * withheld, run as `compare.ts levels`. It calls no model and prints ids, weights and counts, never
+ * a rubric's text or a grader's reasons, so its output may go into a ledger or a pull request. It
+ * reads JobBench's layout (`<dataset>/<group>/<task>/eval_result/eval_<arm>__<group>__<task>/`, one
+ * `*judge.json`, the trajectory under `model_traj/`). Every grain prints side by side whichever
+ * side leads, and every split rubric both ways, so reading only the losses takes extra work. Each
+ * block counts the commands that name the export's program folder or start a program the arm's tree
+ * (`<store>/trees/<arm>`) lists, and those that only look; the count reads a shell line without a
+ * parser and proves no use. `--salt` orders tasks by a hash of salt and task and withholds the
+ * second half until `--unseal`, so a pattern cannot confirm itself; the salt is the review ledger's
+ * first digest (comparison-review, step 2). The tests are the comparison's own (`testOf`), each
+ * read both ways.
  */
+import { programsOf } from "#src/harness/programs.ts";
+import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { testOf } from "#src/kernel/compare.ts";
 import { sha256 } from "#src/meta/digest.ts";
-import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
-import { exportedPrograms, TOOLCHAIN } from "../shared/claude-export.ts";
-import { parseEvents } from "./h2/claude.ts";
+import { HARNESS_DIR } from "../shared/bundle.ts";
+
+const TOOLCHAIN_PATHS = [join(HARNESS_DIR, TOOL_TREE_DIR), "scripts/toolchain"] as const;
 
 const SUFFIX = "judge.json";
 /** `flipP` reads whole units, so a task's difference goes in hundredths of a point. */
@@ -47,9 +35,9 @@ interface Rubric {
   readonly passed: number;
   readonly criteria: number;
 }
-/** A rollout's shell commands: those that name the exported harness's program folder or start one of
- *  its programs by name, and those of them that only look at it. The rest may have used a program,
- *  so looking is the count kept sure. `listed` is false where no tree listed the programs. */
+/** Shell commands that name the exported harness's program folder or start one of its programs by
+ *  name, and those of them that only look; the rest may have used a program, so looking is the
+ *  count kept sure. `listed` is false where no tree listed the programs. */
 interface Shell {
   readonly commands: number;
   readonly named: number;
@@ -113,19 +101,47 @@ function rubricOf(entry: unknown): Rubric {
   };
 }
 
-/** The program one command of a line starts, past any `NAME=value`. */
 const headOf = (part: string): string =>
   part
     .trim()
     .split(/\s+/u)
     .find((word) => !/^\w+=/u.test(word)) ?? "";
 
-/** A trajectory's place in time: its name ends `_attempt<N>_<stamp>.jsonl`, and a task rolled again
- *  starts at attempt 1, so the name's own order would put an older second attempt last. */
+/** A task rolled again starts at attempt 1, so the name's own order would put an older second
+ *  attempt last. */
 const stampOf = (name: string): string => name.replace(/^.*_attempt\d+_/u, "");
 
-/** The newest attempt's commands, since that attempt left the deliverable the grading read, and
- *  those that name the harness's folder or start one of its programs by name. */
+function commandsIn(path: string): string[] {
+  const out: string[] = [];
+  for (const raw of readFileSync(path, "utf8").replaceAll("\0", "").split("\n")) {
+    const line = raw.trim();
+    if (!line.startsWith("{")) continue;
+    let parsed: JsonObject | null;
+    try {
+      parsed = asRecord(capturedJsonParse(line));
+    } catch {
+      continue;
+    }
+    if (parsed === null) continue;
+    if (parsed.kind === "solve.call") {
+      const data = asRecord(parsed.data);
+      const args = asRecord(data?.args ?? data?.input);
+      if (isString(args?.command)) out.push(args.command);
+      continue;
+    }
+    if (parsed.type !== "assistant") continue;
+    const content = asRecord(parsed.message)?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      const rec = asRecord(block);
+      const command = asRecord(rec?.input)?.command;
+      if (rec?.type === "tool_use" && isString(command)) out.push(command);
+    }
+  }
+  return out;
+}
+
+/** The newest attempt left the deliverable the grading read. */
 function shellIn(folder: string, programs: ReadonlySet<string> | null): Shell | null {
   const newest = existsSync(folder)
     ? readdirSync(folder)
@@ -134,18 +150,15 @@ function shellIn(folder: string, programs: ReadonlySet<string> | null): Shell | 
         .at(-1)
     : undefined;
   if (newest === undefined) return null;
-  const commands = parseEvents(join(folder, newest)).flatMap((event) => {
-    const content = asRecord(event.message)?.content;
-    if (event.type !== "assistant" || !Array.isArray(content)) return [];
-    return content.flatMap((block) => {
-      const command = asRecord(asRecord(block)?.input)?.command;
-      return asRecord(block)?.type === "tool_use" && isString(command) ? [command] : [];
-    });
-  });
+  const commands = commandsIn(join(folder, newest));
   const parts = commands.map((command) =>
     command
       .split(NEXT_COMMAND)
-      .filter((part) => part.includes(TOOLCHAIN) || programs?.has(basename(headOf(part))) === true),
+      .filter(
+        (part) =>
+          TOOLCHAIN_PATHS.some((prefix) => part.includes(prefix)) ||
+          programs?.has(basename(headOf(part))) === true,
+      ),
   );
   const named = parts.filter((reached) => reached.length > 0);
   return {
@@ -174,12 +187,19 @@ function foldersIn(folder: string): string[] {
     .toSorted();
 }
 
-/** Every task this arm was graded on, by `<group>/<task>`. A task graded twice is refused, since which
- *  of the two counts is a choice no reader should make silently. */
+/** A task graded twice is refused, since which of the two counts is a choice no reader should make
+ *  silently. */
 export function armOf(dataset: string, arm: string): Map<string, Graded> {
   const graded = new Map<string, Graded>();
   const tree = join(dirname(dataset), "trees", arm);
-  const programs = existsSync(tree) ? new Set(exportedPrograms(tree).map(({ name }) => name)) : null;
+  const programs =
+    statSync(tree, { throwIfNoEntry: false })?.isDirectory() === true && readdirSync(tree).length > 0
+      ? new Set(
+          TOOLCHAIN_PATHS.flatMap((rel) => programsOf(join(tree, rel)))
+            .filter(({ name }) => !/^(?:python|pip)[\d.]*$/u.test(name))
+            .map(({ name }) => name),
+        )
+      : null;
   for (const group of foldersIn(dataset)) {
     for (const task of foldersIn(join(dataset, group))) {
       const folder = join(dataset, group, task, "eval_result", `eval_${arm}__${group}__${task}`);
@@ -195,8 +215,7 @@ export function armOf(dataset: string, arm: string): Map<string, Graded> {
   return graded;
 }
 
-/** One part of a read: the named tasks of both arms, since no part is summed with another. A task
- *  neither arm was graded on is refused: a mistyped name would otherwise read as a smaller part. */
+/** A task neither arm was graded on is refused: a mistyped name would otherwise read as a smaller part. */
 export function partOf(a: Arm, b: Arm, only: readonly string[]): { a: Arm; b: Arm } {
   const absent = only.filter((task) => !a.has(task) && !b.has(task));
   if (absent.length > 0) throw new Error(`graded for neither arm: ${absent.join(", ")}`);
@@ -204,9 +223,9 @@ export function partOf(a: Arm, b: Arm, only: readonly string[]): { a: Arm; b: Ar
   return { a: kept(a), b: kept(b) };
 }
 
-/** Each task's half by a hash of the salt and its own name, about half each way. A cut at half the
- *  tasks graded so far would move a sealed task into the open half as each grading arrived, so no
- *  task's half depends on the others. */
+/** Each task's half by a hash of the salt and its own name, so no task's half depends on the
+ *  others: a cut at half the tasks graded so far would move a sealed task into the open half as
+ *  gradings arrived. */
 export function sealOf(tasks: readonly string[], salt: string) {
   const sealed = (task: string) => Number.parseInt(sha256(`${salt}\n${task}`).slice(0, 1), 16) >= 8;
   const sorted = tasks.toSorted();
@@ -215,15 +234,12 @@ export function sealOf(tasks: readonly string[], salt: string) {
 
 export const passedAll = (graded: Graded) => graded.rubrics.reduce((sum, rubric) => sum + rubric.passed, 0);
 const criteriaAll = (graded: Graded) => graded.rubrics.reduce((sum, rubric) => sum + rubric.criteria, 0);
-/** Rubrics that scored nothing while one criterion short of all. */
 const oneShort = (graded: Graded) =>
   graded.rubrics.filter((rubric) => rubric.score === 0 && rubric.criteria - rubric.passed === 1).length;
 /** Rubrics scored neither at nothing nor at their weight: zero where a rubric is all or nothing. */
 const partial = (graded: Graded) =>
   graded.rubrics.filter((rubric) => rubric.score !== 0 && rubric.score !== rubric.weight).length;
 
-/** One arm's shell commands over a block; a rollout whose trajectory the dataset lacks is counted
- *  apart instead of read as none. */
 function shellOf(sides: readonly Graded[]): string {
   const read = sides.flatMap(({ shell }) => (shell === null ? [] : [shell]));
   const sum = (pick: (shell: Shell) => number) => read.reduce((total, shell) => total + pick(shell), 0);
@@ -236,7 +252,6 @@ function shellOf(sides: readonly Graded[]): string {
   return `${String(sum(({ named }) => named))} name it, ${String(sum(({ looks }) => looks))} of them only to look, of ${String(sum(({ commands }) => commands))}${rest}`;
 }
 
-/** One measure's differences read both ways, by the comparison's own test. */
 export function bothWays(
   name: string,
   label: { a: string; b: string },
@@ -247,7 +262,6 @@ export function bothWays(
   return `${name} by task: ${label.a} above on ${String(forA.wins)}, ${label.b} above on ${String(forA.losses)}, tied on ${String(forA.ties)}; p ${label.a} above ${forA.p.toFixed(4)}, p ${label.b} above ${forB.p.toFixed(4)}`;
 }
 
-/** Every rubric the two arms scored differently, whichever side it favoured. */
 function splitLines(label: { a: string; b: string }, tasks: readonly string[], a: Arm, b: Arm): string[] {
   const won = { a: { count: 0, points: 0 }, b: { count: 0, points: 0 } };
   const lines: string[] = [];
@@ -272,7 +286,6 @@ function splitLines(label: { a: string; b: string }, tasks: readonly string[], a
   ];
 }
 
-/** One block of tasks at every grain. Each block stands alone: nothing pools two of them. */
 function blockLines(label: { a: string; b: string }, tasks: readonly string[], a: Arm, b: Arm): string[] {
   const pairs = tasks.flatMap((task) => {
     const [one, other] = [a.get(task), b.get(task)];
@@ -306,7 +319,7 @@ function blockLines(label: { a: string; b: string }, tasks: readonly string[], a
   ];
 }
 
-/** What one reading prints. A sealed task appears by name alone until it is unsealed. */
+/** A sealed task appears by name alone until it is unsealed. */
 export function levelLines({ label, a, b, salt, unseal }: Asked): string[] {
   const both = [...a.keys()].filter((task) => b.has(task)).toSorted();
   const short = [...new Set([...a.keys(), ...b.keys()])].filter((task) => !both.includes(task)).toSorted();

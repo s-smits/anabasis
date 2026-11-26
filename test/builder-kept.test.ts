@@ -1,12 +1,11 @@
 /**
- * The other harnesses a campaign kept, as a Builder's home holds them (`src/builder/kept.ts`): each
- * the log names, whole, under the head of its digest, with its programs. The hostile cases are the
- * ones that would hand the Builder what it may not read or what is not the harness its digest
- * names: a v1 state's correctness model, which holds every task's hidden values, a state only a
- * practice solve ran, and a harness copied without its programs.
+ * The other harnesses a campaign kept, as a Builder's home holds them (`src/builder/store.ts`): each
+ * the log names, under the head of its digest, with its programs. The hostile cases are a v1
+ * state's correctness model, which holds every task's hidden values, and a state only a practice
+ * solve ran.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { copyHarness, seedKept } from "../src/builder/kept.ts";
+import { copyHarness, seedSavedHarnesses } from "../src/builder/store.ts";
 import {
   closeSync,
   existsSync,
@@ -35,7 +34,7 @@ beforeAll(() => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 /** A kept state under `states`: its guide, and where `tree` is named, programs in a copy beside it
- *  that the state links to, as a frozen harness keeps its tree (`stagedState`, `tools.ts`). */
+ *  that the state links to, as a frozen harness keeps its tree (`stagedState`). */
 function keep(kept: string, digest: string, tree: { name: string; bytes: number } | null): void {
   const dir = join(kept, digest);
   mkdirSync(join(dir, "agent"), { recursive: true });
@@ -58,7 +57,7 @@ describe("the harnesses a campaign kept, in a Builder's home", () => {
     const practice = "d".repeat(64);
     keep(states, parent, null);
     keep(states, practice, null);
-    seedKept(
+    seedSavedHarnesses(
       home,
       states,
       [
@@ -98,14 +97,14 @@ describe("the harnesses a campaign kept, in a Builder's home", () => {
       join(home, "three", ".toolchain", "bin", "run"),
     );
 
-    // `seedKept` shares >100 MB trees under `home/.kept-trees` without polluting `home/kept/`.
+    // `seedSavedHarnesses` shares >100 MB trees under `home/.kept-trees` without polluting `home/kept/`.
     const [largeTwo, parent] = ["e".repeat(64), "f".repeat(64)];
     keep(states, largeTwo, null);
     symlinkSync(join("..", "tree-1"), join(states, largeTwo, ".toolchain"));
     keep(states, parent, null);
     const seededHome = join(root, "seeded-large");
     mkdirSync(seededHome);
-    seedKept(
+    seedSavedHarnesses(
       seededHome,
       states,
       [

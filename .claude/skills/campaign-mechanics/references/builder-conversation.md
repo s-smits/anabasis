@@ -4,7 +4,7 @@ Builder's clock. It expands `AGENTS.md` section 4.
 ## 4. The Harness Builder
 
 A single Builder conversation and workspace remain open across campaign tool calls
-(`tools/d2/harness-builder.ts`). Conversational continuity is central to the design, so any
+(`tools/campaign/harness-builder.ts`). Conversational continuity is central to the design, so any
 controller change that drops the Builder conversation is a regression. `test/builder-led.test.ts`
 verifies this execution path without a live model; any empirical gain from continuity itself remains
 unclaimed.
@@ -13,12 +13,12 @@ unclaimed.
 Examiner runs concurrently. A comparison runs alongside the conversation with its held-out task draw
 fixed at launch, so tasks admitted later enter the next comparison; individual solves wait in the
 queue whenever the remaining budget cannot reserve additional concurrent solves (`queued`,
-`tools/d2/host.ts`). Only ending the conversation or issuing a second `examine` call waits for an
+`tools/campaign/host.ts`). Only ending the conversation or issuing a second `examine` call waits for an
 active Examiner. Running comparisons and promotions asynchronously eliminates the substantial idle
 waiting that occurred when those actions blocked the Builder conversation.
 
 **The Examiner conversation rests between requests.** Each `examine` call represents one request
-(`conversing`, `tools/d2/campaign-actions.ts`). Once the request has supplied the needed tasks or
+(`conversing`, `tools/campaign/campaign-actions.ts`). Once the request has supplied the needed tasks or
 its `finish` call is accepted, it logs `exam.finished` and suspends without consuming any timer
 until the next request arrives. The next request resumes it with only the events reported since it
 last ran (`wakeMessage`, `src/examiner/prompt.ts`), providing neither a target count nor a numeric
@@ -52,5 +52,5 @@ limits or a restart, a new conversation opens with the saved notes and results.
 Because the Builder ends almost every turn with a tool call, messages injected between turns are
 never observed. Standing campaign facts are therefore included in every tool result so that context
 compaction requires no separate signal (`usedLine`, `continuation`, `read_opening`). Manual sessions
-(`tools/d2/session.ts`, `round.ts`) omit the campaign tools and use separate prompt texts (`SAID`,
+(`tools/campaign/session.ts`, `round.ts`) omit the campaign tools and use separate prompt texts (`SAID`,
 `src/builder/prompt.ts`).

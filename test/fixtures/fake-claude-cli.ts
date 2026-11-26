@@ -1,17 +1,13 @@
-// A stand-in for the Claude Code binary, which the Agent SDK runs as `pathToClaudeCodeExecutable`.
-// It records what the SDK launched it with, its arguments, its whole environment and every line the
-// SDK writes to it, in `$HOME/launch.jsonl`, answers each control request with an empty success, and
-// answers each prompt with the recorded stream in `$HOME/replay.jsonl`. HOME is the one place
-// it can find both, because the backend hands the CLI no other variable a test could set. It records
-// its cwd too. Its nth `get_usage` request is answered with the nth line of `$HOME/usage.jsonl`, the
-// session's ledger at that moment, where a test wrote one: a line `{"error": "<why>"}` refuses it
-// and a line `{"silent": true}` leaves it unanswered. Where `$HOME/outlive` stands as it starts, it
-// writes its state under `$HOME/Library` again and again, HOME made anew where it is gone, until a
-// second after its input closed: Claude Code outlives its query's close so, writing as it goes.
+// A stand-in for the Claude Code binary, run by the Agent SDK as `pathToClaudeCodeExecutable`. It
+// records its launch (arguments, environment, cwd and every line the SDK writes) in
+// `$HOME/launch.jsonl`, answers control requests with an empty success and prompts with the stream in
+// `$HOME/replay.jsonl`; HOME is the one variable a test can set through the backend. Its nth
+// `get_usage` is answered by the nth line of `$HOME/usage.jsonl`: `{"error": "<why>"}` refuses it,
+// `{"silent": true}` leaves it unanswered. Where `$HOME/outlive` exists it keeps writing under
+// `$HOME/Library` until a second after its input closed, as Claude Code outlives its query's close.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** A line the SDK wrote to the CLI. */
 interface Sent {
   type: string;
   request_id?: string;

@@ -5,7 +5,6 @@ import { requireCapturedJsonRuntimeRule } from "./rules/require-captured-json-ru
 import { noHandReadArgvRule } from "./rules/no-hand-read-argv.ts";
 import { noHandSpelledGitRule } from "./rules/no-hand-spelled-git.ts";
 import { requireMetaRuntimeImportRule } from "./rules/require-meta-runtime-import.ts";
-import { noSingleCallerHelperRule } from "./rules/no-single-caller-helper.ts";
 import { noSingleUseConstChainRule } from "./rules/no-single-use-const-chain.ts";
 import { noPositionalBooleanParameterRule } from "./rules/no-positional-boolean-parameter.ts";
 import { preferKeyIfDefinedRule } from "./rules/prefer-key-if-defined.ts";
@@ -14,6 +13,7 @@ import { noInlineSlopAnswerRule } from "./rules/no-inline-slop-answer.ts";
 
 import { noAliasRestatingReturnRule } from "./rules/no-alias-restating-return.ts";
 import { noArmsDifferingInOneTermRule } from "./rules/no-arms-differing-in-one-term.ts";
+import { noCommentsRule } from "./rules/no-comments.ts";
 import { noDeepNestingRule } from "./rules/no-deep-nesting.ts";
 import { noHandRolledSleepRule } from "./rules/no-hand-rolled-sleep.ts";
 import { noInlineBlockReducerRule } from "./rules/no-inline-block-reducer.ts";
@@ -29,13 +29,11 @@ import { noThriceSpelledObjectRule } from "./rules/no-thrice-spelled-object.ts";
 import { noTransposedArgumentRule } from "./rules/no-transposed-argument.ts";
 import { preferConstConditionalRule } from "./rules/prefer-const-conditional.ts";
 import { preferFindOverLoopRule } from "./rules/prefer-find-over-loop.ts";
-import { requireDeclarationsFirstRule } from "./rules/require-declarations-first.ts";
 
 /**
  * Repository-owned custom lint rules (`ana/*`), registered at `error` in `.oxlintrc.json` and
- * enforced under `bun run lint -- --strict` or `ANA_LINT_STRICT=1`. Vendored trees
- * (`vendor/pi-claude-bridge/**` and `tools/oxlint/anti-slop/**`) are exempted in `.oxlintrc.json`
- * where applicable; cross-file structural scans run in `bun run simplify` (`tools/oxlint/simplify-census.ts`).
+ * enforced under `bun run lint -- --strict` or `ANA_LINT_STRICT=1`; `vendor` is ignored there.
+ * Cross-file structural scans run in `bun run simplify` (`tools/oxlint/simplify-census.ts`).
  */
 const anaPlugin = eslintCompatPlugin({
   meta: { name: "ana" },
@@ -45,7 +43,6 @@ const anaPlugin = eslintCompatPlugin({
     "no-hand-read-argv": noHandReadArgvRule,
     "no-hand-spelled-git": noHandSpelledGitRule,
     "require-meta-runtime-import": requireMetaRuntimeImportRule,
-    "no-single-caller-helper": noSingleCallerHelperRule,
     "no-positional-boolean-parameter": noPositionalBooleanParameterRule,
     "prefer-key-if-defined": preferKeyIfDefinedRule,
     "no-hand-rolled-error-render": noHandRolledErrorRenderRule,
@@ -58,6 +55,7 @@ const anaPlugin = eslintCompatPlugin({
     "no-inline-slop-answer": noInlineSlopAnswerRule,
 
     "no-arms-differing-in-one-term": noArmsDifferingInOneTermRule,
+    "no-comments": noCommentsRule,
     "no-deep-nesting": noDeepNestingRule,
     "no-hand-rolled-sleep": noHandRolledSleepRule,
     "no-react-effect": noReactEffectRule,
@@ -69,7 +67,6 @@ const anaPlugin = eslintCompatPlugin({
     "no-thrice-spelled-object": noThriceSpelledObjectRule,
     "no-transposed-argument": noTransposedArgumentRule,
     "no-tangled-ternary": noTangledTernaryRule,
-    "require-declarations-first": requireDeclarationsFirstRule,
   },
 });
 

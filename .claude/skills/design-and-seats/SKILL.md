@@ -20,7 +20,7 @@ the source code is authoritative and the reference must be updated in the same c
 Before modifying anything a Builder or solver can read, consult `wall.md` and `seats.md`, then run
 `seat-view.ts`. Before introducing a new limit, classifier, or narrower permission grant, verify it
 against `stance.md` (consequences 3, 4, and 6). Changes to a factor's reader or threshold belong
-under `question-and-factors.md` (and are audited across the system via [system-audit](../system-audit/SKILL.md)). When calibrating Examiner task difficulty (`src/examiner/ladder.ts`, `draft.ts`, `prompt.ts`), use [examiner-complexity](../examiner-complexity/SKILL.md) and paired live-seat rounds in [system-path-simulation](../system-path-simulation/cases/optimize.md). Changes to harness components or the starter are described in
+under `question-and-factors.md` (and are audited across the system via [system-audit](../system-audit/SKILL.md)). When calibrating Examiner task difficulty (`src/examiner/difficulty.ts`, `draft.ts`, `prompt.ts`), use [examiner-complexity](../examiner-complexity/SKILL.md) and paired live-seat rounds in [system-path-simulation](../system-path-simulation/cases/optimize.md). Changes to harness components or the starter are described in
 `operator-and-harness.md` and audited through [harness-audit](../harness-audit/SKILL.md).
 
 ## Scripts
@@ -43,9 +43,9 @@ bun .claude/skills/design-and-seats/scripts/builder-view.ts <log.jsonl | campaig
 - `examiner-view.ts` prints, as summary counts, what an Examiner session opening now would receive
   (`heard`, `src/examiner/record.ts`). It locates a campaign by name across hosts.
 - `builder-view.ts` prints the history messages for the next Builder session (`src/builder/past.ts`),
-  starting from `--parent` or from `--parent latest`. Any held-out task, check, or Referee ruling
+  starting from `--parent` or from `--parent latest`. Any held-out task, check, or Auditor ruling
   appearing in its output is a violation of rule 3 and must be fixed in `past.ts` or
-  `src/campaign/handover.ts`.
+  `src/campaign/summary.ts`.
 
 The first two scripts emit identifiers, paths, and counts without exposing checks, hidden values, or
 task text; the third prints build-side text by construction.

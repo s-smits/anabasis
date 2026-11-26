@@ -17,22 +17,14 @@ import { useKept } from "../route.ts";
 import { Filters, Search } from "./controls.tsx";
 import { OUTCOMES } from "./outcome.ts";
 
-/*
- * Every task version against every comparison: one row a task, one column a comparison in the order
- * of the Campaign pane's bars, and a cell what the comparison came to on the task with each side's
- * valid answers over its solves. A cell is tinted with its outcome's colour from `outcome.ts` and
- * says its outcome in a word, so that the grid reads without colour; one the comparison fixed and
- * left out of its tally says why, untinted, as no outcome; one it did not fix says why from the
- * task's state: a practice task is never scored, a refused draft never entered the exam, and a held
- * task the comparison did not draw was not scored. Read alike as "not scored", the three would fill
- * most rows of a grid with refused drafts and practice tasks while each held task had been scored.
- * Such a cell is left blank to the eye and says why to a screen reader only, since the row's own
- * note already names its state and most cells of a long campaign's grid are of this kind. The first
- * column and the head stay in place while the grid scrolls inside its card, so a campaign of twenty
- * comparisons and sixty tasks stays readable.
- */
+// Every task version against every comparison, columns in the order of the Campaign pane's bars, each
+// cell what the comparison came to on the task with each side's valid answers over its solves. A cell
+// is tinted from `outcome.ts` and says its outcome in a word, so the grid reads without colour; a task
+// fixed but left out of the tally says why, untinted. A cell the comparison did not fix is blank to the
+// eye and says why to a screen reader only (practice, a refused draft, or a held task not drawn), since
+// the row's note already names its state. The first column and the head stay put while the grid scrolls
+// in its card.
 
-/** The word of a task out of the draw waiting for a person's label. */
 export const AWAITING = "waits for a label";
 
 const STATES = ["held", "released", "refused", "disputed"];
@@ -46,12 +38,11 @@ const EXHAUSTED_WORDS = new Map([
   ["no", "Not exhausted"],
 ]);
 const STATE_WORDS = new Map<string, string>();
-/** Why a task has no cell in a comparison, where its state says more than that it was not scored. */
 const UNSCORED_WORDS = new Map([
   ["released", "practice"],
   ["refused", "not in the exam"],
 ]);
-/** A cell's word: the brief's won, lost, tied or set aside; the tint tells the three ties apart. */
+/** A cell's word: won, lost, tied or set aside; the tint tells the three ties apart. */
 const CELL_WORDS = {
   won: "won",
   lost: "lost",
@@ -60,37 +51,31 @@ const CELL_WORDS = {
   tiedNone: "tied",
   aside: "set aside",
 } as const satisfies Record<Outcome, string>;
-/** Why a comparison left a task it fixed out of its tally, in a few words. */
 const LEFT_OUT_WORDS = {
   disputed: "disputed",
   short: "short of solves",
   withdrawn: "withdrawn",
 } as const satisfies Record<keyof LeftOut, string>;
 
-/** Each side's valid answers over its solves, reference first. */
 export function countsOf(cell: TaskCell): string {
   const share = ({ valid, solves }: Share) => `${String(valid)}/${String(solves)}`;
   return `${share(cell.old)} · ${share(cell.fresh)}`;
 }
 
-/** Why a comparison left a task out, in the words of a cell and of the task's detail. */
 export function leftOutWords(cell: TaskLeftOut): string {
   return `left out, ${LEFT_OUT_WORDS[cell.leftOut]}`;
 }
 
-/** The outcome's label and colour, as every chart and grid draws it. */
 export function outcomeOf(outcome: Outcome): { readonly label: string; readonly color: string } {
   return OUTCOMES.find((each) => each.outcome === outcome) ?? { label: outcome, color: "var(--ana-faint)" };
 }
 
-/** The words of a task's place in the draw: why it is out, or that it is retained; none on the frontier. */
 export function drawWords(draw: TaskDraw | null): string[] {
   if (draw === null || draw.place === "frontier") return [];
   if (draw.place === "retained") return draw.exhausted ? ["exhausted", "retained"] : ["retained"];
   return [...(draw.awaitingLabel ? [AWAITING] : []), ...(draw.doubted ? ["doubted"] : [])];
 }
 
-/** What a task's row says under its id: its state and its place in the draw. */
 function taskNote(row: TaskRow): string {
   return [row.state, ...drawWords(row.draw)].join(" · ");
 }
@@ -136,7 +121,6 @@ function Cell({ cell, state }: { cell: TaskCell | TaskLeftOut | null; state: Tas
   );
 }
 
-/** The grid with its filters; a task's id opens its detail. */
 export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (version: string) => void }) {
   const [query, setQuery] = useKept("tasks.search", "");
   const [state, setState] = useKept<readonly string[]>("tasks.state", []);
@@ -145,8 +129,8 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
   if (grid.rows.length === 0) {
     return <NoSignal title="No task yet">No task version has been proposed in this campaign</NoSignal>;
   }
-  // Each choice with the value a row holds for it, as the page's tables have them (`table.tsx`): a
-  // choice offers what the search and the other choices leave, each with its count.
+  // Each choice with the value a row holds for it, as in `table.tsx`: a choice offers what the search
+  // and the other choices leave, each with its count.
   const choices = [
     {
       name: "State",

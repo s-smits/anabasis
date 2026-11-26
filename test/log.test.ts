@@ -40,7 +40,6 @@ describe("the log", () => {
     const path = fresh();
     const started = append(path, "solve.started", { task: "t1" });
     append(path, "solve.call", { tool: "bash" });
-    // The same kind written with its fields in another order is parsed whole and left out too.
     appendFileSync(path, '{"kind":"solve.call","at":"2026-10-30T00:00:00.000Z","data":{}}\n');
     const finished = append(path, "solve.finished", { outcome: "pass" });
     const calls = new Set(["solve.call"] as const);
@@ -68,12 +67,11 @@ describe("the log", () => {
     expect(readFileSync(path, "utf8")).toBe(kept + left);
     const next = append(path, "solve.started", { task: "t1" });
     expect(readFileSync(path, "utf8")).toBe(`${kept}${JSON.stringify(next)}\n`);
-    // An event the task states fold is validated against the whole lines, and written after them.
     appendFileSync(path, left);
     const proposed = append(path, "task.proposed", { version: "v1" });
     expect(read(path)).toEqual([whole, next, proposed]);
-    // The hostile cases: a whole line that is no event still refuses, and a log that is one cut line
-    // and nothing else is an empty history that takes its first event.
+    // A whole line that is no event still refuses, and a log of one cut line alone is an empty history
+    // that takes its first event.
     appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"verd\n');
     expect(() => read(path)).toThrow(`${path}:4 is not a log event`);
     const only = fresh();
@@ -99,8 +97,8 @@ describe("the log", () => {
       }
     `,
     );
-    // The file size limit, with its signal ignored, makes the second append's write come up short,
-    // as a full disk would.
+    // The file size limit, its signal ignored, makes the second append's write come up short, as a full
+    // disk would.
     const limited = Bun.spawnSync(
       ["/bin/sh", "-c", `trap '' XFSZ; ulimit -f 2; exec "$0" "$@"`, process.execPath, script, path],
       {
@@ -124,7 +122,6 @@ describe("the log", () => {
       "task v2 is not proposed",
     );
     expect(read(path)).toEqual([proposed]);
-    // A second pass of the one gate is refused as well, and the first stands.
     const gated = append(path, "task.gate", { version: "v1", gate: 1, outcome: "passed" });
     expect(() => append(path, "task.gate", { version: "v1", gate: 1, outcome: "passed" })).toThrow(
       "task v1 logs its gate twice",
@@ -171,7 +168,6 @@ describe("the log", () => {
       const release = Bun.spawn([process.execPath, script, path, "released"], { stderr: "pipe" });
       children.push(release);
       await waitForFile(`${path}.released.ready`);
-      // Without the lock the release validates too. With it, the release must wait for the dispute.
       const deadline = performance.now() + 250;
       while (!existsSync(`${path}.released.validated`) && performance.now() < deadline) await Bun.sleep(5);
       writeFileSync(`${path}.disputed.go`, "");
@@ -183,7 +179,6 @@ describe("the log", () => {
       expect(await new Response(release.stderr).text()).toContain("cannot go from disputed to released");
       expect(read(path)).toHaveLength(3);
       expect(taskSets(read(path)).states.get("v1")).toBe("disputed");
-      // The refused append must release its lock as well.
       append(path, "verdict", { pass: true });
       expect(read(path)).toHaveLength(4);
     } finally {

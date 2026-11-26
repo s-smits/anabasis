@@ -6,17 +6,17 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { refusals, stopRule, supplyOf } from "#src/campaign/admission.ts";
-import { CRASHES_IN_A_ROW, decide, supplyRun } from "#src/campaign/decide.ts";
-import { askedOf, crashedRun } from "#src/campaign/ground.ts";
+import { CRASHES_IN_A_ROW, nextAction, supplyRun } from "#src/campaign/scheduler.ts";
+import { askedOf, crashedRun } from "#src/campaign/state.ts";
 import { decidedLine } from "#src/campaign/move.ts";
-import { pendingWords } from "#src/campaign/word.ts";
+import { pendingSignals } from "#src/campaign/signal.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { isAbsolute, resolve } from "#src/meta/path.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { IDLE, idleOf, MOVED } from "#tools/d2/campaign-terms.ts";
+import { IDLE, idleOf, MOVED } from "#tools/campaign/campaign-terms.ts";
 import { logEvents, readNamed } from "#tools/runs/registry.ts";
 import { planOn } from "#tools/runs/view.ts";
 
@@ -27,7 +27,7 @@ const USAGE = `usage: ending.ts <name | path/to/log.jsonl> [--at <line | ISO tim
 Each ending on record with the moves before it, and the counts the table's endings are read on.
 --at  read the log up to this line (1 is the first), or up to the last event at or before this time`;
 
-/** Tallies `campaign.move` events by `move·code` in order of first appearance (`led` for Builder moves, or `asked` in older logs). */
+/** Tallies `campaign.move` events by `move·code` in order of first appearance. */
 function movesOf(events: readonly LogEvent[]) {
   const moves = events.flatMap(({ kind, data }) => (kind === MOVED ? [data] : []));
   const counts = countBy(
@@ -37,7 +37,7 @@ function movesOf(events: readonly LogEvent[]) {
   return { total: moves.length, counts };
 }
 
-/** Evaluates all current stopping-rule counters against their bounds and computes the table's next move (`planOn`, `decide`). */
+/** Every stopping-rule counter against its bound, and the table's next move (`planOn`, `decide`). */
 function standingOf(events: readonly LogEvent[]) {
   const plan = planOn(events);
   const stop = stopRule(events);
@@ -49,12 +49,11 @@ function standingOf(events: readonly LogEvent[]) {
     crashes: { count: crashes.count, of: CRASHES_IN_A_ROW, last: crashes.crash },
     idle: { count: idleOf(events), of: IDLE },
     refused: refusals(supplyOf(events), askedOf(plan)).map(({ code }) => code),
-    words: pendingWords(events).map(({ word, why }) => (why === "" ? word : `${word} (${why})`)),
-    decided: decide(events, plan),
+    words: pendingSignals(events).map(({ word, why }) => (why === "" ? word : `${word} (${why})`)),
+    decided: nextAction(events, plan),
   };
 }
 
-/** Summarises each recorded ending with its preceding moves, activity since the last ending, and current standing. */
 export function campaignEnding(events: readonly LogEvent[]) {
   const ends = events.flatMap((event, at) => (event.kind === "campaign.ended" ? [{ at, event }] : []));
   const endings = ends.map(({ at, event: { data, at: when } }, index) => ({
@@ -80,7 +79,6 @@ function movesLine({ total, counts }: ReturnType<typeof movesOf>): string {
   return `${plural(total, "move")} (${listed})`;
 }
 
-/** The standing counts, a line each. */
 function standingLines({
   left,
   patience,
@@ -103,7 +101,7 @@ function standingLines({
   ];
 }
 
-/** The events the table reads `--at` a line (1 is the first) or a time: those up to it. */
+/** The events up to `--at` a line (1 is the first) or a time. */
 export function eventsAt(events: readonly LogEvent[], at: string): readonly LogEvent[] {
   if (/^\d+$/.test(at)) return events.slice(0, Number(at));
   if (Number.isNaN(Date.parse(at))) throw new Error(`--at takes a line or an ISO time; got ${at}`);
@@ -111,12 +109,10 @@ export function eventsAt(events: readonly LogEvent[], at: string): readonly LogE
   return after === -1 ? events : events.slice(0, after);
 }
 
-/** What is said of a campaign's endings and standing, a line each; `reads` says where the log is
- *  read to. */
 export function endingLines({ events, endings, since, standing }: Ending, reads = "now"): string[] {
   const last = since.last;
   return [
-    `${plural(events, "event")}, ${plural(endings.length, "ending")} on record`,
+    `${plural(events, "event")}, ${plural(endings.length, "recorded ending")}`,
     ...endings.flatMap(({ ending, at, why, moves }) => [
       `ended ${ending} at ${at} after ${movesLine(moves)}`,
       `  why: ${why}`,
@@ -126,7 +122,7 @@ export function endingLines({ events, endings, since, standing }: Ending, reads 
       : `since ${endings.length === 0 ? "the opening" : "the last ending"}: ${movesLine(since.moves)}, last event ${last.kind} at ${last.at}`,
     `as the table reads the log ${reads}:`,
     ...standingLines(standing).map((line) => `  ${line}`),
-    `the table's move: ${decidedLine(standing.decided)}`,
+    `recommended next action: ${decidedLine(standing.decided)}`,
   ];
 }
 

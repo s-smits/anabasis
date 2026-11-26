@@ -131,10 +131,12 @@ PROMPT_FILES = (
     "src/tools/coding.ts",
     "src/tools/answer.ts",
     "src/solver/run.ts",
-    "src/referee/referee.ts",
-    "src/referee/draft-audit.ts",
-    "src/referee/probe.ts",
-    "tools/d2/campaign-actions.ts",
+    "src/audit/auditor.ts",
+    "src/audit/draft-audit.ts",
+    "src/audit/probe.ts",
+    "tools/campaign/campaign-actions.ts",
+    "tools/campaign/campaign-status.ts",
+    "tools/campaign/campaign-terms.ts",
 )
 WAIVER_FILE = "tools/oxlint/not-slop.tsv"
 POLICY_FILE = "tools/loc/source-policy.json"

@@ -1,19 +1,21 @@
-// What the run tools decide from pure state: each login's live runs counted on every host against
-// its cap, the pack a run's name reads as, and the machines a kept harness's programs run on. The
-// router's choice of check host, and a move refused for a foreign harness, are held end to end in
-// `router.test.ts` and `runs-move.test.ts`.
+// What the run tools decide from pure state: each login's live runs against its cap on every host, the
+// pack a run's name reads as, and where a kept harness's programs run. The check host choice and a
+// foreign-harness move refusal are held end to end in `router.test.ts` and `runs-move.test.ts`.
 import { describe, expect, it } from "bun:test";
 import { foreignHead, placeOf, UNAME_PLACES } from "#src/harness/place.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { liveOf, payerOf, seatsIn } from "../tools/runs/live.ts";
 import { allowedLogins, asGathered, capOf, startRefusal } from "../tools/runs/logins.ts";
 import type { Host } from "../tools/runs/host-config.ts";
 import { leastOccupied } from "../tools/runs/placement.ts";
 import { packOf, type Run, runNamed } from "../tools/runs/registry.ts";
+import { seed } from "../tools/runs/seed.ts";
 import { decidedOn, planOn } from "../tools/runs/view.ts";
+import { EVENT_FORMATTERS } from "../tools/runs/summary.ts";
 
 describe("each login's live runs, on every host", () => {
   it("leaves a host uncounted whose answer is no list of records with logins", () => {
@@ -34,12 +36,12 @@ describe("each login's live runs, on every host", () => {
 
   it("counts a simulation seat by its own flags, once a seat", () => {
     const seat =
-      "bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree /t --name sim-a --login 3 -- tools/d1b/examine.ts --login 9";
+      "bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree /t --name sim-a --login 3 -- tools/eval/examine.ts --login 9";
     const table = [
       seat,
       `zsh -c ${seat}`,
       "bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat x",
-      "bun tools/d1b/examine.ts --name sim-b",
+      "bun tools/eval/examine.ts --name sim-b",
     ].map((row) => ({ args: row.split(" ") }));
     expect(seatsIn(table, "here")).toEqual([{ name: "sim-a", login: "3", host: "here" }]);
   });
@@ -73,6 +75,8 @@ describe("each login's live runs, on every host", () => {
       [gpt, "here", "h", null],
       [gpt, "m1", "g", null],
       [payerOf(undefined, ["--solver", "openrouter/x"]), "m1", "h", null],
+      [payerOf(undefined, ["--model=openai-codex/z", "--prompt", "openai-codex/z"]), "m1", "h", null],
+      [payerOf(undefined, ["--examiner=openai-codex/z"]), "m1", "h", "m1 carries 1 live codex run(s)"],
     ];
     for (const [payer, host, name, refusal] of rows) {
       const said = startRefusal(env, payer, host, counted, name);
@@ -274,5 +278,81 @@ describe("the machines a kept harness's programs run on", () => {
     const packEvents = events.slice(1);
     expect(planOn(packEvents).unprepared).toBe(true);
     expect(decidedOn(packEvents).move).toBe("prepare");
+  });
+});
+
+describe("a reported step that rests on set-aside tasks", () => {
+  it("says the step fails with their rejections counted exactly when it does", () => {
+    const report = EVENT_FORMATTERS["comparison.reported"];
+    if (report === undefined) throw new Error("no comparison.reported formatter");
+    const cases = ["step", "no-step"].flatMap((reading) =>
+      [[], ["task"]].flatMap((aside) =>
+        [0.01, 0.02, undefined].flatMap((level) =>
+          [5, 6, 7, null].map((n) => ({ reading, aside, level, n })),
+        ),
+      ),
+    );
+    for (const { reading, aside, level, n } of cases) {
+      const counted =
+        n === null ? null : { wins: n, losses: 0, ties: 0, differences: Array.from({ length: n }, () => 1) };
+      const line = report({ reading, aside, ...keyIfDefined("level", level), counted }) ?? "";
+      const flips = reading === "step" && aside.length > 0 && n !== null && 2 ** -n > (level ?? 0.02);
+      expect(line.includes(`with their rejections counted it reads ${String(n)}-0-0, no step`)).toBe(flips);
+    }
+  });
+});
+
+describe("runs seed --points", () => {
+  it("lists build.checkpoint and both candidate and starter comparison.started cuts", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ana-seed-points-"));
+    const originalLog = console.log;
+    const printed: string[] = [];
+    console.log = (...args: unknown[]) => {
+      printed.push(args.map(String).join(" "));
+    };
+    try {
+      const at = "2026-11-26T00:00:00.000Z";
+      const rows = [
+        { at, kind: "build.started", data: { session: "b-1" } },
+        { at, kind: "build.checkpoint", data: { session: "b-1", harness: "h1" } },
+        {
+          at,
+          kind: "comparison.started",
+          data: { session: "g-1", old: "starter", fresh: "h1", starter: "starter" },
+        },
+        { at, kind: "harness.promoted", data: { from: "starter", harness: "h1" } },
+        {
+          at,
+          kind: "comparison.started",
+          data: { session: "g-2", old: "h1", fresh: "starter", starter: "starter" },
+        },
+        {
+          at,
+          kind: "comparison.reported",
+          data: {
+            session: "g-2",
+            old: "h1",
+            fresh: "starter",
+            starter: "starter",
+            reading: "no-step",
+            level: 0.02,
+            scored: { wins: 0, losses: 5, ties: 0, differences: [-1, -1, -1, -1, -1] },
+          },
+        },
+      ];
+      writeFileSync(join(dir, "log.jsonl"), `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+      await seed(["--from", dir, "--points"]);
+      expect(printed.join("\n").split("\n")).toEqual([
+        "0 build.started b-1",
+        "1 build.checkpoint b-1 h1",
+        "2 comparison.started g-1",
+        "3 harness.promoted h1",
+        "4 comparison.started g-2 starter read",
+        "5 comparison.reported g-2 no-step",
+      ]);
+    } finally {
+      console.log = originalLog;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

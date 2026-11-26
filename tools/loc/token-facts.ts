@@ -1,21 +1,17 @@
-// Extracts token-level source facts using TypeScript 7's native scanner. Because the TypeScript
-// 7.0.2 native port does not export a stable parser API (AST internals sit under `unstable/`),
-// source-policy and analysis tools operate on token streams rather than parse trees. Trivia is
-// skipped by the scanner, so banned literals inside comments do not trigger policy findings.
+// Token-level source facts from TypeScript 7's native scanner: the native port exports no stable parser
+// API (AST internals sit under `unstable/`), so these tools read token streams rather than parse trees.
+// Trivia is skipped, so banned literals inside comments raise no finding.
 
 import { SyntaxKind } from "typescript/unstable/ast";
 import { type Scanner, computeLineStarts, createScanner } from "typescript/unstable/ast/scanner";
 
 interface TokenFacts {
-  /** Every string and template literal value. */
   literals: Set<string>;
   /** Identifiers immediately followed by "(", except those preceded by `function`. */
   calls: Set<string>;
-  /** The longest brace-bodied function. */
   worstFunction: { lines: number; name: string };
   /** Closed brace-bodied function frames; expression-bodied arrows are not counted. */
   functionCount: number;
-  /** Every closed frame with the line span measured by `worstFunction`. */
   spans: { name: string; start: number; end: number }[];
 }
 

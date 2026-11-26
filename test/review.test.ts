@@ -1,6 +1,6 @@
-// Behavioural and boundary tests for Referee probes (`src/referee/probe.ts`), rejection
-// adjudication (`src/referee/referee.ts`), adversarial draft audits (`src/referee/draft-audit.ts`),
-// and hand-label agreement (`src/referee/agreement.ts`).
+// Behavioural and boundary tests for Referee probes (`src/audit/probe.ts`), rejection
+// adjudication (`src/audit/auditor.ts`), adversarial draft audits (`src/audit/draft-audit.ts`),
+// and hand-label agreement (`src/audit/agreement.ts`).
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -10,7 +10,7 @@ import {
   fauxToolCall,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import type { SeatTool } from "../src/agent/session.ts";
+import type { AgentTool } from "../src/agent/session.ts";
 import { type AnswerFile, keepAnswerFiles, shownFiles } from "../src/kernel/answer-files.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -23,10 +23,17 @@ import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { agreement, clears, passAgreement, settledPassLabels } from "../src/referee/agreement.ts";
-import { replayDraftProbes, reviewDraft } from "../src/referee/draft-audit.ts";
-import { type DraftProbeRow, type ProbeRow, probeExamplesTool, probeTool } from "../src/referee/probe.ts";
-import { type Reader, referee } from "../src/referee/referee.ts";
+import {
+  agreement,
+  clears,
+  passAgreement,
+  settledPassLabels,
+  unclearReport,
+  VERDICT_BAR,
+} from "../src/audit/agreement.ts";
+import { replayDraftProbes, reviewDraft } from "../src/audit/draft-audit.ts";
+import { type DraftProbeRow, type ProbeRow, probeExamplesTool, probeTool } from "../src/audit/probe.ts";
+import { type Reader, auditRejection } from "../src/audit/auditor.ts";
 import { containing, copies, matching, objectWith } from "./helpers/matchers.ts";
 import { zipOf } from "./helpers/zip.ts";
 
@@ -35,13 +42,14 @@ const UNUSED_API = undefined as never;
 const CANARY = "hidden-canary-r7";
 const TASK: Task = { taskId: "t-1", family: "beam", publicInput: { load: 5 }, hidden: { limit: CANARY } };
 const CONTRACT: Contract = {
-  answerFormat: {},
+  answerFormat: { type: "object" },
   conventions: "SI units.",
   rules: [{ id: "R1", statement: "A span is at most 12 m." }],
   scope: "Fixture.",
 };
 const ANSWER = { span: 12, members: [{ area: 3 }] };
 const SPAN = "$.span";
+const CONTROL = { taskId: "t-1", answer: ANSWER, refusedBy: null };
 const AREA = "$.members[0].area";
 const BOOK = "file:book.xlsx";
 const MEMBER = `${BOOK}/xl/sharedStrings.xml`;
@@ -63,7 +71,7 @@ const verify: Verifier = async (_task, answer) => {
 const callTool = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), TOOL_USE);
 const ruling = (args: JsonObject) => callTool("record_ruling", args);
 const reviewCall = (args: JsonObject) => callTool("record_draft_review", args);
-const invoke = (tool: SeatTool, args: JsonObject) => tool.execute(args, UNUSED_API, BACKGROUND_CONTEXT);
+const invoke = (tool: AgentTool, args: JsonObject) => tool.execute(args, UNUSED_API, BACKGROUND_CONTEXT);
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -141,7 +149,7 @@ function setup(
     sent,
     record,
     calls: () => sent.length,
-    fail: (over: Partial<Parameters<typeof referee>[1]> = {}) => ({
+    fail: (over: Partial<Parameters<typeof auditRejection>[1]> = {}) => ({
       solve: "s-1",
       task: TASK,
       contract: CONTRACT,
@@ -192,7 +200,6 @@ describe("answer and file probes", () => {
     expect(JSON.stringify(moved.output)).toContain("$.span replaced with 10");
     expect(JSON.stringify(moved.output)).toContain("probe 1 of 8: 7 probes left");
     expect(tool.description).toContain("at most 8 probes");
-    // Unchanged text file value is rejected.
     const fileRows: ProbeRow[] = [];
     const fileTool = probeTool(verify, TASK, ANSWER, fileRows, {
       files: [{ path: "report.txt", base64: "YmFk", text: "bad" }],
@@ -310,7 +317,7 @@ describe("answer and file probes", () => {
 describe("host replay shortcuts", () => {
   it("refuses missing answers, rules format faults earned unread, and settles non-reproducing replays without calling the model", async () => {
     const empty = setup([], JSON.stringify([SPAN]), "empty");
-    await expect(referee(empty.reader, empty.fail())).rejects.toThrow(
+    await expect(auditRejection(empty.reader, empty.fail())).rejects.toThrow(
       "solve s-1 has no answer on record: the Referee rules a rejected answer alone",
     );
     expect(empty.calls()).toBe(0);
@@ -323,7 +330,7 @@ describe("host replay shortcuts", () => {
       kind: "fail",
       fault: "span is not a number",
     });
-    expect(await referee(empty.reader, empty.fail())).toMatchObject({
+    expect(await auditRejection(empty.reader, empty.fail())).toMatchObject({
       ruling: "earned",
       reason: containing("span is not a number"),
     });
@@ -341,7 +348,7 @@ describe("host replay shortcuts", () => {
       ],
     ] satisfies [Verdict, JsonObject][]) {
       const s = setup([]);
-      expect(await referee(s.reader, s.fail({ verify: async () => replay }))).toMatchObject(expected);
+      expect(await auditRejection(s.reader, s.fail({ verify: async () => replay }))).toMatchObject(expected);
       expect(s.calls()).toBe(0);
       expect(read(s.log).at(-1)?.data).toMatchObject({ ...expected, replay });
     }
@@ -360,7 +367,7 @@ describe("rejection adjudication and evidence gates", () => {
         probes: [1],
       }),
     ]);
-    const finding = await referee(s.reader, s.fail());
+    const finding = await auditRejection(s.reader, s.fail());
     expect(finding).toEqual({
       ruling: "check-defect",
       check: "span",
@@ -383,7 +390,6 @@ describe("rejection adjudication and evidence gates", () => {
       replay: { kind: "fail", blocking: ["span"] },
     });
 
-    // Check with no declared answer fields needs no probe.
     const noFields = setup(
       [
         ruling({
@@ -395,7 +401,7 @@ describe("rejection adjudication and evidence gates", () => {
       ],
       JSON.stringify([]),
     );
-    expect(await referee(noFields.reader, noFields.fail())).toMatchObject({
+    expect(await auditRejection(noFields.reader, noFields.fail())).toMatchObject({
       ruling: "check-defect",
       check: "span",
       probes: [],
@@ -403,11 +409,11 @@ describe("rejection adjudication and evidence gates", () => {
 
     // Accepted answer shown only for the same task, never another task.
     const peer = setup([ruling(UNSETTLED), ruling(UNSETTLED)]);
-    await referee(peer.reader, peer.fail());
+    await auditRejection(peer.reader, peer.fail());
     expect(peer.sent[0]).not.toContain(String.raw`\"span\":9`);
     peer.record("verdict", { solve: "s-0", task: "t-1", answer: { span: 9, members: [] }, kind: "pass" });
     peer.record("verdict", { solve: "s-9", task: "t-2", answer: { span: 1, members: [] }, kind: "pass" });
-    await referee(peer.reader, peer.fail());
+    await auditRejection(peer.reader, peer.fail());
     expect(peer.sent[1]).toContain(String.raw`{\"span\":9,\"members\":[]}`);
     expect(peer.sent[1]).not.toContain(String.raw`{\"span\":1,\"members\":[]}`);
   });
@@ -427,7 +433,7 @@ describe("rejection adjudication and evidence gates", () => {
       callTool(PROBE, { changes: [{ path: SPAN, value: "9" }] }),
       earned({ rule: "R1", field: SPAN, probes: [1] }),
     ]);
-    expect(await referee(s.reader, s.fail())).toMatchObject({
+    expect(await auditRejection(s.reader, s.fail())).toMatchObject({
       ruling: "earned",
       rule: "R1",
       field: SPAN,
@@ -454,7 +460,7 @@ describe("rejection adjudication and evidence gates", () => {
       fauxAssistantMessage("Thinking aloud."),
       ruling({ ruling: "check-defect", check: "span", reason: "R1 allows 12.", probes: [3] }),
     ]);
-    expect(await referee(gate.reader, gate.fail({ verify: threw }))).toMatchObject({
+    expect(await auditRejection(gate.reader, gate.fail({ verify: threw }))).toMatchObject({
       ruling: "check-defect",
       check: "span",
       probes: [3],
@@ -488,7 +494,7 @@ describe("rejection adjudication and evidence gates", () => {
       kind: "fail",
       blocking: ["span"],
     });
-    const coupledFinding = await referee(
+    const coupledFinding = await auditRejection(
       coupled.reader,
       coupled.fail({
         verify: async (_task, given) => {
@@ -502,6 +508,17 @@ describe("rejection adjudication and evidence gates", () => {
     expect(coupledFinding).toMatchObject({ ruling: "earned", field: "$", probes: [2] });
     expect(read(coupled.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
     expect(coupledAnswer.left).toEndWith("bad");
+  });
+
+  it("grounds no check-defect ruling on a probe whose change breaks the answer format", async () => {
+    const typed = { ...CONTRACT, answerFormat: { type: "object", properties: { span: { type: "number" } } } };
+    const s = setup([
+      callTool(PROBE, { changes: [{ path: SPAN, value: '"12"' }] }),
+      ruling({ ruling: "check-defect", check: "span", reason: "A span of 12 passes as text.", probes: [1] }),
+      ruling(UNSETTLED),
+    ]);
+    expect(await auditRejection(s.reader, s.fail({ contract: typed }))).toMatchObject({ ruling: "unclear" });
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
   });
 
   it("handles submitted text files and archive members across replay, probes, and rulings", async () => {
@@ -531,7 +548,7 @@ describe("rejection adjudication and evidence gates", () => {
       blocking: ["span"],
     });
     const seen: (readonly AnswerFile[] | undefined)[] = [];
-    const fileFinding = await referee(
+    const fileFinding = await auditRejection(
       s.reader,
       s.fail({
         verify: async (_t, _a, _sig, files) => {
@@ -578,7 +595,7 @@ describe("rejection adjudication and evidence gates", () => {
       });
       const given: (readonly AnswerFile[] | undefined)[] = [];
       expect(
-        await referee(
+        await auditRejection(
           z.reader,
           z.fail({
             verify: async (_t, _a, _sig, files) => {
@@ -620,29 +637,27 @@ describe("rejection adjudication and evidence gates", () => {
       if (signal?.aborted === true) stop();
       return stopped.promise;
     };
-    expect((await referee({ ...wall.reader, wallSeconds: 0.05 }, wall.fail({ verify: slow }))).ruling).toBe(
-      "unclear",
-    );
+    expect(
+      (await auditRejection({ ...wall.reader, wallSeconds: 0.05 }, wall.fail({ verify: slow }))).ruling,
+    ).toBe("unclear");
     expect(read(wall.log).at(-1)?.data).toMatchObject({ walled: true, ruling: "unclear" });
     expect(signals.at(-1)?.aborted).toBe(true);
 
-    // Provider error -> ruling null with error recorded.
     const limit = "the account's session limit is reached";
     const errored = setup([fauxAssistantMessage("", { stopReason: "error", errorMessage: limit })]);
-    expect((await referee(errored.reader, errored.fail())).ruling).toBeNull();
+    expect((await auditRejection(errored.reader, errored.fail())).ruling).toBeNull();
     expect(read(errored.log).findLast((e) => e.kind === FINDING)?.data).toMatchObject({
       ruling: null,
       error: limit,
       walled: false,
     });
 
-    // External kill signal -> ruling null with error null.
     const kill = new AbortController();
     const killed = setup([callTool(PROBE, { changes: [{ path: SPAN, value: "10" }] })]);
     let killRuns = 0;
     expect(
       (
-        await referee(
+        await auditRejection(
           { ...killed.reader, kill: kill.signal },
           killed.fail({
             verify: async (task, answer) => {
@@ -712,6 +727,18 @@ describe("adversarial draft audit", () => {
       }),
       reviewCall({
         verdict: "defects",
+        findings: [
+          { kind: "objective-defect", task: "t-1", item: "report", probe: 1, reason: "no item scored" },
+        ],
+        summary: "item on a probe that scored no items",
+      }),
+      reviewCall({
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "t-1", item: "report", probe: 3, reason: "item off kind" }],
+        summary: "item on a vacuous-pass",
+      }),
+      reviewCall({
+        verdict: "defects",
         findings: [{ kind: "check-defect", task: "t-1", probe: 1, reason: "actually passed" }],
         summary: "wrong kind for pass",
       }),
@@ -744,7 +771,7 @@ describe("adversarial draft audit", () => {
       session: "d-1",
       pass: 2,
       prompt: "Keep spans <= 12 m.",
-      contract: CONTRACT,
+      contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
       checks,
       verify: vacuousVerify,
       tasks: [TASK],
@@ -769,7 +796,7 @@ describe("adversarial draft audit", () => {
     ]);
     expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
     const draftRefused = read(s.log).filter(({ kind }) => kind === "referee.draft.refused");
-    expect(draftRefused).toHaveLength(9);
+    expect(draftRefused).toHaveLength(11);
     expect(draftRefused.every(({ data }) => data.pass === 2)).toBe(true);
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft")).toMatchObject([{ data: { pass: 2 } }]);
     expect(unfinished(read(s.log))).toEqual([]);
@@ -779,7 +806,39 @@ describe("adversarial draft audit", () => {
     expect(s.sent[0]).toContain("file:results.csv");
     expect(s.sent[1]).toContain(String.raw`a,b\n1,2\n`);
 
-    // No accept controls -> skipped with 0 model calls.
+    // Large example publicInput.files are bounded in the draft-audit opening and readable via read_task_file.
+    const bigTail = "DRAFT_AUDIT_TAIL_999";
+    const bigInputCsv = `id,x\n${"1,abcdefghij0123456789\n".repeat(1200)}999,${bigTail}\n`;
+    let draftVerifiedLen = 0;
+    const taskWithBigFile: Task = {
+      ...TASK,
+      publicInput: { files: [{ path: "inputs/big.csv", text: bigInputCsv }] },
+    };
+    const bigSetup = setup([
+      callTool("read_task_file", {}),
+      callTool("read_task_file", { path: "t-1/inputs/big.csv", from: bigInputCsv.length - 40 }),
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "999" }] }),
+      reviewCall({ verdict: "sound", findings: [], summary: "checked input and probe" }),
+    ]);
+    const bigRes = await reviewDraft(bigSetup.reader, {
+      ...target,
+      contract: CONTRACT,
+      tasks: [taskWithBigFile],
+      verify: async (task, answer, signal, files) => {
+        const list = asRecord(task.publicInput)?.files;
+        const first = Array.isArray(list) ? asRecord(list[0]) : null;
+        if (isString(first?.text)) draftVerifiedLen = first.text.length;
+        return vacuousVerify(task, answer, signal, files);
+      },
+      log: bigSetup.log,
+    });
+    expect(bigRes.verdict).toBe("sound");
+    expect(bigSetup.sent[0]).not.toContain(bigTail);
+    expect(bigSetup.sent[0]?.length ?? 0).toBeLessThan(15_000);
+    expect(bigSetup.sent[1]).toContain("t-1/inputs/big.csv");
+    expect(bigSetup.sent[2]).toContain(bigTail);
+    expect(draftVerifiedLen).toBe(bigInputCsv.length);
+
     const noControls = setup([]);
     expect(
       (await reviewDraft(noControls.reader, { ...target, controls: [], log: noControls.log })).verdict,
@@ -821,7 +880,7 @@ describe("adversarial draft audit", () => {
     });
     expect(gatedRes.verdict).toBe("sound");
     expect(read(gated.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(3);
-    expect(gated.sent[0]).toContain("already mechanically verified fixed");
+    expect(gated.sent[0]).toContain("one replayed probe, not a fresh test");
 
     // `replayDraftProbes` flags persisting defects, verifies fixed ones at $0, and leaves inconclusive/missing probes unverified.
     const sameStill = await replayDraftProbes(res, {
@@ -858,6 +917,229 @@ describe("adversarial draft audit", () => {
     expect(crashedReplay.stillBroken).toEqual([]);
     expect(crashedReplay.verifiedFixed).toEqual([]);
     expect(crashedReplay.unverified).toHaveLength(3);
+  });
+});
+
+describe("draft audit on a check that throws", () => {
+  it("accepts check-defect on the check a valid alternative makes throw, and only on that check", async () => {
+    const checks = programs.get(JSON.stringify([SPAN]));
+    if (checks === undefined) throw new Error("missing check program");
+    const throwing: Verifier = async (_task, answer) =>
+      asRecord(answer)?.span === -2
+        ? { kind: "faulty", check: "span", reason: "the check threw" }
+        : { kind: "pass", objective: 10 };
+    const s = setup([
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "-2" }] }),
+      reviewCall({
+        verdict: "defects",
+        findings: [{ kind: "check-defect", task: "t-1", check: "other", probe: 1, reason: "wrong check" }],
+        summary: "wrong check id",
+      }),
+      reviewCall({
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "t-1", probe: 1, reason: "a throw is no pass" }],
+        summary: "wrong kind for a throw",
+      }),
+      reviewCall({
+        verdict: "defects",
+        findings: [{ kind: "check-defect", task: "t-1", check: "span", probe: 1, reason: "span=-2 throws" }],
+        summary: "throwing check",
+      }),
+    ]);
+    const res = await reviewDraft(s.reader, {
+      session: "d-1",
+      pass: 1,
+      prompt: "Keep spans <= 12 m.",
+      contract: CONTRACT,
+      checks,
+      verify: throwing,
+      tasks: [TASK],
+      controls: [CONTROL],
+      notes: [],
+      log: s.log,
+    });
+    expect(res.findings).toMatchObject([{ kind: "check-defect", check: "span", probe: 1 }]);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(2);
+    expect(s.sent.join("\n")).toContain("made check span throw");
+
+    const target = {
+      contract: CONTRACT,
+      tasks: [TASK],
+      controls: [CONTROL],
+    };
+    expect(await replayDraftProbes(res, { ...target, verify: throwing })).toMatchObject({
+      stillBroken: [expect.stringContaining("still reproduces")],
+      unverified: [],
+    });
+    const otherThrow: Verifier = async (_task, answer) =>
+      asRecord(answer)?.span === -2
+        ? { kind: "faulty", check: "other", reason: "another check threw" }
+        : { kind: "pass", objective: 10 };
+    expect(await replayDraftProbes(res, { ...target, verify: otherThrow })).toMatchObject({
+      stillBroken: [],
+      verifiedFixed: [],
+      unverified: [expect.stringContaining("check-defect on t-1")],
+    });
+    const vacuousOnThrow = await replayDraftProbes(
+      {
+        ...res,
+        findings: [{ kind: "vacuous-pass", task: "t-1", probe: 1, reason: "vacuous" }],
+      },
+      { ...target, verify: throwing },
+    );
+    expect(vacuousOnThrow).toMatchObject({
+      stillBroken: [],
+      verifiedFixed: [],
+      unverified: [expect.stringContaining("vacuous-pass on t-1")],
+    });
+    const mended: Verifier = async () => ({ kind: "pass", objective: 10 });
+    expect((await replayDraftProbes(res, { ...target, verify: mended })).verifiedFixed).toHaveLength(1);
+  });
+
+  it("refuses check-defect on a throw from an answer the answer format already refuses", async () => {
+    const checks = programs.get(JSON.stringify([SPAN]));
+    if (checks === undefined) throw new Error("missing check program");
+    const s = setup([
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: '"x"' }] }),
+      reviewCall({
+        verdict: "defects",
+        findings: [
+          { kind: "check-defect", task: "t-1", check: "span", probe: 1, reason: "a string span throws" },
+        ],
+        summary: "throwing check",
+      }),
+      reviewCall({ verdict: "sound", findings: [], summary: "nothing a campaign reaches" }),
+    ]);
+    const res = await reviewDraft(s.reader, {
+      session: "d-1",
+      pass: 1,
+      prompt: "Keep spans <= 12 m.",
+      contract: { ...CONTRACT, answerFormat: { type: "object", properties: { span: { type: "number" } } } },
+      checks,
+      verify: async (_task, answer) =>
+        isNumber(asRecord(answer)?.span)
+          ? { kind: "pass", objective: 10 }
+          : { kind: "faulty", check: "span", reason: "the check threw" },
+      tasks: [TASK],
+      controls: [CONTROL],
+      notes: [],
+      log: s.log,
+    });
+    expect(res.findings).toEqual([]);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(1);
+  });
+});
+
+describe("draft audit replay of an objective defect", () => {
+  it("reproduces while the scored item stands, and leaves it to a fresh audit once the revision drops the item", async () => {
+    const scored =
+      (scores: Record<string, number>): Verifier =>
+      async () => ({ kind: "pass", objective: 0.9, scores });
+    const both = { accuracy: 0.9, report: 1 };
+    const prior = {
+      verdict: "defects" as const,
+      summary: "report item reads keywords only",
+      findings: [
+        {
+          kind: "objective-defect" as const,
+          task: "t-1",
+          item: "report",
+          probe: 1,
+          reason: "wrong report keeps report=1",
+        },
+      ],
+      probes: [
+        {
+          id: 1,
+          task: "t-1",
+          changes: [{ path: SPAN, value: "13", edit: null }],
+          texts: [],
+          original: { kind: "pass" as const, objective: 0.9, scores: both },
+          changed: { kind: "pass" as const, objective: 0.9, scores: both },
+          moved: [],
+        },
+      ],
+    };
+    const target = {
+      contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
+      tasks: [TASK],
+      controls: [CONTROL],
+    };
+    expect(await replayDraftProbes(prior, { ...target, verify: scored(both) })).toMatchObject({
+      stillBroken: [expect.stringContaining("still reproduces")],
+      unverified: [],
+    });
+    expect(await replayDraftProbes(prior, { ...target, verify: scored({ report: 1 }) })).toMatchObject({
+      stillBroken: [expect.stringContaining("still reproduces")],
+    });
+    expect(await replayDraftProbes(prior, { ...target, verify: scored({ accuracy: 0.9 }) })).toMatchObject({
+      stillBroken: [],
+      verifiedFixed: [],
+      unverified: [expect.stringContaining("objective-defect on t-1")],
+    });
+    const scalar: Verifier = async () => ({ kind: "pass", objective: 0.9 });
+    expect(await replayDraftProbes(prior, { ...target, verify: scalar })).toMatchObject({
+      unverified: [expect.stringContaining("objective-defect on t-1")],
+    });
+    for (const [changed, fixed] of [
+      [0.995, false],
+      [0.98, true],
+      [0.5, true],
+    ] as const) {
+      const fix: Verifier = async (_task, answer) => ({
+        kind: "pass",
+        objective: 0.9,
+        scores: { accuracy: 0.9, report: asRecord(answer)?.span === 12 ? 1 : changed },
+      });
+      const replay = await replayDraftProbes(prior, { ...target, verify: fix });
+      expect([replay.stillBroken.length, replay.verifiedFixed.length]).toEqual(fixed ? [0, 1] : [1, 0]);
+    }
+  });
+
+  it("admits an objective-defect only on a scored item its own probe left standing", async () => {
+    const checks = programs.get(JSON.stringify([SPAN]));
+    if (checks === undefined) throw new Error("missing check program");
+    const finding = (item?: string) => ({
+      verdict: "defects",
+      findings: [
+        {
+          kind: "objective-defect",
+          task: "t-1",
+          ...keyIfDefined("item", item),
+          probe: 1,
+          reason: "span=13 scores",
+        },
+      ],
+      summary: item === undefined || item === "" ? "unnamed" : item,
+    });
+    const s = setup([
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "13" }] }),
+      reviewCall(finding("report")),
+      reviewCall(finding("missing")),
+      reviewCall(finding("toString")),
+      reviewCall(finding("")),
+      reviewCall(finding()),
+      reviewCall(finding("accuracy")),
+    ]);
+    const itemScores: Verifier = async (_task, answer) => ({
+      kind: "pass",
+      objective: 0.9,
+      scores: { accuracy: 0.9, report: asRecord(answer)?.span === 12 ? 1 : 0.5 },
+    });
+    const res = await reviewDraft(s.reader, {
+      session: "d-1",
+      prompt: "Keep spans <= 12 m.",
+      contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
+      checks,
+      verify: itemScores,
+      tasks: [TASK],
+      controls: [CONTROL],
+      notes: [],
+      priorFindings: [],
+      log: s.log,
+    });
+    expect(res.findings).toMatchObject([{ item: "accuracy" }]);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(4);
   });
 });
 
@@ -898,6 +1180,22 @@ describe("hand-label agreement", () => {
     expect(measured.observed).toBeCloseTo(2 / 5);
     expect(measured.kappa).toBeCloseTo(0);
     expect(measured.pabak).toBeCloseTo(0.1);
+    const nonZeroKappa = agreement(
+      [
+        ruled("k1", "earned"),
+        ruled("k2", "earned"),
+        ruled("k3", "check-defect"),
+        ruled("k4", "check-defect"),
+      ],
+      new Map([
+        ["k1", "earned"],
+        ["k2", "earned"],
+        ["k3", "check-defect"],
+        ["k4", "earned"],
+      ] as const),
+    );
+    expect(nonZeroKappa.kappa).toBeCloseTo(0.5);
+    expect(VERDICT_BAR).toEqual({ caught: 0.75, voided: 0.1 });
     expect(agreement(events, new Map([["e", "check-defect"]] as const)).caught).toBe(1);
     expect(agreement(events, new Map())).toMatchObject({ observed: null, kappa: null, pabak: null });
     expect(agreement(events, new Map([["c", "earned"]] as const))).toMatchObject({
@@ -918,6 +1216,7 @@ describe("hand-label agreement", () => {
     const full = agreement(many, thirty);
     for (const [caught, voided, expected] of [
       [0.5, 0.7, true],
+      [0.5, 2 / 3, true],
       [0.5, 0.4, false],
       [0.8, 0.7, false],
       [0.5, 0.1, false],
@@ -930,9 +1229,34 @@ describe("hand-label agreement", () => {
     expect(clears(agreement(many, new Map([...thirty, ["z", "earned"]])), { caught: 0, voided: 1 })).toBe(
       false,
     );
+    const ten = Array.from({ length: 10 }, (_, n) => n);
+    const tenfold = ten.flatMap((n) =>
+      events.map((e) => ({ ...e, data: { ...e.data, solve: `${e.data.solve}${String(n)}` } })),
+    );
+    const fifty = new Map(ten.flatMap((n) => [...labels].map(([k, v]) => [`${k}${String(n)}`, v] as const)));
+    const defects = [...fifty].flatMap(([k, v]) => (v === "check-defect" ? [k] : []));
+    const keepDefects = (kept: number) =>
+      new Map([...fifty].filter(([k]) => !defects.slice(kept).includes(k)));
+    expect(clears(agreement(tenfold, keepDefects(8)), { caught: 0, voided: 1 })).toBe(true);
+    expect(clears(agreement(tenfold, keepDefects(7)), { caught: 0, voided: 1 })).toBe(false);
     const noDefects = agreement(many, new Map([...thirty].filter(([, v]) => v === "earned")));
     expect(noDefects.caught).toBeNull();
     expect(clears(noDefects, { caught: 0, voided: 1 })).toBe(false);
+
+    expect(unclearReport(agreement(events, new Map([["c", "earned"]] as const)))).toBeNull();
+    const unclearOf = (earnedCount: number, defectCount: number) => {
+      const total = earnedCount + defectCount;
+      const evs = Array.from({ length: total }, (_, i) => ruled(`u-${String(i)}`, "unclear"));
+      const lbls = new Map(
+        Array.from(
+          { length: total },
+          (_, i) => [`u-${String(i)}`, i < earnedCount ? "earned" : "check-defect"] as const,
+        ),
+      );
+      return unclearReport(agreement(evs, lbls));
+    };
+    expect(unclearOf(1, 3)).toBeNull();
+    expect(unclearOf(2, 5)).toMatch(/\b2\b.*\b7\b/u);
   });
 
   it("parses settled pass labels and clears at 20 decided labels with at most 10% wrong", () => {

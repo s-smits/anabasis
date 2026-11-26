@@ -1,11 +1,8 @@
 /**
- * Current-system WRI triggers covering pass soundness (`settledPassLabels`), deliverable artifact
- * capture (`manifestOf`), practice probing and epoch-scoped release, export readiness, Examiner
- * zero-yield and family concentration, seat compaction and interrupted handover, underpowered
- * no-steps, solver tool-error friction, and billing residuals.
- *
- * Every trigger prints only wall-safe counts, digests, and session identifiers — never task text,
- * family names, file paths, or hidden values.
+ * Triggers for pass soundness, deliverable capture, practice probing and release, export readiness,
+ * Examiner yield and family concentration, compaction and interrupted handover, underpowered
+ * no-steps, tool-error friction and billing residuals. They print only counts, digests and session
+ * ids, never task text, family names, file paths or hidden values.
  */
 import { short } from "#src/campaign/move.ts";
 import { DELIVERABLES, manifestOf } from "#src/kernel/answer-files.ts";
@@ -13,12 +10,12 @@ import { costLine } from "#src/kernel/meter.ts";
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { passAgreement, settledPassLabels } from "#src/referee/agreement.ts";
+import { passAgreement, settledPassLabels } from "#src/audit/agreement.ts";
 import { draftDeliverableInfo } from "./deliverables.ts";
 import { unpricedCompactions } from "./epoch-spend.ts";
 import {
   EXAM_END,
-  firedIf,
+  emitIf,
   type Index,
   items,
   percent,
@@ -33,25 +30,25 @@ import { inheritedPracticeReleases } from "./transfer.ts";
 const REPEATED_PRACTICE = 4;
 const MAX_SHOWN = 6;
 const MIN_FAMILY_POOL = 8;
+const MIN_SESSION_FAMILY_POOL = 6;
 const UNDERPOWERED_MAX_TASKS = 10;
 const UNDERPOWERED_MIN_RUNS = 2;
 const MIN_ARM_CALLS = 10;
 const RESIDUAL_PCT = 5;
 const RESIDUAL_RE = /\(([+-]\d+(?:\.\d+)?)%\)$/u;
 
-/** Lane 1: human pass-soundness labels recorded on this log (`passAgreement`). */
+/** Human pass-soundness labels recorded on this log (`passAgreement`). */
 function passLabelTriggers(log: Index): Trigger[] {
   const summary = passAgreement(settledPassLabels(log.events));
   if (summary.total === 0) return [];
   const rate = summary.wrongRate === null ? "none" : `${(summary.wrongRate * 100).toFixed(1)}%`;
-  return firedIf(
+  return emitIf(
     true,
     "PASSES LABELLED",
     `${plural(summary.total, "labelled pass")}: sound ${String(summary.counts.sound)}, wrong ${String(summary.counts.wrong)}, unclear ${String(summary.counts.unclear)}; wrong rate ${rate} (${share(summary.counts.wrong, summary.decided)} decided); bar ${summary.clears ? "clears" : "unmet"}`,
   );
 }
 
-/** Lane 3: deliverable file capture across verdicts and draft file declarations. */
 function deliverableTriggers(log: Index): Trigger[] {
   const verdicts = log.of("verdict");
   let [withFiles, totalFiles, maxBytes, atBound] = [0, 0, 0, 0];
@@ -69,12 +66,12 @@ function deliverableTriggers(log: Index): Trigger[] {
   const draftUsesFiles =
     draftInfo.evaluatorUsesFiles || draftInfo.acceptWithFiles > 0 || draftInfo.rejectWithFiles > 0;
   return [
-    ...firedIf(
+    ...emitIf(
       withFiles > 0,
       "DELIVERABLES CAPTURED",
       `${share(withFiles, verdicts.length)} verdicts carried ${plural(totalFiles, "file")} (max ${String(maxBytes)} bytes; ${String(atBound)} at capture bound)`,
     ),
-    ...firedIf(
+    ...emitIf(
       withFiles === 0 && draftUsesFiles && verdicts.length > 0,
       "NO DELIVERABLES CAPTURED",
       `drafted exam references deliverables but 0 of ${plural(verdicts.length, "verdict")} carried files`,
@@ -82,7 +79,7 @@ function deliverableTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 11: repeated single-task practice probing and pre-promotion tasks released after promotion. */
+/** Repeated single-task practice probing, and pre-promotion tasks released after promotion. */
 function practiceSignalTriggers(log: Index): Trigger[] {
   const repeated = log.builds.flatMap((build) => {
     const counts = countBy(practiceOf(log, build), (solve) => solve.version);
@@ -100,12 +97,12 @@ function practiceSignalTriggers(log: Index): Trigger[] {
   });
   const inherited = inheritedPracticeReleases(log.events).map(short);
   return [
-    ...firedIf(
+    ...emitIf(
       repeated.length > 0,
       "PRACTICE CONCENTRATION",
       `tasks practised ${String(REPEATED_PRACTICE)}+ times in one session: ${repeated.join("; ")}`,
     ),
-    ...firedIf(
+    ...emitIf(
       inherited.length > 0,
       "PRE-PROMOTION PRACTICE RELEASED",
       `${plural(inherited.length, "pre-promotion task")} released after a promotion: ${inherited.slice(0, MAX_SHOWN).join(" ")}`,
@@ -113,7 +110,6 @@ function practiceSignalTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 12: built or promoted harnesses ready for portability and external-transfer review. */
 function exportTriggers(log: Index): Trigger[] {
   const promoted = log.of("harness.promoted").map((data) => short(text(data.harness)));
   const built = new Set(
@@ -122,14 +118,13 @@ function exportTriggers(log: Index): Trigger[] {
       return fresh !== "" && fresh !== text(own.old) && fresh !== text(own.starter) ? [short(fresh)] : [];
     }),
   );
-  return firedIf(
+  return emitIf(
     promoted.length > 0 || built.size > 0,
     "BUILT HARNESS FOR EXPORT",
     `${String(promoted.length)} promoted ${promoted.length === 1 ? "harness" : "harnesses"} (${promoted.join(", ") || "none"}), ${plural(built.size, "compared candidate")}`,
   );
 }
 
-/** Lane 13: Examiner sessions holding zero tasks and held-out family concentration (counts only). */
 function examinerSignalTriggers(log: Index): Trigger[] {
   const proposedBy = countBy(
     log.of("task.proposed").filter((data) => isString(data.session)),
@@ -167,17 +162,40 @@ function examinerSignalTriggers(log: Index): Trigger[] {
   );
   const counts = Object.values(heldFamilies).toSorted((a, b) => b - a);
   const topCount = counts[0] ?? 0;
+  const runConcentrated = log.held.length >= MIN_FAMILY_POOL && topCount * 2 > log.held.length;
+  const sessionConcentrated = log.of(EXAM_END).flatMap((data) => {
+    const session = text(data.session) || "x-?";
+    const held = items(data.held).filter(isString);
+    if (held.length < MIN_SESSION_FAMILY_POOL) return [];
+    const byFamily = countBy(
+      held.flatMap((version) => {
+        const family = familyOf.get(version);
+        return family === undefined ? [] : [family];
+      }),
+      (family) => family,
+    );
+    const ranked = Object.values(byFamily).toSorted((a, b) => b - a);
+    const top = ranked[0] ?? 0;
+    return top * 2 > held.length
+      ? [
+          `${session} ${share(top, held.length)} (${String(ranked.length)} ${ranked.length === 1 ? "family" : "families"})`,
+        ]
+      : [];
+  });
+  const familyParts = [
+    ...(runConcentrated
+      ? [
+          `largest family holds ${share(topCount, log.held.length)} held tasks across ${String(counts.length)} ${counts.length === 1 ? "family" : "families"}`,
+        ]
+      : []),
+    ...(sessionConcentrated.length > 0 ? [`by session: ${sessionConcentrated.join("; ")}`] : []),
+  ];
   return [
-    ...firedIf(zeroYield.length > 0, "EXAMINER ZERO YIELD", zeroYield.join("; ")),
-    ...firedIf(
-      log.held.length >= MIN_FAMILY_POOL && topCount * 2 > log.held.length,
-      "FAMILY CONCENTRATION",
-      `largest family holds ${share(topCount, log.held.length)} held tasks across ${String(counts.length)} ${counts.length === 1 ? "family" : "families"}`,
-    ),
+    ...emitIf(zeroYield.length > 0, "EXAMINER ZERO YIELD", zeroYield.join("; ")),
+    ...emitIf(familyParts.length > 0, "FAMILY CONCENTRATION", familyParts.join("; ")),
   ];
 }
 
-/** Lane 15: Examiner/solver compactions and Builder sessions opening after interrupted predecessors. */
 function continuityTriggers(log: Index): Trigger[] {
   const compactions = log.traces.filter((each) => each.part === "compacted");
   const examCompacted = compactions.filter((each) => each.seat === "exam" || each.seat === "draft");
@@ -200,17 +218,17 @@ function continuityTriggers(log: Index): Trigger[] {
       : [];
   });
   return [
-    ...firedIf(examLines.length > 0, "EXAMINER COMPACTED", examLines.join("; ")),
-    ...firedIf(
+    ...emitIf(examLines.length > 0, "EXAMINER COMPACTED", examLines.join("; ")),
+    ...emitIf(
       solveCompacted.length > 0,
       "SOLVER COMPACTED",
       `${plural(solveCompacted.length, "compaction")} across ${plural(compactedSolves.size, "solve")}`,
     ),
-    ...firedIf(handovers.length > 0, "INTERRUPTED HANDOVER", handovers.join("; ")),
+    ...emitIf(handovers.length > 0, "INTERRUPTED HANDOVER", handovers.join("; ")),
   ];
 }
 
-/** Lane 16: repeated candidate no-steps scored on 10 or fewer tasks (burning stop-rule patience). */
+/** Repeated candidate no-steps scored on 10 or fewer tasks, which burn stop-rule patience. */
 function underpoweredTriggers(log: Index): Trigger[] {
   const small = log.compared.flatMap(({ session, own, last }) => {
     if (text(last.reading) !== "no-step" || own.fresh === own.starter || own.old === own.fresh) return [];
@@ -219,14 +237,14 @@ function underpoweredTriggers(log: Index): Trigger[] {
     const tasks = scored.wins + scored.losses + scored.ties;
     return tasks > 0 && tasks <= UNDERPOWERED_MAX_TASKS ? [`${session} (${String(tasks)} tasks)`] : [];
   });
-  return firedIf(
+  return emitIf(
     small.length >= UNDERPOWERED_MIN_RUNS,
     "UNDERPOWERED NO-STEPS",
     `${plural(small.length, "candidate no-step")} scored <= ${String(UNDERPOWERED_MAX_TASKS)} tasks: ${small.join("; ")}`,
   );
 }
 
-/** Lane 17: comparison arms whose solver tool calls exceed a 20% error rate. */
+/** Comparison arms whose solver tool calls exceed a 20% error rate. */
 function toolErrorTriggers(log: Index): Trigger[] {
   const high = log.compared.flatMap(({ session, own, scoring }) => {
     const checkSide = (label: string, harness: JsonValue | undefined) => {
@@ -239,10 +257,10 @@ function toolErrorTriggers(log: Index): Trigger[] {
     };
     return [...checkSide("reference", own.old), ...checkSide("new", own.fresh)];
   });
-  return firedIf(high.length > 0, "HIGH TOOL ERROR RATE", high.join("; "));
+  return emitIf(high.length > 0, "HIGH TOOL ERROR RATE", high.join("; "));
 }
 
-/** Lane 19: billing residual > 5% between local meter and backend totals, or open unpriced compactions. */
+/** A billing residual over 5% between the local meter and backend totals, or open unpriced compactions. */
 function billingTriggers(log: Index): Trigger[] {
   const line = costLine(log.events);
   const match = RESIDUAL_RE.exec(line);
@@ -252,10 +270,9 @@ function billingTriggers(log: Index): Trigger[] {
     ...(pct > RESIDUAL_PCT ? [line] : []),
     ...(unpriced > 0 ? [`${plural(unpriced, "open compaction")} with 0 locally priced usage`] : []),
   ];
-  return firedIf(parts.length > 0, "BILLING RESIDUAL", parts.join("; "));
+  return emitIf(parts.length > 0, "BILLING RESIDUAL", parts.join("; "));
 }
 
-/** All current-system triggers added in the WRI rewrite. */
 export function signalTriggers(log: Index): Trigger[] {
   return [
     ...passLabelTriggers(log),

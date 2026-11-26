@@ -1,70 +1,61 @@
 /**
- * The vetted findings of the investigations, read one way for every reader: a `vetting.md`'s findings
- * tables, each a table with a `verdict` column whatever its other headers, a row a finding. An
- * iteration's plan gate reads which rows are confirmed (`wri2p2.ts`), its vet gate what the fixed
- * columns still owe (`vettingFaults`), and `wri.ts findings` folds every investigation under one root
- * into one ledger (`findingsLedger`): each standing finding by the investigations that hold it, the
- * confirmed rows by importance and by what became of them, and each lane by the rows it fed, the
- * newest window beside the one before it.
+ * The vetted findings of the investigations: each `vetting.md` findings table (one with a `verdict`
+ * column, whatever its other headers), a row a finding. `wri2p2.ts` reads which rows are confirmed
+ * and what the fixed columns still owe; `wri.ts findings` folds every investigation under one root
+ * into one ledger.
  */
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { REFERENCES } from "./catalogue.ts";
-import { rowsOf, tablesOf } from "./ledger.ts";
+import { idsOf, rowsOf, tablesOf } from "./ledger.ts";
 
 export const VERDICTS = ["confirmed", "plausible", "refuted"] as const;
 type Verdict = (typeof VERDICTS)[number];
 
-/** What becomes of a confirmed finding: a row of this plan, a row owed to a later plan, a decision
- *  put to the operator, or nothing, with the reason. */
+/** What becomes of a confirmed finding: a row of this plan, a row owed to a later plan, an operator
+ *  decision, or nothing. */
 const FATES = ["repair", "carry", "operator", "none"] as const;
 /** The columns a vetting's findings table has, in any order, beside any other. */
 const COLUMNS = ["id", "finding", "lanes", "standing", "owner", "importance", "verdict", "fate"] as const;
 const IMPORTANCE = /^I[0-3]$/u;
-/** A row that the register does not hold yet. */
 const NEW = "new";
-/** A row the primary found in its own reading, which no lane reported. */
 const PRIMARY = "primary";
 const VETTING = "vetting.md";
-/** The register: one row a finding that investigations keep meeting, with the decision on record. */
 const REGISTER = join(REFERENCES, "standing-findings.md");
 const DATED = /^(\d{4}-\d{2}-\d{2})-/u;
 
-/** One row of a findings table. A column its table lacks reads as "". */
-export interface Finding {
+interface Finding {
   /** `vet-<n>`, however the row wrote it (`3`, `vet-3`, in bold or in backticks). */
   readonly id: string;
   readonly verdict: Verdict;
-  /** The lanes it rests on, each `<lane>` or `<lane>.<its finding>`, or `primary`. */
   readonly lanes: readonly string[];
   readonly standing: string;
   readonly owner: string;
   readonly importance: string;
-  /** The first word of its `fate` cell. */
   readonly fate: string;
 }
 
-/** One investigation's findings, with the date its folder is named by. */
 interface Vetted {
+  readonly folder: string;
   readonly day: number;
   readonly keyed: boolean;
   readonly findings: readonly Finding[];
 }
 
-/** The lane of a reference to it or to one of its findings: `12` of `12.3`. */
-const laneOf = (reference: string) => reference.split(".")[0] ?? reference;
+const FINDING = /lane\d+-[a-z]+\d+|\d+(?:\.\d+)?|primary/gu;
+const laneOf = (reference: string) =>
+  /^lane(\d+)-/u.exec(reference)?.[1] ?? reference.split(".")[0] ?? reference;
 export const plain = (cell = "") => cell.replaceAll(/[*`]/gu, "").trim();
 export const firstWord = (cell: string) => /^[a-z]+/u.exec(cell.toLowerCase())?.[0] ?? "";
 
-/** The ids of the findings `vetting` confirms, which its plan answers one by one. */
 export const confirmedIn = (vetting: string): string[] =>
   findingsIn(vetting)
     .filter(({ verdict }) => verdict === "confirmed")
     .map(({ id }) => id);
 
 /** The findings of `vetting`: each row of each table with a `verdict` column whose verdict begins
- *  with one of `VERDICTS`. A prediction's row, resolved as held or falsified, is no finding. */
+ *  with one of `VERDICTS`. A prediction's row, resolved as confirmed, refuted, or not-observed, is not a finding. */
 function findingsIn(vetting: string): Finding[] {
   return tablesOf(vetting).flatMap(({ header, rows }) => {
     const columns = header.map((cell) => plain(cell));
@@ -73,17 +64,13 @@ function findingsIn(vetting: string): Finding[] {
     const cell = (row: readonly string[], name: string) => (at(name) === -1 ? "" : plain(row[at(name)]));
     return rows.flatMap((row) => {
       const verdict = VERDICTS.find((word) => firstWord(cell(row, "verdict")) === word);
-      // The id is the column of that name, or the first one where a table gives it another header.
       const id = plain(row[Math.max(at("id"), 0)]).replace(/^vet-/iu, "");
       if (verdict === undefined || id === "") return [];
       return [
         {
           id: `vet-${id}`,
           verdict,
-          lanes:
-            cell(row, "lanes")
-              .toLowerCase()
-              .match(/\d+(?:\.\d+)?|primary/gu) ?? [],
+          lanes: cell(row, "lanes").toLowerCase().match(FINDING) ?? [],
           standing: cell(row, "standing"),
           owner: cell(row, "owner"),
           importance: cell(row, "importance"),
@@ -94,19 +81,12 @@ function findingsIn(vetting: string): Finding[] {
   });
 }
 
-/** The register as the synthesis session is given it: each key beside its finding, a line a key. A
- *  lane is given none of it, since a lane told what to find finds it. */
+/** A lane is given none of the register, since a lane told what to find finds it. */
 export const standingLines = (register = readFileSync(REGISTER, "utf8")): string =>
   rowsOf(register, "key")
     .map(([key = "", finding = ""]) => `- \`${key}\`: ${finding}`)
     .join("\n");
 
-/**
- * What the fixed columns of `vetting` still owe, as one line a fault: a findings table with every
- * column of `COLUMNS`; a verdict in every row; a key of the register or `new` in `standing`; an
- * importance and a fate in every confirmed row; and a row for every lane that wrote a finding in
- * `reports` (`collect`'s list), by the lane's number or by each of its findings as `<lane>.<n>`.
- */
 export function vettingFaults(
   vetting: string,
   reports: string,
@@ -122,13 +102,22 @@ export function vettingFaults(
   const found = findingsIn(vetting);
   const rows = tables.reduce((sum, table) => sum + table.rows.length, 0);
   const named = new Set(found.flatMap(({ lanes }) => lanes));
-  // The findings each lane wrote, from the list `collect` writes (`reportIndex`).
-  const written = reports.matchAll(/^- lane (\d+): ok, [a-z ]+, (\d+) findings?,/gmu);
-  const unnamed = [...written].flatMap(([, lane = "", count]) => {
-    if (named.has(lane)) return [];
-    const each = Array.from({ length: Number(count) }, (_, index) => `${lane}.${String(index + 1)}`);
-    return each.filter((one) => !named.has(one));
-  });
+  const counts = new Map(
+    [...reports.matchAll(/^- lane (\d+): ok, [a-z ]+, (\d+) findings?,/gmu)].map(([, lane = "", count]) => [
+      lane,
+      Number(count),
+    ]),
+  );
+  const listed = [
+    ...idsOf(reports),
+    ...[...reports.matchAll(/^ {2}- (\d+\.\d+), observation/gmu)].map(([, id = ""]) => id),
+  ].filter((id) => counts.has(laneOf(id)));
+  const counted = [...counts].flatMap(([lane, count]) =>
+    listed.some((id) => laneOf(id) === lane)
+      ? []
+      : Array.from({ length: count }, (_, index) => `${lane}.${String(index + 1)}`),
+  );
+  const unnamed = [...listed, ...counted].filter((id) => !named.has(id) && !named.has(laneOf(id)));
   const ids = found.map(({ id }) => id);
   const owes = (finding: Finding) => [
     ...(finding.standing === NEW || keys.includes(finding.standing)
@@ -152,7 +141,6 @@ export function vettingFaults(
   ];
 }
 
-/** The window's count beside the one before it, each over its own denominator. */
 const beside = (counts: readonly (readonly [number, number])[]) =>
   counts.map(([count, of]) => `${String(count)} of ${String(of)}`).join(" | ");
 
@@ -163,16 +151,14 @@ function vettedUnder(root: string): Vetted[] {
     if (day === undefined || !existsSync(path)) return [];
     const text = readFileSync(path, "utf8");
     const keyed = tablesOf(text).some(({ header }) => header.map((cell) => plain(cell)).includes("standing"));
-    return [{ day: Date.parse(`${day}T00:00:00Z`), keyed, findings: findingsIn(text) }];
+    return [{ folder, day: Date.parse(`${day}T00:00:00Z`), keyed, findings: findingsIn(text) }];
   });
 }
 
 /**
- * The ledger of the vetted findings under `root`, as lines: the investigations dated in the `days`
- * up to `until` beside those of the `days` before, every count over its own denominator. A standing
- * finding, an importance, a fate and a lane are counted only over the investigations whose table has
- * the fixed columns, and the first line of each block says how many those are. A difference between
- * the two windows is a count beside a count: it says where to look, never that the system improved.
+ * The ledger of the vetted findings under `root`: the `days` up to `until` beside the `days`
+ * before, every count over its own denominator. A difference between the windows says where to look,
+ * never that the system improved.
  */
 export function findingsLedger(root: string, until: number, days: number): string[] {
   const all = vettedUnder(root);
@@ -237,6 +223,17 @@ export function findingsLedger(root: string, until: number, days: number): strin
       (level) => `- ${level}: ${share(({ importance }) => importance === level, keyed, confirmed)}`,
     ),
     ...FATES.map((fate) => `- ${fate}: ${share((finding) => finding.fate === fate, keyed, confirmed)}`),
+    "",
+    "Confirmed I0 and I1 rows waiting on the operator, newest window:",
+    "",
+    ...(keyed[0] ?? []).flatMap(({ folder, findings }) =>
+      findings
+        .filter(
+          (finding) =>
+            confirmed(finding) && finding.fate === "operator" && ["I0", "I1"].includes(finding.importance),
+        )
+        .map(({ id, importance }) => `- ${importance}: ${folder} ${id}`),
+    ),
     "",
     "## Lanes, by the rows each fed: all | refuted | shared with another lane, newest window",
     "",

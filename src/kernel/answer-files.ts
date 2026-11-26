@@ -1,4 +1,3 @@
-/** Content-addressed storage and manifest validation for submitted deliverable files (`states/deliverables/`). */
 import { sha256 } from "../meta/digest.ts";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "../meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -12,16 +11,12 @@ export interface AnswerFile {
   readonly path: string;
   readonly base64: string;
   readonly text?: string;
-  /** The text members of a zip archive, such as a workbook or a document (`zipTexts`). */
   readonly entries?: readonly TextFile[];
 }
 
-/** A file given as its text alone. */
 // oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to `JsonObject`, and an interface has no implicit index signature
 type TextFile = { readonly path: string; readonly text: string };
 
-/** A file as a draft's control or a try gives one: its text, or an archive's text members in place
- *  of its bytes, since a seat writes no archive (`storedZip` then gives it bytes). */
 export type ControlFile = TextFile | { readonly path: string; readonly entries: readonly TextFile[] };
 
 export interface FileManifest {
@@ -30,15 +25,10 @@ export interface FileManifest {
   readonly sha256: string;
 }
 
-/** 4 KB of each file's text keep 64 files inside a reader's prompt; a check that reads further is
- *  probed, and the whole bytes stay in the store by digest. */
 const SHOWN_BYTES = 4096;
 
-/** 64 work products and 16 MiB allow reports and workbooks while bounding capture and cell input. */
 export const DELIVERABLES = { folder: "deliverables", count: 64, bytes: 16 * 1024 * 1024 };
 
-/** A reader of one set of files as a check receives each: its bytes, its text where they are
- *  UTF-8, and an archive's text members, within the inflated bytes the whole set may take. */
 function filing(): (path: string, bytes: Buffer) => AnswerFile {
   let left = DELIVERABLES.bytes;
   return (path, bytes) => {
@@ -59,7 +49,6 @@ function filing(): (path: string, bytes: Buffer) => AnswerFile {
   };
 }
 
-/** Whether each path is relative, stays inside the folder and names one file once. */
 function safePaths(paths: readonly string[]): boolean {
   return (
     new Set(paths).size === paths.length &&
@@ -72,8 +61,6 @@ function safePaths(paths: readonly string[]): boolean {
   );
 }
 
-/** Old verdict events omit the manifest and retain precisely their previous meaning. The fold
- *  checks shape alone: the bounds are the capture's, so a later bound leaves every log readable. */
 export function manifestOf(value: JsonValue | undefined): FileManifest[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new Error("invalid answer file manifest");
@@ -96,7 +83,6 @@ export function manifestOf(value: JsonValue | undefined): FileManifest[] {
   return manifest;
 }
 
-/** Validate the walled capture too: a malformed transport cannot introduce a path or unbounded data. */
 export function capturedFiles(value: JsonValue | undefined): AnswerFile[] {
   if (!Array.isArray(value)) throw new Error("invalid answer file capture");
   let total = 0;
@@ -116,8 +102,6 @@ export function capturedFiles(value: JsonValue | undefined): AnswerFile[] {
   return files;
 }
 
-/** Files as a control carries them, in the form a check receives: an archive as the stored bytes of
- *  its members, so that it is kept and read back whole as a solver's is. */
 export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
   const archived = rows.flatMap((row) => ("text" in row ? [] : [row.entries.map(({ path }) => path)]));
   if (![rows.map(({ path }) => path), ...archived].every(safePaths)) {
@@ -127,11 +111,8 @@ export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
   return rows.map((row) => filed(row.path, "text" in row ? Buffer.from(row.text) : storedZip(row.entries)));
 }
 
-/** Where a campaign keeps submitted bytes, by digest beside its states. */
 const storeOf = (log: string) => join(dirname(log), "states", DELIVERABLES.folder);
 
-/** Publish whole, flushed bytes by digest: a rename puts them in place whole, and two submits of
- *  one content put the same bytes under the same name. */
 export function keepAnswerFiles(log: string, files: readonly AnswerFile[]): FileManifest[] {
   const store = storeOf(log);
   if (files.length === 0) return [];
@@ -146,7 +127,6 @@ export function keepAnswerFiles(log: string, files: readonly AnswerFile[]): File
   });
 }
 
-/** One byte reader for the verifier, Referee and reports; damaged or missing content never grades. */
 export function readAnswerFiles(log: string, manifest: readonly FileManifest[]): AnswerFile[] {
   const filed = filing();
   return manifest.map((file) => {
@@ -164,10 +144,6 @@ export function readAnswerFiles(log: string, manifest: readonly FileManifest[]):
   });
 }
 
-/** What a ruling or a label is shown of the files: each one's path, size and digest, with its text
- *  bounded where it is UTF-8, never its bytes, then archive members, each bounded alike and charged
- *  its whole listing in bytes, while the set stays within what 64 text files take; the rest are
- *  counted. A reader that has read the files passes them. */
 export function shownFiles(
   log: string,
   manifest: readonly FileManifest[],

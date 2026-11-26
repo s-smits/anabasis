@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { gitText } from "#src/meta/git.ts";
 import { analyzeStack, formatAnalysis, parseNumstat } from "#skills/consolidate-stack/scripts/analyze.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
-import { sanitised } from "#skills/oracle-handover/scripts/document.ts";
+import { sanitised, seenParts, untested } from "#skills/oracle-handover/scripts/document.ts";
 import { pasted, pullsInto } from "#skills/oracle-handover/scripts/open-pulls.ts";
 import {
   keptRepublish,
@@ -57,7 +57,6 @@ const pull = (number: number, head: string, base: string, labels: readonly strin
 describe("following the stack's top", () => {
   it("follows the end of the stack land lands first, named stack-pr<top>, or the trunk where none is open", () => {
     const open = [pull(193, "a", "main"), pull(194, "b", "a"), pull(199, "c", "b"), pull(4, "lone", "main")];
-    // #202 was stacked on #199 before anyone linked it: it is the top.
     expect(targetOf(firstStack([...open, pull(202, "e", "c")]), "main")).toStrictEqual({
       trunk: "main",
       name: "stack-pr202",
@@ -86,7 +85,6 @@ describe("following the stack's top", () => {
     git(co, "config", "user.name", "t");
     git(co, "config", "user.email", "t@t.dev");
     git(co, "switch", "-q", "--track", "-c", "stack-pr1", "origin/claude/one");
-    // The stack is restacked: #1 is rewritten and #2 lands on it.
     git(up, "switch", "-q", "main");
     git(up, "branch", "-D", "claude/one");
     git(up, "switch", "-q", "-c", "claude/one");
@@ -202,7 +200,6 @@ describe("republishing a consolidated stack", () => {
   git(root, "clone", "-q", up, co);
   step("base.txt", "base\n");
   git(co, "push", "-q", "origin", "HEAD:refs/heads/main");
-  // The stack before: #1 a on main, #2 b on a, #3 c on b.
   const a0 = step("a.txt", "a\n");
   const b0 = step("b.txt", "b\n");
   const c0 = step("c.txt", "c\n");
@@ -212,7 +209,6 @@ describe("republishing a consolidated stack", () => {
     { ...pull(2, "b", "a"), headRefOid: b0 },
     { ...pull(3, "c", "b"), headRefOid: c0 },
   ];
-  // The consolidation: #1 rewritten, and #3 folded into #2.
   git(co, "fetch", "-q", "origin");
   git(co, "switch", "-q", "--detach", "origin/main");
   const a1 = step("a.txt", "a, reviewed\n");
@@ -284,7 +280,6 @@ describe("republishing a consolidated stack", () => {
         .join(" ")}`,
     );
     expect([sha(up, "a"), sha(up, "b"), sha(up, "c")]).toStrictEqual([a1, b1, c0]);
-    // #3 stands on #2's branch, and #2's new head could hold its commits: left there, the push merges it.
     expect(
       asked,
       "heads must be pushed only after unstacking and retargeting every pull request",
@@ -303,7 +298,6 @@ describe("republishing a consolidated stack", () => {
   });
 
   it("finishes a republish cut short after its push from its record, detaching and pushing nothing again", () => {
-    // The push above went through; GitHub still shows the old heads and bases when the run is cut.
     const plan = planConsolidation(co, pulls, heads, absorbed, "main");
     const asked: string[] = [];
     const answer = (args: readonly string[]): string => {
@@ -332,10 +326,8 @@ describe("republishing a consolidated stack", () => {
   });
 
   it("pushes nothing where a lease fails, and refuses a stack off main or out of order", () => {
-    // GitHub still shows the old heads, but the push above moved the remote, so no branch may move.
     const plan = planConsolidation(co, pulls, pairs("head", [`1=${b0}`, `2=${c0}`]), new Map(), "main");
     expect(() => republish(co, plan, "no-verify", () => "[]")).toThrow();
-    // A refused lease leaves the record, so the operator sees it before any new plan runs.
     expect(keptRepublish(co)?.plan).toStrictEqual(plan);
     rmSync(join(co, ".git", "ana-republish.json"));
     expect([sha(up, "a"), sha(up, "b")]).toStrictEqual([a1, b1]);
@@ -372,7 +364,6 @@ describe("replaying a stack onto main once what it stood on landed", () => {
   };
   git(root, "init", "-q", "--bare", "-b", "main", up);
   git(root, "clone", "-q", up, co);
-  // A replay writes commits, so the clone carries an identity of its own for the runner's sake.
   git(co, "config", "user.name", "t");
   git(co, "config", "user.email", "t@t.dev");
   step("base.txt", "base\n");
@@ -518,8 +509,8 @@ describe("an Oracle folder of the open pull requests", () => {
   };
   git(root, "init", "-q", "--bare", "-b", "main", up);
   git(root, "clone", "-q", up, co);
-  // main: a.ts imports b.ts, a test imports a.ts, another names only the fixture, one names only the
-  // README, which the gate's rule reads as documentation, and one is far.
+  // main: a.ts imports b.ts, a test imports a.ts, another names only the fixture, one only the README
+  // (read as documentation), and one is far.
   write("README.md", "# r\n");
   write("test/doc.test.ts", 'export const t = "README.md";\n');
   write("src/a.ts", 'import { b } from "./b.ts";\nexport const a = b;\n');
@@ -619,6 +610,25 @@ describe("an Oracle folder of the open pull requests", () => {
 });
 
 describe("an Oracle document's parts", () => {
+  it("prints a finding's log parts from its selectors alone, and a pull request's diff without its tests", () => {
+    expect(
+      seenParts(
+        "run-a comparison.reported{1,~1} Builder:b-1{4-7}; run-b absent, run-c shows the gap; run-d cannot show",
+      ),
+    ).toEqual([["run-a", ["comparison.reported{1,~1}", "Builder:b-1{4-7}"]]]);
+    expect(
+      seenParts(
+        "run-a Builder:b-1[read_opening,compare]{~1}, comparison.reported{2}. (Examiner:x-2{3}); run-b Builder shows it, e.g. v1.2; comparison.reported{9}",
+      ),
+    ).toEqual([
+      ["run-a", ["Builder:b-1[read_opening,compare]{~1}", "comparison.reported{2}", "Examiner:x-2{3}"]],
+    ]);
+    const file = (path: string) => `diff --git a/${path} b/${path}\n+x\n`;
+    expect(untested(file("src/a.ts") + file("test/a.test.ts") + file("tools/test/b.ts"))).toBe(
+      file("src/a.ts") + file("tools/test/b.ts"),
+    );
+  });
+
   it("gives each machine one alias across its names and drops home folders", () => {
     const made = sanitised("ran on box-two (ssh two-ssh) from /Users/someone/Developer/x and /home/other/y", [
       ["box-one"],
@@ -680,10 +690,13 @@ describe("consolidate-stack overlap and cache analyzer", () => {
     const diffs = new Map<string, string>([
       [`${base}..${p1.headRefOid}`, "50\t0\tsrc/hot.ts\n5\t0\ttools/oxlint/rule.ts\n"],
       [`${p1.headRefOid}..${p2.headRefOid}`, "5\t45\tsrc/hot.ts\n1\t0\ttools/oxlint/not-slop.tsv\n"],
-      [`${p2.headRefOid}..${p3.headRefOid}`, "3\t1\tsrc/wall/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n"],
+      [
+        `${p2.headRefOid}..${p3.headRefOid}`,
+        "3\t1\tsrc/sandbox/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n",
+      ],
       [
         `${base}..${p3.headRefOid}`,
-        "10\t0\tsrc/hot.ts\n5\t0\ttools/oxlint/rule.ts\n1\t0\ttools/oxlint/not-slop.tsv\n3\t1\tsrc/wall/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n",
+        "10\t0\tsrc/hot.ts\n5\t0\ttools/oxlint/rule.ts\n1\t0\ttools/oxlint/not-slop.tsv\n3\t1\tsrc/sandbox/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n",
       ],
     ]);
     const report = analyzeStack([p1, p2, p3, side], "main", base, {

@@ -58,8 +58,8 @@ export function complete(value: "ok" | "failed"): void {
         {
           cwd: dir,
           timeout: 30_000,
-          // The same escape from the `node` shim that `bun run lint` takes; without it this test
-          // passes or fails on whether the shell that started it happens to carry a Node binary.
+          // The same escape from the `node` shim that `bun run lint` takes, or the result would hang on
+          // whether the shell carries a Node binary.
           env: { ...Bun.env, OXLINT_TSGOLINT_PATH: tsgolintPath() },
         },
       );
@@ -116,7 +116,7 @@ describe("optional lint findings", () => {
     expect(optionalFinding(coded("anti-slop(no-chained-type-assertions)"), bytes)).toBe(true);
     expect(optionalFinding(coded("ana(no-deep-nesting)"), bytes)).toBe(true);
     expect(optionalFinding(coded("implicit-state(no-coupled-flags)"), bytes)).toBe(true);
-    expect(optionalFinding(coded("implicit-state-opinionated(no-state-in-names)"), bytes)).toBe(true);
+    expect(optionalFinding(coded("implicit-state-opinionated(prefer-state-union)"), bytes)).toBe(true);
     expect(
       optionalFinding(
         unused("// oxlint-disable-next-line anti-slop/no-chained-type-assertions -- why a/b"),

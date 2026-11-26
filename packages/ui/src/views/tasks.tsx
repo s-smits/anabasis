@@ -8,22 +8,18 @@ import { TaskDetailView } from "./tasks-detail.tsx";
 import { TaskGridView } from "./tasks-grid.tsx";
 
 /*
- * The Tasks pane: the grid of task versions against comparisons
- * (`tasks-grid.tsx`); a task opens its detail in place through the route's `task`
- * (`tasks-detail.tsx`), and a solve in it through the route's `solve` (`solve.tsx`), each level
- * hiding the one above it as the Moves pane's do.
- *
- * The grid stays on screen until the task opened from it is read, and is marked as reading only
- * once that read is late (`late.ts`), rather than giving way at once to a "Reading the task"
- * placeholder for the frames the server takes to answer.
+ * The Tasks pane: the grid of task versions against comparisons (`tasks-grid.tsx`); a task opens in
+ * place through the route's `task`, and a solve in it through `solve`, each level hiding the one above
+ * as in Moves. The grid stays until the opened task is read, marked as reading only once late
+ * (`late.ts`).
  */
 
 export function TasksPane({ reading, navigation }: PaneProps) {
   const { task, solve } = navigation.route;
   const grid = useTasks(detailsOf(reading));
   const detail = useTask(detailsOf(reading), task);
-  // The task shown: the one asked for once its detail is read, or once its read failed, which the
-  // detail says. Until then the grid stays.
+  // The task shown: the one asked for once its detail is read or its read failed, which the detail
+  // says; until then the grid stays.
   const shown = task !== null && (detail.current || detail.error !== null) ? task : null;
   const late = useLate(task === null ? null : detail);
   const outer = useDrill(shown ?? (solve === null ? null : `solve:${solve}`));

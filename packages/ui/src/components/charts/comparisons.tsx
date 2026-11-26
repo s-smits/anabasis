@@ -25,24 +25,15 @@ import { OUTCOMES } from "../../views/outcome.ts";
 import { ChartContainer, ChartTooltip } from "../ui/chart.tsx";
 import { ChartKey, CountsTable } from "./comparisons-key.tsx";
 
-/*
- * Wide stacked bar chart for the Campaign pane. Each comparison is shown as one stacked column of
- * scored task counts broken down by outcome, without connecting lines between columns because the
- * evaluated task set changes from one comparison to the next. Custom annotations that Recharts
- * does not provide natively are rendered by `Marks` using the chart's own scales: promotion
- * dividers (with distinct symbols for `--despite` overrides and returns to the starter), setting
- * change breaks, repeat brackets linking repeated comparisons, intervening Examiner and Builder
- * sessions, and status labels above open or cut comparisons. Animations are disabled, and the
- * component is memoised on the reading arrays, which `live.ts` preserves by reference across polls
- * whenever those arrays are unchanged.
- *
- * Each bar is capped at `BAR_PX` wide. When fewer than `FEW` comparisons exist, columns pack on
- * the left at `FEW_SLOT_PX` per slot so that two bars do not drift far apart across a wide card;
- * with more comparisons they share the card width and scroll horizontally once they exceed it.
- */
+// The Campaign pane's chart: one stacked column of scored tasks by outcome a comparison, with no lines
+// between columns since the task set changes from one comparison to the next. `Marks` draws, on the
+// chart's own scales, what Recharts lacks: promotion dividers (`--despite` and returns to the starter
+// marked apart), setting breaks, repeat brackets, the sessions between comparisons, and labels over
+// open or cut ones. It is memoised on the reading's arrays, which `live.ts` keeps by reference while
+// unchanged. Bars are capped at `BAR_PX`; under `FEW` comparisons the columns pack left at
+// `FEW_SLOT_PX`, and beyond that they share the card and scroll past it.
 
-/** Series keys stacked by Recharts. Control (A/A) counts use dedicated quiet keys so their
- *  segments render at reduced opacity in the same outcome colours. */
+/** Control (A/A) counts stack under their own quiet keys, drawn faintly in the same outcome colours. */
 type Series = Outcome | `${Outcome}Quiet` | "open";
 type Row = { readonly key: string } & Partial<Record<Series, number>>;
 
@@ -50,40 +41,34 @@ interface Props {
   readonly bars: readonly ComparisonBar[];
   readonly promotions: readonly Promotion[];
   readonly names: Readonly<Record<string, string>>;
-  /** Opens the selected comparison by its move index in the log. */
   readonly onOpen: (move: number) => void;
 }
 
-/** Minimum slot width per comparison before the chart container scrolls horizontally. */
+/** Minimum slot width per comparison before the chart scrolls horizontally. */
 const SLOT_PX = 80;
 const FEW = 8;
 const FEW_SLOT_PX = 96;
 const BAR_PX = 48;
-/** Width reserved for the y-axis and plot margins surrounding the columns. */
 const AXIS_PX = 36;
 const MARGIN = { top: 54, right: 20, bottom: 4, left: 0 } as const;
 const KIND_WORD = { candidate: null, repeat: "repeat", control: "control" } as const;
-/** Vertical offsets above the plot area: promotions occupy the upper two rows and setting breaks
- *  occupy the third, spaced so the lower promotion row does not collide with setting labels. */
+/** Offsets above the plot: promotions take the upper two rows and setting breaks the third, spaced
+ *  so the lower promotion row clears the setting labels. */
 const PROMOTION_ROW = 46;
 const FLAG_ROW_PX = 14;
 const SETTING_ROW = 10;
-/** Approximate character width in pixels, used to flip a flag leftward near the right edge. */
 const CHAR_PX = 6.4;
-/** Vertical offset below the plot area for intervening session markers. */
 const BETWEEN_DROP = 48;
 const DIM = "var(--ana-dim)";
 const TEXT = "var(--ana-text)";
 const FAINT = "var(--ana-faint)";
 
-/** Pairs each outcome with both a candidate series and a quieter control series in `OUTCOMES` stacking order. */
 const SERIES: readonly { readonly key: Series; readonly color: string; readonly quiet: boolean }[] =
   OUTCOMES.flatMap(({ outcome, color }) => [
     { key: outcome, color, quiet: false },
     { key: `${outcome}Quiet` as const, color, quiet: true },
   ]);
 
-/** Maps a comparison slot into a Recharts data row keyed by its active series. */
 function rowOf(slot: Slot): Row {
   if (slot.kind === "break") return { key: slot.key };
   const quiet = slot.bar.kind === "control";
@@ -97,8 +82,6 @@ function rowOf(slot: Slot): Row {
   return { key: slot.key, ...row };
 }
 
-/** Formats the hover summary for a promotion flag, including the promoted harness, any `--despite`
- *  reason, and whether its starter confirmation comparison has confirmed the gain. */
 function promotionWord(promotion: Promotion, names: Readonly<Record<string, string>>): string {
   if (promotion.toStarter) return "back to the starter";
   const named = `promoted ${digestText(promotion.harness, names)}`;
@@ -111,7 +94,7 @@ function promotionWord(promotion: Promotion, names: Readonly<Record<string, stri
   return `${named}${despite}${starter}`;
 }
 
-/** Renders up to four intervening sessions as individual glyphs, or compact glyphs with counts above four. */
+/** Up to four sessions between comparisons as single glyphs, or one glyph with a count above four. */
 function sessionGlyphs(x: number, y: number, examiner: number, builder: number): ReactNode[] {
   const glyph = (kind: "examiner" | "builder", at: number) =>
     kind === "examiner" ? (
@@ -146,11 +129,10 @@ function sessionGlyphs(x: number, y: number, examiner: number, builder: number):
 }
 
 /**
- * Renders each promotion's vertical divider and flag after the last comparison begun before it.
- * Each flag displays only the short harness letter to avoid overlapping neighbours or clipping at
- * the chart edges; the full summary, digest, and any `--despite` reason appear on hover. Flags
- * near the right edge flip leftward, and a second promotion at the same position drops to the row
- * below.
+ * Each promotion's divider and flag, after the last comparison begun before it. A flag shows only
+ * the harness letter, so neighbours neither overlap nor clip; the summary, digest and any
+ * `--despite` reason show on hover. Near the right edge a flag flips leftward, and a second
+ * promotion at one position drops a row.
  */
 function promotionFlags(
   promotions: readonly Promotion[],
@@ -206,8 +188,6 @@ function promotionFlags(
   });
 }
 
-/** Renders custom SVG annotations (promotion dividers, setting breaks, repeat brackets,
- *  intervening sessions, and open/cut labels) inside the chart where Recharts scales are available. */
 function Marks({
   slots,
   promotions,
@@ -311,8 +291,6 @@ function Marks({
   return <g className="ana-comparisons-marks">{marks}</g>;
 }
 
-/** Tooltip for a comparison column showing the paired harnesses, outcome counts, excluded tasks,
- *  win/loss/tie tally, and statistical reading. */
 function SlotTooltip({
   active,
   payload,
@@ -370,9 +348,6 @@ function SlotTooltip({
   );
 }
 
-/** Renders the comparisons bar chart together with its legend and keyboard-accessible counts table.
- *  Reserves one vertical tick above the tallest bar for overhead brackets, highlights `step` ticks
- *  in full ink, and stops tick click propagation so clicking a tick opens its own comparison. */
 export const ComparisonsChart = memo(function ComparisonsChart({ bars, promotions, names, onOpen }: Props) {
   const slots = useMemo(() => comparisonSlots(bars), [bars]);
   const byKey = useMemo(() => new Map(slots.map((slot) => [slot.key, slot])), [slots]);

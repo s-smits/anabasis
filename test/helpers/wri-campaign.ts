@@ -1,10 +1,8 @@
-// A synthetic campaign for the investigation's tests: the campaign's prompt, each task's statement,
-// hidden values, claim and author's answer, every answer, the check's failure text on a fault and a
-// rejection, the Examiner's prompt and note, a Builder's note, a refused ruling's reason and every
-// seat's prose, call and result (Examiner, Builder, solver, Referee) is `secret(tag)`, so two secrets give two logs that differ
-// only in what may never be quoted. Two rounds: the first reads no step over a ruled check defect and
-// two answers cut at the wall, the second reads a promoted step beside an unclear ruling, a
-// provider's non-result and a check's fault.
+// A synthetic campaign for the investigation's tests: every prompt, statement, hidden value, answer,
+// check failure text, note, ruling reason and seat's prose, call and result is `secret(tag)`, so two
+// secrets give two logs differing only in what may never be quoted. Round one reads no step over a
+// ruled check defect and two answers cut at the wall; round two a promoted step beside an unclear
+// ruling, a provider non-result and a check fault.
 import { conditionId, settingId } from "../../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../../src/kernel/log.ts";
 import type { JsonObject } from "../../src/meta/json-shape.ts";
@@ -180,7 +178,6 @@ export function wriCampaign(secret: (tag: string) => string): LogEvent[] {
   put("exam.finished", { session: "x-1", ended: "supplied", note: secret("examiner note") });
   put("task.state", { version: "t1", state: "released" });
 
-  // Round one: the old harness's answers are a ruled defect, an earned rejection and two cut at the wall.
   build("b-1", "hp", "hc", "hb");
   const first = { session: "b-1", old: "hp", fresh: "hc", starter: "hbase", setting, solves: 1, level: 0.1 };
   put("comparison.started", { ...first, tasks: TASKS, retained: [] });
@@ -213,7 +210,6 @@ export function wriCampaign(secret: (tag: string) => string): LogEvent[] {
   ruling(earned, "v2", "r-2", "earned");
   report(first, { wins: 2, losses: 0, ties: 0, p: 0.25, unsolved: 0 }, "no-step", ["v3", "v4"], ["v1"]);
 
-  // Round two: a step, promoted, beside an unclear ruling and two non-results solved again.
   build("b-2", "hp", "hd", "hc");
   const second = { session: "b-2", old: "hp", fresh: "hd", starter: "hbase", setting, solves: 1, level: 0.1 };
   put("comparison.started", { ...second, tasks: TASKS, retained: [] });

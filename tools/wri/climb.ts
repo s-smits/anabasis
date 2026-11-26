@@ -1,36 +1,41 @@
 /**
- * Lane 18 across campaigns: one row a campaign, in the columns the lane compares, and the paths
- * under the host's `/tmp` that one campaign named before another campaign's solve ran them.
+ * Across campaigns: one row a campaign, in the columns the climb lanes compare, and the paths under
+ * the host's `/tmp` that one campaign named before another campaign's solve ran them.
  */
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { differenceOf, flipP, readsStep, type Paired, pointsOf, wholePoints } from "#src/kernel/compare.ts";
+import {
+  differenceOf,
+  flipP,
+  isSignificant,
+  type Paired,
+  pointsOf,
+  wholePoints,
+} from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
-import { validityOf } from "#tools/d2/close.ts";
-import { count, firedIf, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
+import { validityOf } from "#tools/campaign/close.ts";
+import { count, emitIf, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,
+  formatPValue,
+  formatTestSummary,
+  formatValidityRate,
   joinedTest,
   pinnedRule,
-  pSaid,
   sharedPaths,
   spentTo,
   testedOf,
-  testSaid,
   untied,
   validOf,
-  validSaid,
 } from "./promotion.ts";
 
-/** One campaign as the climb table names it: its name and its log's events. */
-export interface Campaign {
+interface Campaign {
   readonly name: string;
   readonly events: readonly LogEvent[];
 }
 
-/** Where a path under `/tmp` was first named in one campaign: by which call, and when. A solve's
- *  side is the comparison's reference or new harness, or practice. */
+/** Where a path under `/tmp` was first named in one campaign: by which call, and when. */
 interface Named {
   readonly campaign: string;
   readonly by: string;
@@ -38,8 +43,6 @@ interface Named {
   readonly side: string | null;
 }
 
-/** What `crossings` found: the solves that ran what another campaign's session left, and how many
- *  scratch names solves of two campaigns shared. */
 interface Crossed {
   readonly left: string[];
   readonly scratch: string;
@@ -85,10 +88,10 @@ function rowOf({ name, events }: Campaign): string[] {
         );
   const tallies = rests.map(
     ({ session, last }) =>
-      `${session} ${testSaid(last.scored)}, ${untied(last.scored)}, ${untied(last.noise)}`,
+      `${session} ${formatTestSummary(last.scored)}, ${untied(last.scored)}, ${untied(last.noise)}`,
   );
   const valid = rests.map(
-    ({ session, last }) => `${session} ${validSaid(validOf(asRecord(last.valid)?.old).share)}`,
+    ({ session, last }) => `${session} ${formatValidityRate(validOf(asRecord(last.valid)?.old).share)}`,
   );
   const after = epoch === undefined ? [] : log.compared.filter(({ at }) => at > epoch.at);
   const move = log.of("campaign.move").at(-1);
@@ -97,7 +100,6 @@ function rowOf({ name, events }: Campaign): string[] {
   const ended = events.findLast(({ kind }) => kind === "campaign.move" || kind === "campaign.ended")?.kind;
   return [
     name,
-    // The host code of the last condition the campaign recorded.
     short(text(asRecord(log.of("condition.recorded").at(-1)?.condition)?.host)) || "none",
     pinnedRule(log).join(", ") || "default",
     epoch === undefined
@@ -110,7 +112,7 @@ function rowOf({ name, events }: Campaign): string[] {
     epoch === undefined
       ? "-"
       : after
-          .map(({ session, last }) => `${session} ${testSaid(last.scored)} ${text(last.reading)}`)
+          .map(({ session, last }) => `${session} ${formatTestSummary(last.scored)} ${text(last.reading)}`)
           .join("; ") || "none",
     // What the comparisons could win on validity, beside the hours (the operator's choice).
     scored === 0 ? "-" : `${String(room)} of ${String(scored)} scored tasks`,
@@ -120,7 +122,6 @@ function rowOf({ name, events }: Campaign): string[] {
   ];
 }
 
-/** The climb table, one row a campaign, in Markdown. */
 function climbTable(campaigns: readonly Campaign[]): string {
   const line = (cells: readonly string[]) =>
     `| ${cells.map((cell) => cell.replaceAll("|", "/")).join(" | ")} |`;
@@ -130,43 +131,41 @@ function climbTable(campaigns: readonly Campaign[]): string {
 }
 
 /**
- * Safeguard 9, the one left of the safeguards (numbers are never reused): a promotion whose joined
- * frontier on validity alone does not clear the level, so the objective or the bill decided it, the
- * objective being the drafted exam's own computation, which nothing outside it has checked. It is a
- * reading, not an alarm, since under this score it names most promotions; it says which measure
- * carried each, by this tree's score, which can differ from the rule an older comparison was read
- * by. Printed, never acted on.
+ * Safeguard 9, the one safeguard left (numbers are never reused): a promotion whose joined frontier
+ * on validity alone does not clear the level, so the objective or the bill decided it, the
+ * objective being the drafted exam's own unchecked computation. It is a reading, not an alarm,
+ * since under this score it names most promotions, and is never acted on.
  */
 export function safeguardTriggers(log: Index): Trigger[] {
   const reported = new Map(log.compared.map((compared) => [compared.session, compared] as const));
-  const said = (differences: readonly number[]) =>
-    `${String(differences.filter((one) => one > 0).length)}-${String(differences.filter((one) => one < 0).length)} p ${pSaid(flipP(differences))}`;
+  const formatDiff = (differences: readonly number[]) =>
+    `${String(differences.filter((one) => one > 0).length)}-${String(differences.filter((one) => one < 0).length)} p ${formatPValue(flipP(differences))}`;
   const promotions = epochsOf(log.events).flatMap(({ data }) => {
     const rests = items(data.rests).flatMap((rest) => reported.get(text(asRecord(rest)?.comparison)) ?? []);
     const level = count(rests[0]?.last.level);
     const reports = rests.map(({ last }) => last);
     const joined = joinedTest(reports);
-    if (rests.length === 0 || !readsStep(joined, level)) return [];
-    const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
+    if (rests.length === 0 || !isSignificant(joined, level)) return [];
+    const harness = `${short(text(data.harness))} ${formatDiff(joined)} joined at level ${String(level)}`;
     const settled = rests.map(({ last, pairs }) => ({ tested: new Set(testedOf(last).of), pairs: pairs() }));
     const valid = measuredOf(settled, (pair) => wholePoints(pointsOf(pair).validity));
     return [{ level, harness, valid, scored: measuredOf(settled, differenceOf) }];
   });
-  const beyond = promotions.filter(({ valid, level }) => !readsStep(valid, level));
-  return firedIf(
+  const beyond = promotions.filter(({ valid, level }) => !isSignificant(valid, level));
+  return emitIf(
     beyond.length > 0,
     "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
     beyond
       .map(
         ({ harness, valid, scored }) =>
-          `${harness}, ${said(valid)} on validity alone, ${said(scored)} by the current score`,
+          `${harness}, ${formatDiff(valid)} on validity alone, ${formatDiff(scored)} by the current score`,
       )
       .join("; "),
   );
 }
 
 /** Each tested task's score (`testedOf`) by `scoreOf`, from the settled pairs (`pairsReported`),
- *  summed over a promotion's two readings as `joined` sums them. */
+ *  summed over a promotion's two readings as `joinedTest` sums them. */
 function measuredOf(
   settled: readonly { tested: ReadonlySet<string | undefined>; pairs: readonly Paired[] }[],
   scoreOf: (pair: Paired) => number,
@@ -180,7 +179,6 @@ function measuredOf(
   return [...sums.values()];
 }
 
-/** Each path under `/tmp` a campaign's calls named, first naming first. */
 function namedIn({ name, events }: Campaign): Map<string, Named> {
   const log = indexOf(events);
   const reference = new Map(
@@ -209,11 +207,11 @@ function namedIn({ name, events }: Campaign): Map<string, Named> {
 const clock = (at: string) => `${at.slice(11, 16)}Z`;
 
 /**
- * The solves that named a path another campaign named first. Where a Builder or an Examiner session
- * named it first, it is a program or a file that session left under the host's `/tmp`, on the path
- * of a solve that should have seen only its own harness: each such solve is named with its side and
- * every path. Where another campaign's solve named it first it is a scratch name two solvers both
- * chose (`/tmp/m.py`), harmless unless they ran at once, and those are counted.
+ * The solves that named a path another campaign named first. Where a Builder or Examiner session
+ * named it first, it is something that session left under `/tmp` on the path of a solve that should
+ * have seen only its own harness, and each such solve is named. Where another campaign's solve
+ * named it first, it is a scratch name two solvers both chose (`/tmp/m.py`), harmless unless they
+ * ran at once, and is only counted.
  */
 function crossings(campaigns: readonly Campaign[]): Crossed {
   const named = campaigns.map(namedIn);
@@ -247,8 +245,7 @@ function crossings(campaigns: readonly Campaign[]): Crossed {
   };
 }
 
-/** The campaigns in lane 18's columns, and the `/tmp` paths one named before another's solve ran
- *  them. */
+/** The campaigns in the climb columns, and the `/tmp` paths one named before another's solve ran them. */
 export function climbText(campaigns: readonly Campaign[]): string {
   const { left, scratch } = crossings(campaigns);
   return [

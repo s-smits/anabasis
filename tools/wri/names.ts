@@ -170,7 +170,6 @@ function scanText(whole: string, known: ReturnType<typeof tokensOf>): Omit<Hit, 
   ];
 }
 
-/** The rows: a header, then a block a kept state with a line a hit. */
 export function nameRows(events: readonly LogEvent[], states: string, only: string | null = null): string[] {
   const { loaded, wantedWords, wantedSpans } = loadKept(states, only);
   const known = tokensOf(events, wantedWords, wantedSpans);

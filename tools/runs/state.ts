@@ -2,7 +2,7 @@
  * Where a run stands, one fold that pulse, alerts, the keeper and view share: a process writing its
  * log outranks the log, and with none a keeper outranks the environment's ending and no other.
  */
-import { pauseSince } from "#src/campaign/word.ts";
+import { pauseSince } from "#src/campaign/signal.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
@@ -11,7 +11,6 @@ import { type Life, lifeOf, observationOf, stderrTail } from "./diagnosis.ts";
 import { lastLaunch } from "./receipt.ts";
 import { HERE, type Run, type Running } from "./registry.ts";
 
-/** A wait a run's process stands in, what for and until when. */
 interface Wait {
   readonly for: string;
   readonly until: number;
@@ -25,8 +24,8 @@ interface Wait {
  * A run written on is waiting, quiet or live; one nothing writes is kept, ended or stopped: by a
  * pause where this launch was left one (`pauseSince`), which every reader then says instead of a lost
  * process, so that pulse does not warn that a run paused on purpose has lost its process, and
- * otherwise killed or dead, which the log does not tell apart. A kept run names the environment's ending where
- * its log ends on one, so that `alerts` says it once.
+ * otherwise killed or dead, which the log does not tell apart. A kept run names the environment's
+ * ending where its log ends on one, so that `alerts` says it once.
  */
 export type RunState =
   | { readonly kind: "live"; readonly kept: boolean }
@@ -88,7 +87,6 @@ export function stateOf(events: readonly LogEvent[], life: Life, now: number, la
     : { kind: "live", kept: life.kept };
 }
 
-/** The index of the first event of `run`'s current launch, by its newest receipt. */
 export function launchedIn(run: Run, events: readonly LogEvent[]): number {
   const kept = lastLaunch(run.path);
   const at =
@@ -96,7 +94,6 @@ export function launchedIn(run: Run, events: readonly LogEvent[]): number {
   return at === -1 ? events.length : at;
 }
 
-/** Where `run`, whose log is `events`, stands at `now` among the processes `running`. */
 export const runState = (
   run: Run,
   events: readonly LogEvent[],

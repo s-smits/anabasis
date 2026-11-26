@@ -1,22 +1,11 @@
 /**
- * The page in a real browser, for the smoke tests (`browser-smoke.test.ts`): the fixture's three
- * campaigns written once a file, `serve.ts` started on them as the operator starts it, and Chrome
- * driven by Playwright over that server.
- *
- * What the page computes before it draws is read without a browser (`view-model.test.ts`), which
- * proves nothing of what a drawn page shows: no effect runs and no layout is measured. These tests
- * drive the page the operator opens. They run Chrome as installed (`channel: "chrome"`), as CI's
- * macOS runner and the operator's Mac have it, so the suite downloads no browser; `ANA_UI_CHROME`
- * names another executable. A host without either fails the launch with Playwright's own message
- * rather than skipping, since a browser test that skips says nothing.
- *
- * Assertions are Playwright's own web-first ones (`expect` of `@playwright/test`), which retry until
- * their timeout, so no test sleeps: Playwright's runner needs Node, which this repository does not
- * run, and its `expect` works under `bun:test` as it is.
- *
- * Every page records what the browser reported as wrong: a console error or warning, an uncaught
- * exception, and an HTTP failure of the API. A test ends by asserting that list empty
- * (`expectQuiet`), so a page that renders and throws behind it fails.
+ * The page in a real browser for the smoke tests (`browser-smoke.test.ts`): the fixture written
+ * once a file, `serve.ts` started on it as the operator starts it, and Chrome driven by Playwright.
+ * They run Chrome as installed (`channel: "chrome"`), or `ANA_UI_CHROME`, and a host without either
+ * fails the launch rather than skipping. Assertions are Playwright's web-first ones, which retry,
+ * so no test sleeps; its `expect` works under `bun:test` as it is. Every page records console
+ * errors and warnings, uncaught exceptions and failed API answers, and a test ends by asserting
+ * that list empty (`expectQuiet`).
  */
 import { AxeBuilder } from "@axe-core/playwright";
 import {
@@ -36,15 +25,12 @@ import {
 } from "../../../src/meta/subprocess.ts";
 import { type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
 
-/** One server over the fixture, which it writes and removes, and how to stop it. */
 export interface Served {
-  /** The page's address for a query string without the token, `?` excluded; the token is added. */
   readonly url: (query?: string) => string;
   readonly stop: () => Promise<void>;
   readonly fixture: Fixture;
 }
 
-/** A page and what the browser reported against it. */
 export interface Opened {
   readonly page: Page;
   readonly context: BrowserContext;
@@ -55,22 +41,16 @@ export interface Opened {
 const PACKAGE = join(import.meta.dir, "..");
 const STARTED = /anabasis at (http:\/\/127\.0\.0\.1:\d+)\/\?token=([0-9a-f]+)/u;
 const START_MS = 20_000;
-/** The process of a launch, as Playwright's call log names it in the launch's timeout. */
 const LAUNCHED = /<launched> pid=(\d+)/u;
-/** How long one load, click or other action may wait. Playwright's own 30 s twice over is the test's
- *  whole 60 s, so a page that never loaded under ten parallel files would time the test out
- *  and name no step; at 15 s the stuck step fails with its own message first. */
+/** How long one load, click or other action may wait: at Playwright's own 30 s, two waits fill the
+ *  test's 60 s and the stuck step names nothing; at 15 s it fails with its own message. */
 const ACTION_MS = 15_000;
-/** Playwright's web-first assertions, each retried for as long as an action may wait. Its own `expect`
- *  gives up at 5 s, which `setDefaultTimeout` does not reach, and with campaigns solving on a
- *  loaded host browser cases would fail a pre-push gate at 5 s each. */
+/** Playwright's web-first assertions, retried as long as an action may wait: its own `expect` gives
+ *  up at 5 s, which `setDefaultTimeout` does not reach, and fails a loaded host's gate. */
 export const expect = web.configure({ timeout: ACTION_MS });
-/** A desktop window, the width the operator reads the page at. */
 const DESKTOP = { width: 1440, height: 1000 } as const;
-/** A phone held upright. */
 export const PHONE = { width: 390, height: 844 } as const;
 
-/** The fixture written under a fresh directory, and `serve.ts` started on it in the default tier. */
 export async function serveFixture(): Promise<Served> {
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-ui-browser-")));
   const fixture = writeFixtureCampaign(join(scratch, "repo"));
@@ -97,9 +77,8 @@ export async function serveFixture(): Promise<Served> {
   }
 }
 
-/** The origin and the token of the line `serve.ts` prints at its start, within `START_MS`. Each read
- *  races that bound: checked only between reads, it held a server that printed nothing until Bun
- *  timed the hook out at 60 s. */
+/** The origin and the token of the line `serve.ts` prints at its start, within `START_MS`. Each
+ *  read races that bound, so a server that prints nothing fails before Bun's 60 s hook timeout. */
 async function startLine(stdout: ReadableStream<Uint8Array>): Promise<[string, string]> {
   const reader = stdout.getReader();
   const decoder = new TextDecoder();
@@ -118,18 +97,11 @@ async function startLine(stdout: ReadableStream<Uint8Array>): Promise<[string, s
   throw new Error(`no start line within ${String(START_MS)} ms: ${text}`);
 }
 
-/** Chrome, headless unless `ANA_UI_HEADED=1` asks for its window, to watch a test click; then
- *  `ANA_UI_SLOW_MS` slows each action by that many milliseconds. Headless is the same Chrome, its
- *  engine, layout and frames, with no window drawn. A shown window takes the screen's focus on
- *  macOS each time a test opens a page, so it is for watching one test; to see what a run did,
- *  record it headless (`ANA_UI_VIDEO`, `openPage`).
- *
- *  One start is the launch and the first context, bounded together at `within`, so that two starts
- *  fit inside Bun's 60 s for the hook. On a loaded host Chrome can stall at its start on commits
- *  that change nothing of the page. A stall is the browser's and no test's, and the test wrapper
- *  runs no failed file again (`tools/runtime/test-suite.ts`), so a stalled start is tried once more
- *  here, saying so; a second stall fails the file's `beforeAll`, and a launch that fails outright
- *  fails it at once. */
+/** Chrome, headless unless `ANA_UI_HEADED=1` (with `ANA_UI_SLOW_MS` per action) asks for its window
+ *  to watch one test; to see a run, record it headless (`ANA_UI_VIDEO`). A launch and its first
+ *  context are bounded together at `within`, so two starts fit in Bun's 60 s hook. A stall is the
+ *  browser's and no test's, and the test wrapper runs no failed file again
+ *  (`tools/runtime/test-suite.ts`), so a stalled start is tried once more here, saying so. */
 export async function launchBrowser(within = START_MS, executable = Bun.env.ANA_UI_CHROME): Promise<Browser> {
   const browser = (await startChrome(within, executable)) ?? (await startChrome(within, executable));
   if (browser !== null) return browser;
@@ -137,8 +109,8 @@ export async function launchBrowser(within = START_MS, executable = Bun.env.ANA_
 }
 
 /** Chrome once it has opened a context, or `null` where its start has not answered `within` ms of
- *  the launch. A Chrome whose launch stalled is ended with its process group, and one whose first
- *  context stalled is closed without waiting on it. */
+ *  the launch. A stalled launch is ended with its process group, and a stalled first context closed
+ *  without waiting on it. */
 async function startChrome(within: number, executable: string | undefined): Promise<Browser | null> {
   const options = {
     headless: Bun.env.ANA_UI_HEADED !== "1",
@@ -171,8 +143,6 @@ async function startChrome(within: number, executable: string | undefined): Prom
   return null;
 }
 
-/** A fresh context and page at `url` in a `viewport`, recording what goes wrong. The page has loaded
- *  its first campaign reading, or its refusal, when this returns. */
 export async function openPage(
   browser: Browser,
   url: string,
@@ -212,17 +182,14 @@ export function drawn(page: Page): Promise<string> {
   });
 }
 
-/** The page reported nothing wrong. */
 export function expectQuiet(opened: Opened): void {
   expect(opened.problems).toEqual([]);
 }
 
-/** Every answer the page reads from the API, its body kept as it passes: a read the page cancels
- *  for a newer one keeps none to ask for once it has ended, which would fail a test on CI.
- *  A read still in flight when its page closes ends there and is no answer, since under load a test
- *  that timed out could leave one whose `socket hang up` is printed outside any test and fails
- *  `bun run land` on a commit that changed no test. One the page leaves between its arrival and the
- *  reading of its body is disposed, and is no answer either. */
+/** Every answer the page reads from the API, its body kept as it passes, since a read the page
+ *  cancels for a newer one keeps none to ask for later. A read still in flight when its page
+ *  closes, or left between its arrival and its body, is no answer: under load its `socket hang up`
+ *  would print outside any test and fail `bun run land`. */
 export async function keepAnswers(page: Page): Promise<string[]> {
   const answers: string[] = [];
   await page.route("**/api/**", async (route) => {
@@ -236,7 +203,6 @@ export async function keepAnswers(page: Page): Promise<string[]> {
   return answers;
 }
 
-/** The axe-core rules the page breaks at WCAG 2.2 AA, each with the nodes it names. */
 export async function accessibilityViolations(page: Page, within?: string): Promise<string[]> {
   const builder = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]);
   const results = await (within === undefined ? builder : builder.include(within)).analyze();

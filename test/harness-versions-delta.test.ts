@@ -1,8 +1,7 @@
-// What moved between kept harnesses, file by file and line by line, and the chain of every version
-// against its parent, blind: over a campaign written here with the log's own `append`. The third
-// version is a led session's checkpoint with no `harness.version`, so its parent is read from the
-// session's earlier checkpoint (`madeOf`), and its tool tree holds a bytecode cache and an installed
-// package that no file line may name.
+// What moved between kept harnesses, file by file and line by line, and each version against its
+// parent, over a campaign written with the log's own `append`. The third version is a led session's
+// checkpoint with no `harness.version`, so its parent is read from the earlier checkpoint (`madeOf`),
+// and its tree holds a bytecode cache and an installed package that no file line may name.
 import { afterAll, describe, expect, it } from "bun:test";
 import { append } from "../src/kernel/log.ts";
 import {

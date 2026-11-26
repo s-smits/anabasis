@@ -1,12 +1,12 @@
 # Rejections, the budget, room, patience, and promotion
 
-Read this reference for Referee rulings, solve budgets, improvement headroom, stopping patience,
+Read this reference for Auditor rulings, solve budgets, improvement headroom, stopping patience,
 task review, and promotion (`AGENTS.md` section 7).
 
 ## Rejections
 
-A verifier rejection counts as a failure only once the Referee rules it `earned` on the basis of an
-answer probe that changes a refusing check's outcome (`src/referee/referee.ts`). Otherwise the task
+A verifier rejection counts as a failure only once the Auditor rules it `earned` on the basis of an
+answer probe that changes a refusing check's outcome (`src/audit/auditor.ts`). Otherwise the task
 is set aside until human labels settle it (`settle.ts`). If more than 3 tasks incur a check defect
 or an unrunnable check (`--defects`), the comparison halts because the check program requires
 inspection before spending further budget.
@@ -27,7 +27,7 @@ would exceed `--cap`.
 
 ## Room for improvement
 
-`roomOf` (`src/kernel/reports.ts`) classifies the pool as **room** when at least one task is
+`evalHeadroom` (`src/kernel/reports.ts`) classifies the pool as **room** when at least one task is
 informative for the reference (`informative`), **too-hard** when no valid answer exists on record
 for any task, and **none** otherwise. Because the superior answer may belong to the reference, the
 candidate, or the task author, headroom can arise from either validity or the declared objective.

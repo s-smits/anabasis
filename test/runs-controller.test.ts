@@ -1,4 +1,3 @@
-// Controller lifecycle through fake host executables, with no network or operator checkout.
 import { afterAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
@@ -19,35 +18,36 @@ function fixture() {
   return made;
 }
 
-describe("remote controller lifecycle", () => {
-  it("reclaims a preparation lock whose holder is gone, and waits for a live holder however old its lock", () => {
-    for (const kind of ["dead", "unnamed", "live", "live past the window"]) {
-      const made = fixture();
-      const lock = join(made.root, "git", "ana-code", `${made.commit}.lock`);
-      mkdirSync(lock, { recursive: true });
-      // The holder is orphaned at once, so its exit is reaped while this process waits on the run.
-      // It touches `released` as it ends, so a run that waited for it finds the file, where a
-      // bound of seconds on the other two kinds can be overrun on a loaded host.
-      const released = join(made.root, "released");
-      const live = kind.startsWith("live");
-      const holder = live
-        ? Bun.spawnSync(["sh", "-c", '(sleep 2; touch "$0") >/dev/null 2>&1 & echo $!', released])
-            .stdout.toString()
-            .trim()
-        : "99999999";
-      // A lock that names no holder, left by a shell killed before it wrote one, lapses by its age.
-      if (kind !== "unnamed") writeFileSync(join(lock, "pid"), holder);
-      if (kind !== "live" && kind !== "dead") utimesSync(lock, new Date(0), new Date(0));
-      const result = made.run(PREPARE, { FAKE_EXECUTE: "1" });
-      expect(result.code).toBe(0);
-      expect(existsSync(lock)).toBe(false);
-      expect(existsSync(released)).toBe(live);
-    }
+describe.concurrent("remote controller lifecycle", () => {
+  it("reclaims a preparation lock whose holder is gone, and waits for a live holder however old its lock", async () => {
+    await Promise.all(
+      ["dead", "unnamed", "live", "live past the window"].map(async (kind) => {
+        const made = fixture();
+        const lock = join(made.root, "git", "ana-code", `${made.commit}.lock`);
+        mkdirSync(lock, { recursive: true });
+        // The holder is orphaned at once and touches `released` as it ends, so a run that waited for it
+        // finds the file, where a bound of seconds could be overrun on a loaded host.
+        const released = join(made.root, "released");
+        const live = kind.startsWith("live");
+        const holder = live
+          ? Bun.spawnSync(["sh", "-c", '(sleep 2; touch "$0") >/dev/null 2>&1 & echo $!', released])
+              .stdout.toString()
+              .trim()
+          : "99999999";
+        // A lock that names no holder, left by a shell killed before it wrote one, lapses by its age.
+        if (kind !== "unnamed") writeFileSync(join(lock, "pid"), holder);
+        if (kind !== "live" && kind !== "dead") utimesSync(lock, new Date(0), new Date(0));
+        const result = await made.runAsync(PREPARE, { FAKE_EXECUTE: "1" });
+        expect(result.code).toBe(0);
+        expect(existsSync(lock)).toBe(false);
+        expect(existsSync(released)).toBe(live);
+      }),
+    );
   });
 });
 
-describe("controller pruning and cursor storage", () => {
-  it("prunes old controllers by readiness time and preserves active paths and working directories", () => {
+describe.concurrent("controller pruning and cursor storage", () => {
+  it("prunes old controllers by readiness time and preserves active paths and working directories", async () => {
     const made = fixture();
     const root = join(made.root, "git", "ana-code");
     const trees = ["b", "c", "d", "e", "f"].map((letter, index) => {
@@ -57,7 +57,7 @@ describe("controller pruning and cursor storage", () => {
       utimesSync(`${tree}.ready`, 100 - index, 100 - index);
       return tree;
     });
-    const result = made.run(PREPARE, {
+    const result = await made.runAsync(PREPARE, {
       FAKE_EXECUTE: "1",
       FAKE_PS: `bun ${trees[2]}/tools/runs/cli.ts keep`,
       FAKE_CWDS: `n${trees[3]}`,
@@ -74,7 +74,7 @@ describe("controller pruning and cursor storage", () => {
     ).toEqual([trees[4]]);
   });
 
-  it("preserves old controllers when process inspection fails", () => {
+  it("preserves old controllers when process inspection fails", async () => {
     const made = fixture();
     const root = join(made.root, "git", "ana-code");
     for (const letter of ["b", "c", "d", "e"]) {
@@ -82,23 +82,24 @@ describe("controller pruning and cursor storage", () => {
       mkdirSync(tree, { recursive: true });
       writeFileSync(`${tree}.ready`, "");
     }
-    expect(made.run(PREPARE, { FAKE_EXECUTE: "1", FAKE_PS_FAIL: "1" }).code).toBe(0);
+    expect((await made.runAsync(PREPARE, { FAKE_EXECUTE: "1", FAKE_PS_FAIL: "1" })).code).toBe(0);
     expect(made.recorded().some((call) => call.args.includes("remove"))).toBe(false);
   });
 
-  it("caches verified read controllers in-process and retries immediately after failure", () => {
+  it("caches verified read controllers in-process and retries immediately after failure", async () => {
     const made = fixture();
-    const cached = made.run(
-      'import { readControllers } from "REPOSITORY/tools/runs/code.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; const hosts = hostsOf(); const first = await readControllers(hosts); const second = await readControllers(hosts); console.log(JSON.stringify([first[0]?.tree, second[0]?.tree]));',
-    );
+    const recovered = fixture();
+    const [cached, retried] = await Promise.all([
+      made.runAsync(
+        'import { readControllers } from "REPOSITORY/tools/runs/code.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; const hosts = hostsOf(); const first = await readControllers(hosts); const second = await readControllers(hosts); console.log(JSON.stringify([first[0]?.tree, second[0]?.tree]));',
+      ),
+      recovered.runAsync(
+        'import { rmSync, writeFileSync } from "node:fs"; import { readControllers } from "REPOSITORY/tools/runs/code.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; const hosts = hostsOf(); const flag = `${process.env.FAKE_NOW}/FAKE_OFFLINE`; writeFileSync(flag, "1"); const missed = await readControllers(hosts); rmSync(flag); const ready = await readControllers(hosts); console.log(JSON.stringify([missed[0], ready[0]?.tree]));',
+      ),
+    ]);
     expect(cached.code).toBe(0);
     expect(JSON.parse(cached.out)).toEqual([made.env.FAKE_PREPARED, made.env.FAKE_PREPARED]);
     expect(made.recorded().filter((call) => call.tool === "ssh")).toHaveLength(1);
-
-    const recovered = fixture();
-    const retried = recovered.run(
-      'import { rmSync, writeFileSync } from "node:fs"; import { readControllers } from "REPOSITORY/tools/runs/code.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; const hosts = hostsOf(); const flag = `${process.env.FAKE_NOW}/FAKE_OFFLINE`; writeFileSync(flag, "1"); const missed = await readControllers(hosts); rmSync(flag); const ready = await readControllers(hosts); console.log(JSON.stringify([missed[0], ready[0]?.tree]));',
-    );
     expect(retried.code).toBe(0);
     expect(JSON.parse(retried.out)).toEqual([null, recovered.env.FAKE_PREPARED]);
     expect(recovered.recorded().filter((call) => call.tool === "ssh")).toHaveLength(2);

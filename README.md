@@ -36,18 +36,19 @@ After 7 cycles on 25 held-out hard tasks (Claude Opus 5 medium, same verifier), 
 
 ## Run it
 
-Requires **Bun 1.4.5** on macOS or Linux (`bubblewrap` on Linux; on Ubuntu 24.04+, enable unprivileged userns via `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`). In Claude Code, `/setup-anabasis` verifies prerequisites without spending credits.
+Requires **Bun 1.4.5** on macOS or Linux (`bubblewrap` on Linux; on Ubuntu 24.04+, enable unprivileged userns via `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`). Run `bun run setup` (or `/setup-anabasis` in Claude Code) to check prerequisites, apply local setup (`bun run setup --apply`), and configure a Claude login interactively (`bun run setup --token`).
 
 ```sh
 curl -fsSL https://bun.com/install | bash -s "bun-v1.4.5"
 git clone https://github.com/s-smits/anabasis.git && cd anabasis
-cp -n .env.example .env   # set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token` prints one)
+bun run setup --apply      # install deps, git hooks, .env template, and test the OS wall
+bun run setup --token      # run in your terminal to save CLAUDE_CODE_OAUTH_TOKEN to .env
 
 # Each run executes its tree's source in its own worktree:
 git worktree add --detach ../anabasis-trusses && cd ../anabasis-trusses
 bun install --frozen-lockfile
 
-bun --env-file=../anabasis/.env tools/d2/harness-builder.ts \
+bun --env-file=../anabasis/.env tools/campaign/harness-builder.ts \
   --name trusses --project steel \
   --prompt "Design lightweight steel roof trusses to Eurocode 3 within strict mass limits." \
   --budget 400 \
@@ -66,8 +67,8 @@ bun --env-file=../anabasis/.env tools/d2/harness-builder.ts \
 Campaigns opened with `bun run runs fresh` export their reference Harness automatically to `data/harnesses/<name>/` (`harness/`, `RULES.md`, `REPORT.md`) on termination. Export manually or run isolated sandboxed solves against it:
 
 ```sh
-bun tools/d2/close.ts --name your-campaign --to data/harnesses/your-campaign
-bun tools/d2/close.ts --name your-campaign --to data/harnesses/your-campaign \
+bun tools/campaign/close.ts --name your-campaign --to data/harnesses/your-campaign
+bun tools/campaign/close.ts --name your-campaign --to data/harnesses/your-campaign \
   --solve task-id[,task-id...] [--solver openai-codex/gpt-6.1-terra --solver-effort high]
 ```
 

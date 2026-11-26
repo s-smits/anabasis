@@ -1,11 +1,9 @@
 /**
- * The open pull requests, as GitHub lists them, and the `gh` runner that reads them: one reader for
- * `land`, `doubled.ts` and the stack scripts. They live outside `land.ts` so that `doubled.ts`,
- * which `land` calls, can read them without importing `land` back. A commit status is posted here
- * too (`postStatus`), for `land` and the pre-push hook, so the `gh api` call is spelled once, and a
- * landing's statuses go through one board of what GitHub shows (`statusBoard`). The chains of bases
- * they form are read here as well (`chains`, `firstStack`), so `land`, `follow`, `stack.ts` and
- * `republish.ts` read the stack's top one way.
+ * The open pull requests as GitHub lists them, and the `gh` runner that reads them: one reader for
+ * `land`, `doubled.ts` and the stack scripts, kept outside `land.ts` so `doubled.ts` can read them
+ * without importing `land` back. Commit statuses are posted here too (`postStatus`, `statusBoard`),
+ * and the chains of bases are read here (`chains`, `firstStack`), so `land`, `follow`, `stack.ts`
+ * and `republish.ts` read the stack's top one way.
  */
 import { gitMaybe } from "../../src/meta/git.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
@@ -17,17 +15,15 @@ export const MERGEABLE_CONTEXT = "mergeable";
 
 /** `gh api`'s filter over the stacks a pull request is in: the open one's number, its members still
  *  open and then those closed, each bottom first. A stack keeps the members a partial merge took,
- *  listed closed: they are no part of the next landing, but `gh stack link` refuses a list that
- *  leaves them out, so a link names them below the chain. */
+ *  listed closed; `gh stack link` refuses a list that leaves them out, so a link names them below
+ *  the chain. */
 export const STACK_MEMBERS = String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(select(.state == "open") | .number) | join(",")) \(.pull_requests | map(select(.state != "open") | .number) | join(","))"`;
 
 /** Each status a GraphQL reading of commits finds, as `statusBoard` spells a status it posts. */
 const SHOWN = String.raw`.data.repository[] | select(. != null) | .oid as $sha | (.status.contexts // [])[] | [$sha, .context, (.state | ascii_downcase), .description] | join("\t")`;
 
-/** Where GitHub lists the repository's native stacks. */
 export const STACKS = "repos/{owner}/{repo}/stacks";
 
-/** One of GitHub's native stacks, as `GET` on `STACKS` lists it. */
 export interface NativeStack {
   readonly number: number;
   readonly open: boolean;
@@ -38,7 +34,6 @@ export interface NativeStack {
   }[];
 }
 
-/** An open pull request, in the fields `gh pr list --json` names. */
 export interface Pull {
   readonly number: number;
   readonly headRefName: string;
@@ -48,24 +43,22 @@ export interface Pull {
   readonly labels: readonly { readonly name: string }[];
 }
 
-export interface Answer {
+interface Answer {
   readonly ok: boolean;
   readonly out: string;
   readonly err: string;
 }
 
-/** The four states GitHub's statuses API takes. */
 export type StatusState = "pending" | "success" | "failure" | "error";
 
-/** A commit status as GitHub's statuses API takes it; `link` is the target its Details opens. */
-export interface Status {
+/** `link` is the target its Details opens. */
+interface Status {
   readonly context: string;
   readonly state: StatusState;
   readonly description: string;
   readonly link?: string | undefined;
 }
 
-/** The statuses a landing posts (`statusBoard`). */
 export interface Board {
   readonly read: (shas: readonly string[]) => void;
   readonly post: (sha: string, status: Status) => void;
@@ -73,12 +66,16 @@ export interface Board {
 }
 
 export function gh(root: string, args: readonly string[]): Answer {
-  const result = runSync(["gh", ...args], { cwd: root });
-  return {
-    ok: result.exitCode === 0,
-    out: decodeOutput(result.stdout).trim(),
-    err: decodeOutput(result.stderr).trim(),
-  };
+  for (let tries = 1; ; tries += 1) {
+    const result = runSync(["gh", ...args], { cwd: root });
+    const answer = {
+      ok: result.exitCode === 0,
+      out: decodeOutput(result.stdout).trim(),
+      err: decodeOutput(result.stderr).trim(),
+    };
+    if (answer.ok || tries === 3 || args.includes("PUT") || !/HTTP 50[234]/u.test(answer.err)) return answer;
+    Bun.sleepSync(tries * 1000);
+  }
 }
 
 export function ghOrThrow(root: string, args: readonly string[]): string {
@@ -87,11 +84,9 @@ export function ghOrThrow(root: string, args: readonly string[]): string {
   return answer.out;
 }
 
-/** The default branch of the repository `root`'s remote names, as GitHub says now. */
 export const trunkOf = (root: string): string =>
   ghOrThrow(root, ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"]);
 
-/** `gh api`'s form fields, `-f key=value` each, leaving out a field that has no value. */
 export const form = (fields: Readonly<Record<string, string | undefined>>): string[] =>
   Object.entries(fields).flatMap(([key, value]) => (value === undefined ? [] : ["-f", `${key}=${value}`]));
 
@@ -118,7 +113,6 @@ export function stackStart(root: string, pulls: readonly { readonly number: numb
   return 0;
 }
 
-/** Posts a commit status on `sha`, and says whether GitHub took it. */
 export function postStatus(
   root: string,
   sha: string,
@@ -130,12 +124,10 @@ export function postStatus(
 }
 
 /** The statuses a landing posts, as one board of what each commit and context shows. Each commit's
- *  statuses are read in one GraphQL call (`read`), which takes about as long as posting one or two
- *  statuses, where a landing over remembered passes would otherwise post dozens one by one, every
- *  one shown already. A status is posted only where it changes what its commit shows, rather than
- *  by a set of rows seen, which would never post again a verdict GitHub showed before the landing
- *  turned it pending, and leave it pending. `settle` turns each status the landing left
- *  pending into an error, however the landing ended. Unread, every status is posted. */
+ *  statuses are read in one GraphQL call (`read`), and a status is posted only where it changes
+ *  what its commit shows, so a landing over remembered passes does not post dozens again. `settle`
+ *  turns each status the landing left pending into an error, however it ended. Unread, every status
+ *  is posted. */
 export function statusBoard(root: string): Board {
   const shown = new Map<string, string>();
   const asked = new Set<string>();
@@ -203,16 +195,15 @@ export function beneath(open: readonly Pull[], pull: Pull): Pull[] {
   return found;
 }
 
-/** The longest chain of open pull requests above `pull`, nearest first. */
 export const chainAbove = (open: readonly Pull[], pull: Pull): Pull[] =>
   longest(open, [pull.headRefName], new Set([pull.headRefName]));
 
 /**
  * The stacks, and the pull requests on none: each stack the longest chain left, bottom first,
- * longest first, starting on a base that is no open pull request's head (the trunk, or a branch that
- * has landed). A fork off the middle of a stack is on none, since it cannot land without the pull
- * requests beneath it. This is the one reading of the chain of bases: `land` lands the chain, and
- * GitHub's native stacks are only checked against it (`stackOf`, `land.ts`).
+ * longest first, starting on a base that is no open pull request's head (the trunk, or a branch
+ * that has landed). A fork off the middle of a stack is on none, since it cannot land without those
+ * beneath it. This is the one reading of the chain of bases; GitHub's native stacks are only
+ * checked against it (`stackOf`, `land.ts`).
  */
 export function chains(open: readonly Pull[]): { stacks: Pull[][]; sides: Pull[] } {
   const heads = new Set(open.map((pull) => pull.headRefName));
@@ -230,14 +221,12 @@ export function chains(open: readonly Pull[]): { stacks: Pull[][]; sides: Pull[]
   return { stacks, sides: [...free] };
 }
 
-/** The stack that holds pull request `number`, bottom first, or undefined for one on none. */
 export const stackHolding = (open: readonly Pull[], number: number): Pull[] | undefined =>
   chains(open).stacks.find((line) => line.some((pull) => pull.number === number));
 
-/** The stack `bun run land` lands and `bun run follow` follows first, bottom first: of the stacks of
- *  two or more, else of the lone pull requests, the one that holds the oldest open pull request
- *  (the operator's choice); empty where none is open. `land` and `follow` both read it, so a lone
- *  older pull request or a reordered stack cannot send them to different tops. */
+/** The stack `bun run land` lands and `bun run follow` follows, bottom first: of the stacks of two
+ *  or more, else of the lone pull requests, the one holding the oldest open pull request; empty
+ *  where none is open. Both read it, so they cannot go to different tops. */
 export function firstStack(open: readonly Pull[]): Pull[] {
   const { stacks } = chains(open);
   const stacked = stacks.filter((line) => line.length > 1);
@@ -250,7 +239,6 @@ export function firstStack(open: readonly Pull[]): Pull[] {
 export const latestTop = (open: readonly Pull[]): number =>
   Math.max(0, ...chains(open).stacks.map((line) => line.at(-1)?.number ?? 0));
 
-/** Every open pull request of the repository `root`'s remote names, as GitHub lists them now. */
 export const openPulls = (root: string): Pull[] =>
   parseJsonAs<Pull[]>(
     ghOrThrow(root, [
@@ -269,7 +257,7 @@ export const openPulls = (root: string): Pull[] =>
 export const ranksOf = (pull: Pull): string[] =>
   pull.labels.map((label) => label.name).filter((name) => /^importance:I[0-3]$/u.test(name));
 
-/** The trunk's head commit as this clone last fetched it, as every reader of the trunk names it. */
+/** As every reader of the trunk names it. */
 export const trunkHead = (trunk: string): string => `origin/${trunk}^{commit}`;
 
 const said = (pull: Pull) => {
@@ -285,8 +273,7 @@ const topOf = (line: readonly Pull[]) => {
     : `top: #${String(top.number)} ${top.headRefName} at ${top.headRefOid.slice(0, 7)}`;
 };
 
-/** What is said of the open pull requests, or of one branch among them. */
-export function stackTold(pulls: readonly Pull[], branch: string | null): string[] {
+export function formatStackSummary(pulls: readonly Pull[], branch: string | null): string[] {
   const { stacks, sides } = chains(pulls);
   if (branch === null) {
     if (stacks.length === 0) return ["no pull request is open"];

@@ -1,20 +1,17 @@
-// Rule 3's practice readers, checked on every small campaign rather than on a chosen pair of them;
-// the byte identity of the messages that carry them rests on test/builder.test.ts and
-// test/builder-led.test.ts. The Builder hears each comparison as its tally and reading, so whatever
-// it reads besides (the frontier
-// it compares on, the practice it is owed, the tasks a release hands it) must be the same in every
-// log that differs only in which held-out tasks the other harness answered, given that tally. Each
-// log below holds the reference's and the other harness's solves of three tasks in one or two
-// comparisons, with every outcome of two solves a side; logs with one reference record and one tally
-// are grouped, and the Builder's view must be one value in each group.
+// Rule 3's practice readers, checked on every small campaign; the byte identity of the messages
+// carrying them rests on test/builder.test.ts and test/builder-led.test.ts. The Builder hears each
+// comparison as its tally and reading, so all else it reads (the frontier, the practice owed, the tasks
+// a release hands it) must be the same in every log differing only in which held-out tasks the other
+// harness answered. Logs with one reference record and one tally are grouped, and the Builder's view
+// must be one value in each group.
 import { describe, expect, it } from "bun:test";
-import { practiceDue } from "../src/campaign/decide.ts";
+import { practiceDue } from "../src/campaign/scheduler.ts";
 import { scored } from "../src/kernel/compare.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { lastReports, pairsReported, poolOf, releaseOrder } from "../src/kernel/reports.ts";
 import { taskSets } from "../src/kernel/task.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keysIf } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
@@ -194,5 +191,41 @@ describe("what practice tells the Builder", () => {
     const found = groups(campaigns);
     expect(found.filter(({ views }) => views.size > 1).length).toBe(0);
     expect(found.filter(({ size }) => size > 1).length).toBeGreaterThan(20);
+  });
+
+  it("is byte-identical under unit-scale rubric objectives regardless of per-item held-out score breakdowns", () => {
+    const unitView = (scoresA: Record<string, number>, scoresB: Record<string, number>) => {
+      const log = logOf({
+        reference: ["PP", "PP", "PP"],
+        other: ["PP", "PP", "PP"],
+        measures: {
+          reference: [
+            [0.6, 0.6],
+            [0.7, 0.7],
+            [0.8, 0.8],
+          ],
+          other: [
+            [0.8, 0.8],
+            [0.7, 0.7],
+            [0.6, 0.6],
+          ],
+        },
+        comparisons: 1,
+        extra: 2,
+      }).map((ev) => {
+        if (ev.kind === "comparison.reported") {
+          return { ...ev, data: { ...ev.data, objective: { direction: "higher", scale: "unit" } } };
+        }
+        if (ev.kind === "verdict") {
+          const isFirst = isString(ev.data.solve) && ev.data.solve.endsWith("1");
+          return { ...ev, data: { ...ev.data, scores: isFirst ? scoresA : scoresB } };
+        }
+        return ev;
+      });
+      return JSON.stringify(builderView(log));
+    };
+    const one = unitView({ accuracy: 1, calibration: 0 }, { accuracy: 0.9, calibration: 0.3 });
+    const two = unitView({ accuracy: 0, calibration: 1 }, { accuracy: 0.2, calibration: 0.8 });
+    expect(two).toBe(one);
   });
 });

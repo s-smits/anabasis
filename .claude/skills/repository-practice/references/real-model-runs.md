@@ -17,7 +17,7 @@ Rationale and edge cases for the nine conditions in `AGENTS.md` section 10:
 - **4.** Because solve deadlines measure wall-clock elapsed time, concurrent load from other rounds
   alters timeout behaviour.
 - **5.** Never include account identifiers or credential file paths in any published text.
-- **7.** Resolve each pre-registered prediction explicitly as held or falsified using its deciding
+- **7.** Resolve each pre-registered prediction explicitly as `confirmed`, `refuted`, or `not-observed` using its deciding
   count.
 - **9.** A measured run begins from the starter harness and a domain prompt (`--prompt-file`) and
   runs to a typed ending at its opening commit without manual intervention. Starting from a seed,
@@ -29,13 +29,13 @@ Rationale and edge cases for the nine conditions in `AGENTS.md` section 10:
 
 All seat commands execute inside the OS sandbox under the system's `/bin/bash`, so pi's `bash` tool
 invokes system Bash without shipping a custom shell (`stageCommandIsolation`,
-`src/wall/isolation.ts`; worker environment in `src/tools/env.ts`). Each seat receives an uncapped
-root directory on local disk, deleted when the seat terminates (`src/wall/seat-root.ts`).
+`src/sandbox/isolation.ts`; worker environment in `src/tools/env.ts`). Each seat receives an uncapped
+root directory on local disk, deleted when the seat terminates (`src/sandbox/sandbox-root.ts`).
 
 Each seat's sandbox is verified once per process before first use via a probe command executed under
-the same isolation wrapper as seat commands (`runWalled`): reading a canary file in the repository
+the same isolation wrapper as seat commands (`runSandboxed`): reading a canary file in the repository
 and `package.json` in the first sibling worktree must fail, while writing and reading back a file in
-the seat's own directory must succeed. Any probe failure aborts launch (`walledBase`, `probeWall`,
+the seat's own directory must succeed. Any probe failure aborts launch (`sandboxBase`, `probeSandbox`,
 `src/tools/command.ts`). Verifier cells share the same isolation base without the seat shell and are
 covered by `test/verify.test.ts`; only verifier cells run with network access disabled (`network`,
-`src/wall/base.ts`).
+`src/sandbox/base.ts`).

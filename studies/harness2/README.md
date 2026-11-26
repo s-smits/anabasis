@@ -155,7 +155,7 @@ harness that does not open shows before a paid solve.
 
 **The solve budget matches.** The benchmark's executor took 29.6 steps per Code task under OpenCode
 at base, and Anabasis's default solve is 20 model turns and 30 minutes (`LIMITS`,
-`tools/d2/campaign.ts`), fixed in a campaign's setting. D and U open with the turn limit and wall
+`tools/campaign/campaign.ts`), fixed in a campaign's setting. D and U open with the turn limit and wall
 the container will give each scored solve, so a harness is built for the budget it is scored at:
 `--solve-model-turns` and `--solve-minutes` at the launch equal the job's `PI_MODEL_TURNS` and
 `PI_WALL_MINUTES` (20 and 30 on both sides unless one is named), and a call of the harness's own
@@ -182,7 +182,7 @@ editor on Opus 5.5 too (`HARNESS2_IMPROVER_MODEL`), and both build sides use one
 that ends on its budget and one that ends on its patience are both read at their ending.
 
 **Network.** Every Anabasis seat can reach the network (`AGENTS.md`, section 10). A seat's wall can
-only open or close the network as a whole (`network`, `src/wall/base.ts`), so for D and U
+only open or close the network as a whole (`network`, `src/sandbox/base.ts`), so for D and U
 the host blocks `huggingface.co`, `hf.co`, `*.hf.co` and the benchmark's GitHub repositories by DNS
 or an egress rule, as Harness² advises for its own executor, and the container is blocked the same
 way in every arm. In Harness²'s own validation a Codex rollout on JobBench downloaded its task's
@@ -330,8 +330,8 @@ benchmark brings stays in the ignored `studies/external/`:
 An arm is a frozen harness, the starter or one a campaign kept, bundled once with the container
 solver compiled for the container (`../shared/bundle.ts`). A campaign's arm is named by the
 campaign alone: `run.ts bundle --arm D --from <campaign>` finds its log on any host (`logAcross`),
-takes the reference at its typed ending, or the kept harness `--harness` names (`keptAs`,
-`tools/d2/campaign.ts`), copies it as the campaign's handover does (`copyHarness`), and refuses a
+takes the reference at its typed ending, or the kept harness `--harness` names (`resolveCheckpoint`,
+`tools/campaign/campaign.ts`), copies it as the campaign's handover does (`copyHarness`), and refuses a
 copy that does not open as the digest the log names. The mount's record keeps the digest, the
 campaign, its ending and whether the harness's epoch was confirmed against the starter. WorkBuddy's runner starts every trial in a
 fresh container. In it, the study's Harbor agent (`../shared/harbor/pi_agent.py`) runs the solver

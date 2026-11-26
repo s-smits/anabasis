@@ -1,24 +1,14 @@
 #!/usr/bin/env bun
 /**
- * Move this checkout to the top of the open stack, on a branch named after it, or to `main` where
- * no pull request is open.
+ * Moves this checkout to the top of the open stack on a branch `stack-pr<top>`, or to `main` where
+ * no pull request is open. The top is read by the same chain reader as `bun run land`
+ * (`firstStack`, `tools/runtime/pulls.ts`), and an earlier `stack-pr<N>` branch is deleted. The
+ * branch is reset to the top, so a commit made on it is not kept; tracked changes are stashed and
+ * popped back by the stash's own commit. A branch another worktree has checked out is refused,
+ * since git before 2.42 resets it under that worktree.
  *
  *   bun run follow
  *   bun run follow -- --if-safe    # move only where `hazards` finds nothing, else say why and stay
- *
- * The top is the end of the stack `bun run land` lands first, read by the one reader of the chain
- * of bases (`firstStack`, `tools/runtime/pulls.ts`): of the stacks of two or more, the one that holds
- * the oldest open pull request (the operator's choice), so a later stack that grows longer does
- * not take the checkout off the cycle's stack, and `follow` and `land` read the same chain.
- * The checkout lands on `stack-pr<top>`, tracking the top's branch, and an earlier `stack-pr<N>`
- * branch is deleted, since a checkout left on an old top after a restack onto a newer main can sit
- * commits ahead and behind, where a fast-forward no longer reaches.
- *
- * The branch is reset to the top: what matters is on GitHub, so a commit made on it is not kept.
- * Changes to tracked files are stashed and popped back on the new top, by the stash's own commit,
- * so that a stash another worktree pushed meanwhile is never the one popped. A switch git refuses
- * pops them back where they were. A branch another worktree has checked out is refused before
- * anything moves: git before 2.42, as on the Linux runner (2.34), resets it under that worktree.
  */
 import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -28,9 +18,7 @@ import { join } from "#src/meta/path.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { firstStack, openPulls, type Pull, trunkOf } from "./pulls.ts";
 
-/** Where `follow` moves a checkout: its branch, the branch on origin it tracks, how a line names it,
- *  the open pull requests it holds, bottom first, and the trunk, the one branch beside `stack-pr<N>`
- *  that follow owns. */
+/** The trunk is the one branch beside `stack-pr<N>` that follow owns. */
 interface Target {
   readonly trunk: string;
   readonly name: string;
@@ -50,14 +38,14 @@ const UNDER_WAY = [
   "rebase-merge",
   "rebase-apply",
 ];
-/** Work a switch would pull files from under: git itself, or Bun landing, checking or installing.
- *  A watcher such as `runs loadwatch`, alive for days, holds its code in memory and is no reason. */
+/** Work a switch would pull files from under: git itself, or Bun landing, checking or installing. A
+ *  long-lived watcher such as `runs loadwatch` holds its code in memory and is no reason. */
 const WORKING = /^\S*git\b|\b(land|gate|test|typecheck|lint|install|preflight|simplify)\b|tools\/runtime\//;
 /** A file touched this recently means someone is editing here now. */
 const QUIET_MS = 10 * 60_000;
 
-/** Where `follow` moves a checkout for the open stack `line`, bottom first: `stack-pr<top>` tracking
- *  the top's branch, or the trunk where `line` is empty. The branch is named here alone. */
+/** Where `follow` moves a checkout for the open stack `line`: `stack-pr<top>` tracking the top's
+ *  branch, or the trunk where `line` is empty. The branch is named here alone. */
 export function targetOf(line: readonly Pull[], trunk: string): Target {
   const top = line.at(-1);
   return top === undefined
@@ -71,8 +59,8 @@ export function targetOf(line: readonly Pull[], trunk: string): Target {
       };
 }
 
-/** What `lsof` says of the other processes whose working folder is `root`, as their command lines.
- *  This process is left out: it runs from `tools/runtime/`, which `WORKING` names. */
+/** The command lines of other processes working in `root`; this one runs from `tools/runtime/`,
+ *  which `WORKING` names, so it is left out. */
 function workingIn(root: string): string[] {
   const listed = runSync(["lsof", "-a", "-d", "cwd", "-c", "bun", "-c", "git", "-Fpn"]);
   if (listed.exitCode === null) return [];
@@ -87,12 +75,10 @@ function workingIn(root: string): string[] {
   return commands.split("\n").filter((command) => WORKING.test(command));
 }
 
-/** Why moving the checkout at `root`, its top-level folder, to `target` now could lose or disturb
- *  work, one reason a line, or none where the move is safe. The hourly pass of ana.follow moves the
- *  checkout only then, and leaves stashing, saving and clearing to its three daily passes (the
- *  operator's choice: follow hourly, but never cost local work or block more than it must).
- *  Uncommitted changes are no reason in themselves, since `follow` carries them: only where they
- *  would not merge onto the new top. Each check reads git or the file system and moves nothing. */
+/** Why moving the checkout at `root` to `target` now could lose or disturb work, one reason a line,
+ *  or none where the move is safe. Uncommitted changes are no reason in themselves, since `follow`
+ *  carries them, only where they would not merge onto the new top. Each check reads git or the file
+ *  system and moves nothing. */
 export function hazards(root: string, target: Target, now = Date.now()): string[] {
   const { name, upstream } = target;
   const found: string[] = [];
@@ -125,7 +111,6 @@ export function hazards(root: string, target: Target, now = Date.now()): string[
   if (touched.length > 0) {
     found.push(`edited in the last ${String(QUIET_MS / 60_000)} minutes: ${touched.slice(0, 5).join(", ")}`);
   }
-  // What the top changes, read once: the files it adds, and the files it touches at all.
   const theirs = gitText(root, "diff", "--name-status", "--no-renames", "-z", "HEAD", upstream).split("\0");
   const changedByTop = theirs.filter((_, index) => index % 2 === 1);
   // Any file here at a path the top adds is in the way, ignored ones too: the switch refuses to
@@ -152,8 +137,6 @@ export function hazards(root: string, target: Target, now = Date.now()): string[
   return found;
 }
 
-/** Move the checkout at `root`, its top-level folder, to `target`, fetched already, and say what
- *  moved. */
 export function follow(root: string, target: Target): string[] {
   const { name, upstream } = target;
   const was = gitMaybe(root, "symbolic-ref", "--short", "-q", "HEAD");
@@ -201,7 +184,6 @@ export function follow(root: string, target: Target): string[] {
   return said;
 }
 
-/** What the command prints for `argv`: the move, or under `--if-safe` the reasons it stayed. */
 function main(argv: readonly string[]): string[] {
   const { values } = parseArgs({ args: [...argv], options: { "if-safe": { type: "boolean" } } });
   const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");

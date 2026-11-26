@@ -1,5 +1,5 @@
-// The meter's unit tests. Every price, count and expected dollar is written out in the test that
-// uses it, with the arithmetic beside it, so a reader checks each figure by hand.
+// Every price, count and expected dollar is written out in the test that uses it, with the arithmetic
+// beside it, so a reader checks each figure by hand.
 import { describe, expect, it } from "bun:test";
 import type { Usage } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
@@ -58,7 +58,6 @@ const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at: "2026-11-0
 describe("prices", () => {
   it("prices each class of tokens at its own rate, an hour-long cache write at twice the input rate", () => {
     const bill = billOf(freezePrices([opus]), {
-      // 98,500 cache writes, of which 90,000 live an hour and 8,500 five minutes.
       "claude/claude-opus-5-5": {
         input: 1500,
         output: 5000,
@@ -81,7 +80,6 @@ describe("prices", () => {
     const model = { ...opus, cost: { ...opus.cost } };
     const prices = freezePrices([model]);
     model.cost.input = 500;
-    // 1,000,000 input tokens x $4 per million, the price when the table was frozen.
     expect(billOf(prices, { "claude/claude-opus-5-5": { ...none, input: 1_000_000, dollars: 0 } })).toEqual(
       nearly(4, 10),
     );
@@ -89,11 +87,9 @@ describe("prices", () => {
 
   it("prices a model the table does not list at the dollars its backend reported, never at zero", () => {
     const bill = billOf(freezePrices([opus]), {
-      // Listed: 1,000,000 input tokens x $4 = $4, whatever the backend said ($99).
       "claude/claude-opus-5-5": { ...none, input: 1_000_000, dollars: 99 },
       // Not listed: the backend's $0.42 for a model Claude Code called on its own.
       "claude/claude-side-model": { ...none, input: 1_000_000, dollars: 0.42 },
-      // A tool's usage names no model: its own $0.01.
       "tool/web_search": { ...none, dollars: 0.01 },
     });
     expect(bill).toEqual(nearly(4 + 0.42 + 0.01, 10));
@@ -113,7 +109,6 @@ describe("ledgers", () => {
       ["codex/b", usage({ input: 7, output: 1 }, 0.01)],
     ]);
     expect(ledger).toEqual({
-      // 100 + 300 input, 20 + 40 output, 1,000 + 0 read, 50 + 10 written (10 of them for an hour).
       "codex/a": {
         input: 400,
         output: 60,
@@ -136,7 +131,6 @@ describe("ledgers", () => {
       "faux/still": earlier["faux/still"],
       "faux/b": { ...none, input: 7, output: 1, dollars: 0.5 },
     };
-    // 30 - 10 input, 9 - 5 output, 4 - 0 read, $3 - $1.
     expect(minus(later, earlier)).toEqual({
       "faux/a": { ...none, input: 20, output: 4, cacheRead: 4, dollars: 2 },
       "faux/b": later["faux/b"],
@@ -168,7 +162,6 @@ describe("a backend's ledger", () => {
     });
     expect(spend).toEqual({
       ledger: {
-        // 1,000 + 500 input, 10 + 10 output, 100 + 100 read, 40 + 40 written (40 for an hour), $1 + $0.25.
         "claude/claude-opus-5": {
           input: 1500,
           output: 20,
@@ -177,7 +170,6 @@ describe("a backend's ledger", () => {
           cacheWrite1h: 40,
           dollars: 1.25,
         },
-        // No hour-long count given: none.
         "claude/claude-haiku-5-5": {
           input: 20,
           output: 10,
@@ -225,8 +217,8 @@ describe("a session's ledger", () => {
   });
 
   it("bills the turns at the model that served them, and only the backend's excess at the key it filed", () => {
-    // pi-durable files every turn under the model asked for; the turns were served by another, and
-    // a retried attempt of 1,000 input tokens is in pi's ledger alone.
+    // pi-durable files every turn under the model asked for; the turns were served by another, and a
+    // retried attempt of 1,000 input tokens is in pi's ledger alone.
     const ledger = sessionLedger(
       { "openai-codex/gpt-6-luna": spend(1100, 0.12) },
       { "openai-codex/gpt-6-luna": spend(100, 0.1) },
@@ -238,7 +230,6 @@ describe("a session's ledger", () => {
   });
 
   it("is the turns' own where the backend reported none, a zeroed one, or less than the turns hold", () => {
-    // A query cleared mid-session: 5,149 tokens against the turns' 5,150.
     for (const backend of [
       null,
       { "claude/claude-opus-5-5": spend(0, 0) },
@@ -252,14 +243,12 @@ describe("a session's ledger", () => {
 describe("a seat's meter", () => {
   const catalogued = () => {
     const meter = seatMeter(opus);
-    // The provider lists the served model and one with no price, which is left out, not refused.
     meter.catalogue({ getModels: () => [served, { ...served, id: "claude-free", cost: { ...zero } }] });
     return meter;
   };
 
   it("prices a turn at the model that served it where the table lists it, and at the seat's own otherwise", () => {
     const meter = catalogued();
-    // 1,000,000 input tokens: $2 at claude-opus-5, $4 at the seat's claude-opus-5-5.
     expect(meter.turn(turn("claude-opus-5", { input: 1_000_000 }))).toEqual(nearly(2, 10));
     expect(meter.turn(turn("claude-free", { input: 1_000_000 }))).toEqual(nearly(4, 10));
     expect(meter.turn(turn("claude-unknown", { input: 1_000_000 }))).toEqual(nearly(4, 10));
@@ -273,7 +262,6 @@ describe("a seat's meter", () => {
   it("bills a seat Claude Code served on its result, a compaction included, with the total it reported", () => {
     const meter = catalogued();
     const turns = [turn("claude-opus-5", { input: 100_000, output: 1000 }, 0.21)];
-    // The result holds the turn and a compaction's 400,000 input tokens on claude-opus-5.
     const backend = claudeSpend("claude", {
       total_cost_usd: 1.23,
       modelUsage: {
@@ -289,7 +277,6 @@ describe("a seat's meter", () => {
         },
       },
     });
-    // 500,000 x $2 + 1,000 x $10 per million = $1.01 at the served model's list price.
     expect(meter.spent(turns, backend)).toEqual({
       turns: 1,
       tokens: { ...none, input: 500_000, output: 1000 },
@@ -301,7 +288,6 @@ describe("a seat's meter", () => {
   it("bills a seat with no backend ledger read on its turns, and reports no total", () => {
     const meter = catalogued();
     const turns = [turn("claude-opus-5", { input: 1_000_000 }), turn(undefined, { output: 100_000 })];
-    // $2 for the served turn, 100,000 x $20 per million = $2 for the other at the seat's model.
     expect(meter.spent(turns, null)).toEqual({
       turns: 2,
       tokens: { ...none, input: 1_000_000, output: 100_000 },
@@ -313,12 +299,10 @@ describe("a seat's meter", () => {
   it("bills a seat pi-durable served on its turns as served and its ledger's excess at the model asked for", () => {
     const meter = catalogued();
     const turns = [turn("claude-opus-5", { input: 1_000_000 }, 2)];
-    // pi-durable filed the turn and a retried attempt of 500,000 input tokens under claude-opus-5-5.
     const backend = durableSpend({
       models: { "claude/claude-opus-5-5": usage({ input: 1_500_000 }, 6) },
       tools: {},
     });
-    // The turn at claude-opus-5, $2; the retry at claude-opus-5-5, 500,000 x $4 per million = $2.
     expect(meter.spent(turns, backend)).toEqual({
       turns: 1,
       tokens: { ...none, input: 1_500_000 },
@@ -340,17 +324,13 @@ describe("what a log holds billed", () => {
       event("exam.finished", { session: "x-1", billed: 5 }),
       event("solve.started", { solve: "s-2", billed: 7, reportedCost: 7 }),
     ]);
-    // Backend $2.20 + $1.10 = $3.30 on 2 of 3 endings; the bill on those two $3; 3.30 / 3 = +10%.
     expect(line).toMatch(/\$3\.30\D+2\D+3\D+\$3\.00\D+\+10\.0%/);
   });
 
   it("gives each ask of one conversation its own share of the backend's total, and none where a read gave no total", () => {
-    // Totals of 5 and then 7 at two closes: the asks' shares are 5 and 2.
     expect([reportedShare(5, 0), reportedShare(7, 5)]).toEqual([5, 2]);
     // A read that gave no total voids its own ask and the next, which would take both asks' dollars.
     expect([reportedShare(null, 5), reportedShare(9, null)]).toEqual([null, null]);
-    // The check adds the shares up: two asks the meter billed 4 and 2 against a backend total of 7
-    // read 7 on 2 of 2, where the first ask's record alone read 5 on 1 of 2.
     const asks = (second: number | null) => [
       event("exam.finished", { session: "x-1", billed: 4, reportedCost: reportedShare(5, 0) }),
       event("exam.finished", { session: "x-2", billed: 2, reportedCost: second }),
@@ -368,14 +348,11 @@ describe("what a log holds billed", () => {
       event("solve.started", { solve: "s-2", comparison: "c-1" }),
       event("solve.finished", { solve: "s-2", billed: 2 }),
       event("referee.finding", { solve: "s-2", reader: "r-1", billed: 0.125 }),
-      // A Builder session killed after one turn: what the turn metered.
       event("build.started", { session: "b-1" }),
       event("build.turn", { session: "b-1", usage: { cost: { total: 0.25 } } }),
-      // A solve the Examiner asked for, killed after one turn.
       event("solve.started", { solve: "s-3", comparison: "x-1" }),
       event("solve.turn", { solve: "s-3", usage: { cost: { total: 0.75 } } }),
     ]);
-    // solver 2; examiner 1 + 0.5 + 0.75; builder 0.25; referee 0.125; no diagnoser.
     expect(spend).toEqual([
       ["examiner", 2.25],
       ["solver", 2],
@@ -394,11 +371,9 @@ describe("what a log holds billed", () => {
       event("build.finished", { session: "b-1", billed: 0.5 }),
       event("solve.started", { solve: "s-1", comparison: "b-1" }),
       event("solve.finished", { solve: "s-1", billed: 2 }),
-      // A solve of the comparison still running: what its turn metered.
       event("solve.started", { solve: "s-2", comparison: "b-1" }),
       event("solve.turn", { solve: "s-2", usage: { cost: { total: 0.25 } } }),
     ];
-    // Own 1 + 0.5; span 1 + 4 + 0.5; comparison 2 + 0.25.
     expect(billedParts(events, "b-1")).toEqual({ session: 1.5, span: 5.5, comparison: 2.25 });
     expect(billedFor(events, "b-1")).toBe(5.5 + 2.25);
   });

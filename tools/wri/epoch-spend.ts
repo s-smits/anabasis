@@ -1,6 +1,6 @@
 /**
- * Each epoch's billed dollars by role, active vs wall hours, comparison spend share, billing
- * residual (`costLine`), unpriced compactions, and average cost per promotion (lane 19):
+ * Each epoch's billed dollars by role, active and wall hours, comparison spend share, billing
+ * residual (`costLine`), unpriced compactions and average cost per promotion (lane 14):
  *
  *   bun tools/wri/wri.ts reader epoch-spend --log <log>
  */
@@ -23,7 +23,6 @@ export function unpricedCompactions(events: readonly LogEvent[], traces: readonl
   return zero.filter((each) => open.has(`${each.seat}:${each.id}`)).length;
 }
 
-/** Per-epoch billed spend and active hours, plus billing residual and $/promotion summary. */
 export function epochSpendLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);
   const clock = clockOf(events);

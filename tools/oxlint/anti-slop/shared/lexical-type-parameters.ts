@@ -23,9 +23,7 @@ function collectInferTypeParameterNames(
   }
 }
 
-/**
- * Every type name that is bound by something enclosing this node rather than declared in the file.
- */
+/** Every type name that is bound by something enclosing this node rather than declared in the file. */
 export function lexicalTypeParameterNames(node: ESTree.Node, visitorKeys: VisitorKeys): ReadonlySet<string> {
   const names = new Set<string>();
   let descendant: ESTree.Node = node;

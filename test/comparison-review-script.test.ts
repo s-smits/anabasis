@@ -64,7 +64,6 @@ grade("built", "h/task1", [[20, 0, 0, 5]]);
 grade("bare", "h/task1", [[20, 0, 4, 5]]);
 grade("built", "h/task2", [[2, 2, 1, 1]]);
 
-/** One attempt's trajectory: each command as a shell call, after one call that is no command. */
 function attempt(arm: string, task: string, name: string, commands: readonly string[]) {
   const [group, last] = task.split("/");
   const folder = join(root, String(group), String(last), "model_traj", `${arm}__${group}__${last}`);
@@ -80,9 +79,8 @@ function attempt(arm: string, task: string, name: string, commands: readonly str
   );
 }
 
-// The task was rolled twice. The first rolling took two attempts, and the second, whose one attempt
-// left the graded deliverable, is the newest by its stamp and not by its name. It looks at the
-// folder twice, and reaches its programs in each form a shell line gives.
+// Rolled twice: the second rolling's one attempt is the newest by its stamp, not its name. It looks at
+// the folder twice and reaches its programs in each form a shell line gives.
 attempt("built", "g/task1", "roll_built_attempt1_20261116_010000", [
   "scripts/toolchain/bin/estimate data.csv",
 ]);
@@ -172,5 +170,59 @@ describe("the seal", () => {
       expect(rest).toContain(`${task}: points`);
     }
     expect(told).not.toContain("4 tasks, built v bare");
+  });
+
+  it("counts shell commands and by-name harness program calls from native pi-durable traces", () => {
+    mkdirSync(join(store, "trees", "pi-built", "harness", ".toolchain", "bin"), { recursive: true });
+    writeFileSync(
+      join(store, "trees", "pi-built", "harness", ".toolchain", "bin", "estimate"),
+      "#!/bin/sh\n",
+      {
+        mode: 0o755,
+      },
+    );
+    grade("pi-built", "g/task1", [[10, 10, 4, 4]]);
+    const folder = join(root, "g", "task1", "model_traj", "pi-built__g__task1");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, "roll_pi_attempt1_20261124_010000.jsonl"),
+      [
+        { at: "2026-11-24T01:00:00Z", kind: "solve.call", data: { tool: "read", args: { path: "x" } } },
+        {
+          at: "2026-11-24T01:00:01Z",
+          kind: "solve.call",
+          data: { tool: "bash", args: { command: "estimate data.csv" } },
+        },
+        {
+          at: "2026-11-24T01:00:02Z",
+          kind: "solve.call",
+          data: { tool: "bash", args: { command: "ls harness/.toolchain/bin" } },
+        },
+        {
+          at: "2026-11-24T01:00:03Z",
+          kind: "solve.call",
+          data: { tool: "bash", args: { command: "python3 work.py" } },
+        },
+      ]
+        .map((row) => capturedJsonStringify(row))
+        .join("\n"),
+    );
+    const piArm = armOf(root, "pi-built");
+    expect(piArm.get("g/task1")?.shell).toStrictEqual({
+      commands: 3,
+      named: 2,
+      looks: 1,
+      listed: true,
+    });
+    const stubTask = "g/task2";
+    mkdirSync(join(store, "trees", "empty-stub"), { recursive: true });
+    grade("empty-stub", stubTask, [[10, 10, 4, 4]]);
+    attempt("empty-stub", stubTask, "roll_stub_attempt1_20261124_010000", ["estimate data.csv"]);
+    expect(armOf(root, "empty-stub").get(stubTask)?.shell).toStrictEqual({
+      commands: 1,
+      named: 0,
+      looks: 0,
+      listed: false,
+    });
   });
 });

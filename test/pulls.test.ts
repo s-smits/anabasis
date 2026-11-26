@@ -1,6 +1,5 @@
-// The one reader of the open stacks' chains (`tools/runtime/pulls.ts`), which `land`, `follow`,
-// `stack.ts`, `republish.ts`, `split` and `doubled.ts` all call: the chains of bases, what stands
-// beneath and above one pull request, and the stack landed and followed first.
+// The one reader of the open stacks' chains (`tools/runtime/pulls.ts`): the chains of bases, what
+// stands beneath and above a pull request, and the stack landed and followed first.
 import { describe, expect, it } from "bun:test";
 import { beneath, chainAbove, chains, firstStack, type Pull, stackHolding } from "../tools/runtime/pulls.ts";
 

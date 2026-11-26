@@ -1,10 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Decomposes each promotion's starter comparison by task origin from the reference harness's perspective.
- *
- *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | name> [--tasks]
- *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --log <log> [--log <log> ...] [--tasks]
- *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --all [--since <date>] [--name <part>] [--tasks]
+ * Decomposes each promotion's starter comparison by task origin from the reference harness's side:
+ * `starter-reads.ts <log.jsonl | campaign folder | name>`, `--log <log> [--log ...]`, or `--all
+ * [--since <date>] [--name <part>]`; `--tasks` adds each read's task rows.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { sideGap } from "#tools/wri/pairs.ts";
@@ -28,10 +26,9 @@ import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { summed, wlt } from "#tools/wri/folds.ts";
+import { formatTally, summed } from "#tools/wri/folds.ts";
 import { type StepCount, stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 
-/** What a read is made of: its after-slices and its sign draws, null where the level is not recorded. */
 interface Composition {
   readonly slices: readonly { writer: string; tally: Tally; alone: string }[];
   readonly draws: StepCount | null;
@@ -40,7 +37,7 @@ interface Composition {
 }
 
 const USAGE = `usage:
-  bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | campaign name> [--tasks]
+  bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | campaign name>... [--tasks]
   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --log <log> [--log <log> ...] [--tasks]
   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --all [--since <date>] [--name <part>] [--tasks]
 
@@ -84,12 +81,10 @@ function compositionOf(each: StarterRead): Composition {
   return { slices, draws, after: after.length, fixed };
 }
 
-/** An origin's line: its whole tally, then those on which validity differed, then the rest. */
 function originLine(origin: Origin, { whole, validity, rest }: Split): string {
-  return `  ${origin}: ${wlt(whole)}; validity differed ${wlt(validity)}; validity tied ${wlt(rest)}`;
+  return `  ${origin}: ${formatTally(whole)}; validity differed ${formatTally(validity)}; validity tied ${formatTally(rest)}`;
 }
 
-/** Each origin's summed margin, net and absolute, and its share of the read's absolute margin. */
 function marginLine(each: StarterRead): string {
   const all = each.rows.reduce((sum, { margin }) => sum + Math.abs(margin), 0);
   const parts = ORIGINS.map((origin) => {
@@ -119,7 +114,7 @@ function drawLine(each: StarterRead, { draws, after, fixed }: Composition): stri
 function sliceLines({ slices }: Composition): string[] {
   return slices.map(
     ({ writer, tally, alone }) =>
-      `  written after, by ${writer}: ${wlt(tally)}; by majority ${majorityOf(tally)}; alone ${alone}`,
+      `  written after, by ${writer}: ${formatTally(tally)}; by majority ${majorityOf(tally)}; alone ${alone}`,
   );
 }
 
@@ -127,21 +122,19 @@ function majorityOf({ wins, losses }: Tally): string {
   return wins > losses ? "the reference" : losses > wins ? "the starter" : "neither";
 }
 
-/** One read's lines, each harness `called` by its letter. */
 function readLines(each: StarterRead, called: (digest: string) => string): string[] {
   const composition = compositionOf(each);
   return [
     `${each.session}: reference ${called(each.reference)} on the old side, starter ${called(each.starter)} on the new; tallies are the reference's wins, losses and ties`,
-    `  stored ${wlt(each.stored)}, ${each.confirmed ? "a step, confirmed" : "no step"} at ${each.levelled ? String(each.level) : "a level not recorded"}; on the tasks written after alone, ${each.after}`,
+    `  stored ${formatTally(each.stored)}, ${each.confirmed ? "a step, confirmed" : "no step"} at ${each.levelled ? String(each.level) : "a level not recorded"}; on the tasks written after alone, ${each.after}`,
     ...ORIGINS.map((origin) => originLine(origin, each.origins[origin])),
-    ...each.authors.map(({ session, tally }) => `  written by ${session}: ${wlt(tally)}`),
+    ...each.authors.map(({ session, tally }) => `  written by ${session}: ${formatTally(tally)}`),
     marginLine(each),
     drawLine(each, composition),
     ...sliceLines(composition),
   ];
 }
 
-/** Each solve's ending as the log records it, by solve id: its kind, or its outcome. */
 function endingsOf(events: readonly LogEvent[]): Map<string, string> {
   return new Map(
     solvesIn(events).map(({ id, ending }) => {
@@ -151,7 +144,6 @@ function endingsOf(events: readonly LogEvent[]): Map<string, string> {
   );
 }
 
-/** One row a task of `each`: origin, writer, each side's endings, the margin, each side's ratio. */
 function taskLines(
   each: StarterRead,
   endings: ReadonlyMap<string, string>,
@@ -188,7 +180,6 @@ function taskLines(
   ];
 }
 
-/** The totals over `reads`, naming the `campaigns` they come from where they span several logs. */
 function totalLines(reads: readonly StarterRead[], campaigns?: number): string[] {
   const of = (origin: Origin, part: keyof Split) => summed(reads.map(({ origins }) => origins[origin][part]));
   const compositions = reads.map(compositionOf);
@@ -233,7 +224,6 @@ function acrossLines(
   return [...lines, "all of them", ...totalLines([...kept.values()], campaigns.size)];
 }
 
-/** `reads` of one log, each with its task rows where `rows` asks, then their sums. */
 function campaignLines(
   events: readonly LogEvent[],
   reads: readonly StarterRead[],
@@ -252,8 +242,6 @@ function campaignLines(
   ];
 }
 
-/** One log's starter reads under the legend, with each read's task rows where `rows` asks, or why
- *  it has none. */
 export function starterLines(events: readonly LogEvent[], rows: "tasks" | "reads" = "reads"): string[] {
   const reads = starterReads(events);
   if (reads.length === 0 && !events.some(({ kind }) => kind === "harness.promoted")) {
@@ -264,7 +252,7 @@ export function starterLines(events: readonly LogEvent[], rows: "tasks" | "reads
 
 if (import.meta.main) {
   await runCommand(
-    { name: "starter-reads", usage: USAGE, options: OPTIONS, positionals: [0, 1] },
+    { name: "starter-reads", usage: USAGE, options: OPTIONS, positionals: [0, 100] },
     async (args: CommandArgs) => {
       const named = [...args.positionals, ...args.list("log")];
       const rows = args.flag("tasks") ? "tasks" : "reads";

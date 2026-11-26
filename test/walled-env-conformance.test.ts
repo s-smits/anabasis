@@ -1,16 +1,15 @@
-// pi-durable's own environment conformance suite, run against the walled environment, so that the
-// file and shell operations durable's tools call behave as durable's NodeExecutionEnv does. Its
-// `watch` cases are skipped: a command on the wall lives only as long as one operation, so the
-// environment answers `not_supported`, and no durable tool or the Harness calls `env.watch`.
+// pi-durable's own environment conformance suite, run against the walled environment. Its `watch` cases
+// are skipped: a walled command lives only for one operation, so the environment answers
+// `not_supported`, and no durable tool calls `env.watch`.
 import { describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { registerEnvConformance } from "@earendil-works/pi-durable/testing";
 import { mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { solveDirs, walledBase } from "../src/tools/command.ts";
+import { solveDirs, sandboxBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
-import { claimRoot } from "../src/wall/seat-root.ts";
+import { claimRoot } from "../src/sandbox/sandbox-root.ts";
 
 const runner = {
   describe,
@@ -23,7 +22,7 @@ registerEnvConformance(runner, "the walled environment", async (use) => {
   const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-conformance-repo-")));
   const dirs = solveDirs(`conformance-${crypto.randomUUID()}`);
   const release = await claimRoot(dirs.root);
-  const base = await walledBase(dirs, { repoRoot }, "the conformance suite");
+  const base = await sandboxBase(dirs, { repoRoot }, "the conformance suite");
   const env = walledEnv({
     base,
     dirs,

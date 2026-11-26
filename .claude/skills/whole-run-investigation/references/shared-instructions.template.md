@@ -28,15 +28,25 @@ lane should reach. Separately, under an unread note, flag any anomaly noticed bu
 out-of-order event, a shifted count, or an unusually large file) by location only, without
 interpreting it: lanes are free to investigate it. Write "nothing" if no checks have been run yet. -->
 
+## Operator questions
+
+<!-- Copied from `references/questions.md` by `wri.ts start`. Each lane named in a row answers that
+question with a `Question <id>: <yes | partial | no | unmeasured>, <evidence>` line, and `collect`
+refuses a report missing one or its status word. Add a row to ask this investigation something more,
+naming open lanes (`2` to `19`); delete a row to drop a question here. Edit before `wri.ts lanes`: a
+prompt already built keeps its questions, while `collect` reads this table as it stands. -->
+
+{questions}
+
 ## Campaigns under review
 
 {campaigns}
 
-Each log is its campaign's complete append-only record, stored as one JSON event per line. Each campaign directory also contains the staged check program (`exams/<digest>/checks/`; `checks/` in an older campaign over a stored pack), `states/` holding every kept harness snapshot by digest, and each launch's receipt `launch-run-<n>.json` (older rounds wrote `launch-<session>.json`) recording flags, commit, and host load. Read any of these files; modify none of them.
+Each log is its campaign's complete append-only record, stored as one JSON event per line. Each campaign directory also contains the staged check program (`exams/<digest>/checks/`; `checks/` in an older campaign over a stored pack), `states/` holding every saved checkpoint snapshot by digest, and each launch's receipt `launch-run-<n>.json` (older rounds wrote `launch-<session>.json`) recording flags, commit, and host load. Read any of these files; modify none of them.
 
 ## Hard rules
 
-- Quote nothing protected by the evaluation boundary: no task text, submitted answer, hidden value, check failure message, prompt text, trace excerpt, or Referee prose. Cite event kinds, solve ids, the first eight characters of a digest, check ids, counts, file paths, and line numbers, and summarise mechanisms in your own words.
+- Quote nothing protected by the evaluation boundary: no task text, submitted answer, hidden value, check failure message, prompt text, trace excerpt, or Auditor prose. Cite event kinds, solve ids, the first eight characters of a digest, check ids, counts, file paths, and line numbers, and summarise mechanisms in your own words.
 - Never write inside a campaign directory or append to a log, and never run a command whose working directory lies inside a campaign directory. Place scratch files in a temporary directory of your own.
 - Start no solve, Builder or Examiner session, round, or check run. `wri.ts grade` is the sole exception, permitted only where your lane explicitly specifies it; it writes nothing to disk.
 - Open each lane's report with its heading and `Verdict: pending` before reading evidence for that lane, then update the verdict line and append findings as they settle. Work through your assigned lanes one at a time.
@@ -44,5 +54,5 @@ Each log is its campaign's complete append-only record, stored as one JSON event
 - Never open another lane's prompt or report, or any synthesis document for this investigation.
 - Run repository commands (`bun tools/...`, `bun .claude/...`) from the checkout listed in the campaign rows, and refer to logs and trees by path.
 - Inspect source files in the tree named by each campaign's host line. If the last recorded condition ran under a host hash matching neither tree, note beside every source claim that the inspected code may differ from what executed.
-- Your report is written for the operator and the primary reviewer. It never reaches a Builder, Examiner, or Referee, and must not address any of them.
+- Your report is written for the operator and the primary reviewer. It never reaches a Builder, Examiner, or Auditor, and must not address any of them.
 - The orientation and moved variable frame the investigation rather than dictating conclusions: refuting either with evidence is a valid finding.

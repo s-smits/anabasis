@@ -1,10 +1,11 @@
 // Behavioural and boundary tests for drafted exams (`src/examiner/draft.ts`), staging and offline
-// acceptance (`tools/d2/exam.ts`), and campaign drafting lifecycle (`tools/d1b/draft.ts`).
+// acceptance (`tools/campaign/exam.ts`), and campaign drafting lifecycle (`tools/eval/draft.ts`).
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { decide } from "../src/campaign/decide.ts";
+import { nextAction } from "../src/campaign/scheduler.ts";
 import { type Draft, draftFaults, drafting, draftOf } from "../src/examiner/draft.ts";
 import { examine, type Session } from "../src/examiner/session.ts";
 import { authoredFaults } from "../src/kernel/acceptance.ts";
+import { objectiveLine } from "../src/kernel/contract.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
 import { HOST_TOOLS_FILE, pinnedEngines } from "../src/kernel/verify.ts";
@@ -22,14 +23,15 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
-import { asRecord, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { draftCommand } from "../tools/d1b/draft.ts";
-import { campaignLog, openCampaign, packNamed } from "../tools/d2/campaign.ts";
-import { draftReading, stagedExamOf, stageExam } from "../tools/d2/exam.ts";
+import { draftCommand } from "../tools/eval/draft.ts";
+import { taskContentDigest } from "../src/audit/probe.ts";
+import { campaignLog, openCampaign, packNamed } from "../tools/campaign/campaign.ts";
+import { draftReading, stagedExamOf, stageExam } from "../tools/campaign/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
 import {
   call,
@@ -42,19 +44,18 @@ import {
   seat,
   sweep,
   toolOf,
+  WALL,
 } from "./helpers/examiner-seat.ts";
 import { scriptedModel } from "./helpers/fixture-pack.ts";
 
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const OBJECTIVE = { quantity: "mass in kg", direction: "lower" } as const;
 const SOLVER = "claude/claude-opus-5-5";
-const HIDDEN_BLIND_NOTE =
-  "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-")));
 const STEM = `test-draft-${String(runtimeProcess.pid)}`;
 const campaigns: string[] = [];
 
-const { unmeasured: _reason, ...SILENT } = SOUND;
+const SILENT = SOUND;
 const withTools = (tools: readonly string[]): Draft => ({
   ...SOUND,
   checks: SOUND.checks.map((check) => ({ ...check, tools })),
@@ -135,8 +136,6 @@ describe("draft shape and session gate", () => {
       [{ ...SOUND, evaluator: `export const checks = { "check-product": (req) => === ;` }, "did not compile"],
       [{ ...SOUND, evaluator: `export const other = {};` }, "does not export `checks`"],
       [{ ...MEASURED, evaluator: SOUND.evaluator }, "does not export `objective`"],
-      [SILENT, "objective"],
-      [{ ...MEASURED, unmeasured: "every answer is as good" }, "objective"],
       [withTools(["../sh"]), "invalid verifier tool"],
       [{ ...MEASURED, objectiveTools: ["a/b"] }, "invalid verifier tool"],
     ];
@@ -179,7 +178,7 @@ describe("draft shape and session gate", () => {
     expect(draftFaults({ ...SOUND, answerFormat: pwmAs({}), reject })).toEqual([]);
   });
 
-  it("blocks unshaped drafts before reading, spends no put on schema errors, and handles partial objectives", async () => {
+  it("blocks unshaped drafts before reading without spending a put, and spends puts on reading faults", async () => {
     const lone: Draft = { ...SOUND, accept: SOUND.accept.slice(1), reject: [] };
     const s = seat("draft", [drafted(lone), drafted(SOUND), finish]);
     const reached: Draft[] = [];
@@ -190,18 +189,22 @@ describe("draft shape and session gate", () => {
         return [];
       },
     });
-    expect(examined).toMatchObject({ ended: "stands", puts: 2 });
+    expect(examined).toMatchObject({ ended: "stands", puts: 1 });
     expect(reached).toEqual([SOUND]);
     const loneFaults = draftFaults(lone);
     expect(loneFaults).toHaveLength(2);
     const told = s.of("draft.call")[0]?.text;
     for (const fault of loneFaults) expect(told).toContain(`- ${fault}`);
-    expect(told).toMatch(/3.*drafts/u);
+    expect(told).toMatch(/4.*drafts/u);
     expect(draftOf(read(s.log))).toEqual(SOUND);
 
-    // Exhausting puts returns the terminal refusal line; a 1-char scope and measured+objectiveTools round-trip cleanly.
-    const exhausted = seat("draft", [drafted(lone), finish]);
-    await examine({ ...exhausted.request, limits: { ...exhausted.request.limits, puts: 1 } });
+    // Exhausting puts on reading faults returns the terminal refusal line; a 1-char scope and measured+objectiveTools round-trip cleanly.
+    const exhausted = seat("draft", [drafted(SOUND), finish]);
+    await examine({
+      ...exhausted.request,
+      limits: { ...exhausted.request.limits, puts: 1 },
+      reading: async () => ["check failed"],
+    });
     expect(exhausted.of("draft.call")[0]?.text).toContain("This session can put no further draft");
     const withToolsDraft: Draft = { ...MEASURED, scope: "x", objectiveTools: ["python3"] };
     const measuredSeat = seat("draft", [drafted(withToolsDraft), finish]);
@@ -220,17 +223,14 @@ describe("draft shape and session gate", () => {
       expect(schemaSeat.of("draft.finished")).toMatchObject([{ stands: true, tries: 1 }]);
     }
 
-    // Half-specified objective is treated as no decision (spends a put, rejected by draftFaults).
-    for (const objective of [
-      { quantity: OBJECTIVE.quantity },
-      { quantity: OBJECTIVE.quantity, none: "nothing is left to prefer" },
-    ]) {
+    // A half-specified objective is refused before reading without spending a put.
+    for (const objective of [{ quantity: OBJECTIVE.quantity }, { direction: OBJECTIVE.direction }]) {
       const halfSeat = seat("draft", [
         call("draft_exam", { ...draftArgs(SILENT), objective }),
         drafted(SOUND),
         finish,
       ]);
-      expect(await examine(halfSeat.request)).toMatchObject({ ended: "stands", puts: 2 });
+      expect(await examine(halfSeat.request)).toMatchObject({ ended: "stands", puts: 1 });
       expect(halfSeat.of("draft.call")[0]?.text).toContain("objective");
       expect(draftOf(read(halfSeat.log))).toEqual(SOUND);
     }
@@ -290,7 +290,7 @@ describe("draft shape and session gate", () => {
       rmSync(home, { recursive: true, force: true });
     }
 
-    // Legacy `exam.drafted` logs without `unmeasured` and `examinerSessions` accounting.
+    // `exam.drafted` logs read back whole, and `examinerSessions` accounting.
     for (const old of [SILENT, { ...SILENT, objective: OBJECTIVE }]) {
       const log = join(root, `old-${String(old.objective !== undefined)}.jsonl`);
       append(log, "exam.drafted", {
@@ -308,11 +308,29 @@ describe("draft shape and session gate", () => {
       append(sessionsLog, kind, { session });
     }
     expect(examinerSessions(read(sessionsLog))).toEqual(new Set(["d-1", "x-1"]));
+
+    const walledSeat = seat("draft", [drafted(SOUND), finish]);
+    const seenPaths: { home: string; cwd: string | undefined }[] = [];
+    await examine(
+      {
+        ...walledSeat.request,
+        models: (modelHome, _shutdown, cwd) => {
+          seenPaths.push({ home: modelHome, cwd });
+          return walledSeat.request.models();
+        },
+      },
+      WALL,
+    );
+    expect(seenPaths).toHaveLength(1);
+    expect(seenPaths[0]?.cwd).toBeDefined();
+    expect(seenPaths[0]?.cwd).not.toBe(seenPaths[0]?.home);
+    expect(seenPaths[0]?.home.endsWith(".host/model")).toBe(true);
+    expect(seenPaths[0]?.cwd?.endsWith("/home")).toBe(true);
   });
 });
 
-describe("staging and offline reading", () => {
-  it("stages packs idempotently without leaking hidden controls or unmeasured rationale", () => {
+describe.concurrent("staging and offline reading", () => {
+  it("stages packs idempotently without leaking hidden controls", () => {
     const staged = stageExam(join(root, "staged"), SOUND);
     expect(stageExam(join(root, "staged"), SOUND)).toEqual(staged);
     expect(staged.bundle).toMatch(/\/exams\/[0-9a-f]{16}\/bundle$/u);
@@ -331,24 +349,63 @@ describe("staging and offline reading", () => {
     expect(readFileSync(join(staged.checks, "evaluator.ts"), "utf8")).toBe(SOUND.evaluator);
     expect(() => readFileSync(join(staged.checks, "controls.json"), "utf8")).toThrow();
 
-    // `unmeasured` text must never appear in any staged file; declared objective is staged.
-    const modelFiles = (draft: Draft) =>
-      ["brief.json", "tasks.json", "controls.json", "evaluator.ts"].map((file) =>
-        readFileSync(
-          join(stageExam(join(root, "unmeasured"), draft).bundle, "correctness-model", file),
-          "utf8",
-        ),
-      );
-    expect(modelFiles(SOUND)).toEqual(modelFiles({ ...SOUND, unmeasured: "another reason" }));
-    expect(readPack(stageExam(join(root, "unmeasured"), MEASURED).bundle).brief.objective).toEqual(OBJECTIVE);
+    expect(readPack(stageExam(join(root, "measured"), MEASURED).bundle).brief.objective).toEqual(OBJECTIVE);
+  });
+
+  it("publishes the same resources to Builder and solver whatever a judged item's criterion says", () => {
+    const { brief } = readPack(stageExam(join(root, "staged"), SOUND).bundle);
+    const sweptWith = (criterion: string) =>
+      sweepResources({
+        ...brief,
+        objective: {
+          ...OBJECTIVE,
+          items: [
+            { id: "a", weight: 1 },
+            { id: "j", weight: 1, kind: "judge", criterion },
+          ],
+        },
+      });
+    const [first, second] = [
+      "Every figure carries its unit and source.",
+      "Answer B is always the better one.",
+    ].map(sweptWith);
+    expect(second).toEqual(first);
+    expect(capturedJsonStringify(first)).not.toContain("unit and source");
+    const unjudged = { ...OBJECTIVE, items: [{ id: "a", weight: 1 }] };
+    expect(
+      sweepResources({ ...brief, objective: unjudged }).find(({ name }) => name === "public-objective")
+        ?.content,
+    ).toEqual([{ ...unjudged, statement: objectiveLine(unjudged) }]);
   });
 
   it("reads sound, lax, form-only, unloadable, and missing-export evaluators accurately", async () => {
-    expect((await draftReading(join(root, "read"), SOUND, 2)).faults).toEqual([]);
-    expect((await draftReading(join(root, "read"), MEASURED, 2)).faults).toEqual([]);
-
     const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
-    const laxFaults = (await draftReading(join(root, "read"), lax, 2)).faults;
+    const formOnly = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => /^[0-9]+$/u.test(req.artifact.answer) };\n`,
+      reject: [{ task: 0, answer: { answer: "x" }, check: "check-product" }],
+    };
+    const broken = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === ;\n`,
+    };
+    const [soundRes, measuredRes, laxRes, formRes, brokenRes, missingObjRes, undefinedCheckRes] =
+      await Promise.all([
+        draftReading(join(root, "read-sound"), SOUND, 2),
+        draftReading(join(root, "read-measured"), MEASURED, 2),
+        draftReading(join(root, "read-lax"), lax, 2),
+        draftReading(join(root, "read-form"), formOnly, 2),
+        draftReading(join(root, "read-broken"), broken, 2),
+        draftReading(join(root, "read-no-obj"), { ...MEASURED, evaluator: SOUND.evaluator }, 2),
+        draftReading(
+          join(root, "read-undef"),
+          { ...SOUND, evaluator: SOUND.evaluator.replace("check-product", "check-other") },
+          2,
+        ),
+      ]);
+    expect(soundRes.faults).toEqual([]);
+    expect(measuredRes.faults).toEqual([]);
+    const laxFaults = laxRes.faults;
     expect(laxFaults).toHaveLength(8);
     for (const [index, facts] of [
       ["ex-001", "check-product", "reject control", "pass"],
@@ -358,53 +415,24 @@ describe("staging and offline reading", () => {
     ].entries()) {
       for (const fact of facts) expect(laxFaults[index]).toContain(fact);
     }
-
-    const formOnly = {
-      ...SOUND,
-      evaluator: `export const checks = { "check-product": (req) => /^[0-9]+$/u.test(req.artifact.answer) };\n`,
-      reject: [{ task: 0, answer: { answer: "x" }, check: "check-product" }],
-    };
-    const formFaults = (await draftReading(join(root, "read"), formOnly, 2)).faults;
-    expect(formFaults).toHaveLength(3);
-    for (const fault of formFaults) expect(fault).toContain("passed every other example");
-
-    const broken = {
-      ...SOUND,
-      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === ;\n`,
-    };
-    const [syntaxFault, ...rest] = (await draftReading(join(root, "read"), broken, 2)).faults;
+    expect(formRes.faults).toHaveLength(3);
+    for (const fault of formRes.faults) expect(fault).toContain("passed every other example");
+    const [syntaxFault, ...rest] = brokenRes.faults;
     expect(rest).toEqual([]);
     for (const fact of ["ex-00", "check-product", "did not load", "Unexpected ;"]) {
       expect(syntaxFault).toContain(fact);
     }
-
-    expect(
-      (await draftReading(join(root, "read"), { ...MEASURED, evaluator: SOUND.evaluator }, 2)).faults.some(
-        (f) => f.includes("objective"),
-      ),
-    ).toBe(true);
-    const undefinedCheck = (
-      await draftReading(
-        join(root, "read"),
-        { ...SOUND, evaluator: SOUND.evaluator.replace("check-product", "check-other") },
-        2,
-      )
-    ).faults;
-    expect(undefinedCheck.some((f) => f.includes("check-product"))).toBe(true);
+    expect(missingObjRes.faults.some((f) => f.includes("objective"))).toBe(true);
+    expect(undefinedCheckRes.faults.some((f) => f.includes("check-product"))).toBe(true);
   });
 
-  it("verifies deliverable files, archive entries, hidden-value sensitivity, and factual notes", async () => {
+  it("verifies deliverable files, archive entries and hidden-value sensitivity", async () => {
     // Plain deliverable file and archive member checks pass with files and fail without.
     const report: Draft = {
       ...SOUND,
       evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((f) => f.path === "report.md" && f.text === "six times"),\n};\n`,
       accept: SOUND.accept.map((c) => ({ ...c, files: [{ path: "report.md", text: "six times" }] })),
     };
-    expect((await draftReading(join(root, "read"), report, 2)).faults).toEqual([]);
-    expect(
-      (await draftReading(join(root, "read"), { ...report, accept: SOUND.accept }, 2)).faults.join("\n"),
-    ).toContain("accept control");
-
     const book: Draft = {
       ...SOUND,
       evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((f) => f.path === "book.xlsx" && f.base64 !== "" && (f.entries ?? []).some((e) => e.text === "<v>6</v>")),\n};\n`,
@@ -413,21 +441,13 @@ describe("staging and offline reading", () => {
         files: [{ path: "book.xlsx", entries: [{ path: "xl/worksheets/sheet1.xml", text: "<v>6</v>" }] }],
       })),
     };
-    expect((await draftReading(join(root, "read"), book, 2)).faults).toEqual([]);
     const flatBook: Draft = {
       ...book,
       accept: SOUND.accept.map((c) => ({ ...c, files: [{ path: "book.xlsx", text: "<v>6</v>" }] })),
     };
-    expect((await draftReading(join(root, "read"), flatBook, 2)).faults.join("\n")).toContain(
-      "accept control",
-    );
-
-    // Hidden values: unread fails, check-deciding passes silently, objective-only (including key throw) emits factual note.
+    // Hidden values: unread fails, check-deciding passes silently, objective-only (a key throw
+    // included) is noted.
     const unread = { ...SOUND, tasks: SOUND.tasks.map((t, seed) => ({ ...t, hidden: { seed } })) };
-    expect((await draftReading(join(root, "read"), unread, 2)).faults).toEqual([
-      expect.stringContaining("hidden values had no effect on any accept control"),
-    ]);
-
     const factors = [5, 6, 7] as const;
     const hiddenDecided: Draft = {
       ...SOUND,
@@ -438,10 +458,6 @@ describe("staging and offline reading", () => {
         answer: { answer: String(Number(asRecord(t.publicInput)?.base) * Number(factors[i])) },
       })),
     };
-    const decidedRead = await draftReading(join(root, "read"), hiddenDecided, 2);
-    expect(decidedRead.faults).toEqual([]);
-    expect(decidedRead.read?.reading.notes).toEqual([]);
-
     const keyChecked: Draft = {
       ...MEASURED,
       objective: { quantity: "score", direction: "lower" },
@@ -455,20 +471,35 @@ describe("staging and offline reading", () => {
         "}",
       ].join("\n"),
     };
-    const noteRead = await draftReading(join(root, "hidden-note"), keyChecked, 2);
-    expect(noteRead.faults).toEqual([]);
-    expect(noteRead.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
-
     // Partial cross-example pass emits a factual note without faulting.
     const partial: Draft = {
       ...SOUND,
       evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) || (req.publicTask.publicInput.base === 3 && req.artifact.answer === "12") };\n`,
     };
-    const partialRead = await draftReading(join(root, "partial-note"), partial, 2);
-    expect(partialRead.faults).toEqual([]);
-    expect(partialRead.read?.reading.notes).toEqual([
-      "the accept control of ex-001 also passed 1 of 2 other examples",
+    const [reportOk, reportMiss, bookOk, bookFlat, unreadRes, decidedRead, noteRead, partialRead] =
+      await Promise.all([
+        draftReading(join(root, "read-report"), report, 2),
+        draftReading(join(root, "read-report-miss"), { ...report, accept: SOUND.accept }, 2),
+        draftReading(join(root, "read-book"), book, 2),
+        draftReading(join(root, "read-book-flat"), flatBook, 2),
+        draftReading(join(root, "read-unread"), unread, 2),
+        draftReading(join(root, "read-hidden"), hiddenDecided, 2),
+        draftReading(join(root, "hidden-note"), keyChecked, 2),
+        draftReading(join(root, "partial-note"), partial, 2),
+      ]);
+    expect(reportOk.faults).toEqual([]);
+    expect(reportMiss.faults.join("\n")).toContain("accept control");
+    expect(bookOk.faults).toEqual([]);
+    expect(bookFlat.faults.join("\n")).toContain("accept control");
+    expect(unreadRes.faults).toEqual([
+      expect.stringContaining("hidden values had no effect on any accept control"),
     ]);
+    expect(decidedRead.faults).toEqual([]);
+    expect(decidedRead.read?.reading.notes).toEqual([]);
+    expect(noteRead.faults).toEqual([]);
+    expect(noteRead.read?.reading.notes).toEqual([]);
+    expect(partialRead.faults).toEqual([]);
+    expect(partialRead.read?.reading.notes).toEqual([]);
   });
 
   it("dispatches declared host tools via host-tools.json manifest, keeps drafted checks author-decided, pins real binaries, and refuses missing/undeclared tools", async () => {
@@ -509,7 +540,7 @@ describe("staging and offline reading", () => {
     ]);
     // Host-forwarded tools in a drafted exam never bypass Rule 10 / `--hitl` admission.
     expect(authoredFaults(checks, new Set())).toHaveLength(2);
-    expect(ok.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
+    expect(ok.read?.reading.notes).toEqual([]);
     const staged = stageExam(dir, hostEngined);
     // No shell wrappers are generated in `.toolchain/bin/`; provenance lives in `host-tools.json`.
     expect(existsSync(join(staged.bundle, TOOL_TREE_DIR, "bin", "bash"))).toBe(false);
@@ -529,8 +560,8 @@ describe("staging and offline reading", () => {
       expect(engine.sha256).toBe(sha256OfFile(realpathSync(engine.path)));
     }
 
-    // Even a non-shell host executable (`git`) stays `author` when forwarded via `host-tools.json`,
-    // whereas a binary physically installed inside `.toolchain/bin/` hashes its target and updates cleanly.
+    // Even a non-shell host executable (`git`) stays `author` when forwarded via `host-tools.json`; a
+    // binary installed in `.toolchain/bin/` pins its target's hash.
     const hostGit: Draft = {
       ...SOUND,
       checks: [{ id: "check-product", rule: "R1", assertion: "via host git", tools: ["git"] }],
@@ -570,9 +601,9 @@ describe("staging and offline reading", () => {
     expect(before?.sha256).toBeDefined();
     expect(after?.sha256).not.toBe(before?.sha256);
 
-    // Examiner-installed `.toolchain/` executables (and sibling files) freeze into the offline verifier cell
-    // ahead of host PATH, stay `author` under Rule 10 (`origin: "draft"`), refresh on retries, and run
-    // offline after `home` is deleted.
+    // Examiner-installed `.toolchain/` executables freeze into the offline verifier cell ahead of host
+    // PATH, stay `author` under Rule 10 (`origin: "draft"`), refresh on retries, and run after `home`
+    // is deleted.
     const home = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-toolchain-")));
     const customDir = join(root, "custom-toolchain");
     const binDir = join(home, TOOL_TREE_DIR, "bin");
@@ -646,9 +677,8 @@ describe("staging and offline reading", () => {
     expect(() => stageExam(join(root, "symlink-tree"), customDraft, badHome)).toThrow("must be a directory");
     rmSync(badHome, { recursive: true, force: true });
 
-    // Static evaluator scanner: strings inside `${...}`, nested templates, division, and method
-    // calls obj.fetch()/obj.require() do not false-positive, while template escapes, bare
-    // Date()/Function(), indirect eval, process destructuring/optional chaining, and import() are caught.
+    // Strings inside `${...}`, nested templates, division and `obj.fetch()` are no finding; template
+    // escapes, bare `Date()` and `Function()`, indirect eval, process destructuring and `import()` are.
     for (const clean of [
       'export const checks = { "check-product": (r) => `${r.artifact.answer || "Date.now()"}`.length > 0 };\n',
       'export const checks = { "check-product": () => `outer ${`inner Math.random()`}`.length > 0 };\n',
@@ -688,47 +718,81 @@ describe("staging and offline reading", () => {
   });
 });
 
-describe("campaign draft lifecycle", () => {
+const PROMPTED: Parameters<typeof nextAction>[1] = {
+  patience: 3,
+  unprepared: false,
+  practice: null,
+  wanted: { target: 12, level: 0.02, solves: 2 },
+  pastStop: null,
+  prompted: true,
+  admits: [],
+  left: null,
+  promotions: null,
+};
+
+describe.concurrent("campaign draft lifecycle", () => {
   it("ends the campaign after three failed drafts across two sessions", async () => {
     await expect(draftCommand([])).rejects.toThrow("name --name, --session and --examiner");
     const name = `${STEM}-spent`;
     const flags = opened(name);
-    const unformed: Draft = { ...SOUND, answerFormat: { type: "string" } };
-    await draftCommand([...flags, "--session", "d-1"], putting(unformed));
-    await draftCommand([...flags, "--session", "d-2"], putting(unformed, unformed));
+    const wrong: Draft = {
+      ...SOUND,
+      reject: [{ task: 0, answer: { answer: "12" }, check: "check-product" }],
+    };
+    await draftCommand([...flags, "--session", "d-1"], putting(wrong));
+    await draftCommand([...flags, "--session", "d-2"], putting(wrong, wrong));
     const events = read(campaignLog(name));
     expect(draftOf(events)).toBeNull();
-    const decided = decide(events, {
-      patience: 3,
-      unprepared: false,
-      practice: null,
-      wanted: { target: 12, level: 0.02, solves: 2 },
-      pastStop: null,
-      prompted: true,
-      admits: [],
-      left: null,
-      promotions: null,
-    });
+    const decided = nextAction(events, PROMPTED);
     expect(decided).toMatchObject({ move: "end", ending: "exam" });
     expect(decided.why).toContain("3 drafts in 2 sessions did not stand");
   });
 
   it("freezes unattended drafts matching openCampaign and holds --hitl drafts for operator admission", async () => {
-    for (const attended of [false, true]) {
-      const name = `${STEM}-kept-${String(attended)}`;
-      await draftCommand([...opened(name, attended), "--session", "d-1"], putting(SOUND));
-      const events = read(campaignLog(name));
-      const readings = events.filter(({ kind }) => kind === "checker.read");
-      expect(readings).toHaveLength(1);
-      expect(readings[0]?.data).toMatchObject({ admitted: attended ? [] : ["check-product"] });
-      expect(readings[0]?.data.faults).toEqual(
-        attended ? [expect.stringContaining("--admit check-product")] : [],
+    await Promise.all(
+      [false, true].map(async (attended) => {
+        const name = `${STEM}-kept-${String(attended)}`;
+        await draftCommand([...opened(name, attended), "--session", "d-1"], putting(SOUND));
+        const events = read(campaignLog(name));
+        const readings = events.filter(({ kind }) => kind === "checker.read");
+        expect(readings).toHaveLength(1);
+        expect(readings[0]?.data).toMatchObject({ admitted: attended ? [] : ["check-product"] });
+        expect(readings[0]?.data.faults).toEqual(
+          attended ? [expect.stringContaining("--admit check-product")] : [],
+        );
+        const frozen = events.filter(({ kind }) => kind === "contract.frozen");
+        expect(frozen).toHaveLength(attended ? 0 : 1);
+        const { checker } = await openCampaign(packNamed({ name }));
+        expect(readings[0]?.data).toMatchObject({ ...checker });
+        if (!attended) expect(frozen[0]?.data).toMatchObject({ ...checker });
+      }),
+    );
+  });
+
+  it("freezes no exam whose audit ended on an error: ends on a refusal no retry clears, redrafts after a usage limit", async () => {
+    const audited = (name: string, error: string) =>
+      draftCommand(
+        [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
+        putting(SOUND),
+        async () => {
+          append(campaignLog(name), "referee.draft", { session: "d-1", pass: 1, verdict: "skipped", error });
+          return { verdict: "skipped", findings: [], summary: error, probes: [], error };
+        },
       );
-      const frozen = events.filter(({ kind }) => kind === "contract.frozen");
-      expect(frozen).toHaveLength(attended ? 0 : 1);
-      const { checker } = await openCampaign(packNamed({ name }));
-      expect(readings[0]?.data).toMatchObject({ ...checker });
-      if (!attended) expect(frozen[0]?.data).toMatchObject({ ...checker });
+    const [refused, limited] = [`${STEM}-audit-refused`, `${STEM}-audit-limited`];
+    await Promise.all([
+      audited(refused, "Codex error: The model is not supported when using Codex with a ChatGPT account"),
+      expect(audited(limited, "Codex error: The usage limit has been reached")).rejects.toThrow(
+        "usage limit",
+      ),
+    ]);
+    for (const [name, next] of [
+      [refused, { move: "end", ending: "exam" }],
+      [limited, { move: "draft" }],
+    ] as const) {
+      const events = read(campaignLog(name));
+      expect(events.filter(({ kind }) => kind === "contract.frozen")).toHaveLength(0);
+      expect(nextAction(events, PROMPTED)).toMatchObject(next);
     }
   });
 
@@ -739,56 +803,8 @@ describe("campaign draft lifecycle", () => {
       pass: number | undefined;
       prior: readonly string[] | undefined;
     }[] = [];
-    await draftCommand(
-      [
-        ...opened(defectName, false, { model: SOLVER, effort: "low" }),
-        "--session",
-        "d-1",
-        "--examiner-effort",
-        "high",
-      ],
-      putting(SOUND, SOUND, SOUND),
-      async (reader, target) => {
-        seenPasses.push({ effort: reader.effort, pass: target.pass, prior: target.priorFindings });
-        return {
-          verdict: "defects",
-          findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "wrong value passed" }],
-          summary: "vacuous check",
-          probes: [],
-        };
-      },
-    );
-    expect(seenPasses).toHaveLength(2);
-    expect(seenPasses[0]).toEqual({ effort: "low", pass: 1, prior: [] });
-    expect(seenPasses[1]?.effort).toBe("low");
-    expect(seenPasses[1]?.pass).toBe(2);
-    expect(seenPasses[1]?.prior?.[0]).toContain("vacuous-pass on ex-001");
-    expect(draftOf(read(campaignLog(defectName)))).toEqual(SOUND);
-
-    for (const verdict of ["sound", "skipped"] as const) {
-      const name = `${STEM}-audit-${verdict}`;
-      let calls = 0;
-      await draftCommand(
-        [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
-        putting(SOUND),
-        async () => {
-          calls += 1;
-          return { verdict, findings: [], summary: verdict, probes: [] };
-        },
-      );
-      expect(calls).toBe(1);
-      expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
-    }
-
     const noReviewer = `${STEM}-audit-none`;
     let skippedCalls = 0;
-    await draftCommand([...opened(noReviewer), "--session", "d-1"], putting(SOUND), async () => {
-      skippedCalls += 1;
-      return { verdict: "sound", findings: [], summary: "unused", probes: [] };
-    });
-    expect(skippedCalls).toBe(0);
-
-    // Deterministic $0 probe replay blocks unfixed revisions without spending an LLM pass and gates post-cap drafts too.
     const replayName = `${STEM}-audit-replay`;
     const holeOne: Draft = {
       ...SOUND,
@@ -812,28 +828,74 @@ describe("campaign draft lifecycle", () => {
       verifiedFixed: readonly string[] | undefined;
       prior: readonly string[] | undefined;
     }[] = [];
-    const replayed = await draftCommand(
-      [...opened(replayName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "5"],
-      // Try 1: holeOne -> LLM Pass 1 flags hole1. Try 2: holeOne again -> $0 replay blocks (no LLM call!).
-      // Try 3: holeTwo -> $0 replay confirms hole1 fixed, LLM Pass 2 flags hole2.
-      // Try 4: holeTwo again -> $0 replay blocks even after MAX_DRAFT_AUDITS = 2!
-      // Try 5: SOUND -> $0 replay confirms hole2 fixed -> draft stands.
-      putting(holeOne, holeOne, holeTwo, holeTwo, SOUND),
-      async (_reader, target) => {
-        replayCalls.push({
-          pass: target.pass,
-          verifiedFixed: target.verifiedFixed,
-          prior: target.priorFindings,
-        });
-        const hole = target.pass === 1 ? "hole1" : "hole2";
-        return {
-          verdict: "defects",
-          findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: `${hole} passed` }],
-          summary: `${hole} vacuous`,
-          probes: [probeRow(hole)],
-        };
-      },
-    );
+    const [replayed] = await Promise.all([
+      draftCommand(
+        [...opened(replayName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "5"],
+        // Five puts: audit 1 flags the first hole, and its repeat is blocked by the free probe replay;
+        // the second hole passes replay and audit 2 flags it; its repeat is blocked by replay past
+        // `MAX_DRAFT_AUDITS`; SOUND stands.
+        putting(holeOne, holeOne, holeTwo, holeTwo, SOUND),
+        async (_reader, target) => {
+          replayCalls.push({
+            pass: target.pass,
+            verifiedFixed: target.verifiedFixed,
+            prior: target.priorFindings,
+          });
+          const hole = target.pass === 1 ? "hole1" : "hole2";
+          return {
+            verdict: "defects",
+            findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: `${hole} passed` }],
+            summary: `${hole} vacuous`,
+            probes: [probeRow(hole)],
+          };
+        },
+      ),
+      draftCommand(
+        [
+          ...opened(defectName, false, { model: SOLVER, effort: "low" }),
+          "--session",
+          "d-1",
+          "--examiner-effort",
+          "high",
+        ],
+        putting(SOUND, SOUND, SOUND),
+        async (reader, target) => {
+          seenPasses.push({ effort: reader.effort, pass: target.pass, prior: target.priorFindings });
+          return {
+            verdict: "defects",
+            findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "wrong value passed" }],
+            summary: "vacuous check",
+            probes: [],
+          };
+        },
+      ),
+      ...(["sound", "skipped"] as const).map(async (verdict) => {
+        const name = `${STEM}-audit-${verdict}`;
+        let calls = 0;
+        await draftCommand(
+          [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
+          putting(SOUND),
+          async () => {
+            calls += 1;
+            return { verdict, findings: [], summary: verdict, probes: [] };
+          },
+        );
+        expect(calls).toBe(1);
+        expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
+      }),
+      draftCommand([...opened(noReviewer), "--session", "d-1"], putting(SOUND), async () => {
+        skippedCalls += 1;
+        return { verdict: "sound", findings: [], summary: "unused", probes: [] };
+      }),
+    ]);
+    expect(seenPasses).toHaveLength(2);
+    expect(seenPasses[0]).toEqual({ effort: "low", pass: 1, prior: [] });
+    expect(seenPasses[1]?.effort).toBe("low");
+    expect(seenPasses[1]?.pass).toBe(2);
+    expect(seenPasses[1]?.prior?.[0]).toContain("vacuous-pass on ex-001");
+    expect(draftOf(read(campaignLog(defectName)))).toEqual(SOUND);
+    expect(skippedCalls).toBe(0);
+    // Deterministic $0 probe replay blocks unfixed revisions without spending an LLM pass and gates post-cap drafts too.
     expect(replayed).toMatchObject({ ended: "stands", puts: 5 });
     expect(replayCalls).toHaveLength(2);
     expect(replayCalls[0]).toEqual({ pass: 1, verifiedFixed: [], prior: [] });
@@ -841,5 +903,136 @@ describe("campaign draft lifecycle", () => {
     expect(replayCalls[1]?.prior).toEqual([]);
     expect(replayCalls[1]?.verifiedFixed?.[0]).toContain("hole1 passed");
     expect(draftOf(read(campaignLog(replayName)))).toEqual(SOUND);
+
+    const deletedName = `${STEM}-audit-deleted-example`;
+    const fourExamples: Draft = {
+      ...holeOne,
+      tasks: [...holeOne.tasks, { family: "product", publicInput: { base: 5 }, hidden: null }],
+      accept: [...holeOne.accept, { task: 3, answer: { answer: "30" } }],
+    };
+    const probeFour = {
+      ...probeRow("hole1"),
+      task: "ex-004",
+      taskDigest: taskContentDigest({
+        taskId: "ex-004",
+        family: "product",
+        publicInput: { base: 5 },
+        hidden: null,
+      }),
+    };
+    const reorderedFour: Draft = {
+      ...holeOne,
+      tasks: [{ family: "product", publicInput: { base: 5 }, hidden: null }, ...holeOne.tasks.slice(0, 2)],
+      accept: [
+        { task: 0, answer: { answer: "30" } },
+        ...holeOne.accept.slice(0, 2).map((c, idx) => ({ ...c, task: idx + 1 })),
+      ],
+    };
+    let deletedAuditCalls = 0;
+    const deletedRun = await draftCommand(
+      [...opened(deletedName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "4"],
+      putting(fourExamples, reorderedFour, holeOne, SOUND),
+      async () => {
+        deletedAuditCalls += 1;
+        return {
+          verdict: "defects",
+          findings: [{ kind: "vacuous-pass", task: "ex-004", probe: 1, reason: "hole1 passed on ex-004" }],
+          summary: "vacuous on ex-004",
+          probes: [probeFour],
+        };
+      },
+    );
+    expect(deletedRun).toMatchObject({ ended: "finished", puts: 4 });
+    expect(deletedAuditCalls).toBe(1);
+    expect(draftOf(read(campaignLog(deletedName)))).toBeNull();
+    const deletedLog = read(campaignLog(deletedName));
+    expect(
+      deletedLog.some(
+        ({ kind, data }) =>
+          kind === "draft.call" && isString(data.text) && data.text.includes("prior probe still reproduces"),
+      ),
+    ).toBe(true);
+    expect(
+      deletedLog.some(
+        ({ kind, data }) =>
+          kind === "draft.call" &&
+          isString(data.text) &&
+          data.text.includes("example task ex-004 is missing"),
+      ),
+    ).toBe(true);
+  });
+
+  it("validates, stages, and reads weighted rubric objectives with scores export and single-owner rubric faults", async () => {
+    const rubricObjective = {
+      quantity: "weighted domain score",
+      direction: "higher" as const,
+      scale: "unit" as const,
+      items: [
+        { id: "accuracy", weight: 3 },
+        { id: "constant-item", weight: 1 },
+      ],
+    };
+    const rubricDraft: Draft = {
+      ...SILENT,
+      objective: rubricObjective,
+      tasks: SOUND.tasks.map((t, i) => ({ ...t, hidden: { expected: (i + 2) * 6 } })),
+      evaluator: [
+        'export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) };',
+        "export const scores = {",
+        "  accuracy: (req) => (Number(req.artifact.answer) === req.hidden.expected ? 1 : 0),",
+        '  "constant-item": () => 1,',
+        "};",
+      ].join("\n"),
+    };
+    expect(draftFaults(rubricDraft)).toEqual([]);
+    expect(draftFaults({ ...rubricDraft, evaluator: SOUND.evaluator })[0]).toContain("export `scores`");
+    expect(
+      draftFaults({
+        ...rubricDraft,
+        evaluator: `${rubricDraft.evaluator}\nexport const objective = () => 1;`,
+      })[0],
+    ).toContain("rather than an `objective` export");
+    expect(
+      draftFaults({
+        ...rubricDraft,
+        objective: { ...rubricObjective, direction: "lower" },
+      })[0],
+    ).toContain('direction "higher"');
+    expect(
+      draftFaults({
+        ...rubricDraft,
+        objective: {
+          quantity: rubricObjective.quantity,
+          direction: "higher",
+          items: rubricObjective.items,
+        },
+      })[0],
+    ).toContain('scale "unit"');
+    expect(
+      draftFaults({
+        ...rubricDraft,
+        objective: { ...rubricObjective, items: [{ id: "constructor", weight: 1 }] },
+      })[0],
+    ).toContain("invalid item constructor");
+    const judgedDraft: Draft = {
+      ...rubricDraft,
+      objective: {
+        ...rubricObjective,
+        items: [
+          ...rubricObjective.items,
+          { id: "clarity", weight: 1, kind: "judge", criterion: "The rationale explains each step plainly." },
+        ],
+      },
+    };
+    expect(draftFaults(judgedDraft, "code-only")[0]).toContain("no cross-family judging reviewer admitted");
+
+    const staged = stageExam(join(root, "rubric-stage"), rubricDraft);
+    const brief = readPack(staged.bundle).brief;
+    expect(brief.objective).toEqual(rubricObjective);
+    const readRes = await draftReading(join(root, "rubric-read"), rubricDraft, 2);
+    expect(readRes.faults).toEqual([]);
+    expect(
+      readRes.read?.reading.notes.some((n) => n.includes("rubric item constant-item stayed within 1%")),
+    ).toBe(true);
   });
 });

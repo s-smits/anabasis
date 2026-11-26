@@ -3,19 +3,8 @@ import { basename } from "./path.ts";
 import { capturedSpawn, runtimeProcess } from "./process.ts";
 import { errorCode, errorMessage, type RuntimeSignal } from "./runtime-values.ts";
 
-/**
- * `process.kill` as it was at load. Every group signal below goes through this reference rather
- * than through the global at call time, because whatever replaces that global also decides whether
- * a surviving process group is reported, and a replacement that throws answers that there is
- * none, which is the answer that lets a verifier accept output while a child keeps running.
- */
 const processKill = runtimeProcess.kill.bind(runtimeProcess);
 
-/**
- * How much output a captured command may produce before it is stopped. Bun 1.4.2 caps nothing by
- * default, so without this a runaway command is a host process holding its entire output in
- * memory.
- */
 export const CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
 const EMPTY = new Uint8Array();
 const ENCODER = new TextEncoder();
@@ -33,10 +22,6 @@ interface RunSyncOptions {
   maxBuffer?: number;
 }
 
-/**
- * `exitCode` is null when a signal, a timeout or a failed spawn ended the command, and `cappedAt`
- * carries the `maxBuffer` a capture reached, whichever ending the child itself got.
- */
 interface RunSyncResult {
   cappedAt: number | null;
   exitCode: number | null;
@@ -45,7 +30,6 @@ interface RunSyncResult {
   stderr: Uint8Array;
 }
 
-/** The exact shape `runSync` hands to `Bun.spawnSync`, mutable so optional keys stay absent. */
 interface SpawnSyncOptions {
   cmd: string[];
   stdin: Uint8Array;
@@ -57,12 +41,6 @@ interface SpawnSyncOptions {
   maxBuffer?: number;
 }
 
-/**
- * Signal one exact controller-owned process identity: its group first, since reaching the
- * descendants a solve left behind is the whole point, then the process alone. The fallback is
- * there because a child does not always lead a group (bubblewrap's namespace init is the case
- * this meets) and without it such a child would be signalled by nobody.
- */
 export function killProcessGroupId(processGroupId: number, signal: RuntimeSignal): boolean {
   if (!Number.isSafeInteger(processGroupId) || processGroupId <= 1) return false;
   for (const target of [-processGroupId, processGroupId]) {
@@ -76,7 +54,6 @@ export function killProcessGroupId(processGroupId: number, signal: RuntimeSignal
   return false;
 }
 
-/** Kill the child's whole process group, falling back to the child alone when no group exists. */
 export function killProcessGroup(child: Bun.Subprocess, signal: RuntimeSignal): void {
   if (killProcessGroupId(child.pid, signal)) return;
   try {
@@ -86,11 +63,6 @@ export function killProcessGroup(child: Bun.Subprocess, signal: RuntimeSignal): 
   }
 }
 
-/**
- * Whether any process still belongs to the group, or the process itself is still there. Signal 0
- * runs the permission check and delivers nothing, so the question can be asked of a running child
- * without disturbing it.
- */
 export function processGroupExists(processGroupId: number): boolean {
   if (!Number.isSafeInteger(processGroupId) || processGroupId <= 1) return false;
   return [-processGroupId, processGroupId].some((target) => {
@@ -103,11 +75,6 @@ export function processGroupExists(processGroupId: number): boolean {
   });
 }
 
-/**
- * Terminate one exact group and wait until the host agrees it is gone, escalating from SIGTERM to
- * SIGKILL. The id form exists because isolation can put the worker below a wrapper process, so the
- * group to reap is one a receipt names rather than one a `Bun.Subprocess` in hand leads.
- */
 export async function terminateAndReapProcessGroupId(processGroupId: number): Promise<boolean> {
   for (const [signal, waitMs] of REAP_STEPS) {
     if (!processGroupExists(processGroupId)) return true;
@@ -119,14 +86,6 @@ export async function terminateAndReapProcessGroupId(processGroupId: number): Pr
   return !processGroupExists(processGroupId);
 }
 
-/**
- * Interrupt the group's leader alone, give it `graceMs` to end the rest itself, and then reap the
- * group as `terminateAndReapProcessGroupId` does. It is the answer Bun's own CI runner gives a stalled
- * process (`spawnWithTimeout` with `gracefulTimeout` in oven-sh/bun `scripts/runner.node.ts`):
- * SIGTERM to the process, and SIGKILL 15 s later. A leader that coordinates workers can use that
- * time to stop them and report what it was doing; the reap follows either way, for whatever it
- * left behind.
- */
 export async function interruptAndReapProcessGroup(child: Bun.Subprocess, graceMs: number): Promise<boolean> {
   try {
     child.kill("SIGTERM");
@@ -137,14 +96,6 @@ export async function interruptAndReapProcessGroup(child: Bun.Subprocess, graceM
   return await terminateAndReapProcessGroupId(child.pid);
 }
 
-/**
- * Run a command to completion and capture both streams. A non-zero exit, a signal and a command
- * that never started are all reported rather than thrown, because the callers that want a throw
- * have `runTextSyncOrThrow` below, while the rest ask questions whose answer may be no: `git config
- * --get` exits 1 on a key nobody set, `git rev-parse` fails outside a repository, and a cleanup
- * `git worktree remove` may find nothing to remove. Each of those is the result the caller
- * records, not an interruption of it.
- */
 export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): RunSyncResult {
   const { input } = options;
   const spawnOptions: SpawnSyncOptions = {
@@ -159,49 +110,34 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
   };
   try {
     const result = Bun.spawnSync(spawnOptions);
-    // Bun enforces `maxBuffer` by killing the child, so which ending the child gets is a race it
-    // can win: it can finish first and exit zero with a short capture, and nothing in the exit
-    // code or the signal then says the output was cut. The captured length is the one fact that
-    // reads the same on both sides of that race, so it decides: a capture at or past the cap is
-    // capped. The race shows up on a loaded host, where the process reaches the cap and exits
-    // before the kill lands.
     const { maxBuffer } = options;
     const cappedAt = maxBuffer !== undefined && result.stdout.length >= maxBuffer ? maxBuffer : null;
     return {
       cappedAt,
       exitCode: result.signalCode == null ? result.exitCode : null,
-      // Bun 1.4.3 names a signal it knows and numbers one it does not.
       signal: result.signalCode == null ? null : String(result.signalCode),
       stdout: result.stdout,
       stderr: result.stderr,
     };
   } catch (error) {
-    // A command that never started produced no streams at all, so the spawn error is put where a
-    // reader already looks. Without it the caller holds `exitCode: null` and two empty buffers,
-    // which is indistinguishable from a command the host killed.
     const reason = ENCODER.encode(errorMessage(error));
     return { cappedAt: null, exitCode: null, signal: null, stdout: EMPTY, stderr: reason };
   }
 }
 
-/** How a command that did not exit zero ended, as both runners name it. */
 function endingOf({ exitCode, signal }: { exitCode: number | null; signal: string | null }): string {
   if (exitCode !== null) return `exited ${exitCode}`;
   return signal === null ? "could not start" : `died on ${signal}`;
 }
 
-/** Decode captured command bytes as UTF-8 text. */
 export function decodeOutput(bytes: Uint8Array): string {
   return DECODER.decode(bytes);
 }
 
-/** A command's stdout as trimmed text where it exited zero, and null for any other ending: the
- *  answer to a question whose answer may be no (`runSync`), such as `git config --get`. */
 export function zeroExitText(result: RunSyncResult): string | null {
   return result.exitCode === 0 ? decodeOutput(result.stdout).trim() : null;
 }
 
-/** Run a command and return its stdout as UTF-8 text, throwing with the captured stderr on any failure. */
 export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): string {
   const result = runSync(cmd, options);
   if (result.cappedAt !== null || result.exitCode !== 0) {
@@ -211,13 +147,37 @@ export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptio
   return decodeOutput(result.stdout);
 }
 
-/**
- * `runSync` for a caller that has more to do while the command runs: the same capture and the same
- * report, awaited. A synchronous spawn holds the event loop until the command exits, so commands
- * that could run at once run one after another, as the table of runs refreshing remote copies one
- * rsync at a time would. The streams come back as text, and a
- * command that never started reports its spawn error as its stderr, as `runSync` does.
- */
+const PIPES_AFTER_EXIT_MS = 1000;
+
+async function drainBounded(stream: ReadableStream<Uint8Array>, exited: Promise<number>): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let done = false;
+  let text = "";
+  const cut = (): void => {
+    reader.cancel().catch(() => undefined);
+  };
+  exited.then(
+    () => {
+      if (done) return;
+      timer = setTimeout(cut, PIPES_AFTER_EXIT_MS);
+      timer.unref();
+    },
+    () => undefined,
+  );
+  try {
+    for (let next = await reader.read(); !next.done; next = await reader.read()) {
+      text += decoder.decode(next.value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    done = true;
+    clearTimeout(timer);
+    reader.releaseLock();
+  }
+}
+
 export async function runCaptured(
   cmd: readonly string[],
   options: Pick<RunSyncOptions, "cwd" | "env" | "timeout"> = {},
@@ -232,8 +192,8 @@ export async function runCaptured(
       ...keyIfDefined("timeout", options.timeout),
     });
     const [stdout, stderr, code] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
+      drainBounded(child.stdout, child.exited),
+      drainBounded(child.stderr, child.exited),
       child.exited,
     ]);
     const signal = child.signalCode == null ? null : String(child.signalCode);
@@ -243,7 +203,6 @@ export async function runCaptured(
   }
 }
 
-/** `runCaptured`, returning stdout and throwing with the captured stderr on any ending but a zero exit. */
 export async function runTextOrThrow(
   cmd: readonly string[],
   options: Parameters<typeof runCaptured>[1] = {},

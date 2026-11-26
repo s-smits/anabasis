@@ -9,7 +9,6 @@ import type {
   ScoredTask,
   Sensitivity,
   SolveRow,
-  Tally,
 } from "../models.ts";
 import { shortHash } from "../models.ts";
 import { type Navigation, useKept } from "../route.ts";
@@ -19,25 +18,15 @@ import { duration, money, percent, time } from "./format.ts";
 import { kindOf, standingOf } from "./moves-list.tsx";
 import { OUTCOMES } from "./outcome.ts";
 import { RulingsCell, rulingLabel } from "./solve-rows.tsx";
-import { plural } from "../../../../src/meta/text.ts";
+import { plural, tallyText } from "../../../../src/meta/text.ts";
 
-/*
- * One comparison: what it was, what its scored tasks came to, and each task's solves on both sides.
- * The outcome split uses the six outcomes of `outcome.ts`, the colours of the Campaign pane's bars,
- * each with its label and count beside it; a legend entry filters the tasks to that outcome. The
- * terms are the ones the comparison fixed before its first solve. The tasks its report left out of the split, disputed,
- * short of solves or withdrawn, are named under it, so that the parts sum to the tasks it fixed. A
- * comparison that has not reported lists the tasks its start fixed with their solves so far, and
- * no outcome. Its rulings go by kind only while none is withheld (`Rulings`).
- */
+// One comparison: what it was, what its scored tasks came to, and each task's solves on both sides. The
+// outcome split uses `outcome.ts`'s colours with a label and count each, and a legend entry filters the
+// tasks. The tasks its report left out (disputed, short of solves or withdrawn) are named under it, so
+// the parts sum to the tasks it fixed. Its rulings go by kind only while none is withheld (`Rulings`).
 
 const RULING_KINDS = ["earned", "check-defect", "unclear"] as const;
 
-/** A tally in words, in the page's order. */
-const tallyWords = ({ wins, losses, ties }: Tally): string =>
-  `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
-
-/** A comparison's rulings in words: by kind, or how many were ruled while one is withheld. */
 function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
   if (rulings.withheld) {
     return `${plural(rulings.ruled, "rejection")} ruled; the kinds stay hidden while any ruling is withheld`;
@@ -45,12 +34,9 @@ function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
   return RULING_KINDS.map((kind) => `${String(rulings.kinds[kind])} ${rulingLabel(kind)}`).join(" · ");
 }
 
-/** A side's solves of one task in a scored task's row, each opened on a click, with what they
- *  billed. Where every solve ended alike the ending is said once with its count, and each solve is a
- *  numbered chip, since a comparison's tasks would otherwise draw a hundred chips that each say
- *  "valid". The
- *  ending alone would give every chip of a table one of four names, so each is named for its solve
- *  too. */
+/** A side's solves of one task, each opened on a click, with what they billed. Where every solve
+ *  ended alike the ending is said once with its count and each solve is a numbered chip, rather
+ *  than a hundred chips each saying "valid". */
 function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: string) => void }) {
   if (rows.length === 0) return <span className="ana-faint">no solve</span>;
   const labels = new Set(rows.map((row) => endingOf(row.ending).label));
@@ -86,7 +72,6 @@ function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: 
   );
 }
 
-/** The outcome split as one bar of counts and a legend that filters the tasks. */
 function OutcomeSplit({
   detail,
   chosen,
@@ -152,12 +137,10 @@ function OutcomeSplit({
   );
 }
 
-/** What the comparison read, beside the split: the tally and its test, each side by itself, the
- *  rulings by kind and the reference against itself where it was read. */
 function Readings({ detail, reading }: { detail: ComparisonDetail; reading: CampaignReading }) {
   const { bar } = detail;
   const facts = [
-    ["Tally", bar.tally === null ? "none" : tallyWords(bar.tally)],
+    ["Tally", bar.tally === null ? "none" : tallyText(bar.tally)],
     ["Sign test", bar.p === null ? "not made" : `${pText(bar.p)} at level ${String(bar.level)}`],
     ...(bar.carried === null
       ? []
@@ -180,22 +163,22 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
     ...(bar.sets === null
       ? []
       : ([
-          ["Frontier", `${tallyWords(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`],
+          ["Frontier", `${tallyText(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`],
           [
             "Retained",
             bar.sets.retained === "unmeasured"
               ? "unmeasured: no retained task was tallied, which is not no loss"
-              : tallyWords(bar.sets.retained),
+              : tallyText(bar.sets.retained),
           ],
         ] as const)),
     ["Rulings", rulingsText(bar)],
     ...(bar.noise === null
       ? []
-      : ([["Reference against itself", `${tallyWords(bar.noise.tally)} · ${pText(bar.noise.p)}`]] as const)),
+      : ([["Reference against itself", `${tallyText(bar.noise.tally)} · ${pText(bar.noise.p)}`]] as const)),
   ] as const;
   const { terms } = detail;
   const termFacts = [
-    ["Solves a side", String(terms.solves)],
+    ["Rollouts per arm", String(terms.solves)],
     ["Dollar cap", money(terms.cap)],
     ["Model turns", terms.modelTurns === null ? "unlimited" : String(terms.modelTurns)],
     ["Objective", terms.objective === null ? "none" : `${terms.objective.direction} is better`],
@@ -228,8 +211,8 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
   );
 }
 
-/** What the report says beside its test of what the test could see, as label and value: how much
- *  a step has to be to show, what an attempt risks, and what the tally's counts hide. */
+/** What the report says of what its test could see: how large a step must be to show, what an
+ *  attempt risks, and what the tally's counts hide. */
 function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
   const { frontier, informative, overlap, billed, noise, families } = seen;
   return [
@@ -291,8 +274,6 @@ function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
   ];
 }
 
-/** The columns of a comparison's tasks: each sorts, and the outcome and the measure that carried it
- *  narrow the list (`Table`). */
 function scoredColumns(detail: ComparisonDetail, navigation: Navigation): readonly Column<ScoredTask>[] {
   const openSolve = (id: string) => enter(navigation, { solve: id });
   const outcomeOf = (task: ScoredTask) => OUTCOMES.find((each) => each.outcome === task.outcome);

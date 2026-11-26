@@ -11,9 +11,9 @@ import {
 } from "@earendil-works/pi-ai";
 import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { draftOf } from "../src/examiner/draft.ts";
-import { heard } from "../src/examiner/record.ts";
+import { taskHistory } from "../src/examiner/record.ts";
 import { type Ask, examine } from "../src/examiner/session.ts";
-import { examinerDirs, inExaminerWall } from "../src/examiner/shell.ts";
+import { examinerDirs, inExaminerSandbox } from "../src/examiner/shell.ts";
 import { writing } from "../src/examiner/write.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
 import { append, read } from "../src/kernel/log.ts";
@@ -54,24 +54,20 @@ import {
 import { containing, present } from "./helpers/matchers.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 
-/** The event a tool call of the Examiner writes, with the text it was told. */
 const CALLED = "exam.call";
 const TASK_ADMISSION = "task.gate";
 const PROPOSED = "task.proposed";
 const TASK_STATE = "task.state";
 const EXAM_FINISHED = "exam.finished";
 const PROPOSE = "propose_tasks";
-/** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";
 const GOOD = { answer: "42", unit: "N" };
-/** What enters the exam, and by which tool, as each mode's shell is told it. */
 const ENTERS = {
   draft:
     "A draft enters the exam through draft_exam, and .toolchain/ in your home is frozen beside it for declared verifier tools; nothing else in your home enters the exam",
   write: "Nothing in your home enters the exam: a task enters it through propose_tasks alone",
 } as const;
 const TOOL_USE = { stopReason: "toolUse" } as const;
-/** A verifier that passes every answer whose `answer` is "42" and refuses any other. */
 const verify: Verifier = async (_task, answer) =>
   asRecord(answer)?.answer === "42" ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] };
 const tried = (base: number, answer: JsonValue = GOOD, hidden: JsonValue = { seed: 1 }) =>
@@ -80,7 +76,6 @@ const tried = (base: number, answer: JsonValue = GOOD, hidden: JsonValue = { see
 setDefaultTimeout(120_000);
 afterAll(sweep);
 
-/** A collection whose output tokens alone bill `cost` dollars at the model's frozen price. */
 function billing(models: ReturnType<ReturnType<typeof seat>["request"]["models"]>, cost: number) {
   // SAFETY: the inherited instance supplies every method; streamSimple alone is replaced.
   const metered = Object.create(models) as typeof models;
@@ -159,13 +154,10 @@ describe("a session of any mode", () => {
       expect(finished.of(`${KIND[mode]}.finished`)).toMatchObject([
         { session: finished.request.id, ended: "finished", note: NOTE, crash: null },
       ]);
-      // What it billed is in its last event, and so in the campaign's total.
       expect(billedAll(read(finished.log))).toBeGreaterThan(before);
-      // Without a wall it is given no shell.
       expect(finished.sent[0]).not.toContain('{"name":"bash"');
       expect(finished.sent[0]).not.toContain("Nothing in your home enters the exam");
 
-      // A put that does not end the session: a draft with a fault, one task of many.
       const turned = seat(mode, [PUT[mode], finish]);
       const { limits } = turned.request;
       const faulted = {
@@ -176,7 +168,6 @@ describe("a session of any mode", () => {
       expect(await examine(faulted)).toMatchObject({ ended: "turns", puts: 1 });
       expect(turned.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "turns", turns: 1, crash: null }]);
 
-      // The faux provider cannot be cut short, so a late reply ends the session at its deadline, and no crash.
       const slow: FauxResponseStep = () =>
         new Promise((resolve) => {
           setTimeout(() => resolve(finish), 600);
@@ -204,8 +195,6 @@ describe("a session of any mode", () => {
         { ended: "crashed", crash: limit, note: null },
       ]);
 
-      // A budget with nothing over its reserve: the first turn's bill takes it under, and no second
-      // turn is asked for.
       const spent = seat(mode, [fauxAssistantMessage("One turn."), fauxAssistantMessage("Never asked for.")]);
       append(spent.log, "campaign.opened", { budget: { dollars: 0.1, reserve: 0.1 } });
       const metered = billing(spent.request.models(), 0.15);
@@ -241,7 +230,6 @@ describe("a session of any mode", () => {
       const s = seat(mode, [
         bash("echo noted > note.txt"),
         call("read", { path: "note.txt" }),
-        // The hostile cases: the repository's own file, and a write beside it.
         bash(`cat ${join(REPO, "package.json")} >/dev/null 2>&1 && echo read || echo refused`),
         bash(`(echo x > ${outside}) 2>/dev/null && echo written || echo refused`),
         call("read", { path: join(REPO, "package.json") }),
@@ -262,7 +250,6 @@ describe("a session of any mode", () => {
       ]);
       expect(existsSync(outside)).toBe(false);
       expect(existsSync(examinerDirs(s.log, s.request.id).host)).toBe(false);
-      // It is told what the shell is and how the exam is entered, and nothing about what to do with it.
       const told = s.sent[0] ?? "";
       expect(told).toContain("but no repository or private data");
       expect(told).toMatch(/It has (no )?network access: a package index (was|could not be) reached/);
@@ -277,7 +264,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     const keep = join(dirname(s.log), "examiner-home");
     mkdirSync(keep);
     writeFileSync(join(keep, "kept.txt"), "kept\n");
-    const opened = await inExaminerWall(s.request, { ...WALL, keep }, async ({ shell }) => {
+    const opened = await inExaminerSandbox(s.request, { ...WALL, keep }, async ({ shell }) => {
       writeFileSync(join(shell.dirs.home, "wrote.txt"), "wrote\n");
       append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "crashed", running: 1 });
       return readdirSync(shell.dirs.home).toSorted();
@@ -287,14 +274,14 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
   });
 
   it("carries a relative link as it stands, into the home and out of it", async () => {
-    // A venv's `python` names `python3.14` beside it; read through the session's root, which is
-    // removed when the session ends, it dangles in the next session's home.
+    // A venv's `python` names `python3.14` beside it, read through the session's root, which goes when
+    // the session ends.
     const s = seat("write", []);
     const keep = join(dirname(s.log), "examiner-home");
     mkdirSync(keep);
     writeFileSync(join(keep, "python3.14"), "python\n");
     symlinkSync("python3.14", join(keep, "python"));
-    const seen = await inExaminerWall(s.request, { ...WALL, keep }, async ({ shell }) => {
+    const seen = await inExaminerSandbox(s.request, { ...WALL, keep }, async ({ shell }) => {
       symlinkSync("python3.14", join(shell.dirs.home, "python3"));
       append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "finished", running: 0 });
       return readlinkSync(join(shell.dirs.home, "python"));
@@ -319,7 +306,6 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     mkdirSync(keep);
     writeFileSync(join(keep, "kept.txt"), "kept\n");
     await examine(s.request, { ...WALL, keep });
-    // The next session opens on what the last one wrote.
     await examine({ ...s.request, id: "x-2" }, { ...WALL, keep });
     expect(s.of(CALLED).filter(({ tool }) => tool === "bash")[1]?.text).toBe("half.txt");
     expect(readdirSync(keep)).toEqual(["half.txt"]);
@@ -339,7 +325,6 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
       {
         ...s.request,
         wanted: 1,
-        // A host killed here, while the conversation rests, keeps what the ask wrote.
         rest: async () => {
           atRest.push(readdirSync(keep));
           return null;
@@ -366,19 +351,15 @@ describe("a session that drafts an exam", () => {
       "The draft stands: it is the campaign's exam. The session ends here.",
     ]);
     expect(s.of("draft.finished")).toMatchObject([{ ended: "stands", stands: true, tries: 2 }]);
-    // Its start holds the mode's own facts beside its limits, under the log's own words.
     expect(s.of("draft.started")).toMatchObject([
       { limits: { wallSeconds: 600, turns: 12, tries: 4 }, prompt: "A fixture." },
     ]);
-    // The draft that stands is in the log whole, and a campaign reads its exam from there.
     expect(draftOf(read(s.log))).toEqual(SOUND);
     expect(s.sent[0]).toContain("This session has 10 minutes, 12 turns and 4 drafts.");
   });
 
   it("keeps its turns after a reading that outlasts its wall, since the host's reading is not its time", async () => {
     const s = seat("draft", [PUT.draft, finish]);
-    // A real clock: the reading takes longer than the session's wall, which pauses for it, so the
-    // session reads the fault and finishes rather than ending at its wall.
     const reading = async () => {
       await Bun.sleep(400);
       return ["a fault"];
@@ -390,8 +371,6 @@ describe("a session that drafts an exam", () => {
   });
 });
 
-/** What a task admission told of each draft: its id, held out or refused, and how many of the reference
- *  harness's solves were valid where it read any. The facts, without the sentence around them. */
 function admissionSaid(text: JsonValue | undefined): (string | number | null)[][] {
   return (isString(text) ? text : "").split("\n").flatMap((line) => {
     const said = /^(\S+): (held out|refused)(?:.*? validly in (\d+) of)?/.exec(line);
@@ -432,7 +411,6 @@ describe("a session that writes tasks", () => {
       expect(mode.result().held).toHaveLength(1);
       expect(s.of("task.feasible")).toMatchObject([{ answer: GOOD }]);
       results.push(s.of(PROPOSED));
-      // A reference and its full content are one duplicate once held.
       await invoke(put, "duplicate", { tasks: [instance(7), { reference: String(reference) }] });
       expect(mode.result().puts).toBe(1);
       const next = writing({ ...s.request, id: "x-2", verify }, undefined);
@@ -472,14 +450,12 @@ describe("a session that writes tasks", () => {
     for (const said of [
       "R1: The answer is the base times six.",
       "check-product (every family): The answer is six times the base.",
-      // The pack's task is listed with its outcome, as every task of the campaign is.
       "- e-1 (fixture); no valid answer on record",
       "This session has 10 minutes, 12 turns and 4 drafts to put to the gate.",
     ]) {
       expect(opening).toContain(said);
     }
     for (const unsaid of [
-      // The budget is told only where the campaign lends it; the contract declares no objective.
       "Every solve of a task is held to",
       "Objective:",
       "leave no room",
@@ -487,14 +463,12 @@ describe("a session that writes tasks", () => {
       "stronger solver",
       "said at its finish",
       "Counted from the same comparisons",
-      // Without a verifier to try an answer, it has no such tool.
       '{"name":"try_answer"',
     ]) {
       expect(opening).not.toContain(unsaid);
     }
     // How many tasks are wanted is not the Examiner's to know: no prompt and no tool text says 24.
     expect(opening.replaceAll(/"timestamp":\d+/g, "")).not.toContain("24");
-    // A task is read whole, hidden values too, and a turn with no call is nudged.
     expect(s.sent[1]).toContain(String.raw`\"seed\":5`);
     expect(s.sent[2]).toContain("You have not called finish. Propose further tasks, or call finish.");
     expect(s.of("exam.started")).toMatchObject([
@@ -509,9 +483,8 @@ describe("a session that writes tasks", () => {
     expect(s.of("exam.started")[0]?.tried).toBeUndefined();
     expect(s.of(EXAM_FINISHED)).toMatchObject([{ proposed: 0, held: [], refused: [] }]);
 
-    // The budget every solve is held to, as a fact and no target; and the next session opens with
-    // each earlier draft on its line, with no account of it by its author, and nothing of what a
-    // session said at its finish.
+    // The budget every solve is held to, as a fact and no target; the next session sees each earlier
+    // draft, with no account by its author.
     const writer = seat("write", [propose(7), finish, finish]);
     await examine(writer.request);
     const next = seat("write", [finish, finish]);
@@ -546,17 +519,13 @@ describe("a session that writes tasks", () => {
     const examined = await examine({ ...s.request, wanted: 2 });
     expect(examined).toMatchObject({ ended: "supplied", puts: 2 });
     expect(examined.held).toHaveLength(2);
-    // The second call of the turn was told that the host has what it needs, and no turn followed.
     expect(JSON.stringify(s.of(CALLED).at(-1))).toContain("The host has the tasks it needs");
     expect(s.of("exam.turn")).toHaveLength(1);
 
-    // A live session may propose one batch of one to three tasks in three turns and finish, of
-    // twelve tasks and two hundred turns it has; asked again, it may propose more after its first
-    // finish and end at its second.
+    // A live session may propose one batch and finish with most of its tasks and turns left; asked
+    // again, it may propose more and end at its second finish.
     const short = seat("write", [propose(1), finish, propose(2), finish, finish]);
     expect(await examine(short.request)).toMatchObject({ ended: "finished", puts: 2 });
-    // Each finish after a proposal is declined with the need and without a count, which an author
-    // writes towards; a second in a row ends the session.
     for (const at of [1, 3]) expect(short.of(CALLED)[at]?.text).not.toMatch(/\d/);
     expect(short.of("exam.turn")).toHaveLength(5);
 
@@ -570,8 +539,8 @@ describe("a session that writes tasks", () => {
   });
 
   it("runs the checks on an instance with an answer of its own, and keeps of a pass only that the instance has a valid answer", async () => {
-    // A hidden value sent as JSON text is read as the JSON it encodes, in a try and in a proposal:
-    // a try may send "null" where its proposal sends null, and the mark must still be kept.
+    // A hidden value sent as JSON text is read as the JSON it encodes: a try may send "null" where its
+    // proposal sends null.
     const s = seat("write", [
       tried(7),
       tried(8, { answer: "1", unit: "N" }),
@@ -592,7 +561,6 @@ describe("a session that writes tasks", () => {
       },
     });
     expect(s.sent[0]).toContain('{"name":"try_answer"');
-    // Four tries under the id `try`, and each of the three that passed again under its task's id.
     expect(asked).toEqual(
       ["try", "try", "try", "try", "x-1-001", "x-1-003", "x-1-004"].map((id) => [id, { seed: 1 }]),
     );
@@ -606,15 +574,13 @@ describe("a session that writes tasks", () => {
     expect(s.of("task.feasible")).toEqual(
       proved.map((version) => ({ version, session: "x-1", answer: GOOD })),
     );
-    const [unread] = heard(read(s.log), writtenTasks(read(s.log))).groups;
+    const [unread] = taskHistory(read(s.log), writtenTasks(read(s.log))).groups;
     expect(unread?.heading).toContain("Not yet compared");
     expect(unread?.lines[0]).toBe("x-1-001 (fixture); a valid answer on record");
   });
 
   it("keeps the objective's measure of its author's valid answer where the contract declares one, and none where it declares none", async () => {
-    // A try, its task, then two tries of the held task: the measure each pass took is kept.
     const steps = [tried(7), propose(7), tried(7), tried(7, { answer: "1", unit: "N" }), finish, finish];
-    // The provisional try, the recheck under the task's final id, the later try.
     const measures = [3.5, 3.25, 2.25];
     const run = async (declared: boolean) => {
       const s = seat("write", steps);
@@ -640,18 +606,14 @@ describe("a session that writes tasks", () => {
       objective: { quantity: "mass", direction: "lower", measure },
     });
     expect(declared.of("task.feasible")).toEqual([kept(3.25), kept(2.25)]);
-    // The verifier measured, but the contract declares no objective: the record is the version.
     const undeclared = await run(false);
     expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1", answer: GOOD }]);
-    // The Examiner is told each measure the record keeps, and none where none is kept.
     const told = (s: typeof declared) => s.of(CALLED).flatMap(({ text }) => (isString(text) ? [text] : []));
     expect(told(declared).filter((line) => line.includes("By the objective it measures"))).toHaveLength(2);
     expect(told(undeclared).join("\n")).not.toContain("By the objective");
   });
 
   it("refuses a task that carries a planted answer whole, in its public input or its hidden values", async () => {
-    // A second answer that passes on the same instance leaves the first planted: every answer
-    // that passed is one, not the last an instance.
     const planted = { answer: "42", unit: "N" };
     const s = seat("write", [
       tried(2),
@@ -666,9 +628,6 @@ describe("a session that writes tasks", () => {
       finish,
       finish,
     ]);
-    // The share the Examiner is told is the campaign's: an earlier session's drafts, one with its
-    // author's proof and held out and one without and refused, and a task admission that names no proof, as
-    // a pack's task's does, which is no draft's.
     for (const [version, admission] of [
       ["v-earlier-1", { outcome: "passed", proved: true }],
       ["v-earlier-2", { outcome: "refused", reason: "no inputs", proved: false }],
@@ -708,12 +667,10 @@ describe("a session that writes tasks", () => {
       ["x-1-002", "refused", null],
     ]);
     expect(examined.held).toEqual([s.versionOf("x-1-001", 2)]);
-    // The gate's event holds no reference counts and no proof of its own, and nothing was solved.
     expect(s.of(TASK_ADMISSION)).toMatchObject([{ outcome: "passed" }, { outcome: "refused" }]);
     expect(s.of(TASK_ADMISSION).filter((gate) => "reference" in gate || "proved" in gate)).toEqual([]);
     expect(solvesIn(read(s.log))).toEqual([]);
     expect(s.of(EXAM_FINISHED)[0]).not.toHaveProperty("hostSeconds");
-    // Its tools put a task to the gate and wait on nothing, and the gate's tool names no solve there.
     const mode = writing({ ...s.request, id: "x-2", verify }, undefined);
     expect(mode.tools.map(({ name }) => name)).toEqual([PROPOSE, "read_example", "try_answer"]);
     expect(mode.tools[0]?.description).toContain("No solver is put to it there.");
@@ -768,14 +725,11 @@ describe("a session that writes tasks", () => {
     const s = seat("write", [
       bash("fixeng"),
       bash("command -v solver-x || echo absent"),
-      // The tree the engine runs from is open again for reading, and the pack around it is not.
       () => bash(`cat ${join(pack, "hidden.json")} 2>/dev/null || echo refused`),
       bash(`(echo x > "$(command -v fixeng)") 2>/dev/null && echo written || echo refused`),
       finish,
       finish,
     ]);
-    // A stored pack the wall closes: a check program that names one engine, a tool tree that holds
-    // it, its data beside it and a solver a v1 Builder left there, and the pack's hidden values.
     pack = join(dirname(s.log), "pack");
     const tools = join(pack, ".toolchain");
     mkdirSync(join(pack, "checks"), { recursive: true });
@@ -787,7 +741,6 @@ describe("a session that writes tasks", () => {
     mkdirSync(join(tools, "bin"), { recursive: true });
     mkdirSync(join(tools, "share"), { recursive: true });
     writeFileSync(join(tools, "share", "fixeng.dat"), "engine data\n");
-    // The engine finds its data beside where it was started from, as buffer's `phreeqc` does.
     writeFileSync(join(tools, "bin", "fixeng"), '#!/bin/sh\ncat "$(dirname "$0")/../share/fixeng.dat"\n', {
       mode: 0o755,
     });
@@ -798,15 +751,12 @@ describe("a session that writes tasks", () => {
       packRoots: [pack],
       engines: { checks: join(pack, "checks"), tools },
     });
-    // The engine ran by name and read its own data; the solver beside it is on no path; the
-    // pack's other files stay closed; and the program that starts the engine is the host's.
     expect(
       s
         .of(CALLED)
         .slice(0, 4)
         .map(({ text }) => text),
     ).toEqual(["engine data", "absent", "refused", "refused"]);
-    // The session's start names the engine by its digest, as the host pinned it.
     expect(s.of("exam.started")).toMatchObject([
       { engines: [{ name: "fixeng", sha256: sha256OfFile(join(tools, "bin", "fixeng")) }] },
     ]);
@@ -826,7 +776,7 @@ describe("one Examiner conversation across the host's asks", () => {
       rest: async (ask) => {
         rested.push(ask.ended);
         // A promotion while the conversation rests is an opening's to tell: the host ends a resting
-        // conversation at the first ask after one (`examineAction`), so a wake says nothing of it.
+        // conversation at the next ask (`examineAction`), so a wake says nothing of it.
         append(s.log, "harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "c-1" }] });
         return asks.shift() ?? null;
       },
@@ -842,17 +792,13 @@ describe("one Examiner conversation across the host's asks", () => {
       ["x-1", "supplied", 1],
       ["x-2", "finished", 3],
     ]);
-    // Each ask's record says the backend's total for it, null here where the backend reports none:
-    // an ask closed at a rest still writes the field, so the cost check does not read past it.
+    // An ask closed at a rest still writes `reportedCost`, null where the backend reports none, so the
+    // cost check does not read past it.
     expect(s.of("exam.finished").map((ended) => "reportedCost" in ended)).toEqual([true, true]);
-    // Each ask's turns and tasks are under its own id.
     expect(s.of("exam.turn").map(({ session }) => session)).toEqual(["x-1", "x-2", "x-2", "x-2"]);
-    // A call that rests its ask and wakes in the next stays its own ask's.
     expect(s.of(CALLED).map(({ session }) => session)).toEqual(["x-1", "x-2", "x-2", "x-2"]);
-    // Its time is unknown, not the rest it spent parked.
     expect(s.of(CALLED).map(({ ms }) => ms === null)).toEqual([true, false, false, false]);
     expect(s.of("task.proposed").map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-2-001"]);
-    // The second request is the same conversation: its context holds the opening and the wake.
     const [opening = "", woken = ""] = s.sent;
     const called = s.of(CALLED)[0]?.text;
     const told = isString(called) ? called : "";
@@ -860,7 +806,6 @@ describe("one Examiner conversation across the host's asks", () => {
     expect(woken).toContain(JSON.stringify(told.split("\n\n").at(-1)).slice(1, -1));
     expect(opening).toContain("Public rules of the domain");
     expect(woken).toContain("Public rules of the domain");
-    // Only readings: that no comparison reported and the promotion since; no count wanted, no target.
     expect(told).toContain("The reference harness was promoted on the step of comparison c-1");
     expect(told).toContain("No comparison has reported since the host last told you.");
     for (const unsaid of ["17", "harder", "wanted"]) expect(told).not.toContain(unsaid);
@@ -1013,7 +958,6 @@ describe("one Examiner conversation across the host's asks", () => {
     expect(texts[0]).toContain(cue);
     // Cue persists on the second turn because read_opening has not run yet.
     expect(texts[1]).toContain(cue);
-    // Once read_opening executes on turn 3, the cue clears.
     expect(texts[2]).not.toContain(cue);
     expect(texts[3]).not.toContain(cue);
     expect(texts[4]).toContain("The previous ask ended and the host moved to a new ask");

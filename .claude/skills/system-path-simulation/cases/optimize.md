@@ -2,7 +2,7 @@
 
 Tunes changes observable only via a live model seat (e.g. Examiner held drafts after a promotion) using iterative [before-after](before-after.md) pairs of [live seats](live-seat.md) on recorded seeds. (Tune scoring rules off-policy via [promotion-tuner](../../promotion-tuner/SKILL.md).)
 
-Editable surfaces: Examiner prompt (`src/examiner/prompt.ts`), tool-result facts (`admitDraft` in `src/examiner/write.ts`; `src/examiner/record.ts`) or Examiner home (`src/examiner/shell.ts`), committed so new inputs stay documented in `AGENTS.md` §3. Session terms (`tools/d1b/examine.ts`, `--tasks 12 --proposals 36 --minutes 240 --turns 200`) are operator conditions (recommend, do not auto-merge). Never vary solver model, budget or exam content.
+Editable surfaces: Examiner prompt (`src/examiner/prompt.ts`), tool-result facts (`admitDraft` in `src/examiner/write.ts`; `src/examiner/record.ts`) or Examiner home (`src/examiner/shell.ts`), committed so new inputs stay documented in `AGENTS.md` §3. Session terms (`tools/eval/examine.ts`, `--tasks 12 --proposals 36 --minutes 240 --turns 200`) are operator conditions (recommend, do not auto-merge). Never vary solver model, budget or exam content.
 
 ## 1. Fix primary count, graded loss & guards
 
@@ -10,7 +10,7 @@ Freeze one primary count, direction, threshold, denser **graded loss**, and non-
 
 | Seat | Primary count | Graded loss | Guards |
 | --- | --- | --- | --- |
-| Examiner post-promotion | drafts held | drafts refused; median turns of valid `try_reference` answers | USD / admission |
+| Examiner post-promotion | drafts held | drafts refused; median turns of valid reference answers (pre-v0.14 trees) | USD / admission |
 | Examiner at opening | drafts held before comparison 1 | drafts refused | USD / admission |
 
 ## 2. Select open positions & measure noise floor
@@ -23,9 +23,9 @@ Compare tool calls (`live-seat.ts calls <log|dir>...`) between positive deviant 
 
 ```sh
 bun <after>/.claude/skills/system-path-simulation/scripts/live-seat.ts prompt \
-  --tree <before> --name sim-<what>-before -- tools/d1b/examine.ts --session x-<n> <flags> > before.txt
+  --tree <before> --name sim-<what>-before -- tools/eval/examine.ts --session x-<n> <flags> > before.txt
 bun <after>/.claude/skills/system-path-simulation/scripts/live-seat.ts prompt \
-  --tree <after> --name sim-<what>-after -- tools/d1b/examine.ts --session x-<n> <flags> > after.txt
+  --tree <after> --name sim-<what>-after -- tools/eval/examine.ts --session x-<n> <flags> > after.txt
 diff <(sed 's/sim-<what>-before/X/g' before.txt) <(sed 's/sim-<what>-after/X/g' after.txt)
 ```
 

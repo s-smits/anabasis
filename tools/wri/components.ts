@@ -1,14 +1,11 @@
 /**
- * Component-level WRI readers and triggers for lanes 20 to 23:
- * - Lane 20 (`draft-audit.txt`): Adversarial Draft Auditor passes, findings, cost/turns, and unverified freezes.
- * - Lane 21 (`grounding.txt`): Verifier tool provenance (`host-tools.json`, staged bins) and verifier faults.
- * - Lane 22 (`wall-audit.txt`): Runtime cross-seat wall boundary signals and `solve.finished.network` parity.
- * - Lane 23 (`seats.txt`): Unified per-role ledger, anomalies, auxiliary spend share, and pause overshoots.
- *
- * Wall-safe: prints only event kinds, counts, enums, session ids, 8-char digests, dollars, and ratios.
+ * Component readers and their triggers: `draft-audit.txt` (the Adversarial Draft Auditor, lane 18),
+ * `grounding.txt` (verifier tool provenance and faults, lane 4), `wall-audit.txt` (cross-seat wall
+ * signals and network parity, lane 9) and `seats.txt` (the per-role ledger and pause overshoots).
+ * They print only event kinds, counts, enums, session ids, 8-character digests, dollars and ratios.
  */
 import { starterIn } from "#src/campaign/climb.ts";
-import { PAUSE, pauseKindsOf, pausePointReached } from "#src/campaign/word.ts";
+import { PAUSE, pauseKindsOf, pausePointReached } from "#src/campaign/signal.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type EventKind, eventsOf, type LogEvent } from "#src/kernel/log.ts";
@@ -23,7 +20,7 @@ import { join } from "#src/meta/path.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { hasWholeToken, plural } from "#src/meta/text.ts";
-import { EXAM_END, firedIf, type Index, items, percent, share, tally, text, type Trigger } from "./folds.ts";
+import { EXAM_END, emitIf, type Index, items, percent, share, tally, text, type Trigger } from "./folds.ts";
 
 interface DraftAuditPass {
   readonly index: number;
@@ -31,6 +28,7 @@ interface DraftAuditPass {
   readonly pass: number;
   readonly verdict: string;
   readonly findings: readonly string[];
+  readonly allFindingsProbed: boolean;
   readonly probes: number;
   readonly turns: number;
   readonly billed: number;
@@ -79,35 +77,60 @@ const passesText = (count: number) => (count === 1 ? "1 pass" : `${String(count)
 const tallyStrings = (values: readonly string[]) => tally(countBy(values, (value) => value));
 
 export function draftAuditPasses(events: readonly LogEvent[]): DraftAuditPass[] {
-  return eventsOf(events, REFEREE_DRAFT).map(({ index, event: { data } }) => ({
-    index,
-    session: text(data.session) || "d-?",
-    pass: isNumber(data.pass) ? data.pass : 1,
-    verdict: text(data.verdict) || "unknown",
-    findings: items(data.findings).flatMap((entry) => {
-      const kind = text(asRecord(entry)?.kind);
-      return kind === "" ? [] : [kind];
-    }),
-    probes: items(data.probeRows).length,
-    turns: isNumber(data.turns) ? data.turns : 0,
-    billed: isNumber(data.billed) ? data.billed : 0,
-  }));
+  return eventsOf(events, REFEREE_DRAFT).map(({ index, event: { data } }) => {
+    const probeRows = items(data.probeRows);
+    const probeIds = new Set(
+      probeRows.flatMap((entry) => {
+        const id = asRecord(entry)?.id;
+        return isNumber(id) ? [id] : [];
+      }),
+    );
+    const rawFindings = items(data.findings).flatMap((entry) => {
+      const record = asRecord(entry);
+      const kind = text(record?.kind);
+      return kind === "" ? [] : [{ kind, probe: isNumber(record?.probe) ? record.probe : null }];
+    });
+    return {
+      index,
+      session: text(data.session) || "d-?",
+      pass: isNumber(data.pass) ? data.pass : 1,
+      verdict: text(data.verdict) || "unknown",
+      findings: rawFindings.map(({ kind }) => kind),
+      allFindingsProbed:
+        rawFindings.length > 0 && rawFindings.every(({ probe }) => probe !== null && probeIds.has(probe)),
+      probes: probeRows.length,
+      turns: isNumber(data.turns) ? data.turns : 0,
+      billed: isNumber(data.billed) ? data.billed : 0,
+    };
+  });
+}
+
+function finalDefectPasses(
+  events: readonly LogEvent[],
+  passes: readonly DraftAuditPass[],
+): { readonly unverified: DraftAuditPass[]; readonly replayed: DraftAuditPass[] } {
+  const draftedBy = new Map<string, number>();
+  for (const { index, event } of eventsOf(events, "exam.drafted")) {
+    draftedBy.set(text(event.data.session) || "d-?", index);
+  }
+  const unverified: DraftAuditPass[] = [];
+  const replayed: DraftAuditPass[] = [];
+  for (const [session, rows] of Map.groupBy(passes, (row) => row.session)) {
+    const freezeAt = draftedBy.get(session);
+    const before = freezeAt === undefined ? rows : rows.filter((row) => row.index < freezeAt);
+    const last = before.at(-1);
+    if (last?.verdict !== "defects") continue;
+    if (freezeAt !== undefined && last.allFindingsProbed) replayed.push(last);
+    else unverified.push(last);
+  }
+  return { unverified, replayed };
 }
 
 export function unverifiedFinalPasses(
   events: readonly LogEvent[],
   passes: readonly DraftAuditPass[],
 ): DraftAuditPass[] {
-  const draftedBy = new Map<string, number>();
-  for (const { index, event } of eventsOf(events, "exam.drafted")) {
-    draftedBy.set(text(event.data.session) || "d-?", index);
-  }
-  return [...Map.groupBy(passes, ({ session }) => session)].flatMap(([session, rows]) => {
-    const freezeAt = draftedBy.get(session);
-    const before = freezeAt === undefined ? rows : rows.filter((row) => row.index < freezeAt);
-    const last = before.at(-1);
-    return last?.verdict === "defects" ? [last] : [];
-  });
+  return finalDefectPasses(events, passes).unverified;
 }
 
 function draftAuditSummary(events: readonly LogEvent[]) {
@@ -119,18 +142,22 @@ function draftAuditSummary(events: readonly LogEvent[]) {
   const verdicts = tally(countBy(passes, ({ verdict }) => verdict));
   const findings = tallyStrings(passes.flatMap((row) => row.findings));
   const refusedRulings = tally(countBy(refused, (data) => text(data.ruling) || "unknown"));
-  const unverified = unverifiedFinalPasses(events, passes);
-  return { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified };
+  const { unverified, replayed } = finalDefectPasses(events, passes);
+  return { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified, replayed };
 }
 
-/** Lane 20 derived reader (`draft-audit.txt`). */
 export function draftAuditRows(events: readonly LogEvent[]): string[] {
-  const { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified } =
+  const { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified, replayed } =
     draftAuditSummary(events);
   if (passes.length === 0 && refused.length === 0) return ["draft-audit: none recorded"];
   const sessions = new Set(passes.map(({ session }) => session)).size;
+  const finalParts = [
+    ...(unverified.length > 0 ? [`unverified (${String(unverified.length)})`] : []),
+    ...(replayed.length > 0 ? [`replayed (${String(replayed.length)})`] : []),
+  ];
+  const finalState = finalParts.length === 0 ? "none" : finalParts.join(", ");
   return [
-    `draft-audit: ${passesText(passes.length)} across ${plural(sessions, "session")}, $${billed.toFixed(2)} billed (${plural(turns, "turn")}, ${plural(probes, "probe")}); verdicts: ${verdicts}; findings: ${findings}; refused: ${String(refused.length)}; final-pass unverified defects: ${unverified.length > 0 ? `yes (${String(unverified.length)})` : "no"}`,
+    `draft-audit: ${passesText(passes.length)} across ${plural(sessions, "session")}, $${billed.toFixed(2)} billed (${plural(turns, "turn")}, ${plural(probes, "probe")}); verdicts: ${verdicts}; findings: ${findings}; refused: ${String(refused.length)}; final-pass defects: ${finalState}`,
     ...passes.map(
       (row) =>
         `  ${row.session} pass ${String(row.pass)}: ${row.verdict}, ${plural(row.findings.length, "finding")} (${tallyStrings(row.findings)}), ${plural(row.probes, "probe")}, ${plural(row.turns, "turn")}, $${row.billed.toFixed(2)}`,
@@ -187,7 +214,6 @@ function groundingStats(events: readonly LogEvent[]) {
   };
 }
 
-/** Lane 21 derived reader (`grounding.txt`). */
 export function groundingRows(events: readonly LogEvent[], examsDir?: string): string[] {
   const stats = groundingStats(events);
   const staged = stagedToolchainSummary(events, examsDir);
@@ -296,7 +322,6 @@ function wallScanOf(events: readonly LogEvent[]) {
   };
 }
 
-/** Lane 22 derived reader (`wall-audit.txt`). */
 export function wallAuditRows(events: readonly LogEvent[]): string[] {
   const scan = wallScanOf(events);
   const unobserved = Object.keys(scan.networkCounts).length === 1 && scan.networkCounts.absent !== undefined;
@@ -384,7 +409,7 @@ function seatLedger(events: readonly LogEvent[], traces: readonly Traced[] = tra
       REFEREE_ADJUDICATE,
       "referee.finding",
       "referee.finding",
-      (d) => text(d.ruling) === "unclear" && items(d.probes).length === 0,
+      (d) => !isString(d.reusedFrom) && text(d.ruling) === "unclear" && items(d.probes).length === 0,
     ],
   ];
   for (const [role, start, end, bad] of roleSpecs) {
@@ -416,7 +441,6 @@ function seatLedger(events: readonly LogEvent[], traces: readonly Traced[] = tra
   };
 }
 
-/** Lane 23 derived reader (`seats.txt`). */
 export function seatSummaryRows(events: readonly LogEvent[]): string[] {
   const ledger = seatLedger(events);
   const pct = (part: number) => (ledger.totalBilled > 0 ? percent(part / ledger.totalBilled) : "0.0%");
@@ -429,7 +453,7 @@ export function seatSummaryRows(events: readonly LogEvent[]): string[] {
   ];
 }
 
-/** Triggers for lanes 20 to 23, called from `overview` (`tools/wri/read.ts`). */
+/** The component readers' triggers, called from `overview` (`tools/wri/read.ts`). */
 export function componentTriggers(log: Index): Trigger[] {
   const audit = draftAuditSummary(log.events);
   const defects = audit.passes.filter(({ verdict }) => verdict === "defects");
@@ -448,50 +472,50 @@ export function componentTriggers(log: Index): Trigger[] {
     ledger.totalBilled >= MIN_SKEW_DOLLARS &&
     ledger.nonSolverBilled / ledger.totalBilled > NON_SOLVER_SKEW;
   return [
-    ...firedIf(
+    ...emitIf(
       audit.passes.length > 0,
       "DRAFT AUDITED",
       `${passesText(audit.passes.length)}, $${audit.billed.toFixed(2)} billed; verdicts ${audit.verdicts}; findings ${audit.findings}`,
     ),
-    ...firedIf(
+    ...emitIf(
       defects.length > 0,
       "DRAFT AUDIT DEFECTS",
-      `${share(defects.length, audit.passes.length)} passes found defects (${audit.findings})${audit.unverified.length > 0 ? `; ${plural(audit.unverified.length, "unverified final pass")} before freeze` : ""}`,
+      `${share(defects.length, audit.passes.length)} passes found defects (${audit.findings})${audit.unverified.length > 0 ? `; ${plural(audit.unverified.length, "unverified final pass")} before freeze` : ""}${audit.replayed.length > 0 ? `; ${plural(audit.replayed.length, "replayed final pass")} before freeze` : ""}`,
     ),
-    ...firedIf(
+    ...emitIf(
       audit.refused.length > 0,
       "DRAFT AUDIT REFUSED",
       `${plural(audit.refused.length, "refusal")} (${audit.refusedRulings})`,
     ),
-    ...firedIf(
+    ...emitIf(
       skipped.length > 0,
       "DRAFT AUDIT SKIPPED",
       `${share(skipped.length, audit.passes.length)} passes ended skipped`,
     ),
-    ...firedIf(
+    ...emitIf(
       stats.hasDraft && (stats.checksWithTools > 0 || stats.objectiveTools > 0 || stats.readRows > 0),
       "VERIFIER TOOL PROVENANCE",
       `${String(stats.checksWithTools)}/${String(stats.totalChecks)} drafted checks declare tools, ${String(stats.objectiveTools)} objective tools; ${String(stats.authored)} author-decided, ${String(stats.admitted)} admitted`,
     ),
-    ...firedIf(
+    ...emitIf(
       stats.faultyVerdicts > 0 || stats.nonResults.length > 0,
       "VERIFIER FAULTS",
       `${plural(stats.faultyVerdicts, "faulty verdict")}, ${plural(stats.nonResults.length, "verifier non-result")} (${tallyStrings(stats.nonResults)})`,
     ),
-    ...firedIf(
+    ...emitIf(
       scan.networkMismatches.length > 0 || scan.mixedNetworkPresence,
       "NETWORK PARITY MISMATCH",
       scan.networkMismatches.length > 0
         ? `cross-arm network drift: ${scan.networkMismatches.join("; ")}`
         : `mixed solve.finished.network presence (${tally(scan.networkCounts)})`,
     ),
-    ...firedIf(
+    ...emitIf(
       scan.wallHits > 0,
       "WALL BOUNDARY SIGNAL",
       `${plural(scan.wallHits, "signal")} (build check-ids ${String(scan.buildCheckIds)}, held-tasks ${String(scan.buildHeldTasks)}, internal ${String(scan.buildInternalKinds)}; exam digests ${String(scan.examHarnessDigests)}, internal ${String(scan.examInternalKinds)})`,
     ),
-    ...firedIf(anomalyParts.length > 0, "SEAT BOUNDARY ANOMALY", anomalyParts.join("; ")),
-    ...firedIf(
+    ...emitIf(anomalyParts.length > 0, "SEAT BOUNDARY ANOMALY", anomalyParts.join("; ")),
+    ...emitIf(
       skewed,
       "ROLE YIELD SKEW",
       `non-solver roles spent $${ledger.nonSolverBilled.toFixed(2)} of $${ledger.totalBilled.toFixed(2)} (${percent(ledger.nonSolverBilled / ledger.totalBilled)})`,

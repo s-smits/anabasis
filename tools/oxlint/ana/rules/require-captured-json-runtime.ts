@@ -3,7 +3,6 @@ import type { RuleExample } from "../../rule-examples.ts";
 import { isOneOf, isUnder } from "../shared/file-role.ts";
 import { importTracker } from "../shared/import-fix.ts";
 
-/** Ambient global -> the binding that captured it, and what else a reader should consider. */
 const CAPTURED = new Map([
   [
     "JSON.parse",
@@ -12,7 +11,6 @@ const CAPTURED = new Map([
   ["JSON.stringify", { binding: "capturedJsonStringify", advice: "" }],
 ]);
 
-/** The module that captures them, and so the one file that must reach the ambient global. */
 const MODULE = "src/meta/json-runtime.ts";
 const OWNER = [MODULE];
 
@@ -49,8 +47,8 @@ export const requireCapturedJsonRuntimeRule = defineRule({
   createOnce(context) {
     const imports = importTracker("json-runtime.ts", MODULE);
     return {
-      // The controller's own process. A dev-time reporter under tools/ loads no generated module,
-      // so the global it reaches cannot have been replaced.
+      // A dev-time reporter under tools/ loads no generated module, so the global it reaches cannot
+      // have been replaced.
       before: () =>
         (isUnder(context.filename, "src") || isUnder(context.filename, "vendor")) &&
         !isOneOf(context.filename, OWNER),

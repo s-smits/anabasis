@@ -1,21 +1,14 @@
 /**
- * Per-campaign summary fold shared across archive analysis tools (`table.ts`, `trend.ts`).
- *
- * - **Release**: the latest release tag preceding the campaign's first launch.
- * - **Elapsed / Active / Unloaded hours**: total wall time from the first event; wall time minus
- *   recorded waits (provider resets, network, solve queue); and active hours minus estimated CPU
- *   overload (`1 - cores / load` via `overloadOf`).
- * - **Cut (`until`, `age`)**: truncates the log at an absolute timestamp or relative campaign age
- *   so historical snapshots and equal-age cohorts compare on identical terms.
- * - **Room on validity / Steps won by validity / Confirmed**: scored tasks where the reference was
- *   not valid on every solve; candidate steps with positive validity points (`validityOf`); and
- *   promotions confirmed by their owed starter read (`confirmed`, `after`).
- * - **Dollars / Repriced**: historical spend recorded at the run's own commit vs. every turn
- *   repriced through today's `seatMeter` catalogue.
+ * Per-campaign summary fold shared across archive readers (`table.ts`, `trend.ts`, `outside.ts`,
+ * `tools/campaign/close.ts`, `tools/wri/backtrack.ts`): the release before the first launch; elapsed,
+ * active (less recorded waits) and unloaded hours (less estimated overload, `overloadOf`); a cut at
+ * `until` or `age` so snapshots and equal-age cohorts compare on identical terms; room on validity,
+ * steps won by validity (`validityOf`) and confirmed promotions; and dollars as billed at the run's
+ * commit beside every turn repriced through today's `seatMeter`.
  */
 import { backends } from "#src/agent/backends/models.ts";
 import { epochsOf, ORIGINS, starterIn, starterReads } from "#src/campaign/climb.ts";
-import { comparisonsOf } from "#src/campaign/ground.ts";
+import { comparisonsOf } from "#src/campaign/state.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { CALL_KINDS, type EventKind, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
@@ -29,25 +22,23 @@ import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { relative, sep } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
-import { validityOf } from "#tools/d2/close.ts";
-import { recordedSetting } from "#tools/d2/setting.ts";
+import { validityOf } from "#tools/campaign/close.ts";
+import { recordedSetting } from "#tools/campaign/setting.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { packOf } from "#tools/runs/registry.ts";
-import { heldOff } from "#tools/runs/view.ts";
+import { firstComparisonDelay } from "#tools/runs/view.ts";
 import { summed } from "#tools/wri/folds.ts";
 import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { campaignLogs, type Found, rehearsed } from "./logs.ts";
 import { MISSING } from "./print.ts";
 
-/** The tool calls of solves and sessions, which no fold here reads; `draft.call` is read for what a
- *  drafting session cut short had metered (`unfinished`, `src/kernel/trace.ts`). */
+/** `draft.call` is kept for what a drafting session cut short had metered (`unfinished`,
+ *  `src/kernel/trace.ts`). */
 const CALLS: ReadonlySet<EventKind> = new Set([...CALL_KINDS].filter((kind) => kind !== "draft.call"));
 const TURN_KINDS: readonly EventKind[] = [...TRACE_KINDS].filter((kind) => !CALL_KINDS.has(kind));
-/** A run whose log has been quiet for longer than this, or whose last event is an ending, is not
- *  live. A run sitting out a provider's reset longer than this reads as finished with no ending. */
+/** A run sitting out a provider's reset longer than this reads as finished with no ending. */
 const LIVE_MS = 2 * HOUR_MS;
-/** The opening's seat a trace's turns ran on, where no start of their own names a model. */
 const OPENED = {
   build: "builder",
   exam: "examiner",
@@ -58,31 +49,24 @@ const OPENED = {
 
 type Meter = ReturnType<typeof seatMeter>;
 
-/** One promotion of a run, with the epoch it ended. */
 export interface Promotion {
   readonly nth: number;
-  /** The promoted harness, by digest. */
   readonly harness: string;
   /** Whether the starter comparison owed after it confirmed it; null until one tallies a task. */
   readonly confirmed: boolean | null;
-  /** Elapsed and active hours from the log's first event to the promotion. */
   readonly elapsed: number;
   readonly active: number;
-  /** The epoch's own elapsed and active hours and dollars: from the opening or the promotion
-   *  before, to this one. */
+  /** The epoch's own hours and dollars, from the opening or the promotion before to this one. */
   readonly epochElapsed: number;
   readonly epochActive: number;
-  /** The epoch's active hours less what an overloaded host cost (`overloadOf`), an estimate. */
   readonly epochUnloaded: number;
   readonly dollars: number;
-  /** The comparisons reported in the epoch. A Builder's sessions are left out: a conversation that
-   *  leads its campaign spans epochs and ends in the last. */
+  /** A Builder's sessions are left out: a conversation that leads its campaign spans epochs and
+   *  ends in the last. */
   readonly comparisons: number;
-  /** The promoting comparison's tally of tasks won, lost and tied, and its p. */
   readonly tally: string;
 }
 
-/** One campaign, folded from its log and receipts. */
 export interface Run {
   readonly name: string;
   readonly host: string;
@@ -90,79 +74,65 @@ export interface Run {
   readonly pack: string;
   readonly setting: string;
   readonly cores: number | null;
-  /** The median one-minute load per core at a solve's start, and the median solve in seconds. */
   readonly load: number | null;
   readonly solveSeconds: number | null;
-  /** The time of its first launch, else its first event, and of its log's last event, or of the
-   *  cut where the log goes on past it. */
+  /** The time of its first launch, else its first event, and of its log's last event, or of the cut
+   *  where the log goes on past it. */
   readonly launched: number;
   readonly last: number;
   readonly elapsed: number;
   readonly active: number;
   readonly unloaded: number;
-  /** Whether the log is still being written: its last event is no ending and is recent. */
   readonly live: boolean;
-  /** Hours from the first event to the first comparison started and reported. */
   readonly firstCompared: number | null;
   readonly firstReported: number | null;
-  /** Hours from the first event until admission first refused a first comparison nothing
-   *  (`heldOff`), null where it never did: the supply's part of `firstCompared`, the rest being how
-   *  long that comparison then stood before it began. */
+  /** Hours until comparison admission first opened (`firstComparisonDelay`), or null if it never
+   *  did; isolates task-supply time from Builder delay. */
   readonly firstAdmissible: number | null;
-  /** The reported comparisons a promotion could come from: neither the starter's side of a starter
-   *  comparison nor a harness against itself. */
+  /** Neither the starter's side of a starter comparison nor a harness against itself. */
   readonly compared: number;
   readonly promotions: readonly Promotion[];
-  /** What the log billed under its own commit's meter (`billedAll`). */
   readonly dollars: number;
   /** Every recorded turn at today's list prices through today's seat meter, the one measure every
    *  run shares, or null with what stopped a turn being priced (`unpriced`). It leaves out a
    *  backend's excess over its turns (compactions, retries), which `dollars` holds in newer logs. */
   readonly repriced: number | null;
   readonly unpriced: string | null;
-  /** Scored tasks, summed over the reported comparisons, and those of them the reference did not
-   *  answer validly in every solve: the room a harness can win on validity alone. */
+  /** The room a harness can win on validity alone: scored tasks the reference did not answer
+   *  validly in every solve. */
   readonly scored: number;
   readonly room: number;
-  /** A candidate's comparisons that read a step, and those whose step won points by validity
-   *  (`validityOf`, which leaves out the Starter's steps over the reference). */
   readonly stepped: number;
   readonly onValidity: number;
-  /** The promotions a starter comparison has read, those it confirmed, and the reference's tally
-   *  in those comparisons on the tasks written after its promotion (`starterReads`). */
+  /** The reference's tally is on the tasks written after its promotion (`starterReads`). */
   readonly reads: number;
   readonly confirmed: number;
   readonly after: Tally;
-  /** The A/A comparisons able to read a step, and those that did (`falsePromotion`), pooled and
-   *  split by whether the reference's own validity flipped (`validity`) or only the objective varied (`objective`). */
+  /** The A/A comparisons able to read a step, and those that read one one-sided as a promotion
+   *  would (`falsePromotion`), pooled and split by whether the reference's own validity flipped or only the objective varied. */
   readonly controls: number;
   readonly aaSteps: number;
   readonly aaValidityControls: number;
   readonly aaValiditySteps: number;
   readonly aaObjectiveControls: number;
   readonly aaObjectiveSteps: number;
+  readonly aaLevels: readonly number[];
   readonly ending: string;
 }
 
-/** Which campaigns a reader across runs takes. */
 export interface Asked {
-  /** The folder whose campaigns are read (an archive, one host's folder of it, or a folder of
-   *  worktrees), or null for every campaign the registry reaches across the hosts. */
+  /** An archive, one host's folder of it or a folder of worktrees, or null for every campaign the
+   *  registry reaches across the hosts. */
   readonly home: string | null;
-  /** Campaigns whose last event is at or after this date. */
   readonly since: string;
-  /** Parts of a campaign's name, any of which keeps it; none keeps all. */
   readonly names?: readonly string[];
-  /** Text and commits every launch of a kept run ran with (`ranWith`). */
   readonly has?: readonly string[];
   readonly holds?: readonly string[];
-  /** The checkout whose release tags place a run and whose history `ranWith` reads. */
   readonly repo: string;
   /** Where every log is read to, so that a reading repeats; now by default. */
   readonly until?: number;
 }
 
-/** Where a fold stops reading a log: at `until`, and `age` hours past its first event. */
 interface Cut {
   readonly until?: number | undefined;
   readonly age?: number;
@@ -170,10 +140,8 @@ interface Cut {
 
 const hours = (ms: number) => ms / HOUR_MS;
 const numeral = (value: JsonValue | undefined) => (isNumber(value) ? String(value) : "?");
-/** The promotions after set-up, the rungs of the climb. */
 export const rungsOf = (run: Run) => run.promotions.slice(1);
 
-/** The release tags with their dates, oldest first. */
 function releasesOf(repo: string): { name: string; at: number }[] {
   const lines = gitMaybe(
     repo,
@@ -188,23 +156,26 @@ function releasesOf(repo: string): { name: string; at: number }[] {
   });
 }
 
-/** What a run was set to, as its log records it (`recordedSetting`): who solves, the window it
- *  compacts at where one was named, a solve's minutes and model turns, and the scored tasks by the
- *  solves a side. Runs are read together only under one such line (`AGENTS.md`, section 9). */
+function judgedLabel(opening: ReturnType<typeof openingOf>): string {
+  if (opening?.judged !== true) return "";
+  const reviewer = opening.seats.reviewer;
+  return reviewer === null ? " judged" : ` judged(${reviewer.model.replace(/^claude\//u, "")})`;
+}
+
+/** Runs are read together only under one such line (`AGENTS.md`, section 9). */
 function settingOf(events: readonly LogEvent[]): string {
+  const judged = judgedLabel(openingOf(events));
   const kept = recordedSetting(events);
-  if (kept === null) return "no setting";
+  if (kept === null) return `no setting${judged}`;
   const { solver, minutes, modelTurns, target, solves } = kept;
   const window = solver?.window === undefined ? "" : `@${String(solver.window)}`;
   const by =
     solver === null
       ? "the cycle's solver"
       : `${solver.model.replace(/^claude\//u, "")}/${solver.effort}${window}`;
-  return `${by} ${String(minutes)}m ${modelTurns === null ? "unlimited" : String(modelTurns)}t ${String(target)}x${String(solves)}`;
+  return `${by} ${String(minutes)}m ${modelTurns === null ? "unlimited" : String(modelTurns)}t ${String(target)}x${String(solves)}${judged}`;
 }
 
-/** The time of a campaign's solves: the median in seconds, and the median one-minute load per core
- *  at their start. */
 function machineOf(events: readonly LogEvent[]) {
   const seconds = eventsOf(events, "solve.finished").flatMap(({ event: { data } }) =>
     isNumber(data.seconds) ? [data.seconds] : [],
@@ -216,8 +187,8 @@ function machineOf(events: readonly LogEvent[]) {
   return { solveSeconds: median(seconds), load: median(loads) };
 }
 
-/** The tally and p of the comparison a promotion rests on: the last reading of the promoted harness
- *  against the reference it replaced that read `step`, else its last reading of any kind. */
+/** The last reading of the promoted harness against the reference it replaced that read `step`,
+ *  else its last reading of any kind. */
 function tallyOf(
   events: readonly LogEvent[],
   comparisons: ReturnType<typeof comparisonsOf>,
@@ -240,14 +211,12 @@ function tallyOf(
   return `${numeral(scored.wins)}-${numeral(scored.losses)}-${numeral(scored.ties)}${p}`;
 }
 
-/** What the starter comparisons of a campaign read: how many promotions one has read, and the
- *  reference's tally in them on the tasks written after its promotion; and the comparisons a
- *  promotion could come from, which leaves out those whose new side is the starter, read or not. */
+/** The starter reads of a campaign, and the comparisons a promotion could come from, which leave
+ *  out those whose new side is the starter, read or not. */
 function heldOf(events: readonly LogEvent[], comparisons: ReturnType<typeof comparisonsOf>) {
   const reads = starterReads(events);
   const starter = starterIn(events);
   return {
-    reads: reads.length,
     after: summed(reads.map(({ origins }) => origins[ORIGINS[2]].whole)),
     compared: comparisons.filter(
       ({ report, old, fresh }) => report !== null && fresh !== old && fresh !== starter,
@@ -255,7 +224,6 @@ function heldOf(events: readonly LogEvent[], comparisons: ReturnType<typeof comp
   };
 }
 
-/** Reported comparison validity and points fields for `validityOf`, avoiding `campaignOf`. */
 function validitySteps(events: readonly LogEvent[], comparisons: ReturnType<typeof comparisonsOf>) {
   const freshBy = new Map(comparisons.map(({ id, fresh }) => [id, fresh]));
   return lastReports(events).map(({ session, data }) => {
@@ -271,8 +239,6 @@ function validitySteps(events: readonly LogEvent[], comparisons: ReturnType<type
   });
 }
 
-/** One meter a model, priced on today's catalogue as a live seat's is; the catalogue is built at the
- *  first turn priced. */
 function meters(): (name: string) => Meter {
   const held = new Map<string, Meter>();
   let models: ReturnType<typeof backends> | undefined;
@@ -315,8 +281,8 @@ function repricedOf(events: readonly LogEvent[], meterOf: (name: string) => Mete
   return { repriced: total, unpriced: null };
 }
 
-/** The events of a log read only to `until`, as a reading then saw it, and to `age` hours after its
- *  first; the moment they are read at; and the run's last moment, the age where its log goes on. */
+/** The events of a log read to `until` and to `age` hours after its first, the moment they are read
+ *  at, and the run's last moment. */
 function cutOf(logged: readonly LogEvent[], { until, age = Infinity }: Cut) {
   const now = until ?? Date.now();
   const seen = until === undefined ? logged : logged.filter(({ at }) => Date.parse(at) <= until);
@@ -327,8 +293,7 @@ function cutOf(logged: readonly LogEvent[], { until, age = Infinity }: Cut) {
   return { events, last, moment: Math.min(now, aged) };
 }
 
-/** One campaign as a row, or null for a rehearsal; `meterOf` reprices its turns, and `cut` stops the
- *  log short (`cutOf`), so that the run is read as it stood then. */
+/** One campaign as a row, or null for a rehearsal. */
 function runOf(
   found: Found,
   logged: readonly LogEvent[],
@@ -355,10 +320,10 @@ function runOf(
   const indexes = eventsOf(events, "harness.promoted").map(({ index }) => index);
   const epochs = epochsOf(events);
   const promotions = indexes.map((at, nth): Promotion => {
-    const start = indexes[nth - 1] ?? 0;
+    const built = epochs.find((epoch) => epoch.to === at);
+    const opened = epochs.find((epoch) => epoch.from === at);
+    const start = built?.from ?? indexes[nth - 1] ?? 0;
     const [before = first, now = first] = [stamp(start), stamp(at)];
-    // The epoch a promotion opens is the one its starter comparison is read in.
-    const opened = epochs[nth + 1];
     const { harness } = events[at]?.data ?? {};
     return {
       nth: nth + 1,
@@ -370,7 +335,7 @@ function runOf(
       epochActive: activeAt(now, before),
       epochUnloaded: unloadedAt(now, before),
       dollars: billedBetween(events, start, at + 1),
-      comparisons: epochs[nth]?.comparisons.length ?? 0,
+      comparisons: built?.comparisons.length ?? 0,
       tally: tallyOf(events, comparisons, at),
     };
   });
@@ -378,7 +343,7 @@ function runOf(
     const at = stamp(eventsOf(events, kind)[0]?.index ?? -1);
     return at === undefined ? null : hours(at - first);
   };
-  const admissible = stamp(heldOff(events)?.index ?? -1);
+  const admissible = stamp(firstComparisonDelay(events)?.index ?? -1);
   const ended = endingOf(events);
   // `falsePromotion` reads the A/A comparisons of the whole campaign on every epoch.
   const noise = epochs[0]?.falsePromotion;
@@ -404,19 +369,23 @@ function runOf(
     ...(meterOf === null ? { repriced: null, unpriced: null } : repricedOf(events, meterOf)),
     ...validityOf(validitySteps(events, comparisons), events),
     ...heldOf(events, comparisons),
-    confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
+    reads: epochs.filter(
+      ({ nth, reverted, starter_tally }) => nth > 1 && reverted !== true && starter_tally !== null,
+    ).length,
+    confirmed: epochs.filter(
+      ({ nth, reverted, confirmed }) => nth > 1 && reverted !== true && confirmed === true,
+    ).length,
     controls: noise?.controls ?? 0,
     aaSteps: noise?.errors ?? 0,
     aaValidityControls: noise?.byMeasure.validity.controls ?? 0,
     aaValiditySteps: noise?.byMeasure.validity.errors ?? 0,
     aaObjectiveControls: noise?.byMeasure.objective.controls ?? 0,
     aaObjectiveSteps: noise?.byMeasure.objective.errors ?? 0,
+    aaLevels: noise?.levels ?? [],
     ending: ended ?? "no ending",
   };
 }
 
-/** Every campaign asked for as a row, oldest launch first, read to `until`; the logs that could not
- *  be read; and `at`, which reads a run again as it stood `age` hours past its first event. */
 export async function loadRuns(asked: Asked, mode: "full" | "unpriced" = "full") {
   const { home, names = [], has = [], holds = [], repo, until } = asked;
   const tags = releasesOf(repo);
@@ -436,9 +405,9 @@ export async function loadRuns(asked: Asked, mode: "full" | "unpriced" = "full")
     return cut;
   };
   const match = names.length > 0 ? (name: string) => names.some((part) => name.includes(part)) : null;
-  for (const each of await campaignLogs(home, [], asked.since, match)) {
-    // Under an explicit home, a campaign's host is the folder it lies in where that lies in the
-    // given one (`data/runs/<host>/<name>/log.jsonl`), and this machine otherwise.
+  for (const each of await campaignLogs(home, names, asked.since, match)) {
+    // Under an explicit home, a campaign's host is its folder (`data/runs/<host>/<name>/log.jsonl`),
+    // and this machine otherwise.
     const parts = home === null ? [] : relative(home, each.path).split(sep);
     const found = parts.length === 3 ? { ...each, archived: parts[0] ?? "here" } : each;
     if (has.length + holds.length > 0 && !ranWith(found.path, repo, { has, holds })) continue;

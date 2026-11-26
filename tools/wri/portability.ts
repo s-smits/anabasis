@@ -1,14 +1,12 @@
 /**
- * Static portability and external-transfer readiness audit for kept harnesses (lane 12):
+ * Static portability audit of every kept harness (lane 10):
  *
  *   bun tools/wri/wri.ts reader portability --log <log>
  *
- * Inspects every kept harness under `states/<digest>/` via production's `readHarnessFiles`
- * (`src/harness/files.ts`): hardcoded host paths, non-portable shebangs, non-executable `bin/`
- * files, broken symlinks, exam `answerFormat` key coupling, and guide-to-tool size ratio.
- * Wall-safe: emits only counts, ratios, roles, and 8-char digests — never file names, key names,
- * or source snippets. Each kept harness line opens with its 8-char digest so `bun run runs pulse`
- * surfaces portability hazards immediately on `harness.promoted`.
+ * Reads each harness under `states/<digest>/` through `readHarnessFiles`: host paths, non-portable
+ * shebangs, non-executable `bin/` files, broken symlinks, `answerFormat` key coupling and the guide's
+ * size against the tools'. It prints counts, ratios, roles and 8-character digests, never file or key
+ * names, and each line opens with its digest so the pulse shows a hazard at `harness.promoted`.
  */
 import { starterIn } from "#src/campaign/climb.ts";
 import { draftOf } from "#src/examiner/draft.ts";
@@ -19,7 +17,6 @@ import { join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { keptStates } from "./trajectory.ts";
 
-/** Read one kept harness folder and return its compact single-line summary. */
 function summaryRow(
   digest: string,
   role: string,
@@ -38,7 +35,6 @@ function summaryRow(
   return `${digest.slice(0, 8)} (${role}): guide ${String(guide)}L (host-only ${info.hasSplit ? "yes" : "no"}, portable ${String(info.keptLines)}L, above-leaks ${String(info.keptHostRefs)}, above-keys ${String(info.keptFormatKeys)}, above-rules ${String(info.keptRuleIds)}), own ${String(toolFiles)}f/${String(toolLines)}L (${ratio}), tree ${String(info.treeFiles)}f · hazards ${String(hazards)} (host-paths ${String(info.hostPaths)}, bad-shebangs ${String(info.hostShebangs)}, non-exec-bins ${String(info.plainBins)}, broken-links ${String(info.brokenLinks)}) · ${examPart}`;
 }
 
-/** Static portability audit for every kept harness under `statesDir`. */
 export function portabilityRows(events: readonly LogEvent[], statesDir: string): string[] {
   const kept = keptStates(statesDir);
   if (kept.length === 0) return [`portability: no kept harness under ${statesDir}`];

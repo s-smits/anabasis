@@ -7,25 +7,20 @@ interface Alias {
   readonly tree: string;
 }
 
-/** A package: the directory its manifest sits in, and the aliases that manifest declares. */
 interface Scope {
   readonly root: string;
   readonly aliases: readonly Alias[];
 }
 
-/** `#src/*`, and `./src/*` beside it: one trailing wildcard over one directory, the shape read here. */
 const KEY = /^(#[^*]*)\*$/u;
 const TARGET = /^\.\/([^*]*)\*$/u;
 
 /** Two levels up is still a neighbour; the third `../` is where a reader starts counting. */
 const CLIMB = /^(?:\.\.\/){3,}/u;
 
-/** Every directory asked about, and the package it belongs to. One lint run reads each manifest once. */
+/** One lint run reads each manifest once. */
 const scopes = new Map<string, Scope | null>();
 
-/**
- * The wildcard aliases a manifest declares, the most specific tree first.
- */
 function aliasesOf(manifestText: string): Alias[] {
   const manifest: unknown = JSON.parse(manifestText);
   if (!(manifest instanceof Object) || !("imports" in manifest)) return [];
@@ -41,10 +36,8 @@ function aliasesOf(manifestText: string): Alias[] {
 }
 
 /**
- * The package a directory belongs to: the nearest `package.json` at or above it.
- *
- * That is where Node, Bun and TypeScript all resolve a `#` specifier, so an alias the root manifest
- * declares does not reach a file inside a package with a manifest of its own, however deep.
+ * The nearest `package.json` at or above a directory, where Node, Bun and TypeScript all resolve a
+ * `#` specifier, so a root alias does not reach a file inside a package with a manifest of its own.
  */
 function scopeOf(directory: string): Scope | null {
   const known = scopes.get(directory);
@@ -58,9 +51,6 @@ function scopeOf(directory: string): Scope | null {
   return scope;
 }
 
-/**
- * The alias a file at `filename` spells `specifier` as, or null where the relative form stays.
- */
 export function subpathAlias(
   filename: string,
   specifier: string,

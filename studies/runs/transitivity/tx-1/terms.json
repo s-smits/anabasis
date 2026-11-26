@@ -4,7 +4,7 @@
   "fromEvent": 15867,
   "startedAt": "2026-10-25T23:09:32.054Z",
   "command": [
-    "tools/d1b/examine.ts",
+    "tools/eval/examine.ts",
     "--session",
     "tx-1",
     "--examiner",

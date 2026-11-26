@@ -116,7 +116,7 @@ describe("versionGap and attentionOf monotonicity (bounded exhaustive over semve
         expect(samePack.tier).toBe(expectedTier);
       }
     }
-    // Strictly newer older releases always sit strictly closer with higher weight (`v0.11.4` < `v0.11.2`).
+    // A newer earlier release sits closer, with higher weight (`v0.11.4` before `v0.11.2`).
     const ordered: readonly Semver[] = [
       { major: 0, minor: 13, patch: 0, tag: "v0.13.0" },
       { major: 0, minor: 12, patch: 2, tag: "v0.12.2" },
@@ -189,7 +189,6 @@ describe("buildBacktrack and formatBacktrack (seeded LCG archive properties)", (
       }
     }
     const report = buildBacktrack([target], peers, syntheses, outside);
-    // Zero cross-domain leakage.
     for (const item of report.expanded) {
       expect(item.run.domain).toBe("jobstat");
       expect(item.run.setting).toBe(SETTING_A);
@@ -208,7 +207,6 @@ describe("buildBacktrack and formatBacktrack (seeded LCG archive properties)", (
         );
       }
     }
-    // Exact partition of same-domain peers.
     const sameDomainPeers = peers.filter(({ domain }) => domain === "jobstat");
     const counted =
       report.cohorts.reduce((sum, row) => sum + row.runs, 0) +

@@ -1,4 +1,3 @@
-// The study reads several comparisons from one snapshot, keeping the bill out of its predictions.
 import { expect, it } from "bun:test";
 import { compared, fixedIn, solvesUnder, wrongAsFailed } from "../src/campaign/comparison.ts";
 import { differenceOf, type Paired } from "../src/kernel/compare.ts";

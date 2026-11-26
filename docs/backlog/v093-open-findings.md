@@ -8,7 +8,7 @@ could land. Each says what would settle it.
 
 1. **A cap that waits for the owed starter comparison** (review B2, the operator's decision).
    `--promotions 2` ends a campaign before the starter comparison owed after its second promotion,
-   so that promotion is never confirmed (`decide`, `src/campaign/decide.ts`, row order). Either let
+   so that promotion is never confirmed (`decide`, `src/campaign/scheduler.ts`, row order). Either let
    the cap end the campaign at its next `compare` instead, or keep it and read confirmation from a
    run let go on.
 2. **`refuseRunning` and a peer's copy** (B4, plausible). It matches a running campaign by its exact

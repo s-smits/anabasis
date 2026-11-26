@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { Decided } from "../../../../src/campaign/move.ts";
+import type { ScheduledAction } from "../../../../src/campaign/move.ts";
 import { plural } from "../../../../src/meta/text.ts";
 import { ComparisonsChart } from "../components/charts/comparisons.tsx";
 import { CarriedChart, CarriedKey, SpendChart } from "../components/charts/small.tsx";
@@ -12,18 +12,13 @@ import { HarnessStrip } from "./campaign-harnesses.tsx";
 import { money, percent, time } from "./format.ts";
 
 /*
- * The Campaign pane, the main page, top to bottom: the
- * campaign's line, three readouts, the comparisons chart, the harness strip, the two small charts
- * and the counters. Each block has one title and at most one qualifying line; what explains a
- * number is one click away, in the chart's tooltip, a card of the strip or the Moves pane a column
- * opens. The page works with no promotion, which is most campaigns, and before any comparison,
- * where the chart's place says what the campaign holds to compare.
- *
- * What `bun run runs view` prints and the readouts do not stands one click or one line away: the
- * set-up line with the seats and the terms in one collapsed disclosure, the steps open at the log's
- * end in the next move's detail as the view words it, and when the log was last written beside the
- * status of a campaign no process writes, since an open campaign that last wrote long ago is
- * probably a process stopped with no ending, which the log cannot say; a running one leaves it out.
+ * The Campaign pane, top to bottom: the campaign's line, three readouts, the comparisons chart, the
+ * harness strip, the two small charts and the counters. Each block has one title and at most one
+ * qualifying line; what explains a number is one click away. It works with no promotion and before any
+ * comparison. What `bun run runs view` prints beyond the readouts stands one click or line away: the
+ * set-up in a disclosure, the open steps in the next move's detail, and the last write beside a
+ * campaign no process writes, since one that last wrote long ago is probably a process stopped with no
+ * ending.
  */
 
 const MOVE_WORD = {
@@ -36,21 +31,25 @@ const MOVE_WORD = {
   promote: "Promotion",
   revert: "Revert reference",
   end: "End",
-} as const satisfies Record<Decided["move"], string>;
+} as const satisfies Record<ScheduledAction["move"], string>;
 
-/** The moves the host makes itself whoever leads the campaign: the exam's set-up, and an ending
- *  (`SETUP`, `tools/d2/harness-builder.ts`). Any other the table names is advice to a Builder
- *  that leads. */
-const HOSTS_OWN: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare", "revert", "end"]);
+/** The moves the host makes itself whoever leads: the exam's set-up and an ending. Any other the
+ *  table names is advice to a Builder that leads. */
+const HOSTS_OWN: ReadonlySet<ScheduledAction["move"]> = new Set([
+  "draft",
+  "accept",
+  "prepare",
+  "revert",
+  "end",
+]);
 
 /** What the campaign command does with a move the table names where the opening is attended, which
- *  the table does not read (`tools/d2/harness-builder.ts`). */
-const ATTENDED_WAITS = new Map<Decided["move"], string>([
+ *  the table does not read (`tools/campaign/harness-builder.ts`). */
+const ATTENDED_WAITS = new Map<ScheduledAction["move"], string>([
   ["accept", "; under --hitl the exam is read and its freeze waits for the operator's word"],
   ["promote", "; under --hitl the promotion waits for the operator's word (promote.ts)"],
 ]);
 
-/** A reading's tone; a reading the page does not know is neutral. */
 const READING_TONE = new Map<string, Tone>([
   ["step", "good"],
   ["no-step", "neutral"],
@@ -61,8 +60,8 @@ const READING_TONE = new Map<string, Tone>([
 
 function Head({ reading }: { reading: CampaignReading }) {
   const { row } = reading;
-  // The title is the whole name, as commands take it, alone: a project above it would mostly repeat
-  // the name's opening, and the picker groups by it.
+  // The title is the whole name, as commands take it: a project above it would mostly repeat the name's
+  // opening, and the picker groups by it.
   const status = row.ending === null ? row.status : `ended: ${row.ending.ending}`;
   const tone: Tone =
     row.status === "running" ? "info" : row.ending?.ending === "environment" ? "bad" : "neutral";
@@ -85,8 +84,7 @@ function Head({ reading }: { reading: CampaignReading }) {
   );
 }
 
-/** A move's reason as its first clause, the rest behind a disclosure, rather than the table's
- *  reason, the open sessions and the Builder's lead as one run-on line. */
+/** A move's reason as its first clause, the rest behind a disclosure, rather than one run-on line. */
 function reasonOf(line: string) {
   const cut = line.indexOf("; ");
   if (cut === -1) return line;
@@ -103,7 +101,6 @@ function Readouts({ reading }: { reading: CampaignReading }) {
       : `${plural(promotions.length, "promotion")}, ${String(promotions.filter((each) => each.confirmed).length)} confirmed against the starter${last.despite === null && !last.toStarter ? "" : lastWay}`;
   const lastReading = row.lastReading;
   const lastBar = reading.comparisons.find((bar) => bar.id === lastReading?.id);
-  // Beside the step's tally, what carried its wins.
   const beside = lastBar?.carried == null ? "" : `; won on ${carriedText(lastBar.carried.won)}`;
   const ended = row.ending;
   const advised = nextMove !== null && !HOSTS_OWN.has(nextMove.move);
@@ -164,7 +161,6 @@ function Readouts({ reading }: { reading: CampaignReading }) {
   );
 }
 
-/** What stands in the chart's place before a first comparison: the tasks there are to compare. */
 function NoComparison({ reading }: { reading: CampaignReading }) {
   const { supply } = reading;
   const target = reading.target === null ? "" : ` A comparison scores ${String(reading.target)}.`;
@@ -177,10 +173,8 @@ function NoComparison({ reading }: { reading: CampaignReading }) {
   );
 }
 
-/** The set-up as the view's first line says it, with the prompt the campaign opened from, who sits
- *  in each seat and the terms the opening keeps, one click away. */
 function SetUp({ reading }: { reading: CampaignReading }) {
-  const { prompt, supply, seats, terms, attended, bars } = reading;
+  const { prompt, supply, seats, terms, attended } = reading;
   const checker =
     supply.faults === null
       ? "checker never read"
@@ -214,16 +208,11 @@ function SetUp({ reading }: { reading: CampaignReading }) {
             <dd>the freeze and a promotion wait for the operator's word</dd>
           </div>
         ) : null}
-        <div>
-          <dt>bars</dt>
-          <dd>{`cost ${String(bars.cost)} attempts, gating nothing`}</dd>
-        </div>
       </dl>
     </Disclosure>
   );
 }
 
-/** The A/A controls read beside the false-promotion estimate, as `climb.ts` words them for the view. */
 function rateSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): string {
   const controls =
     risk.controls === 0

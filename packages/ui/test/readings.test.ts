@@ -23,7 +23,6 @@ import { steppedOf } from "../src/server/moves.ts";
 import { campaignReading, campaignRow, factsIn } from "../src/server/reading.ts";
 import { type Fixture, MARKERS, writeFixtureCampaign, writeLedCampaign } from "./fixture-campaign.ts";
 
-/** A copy of the fixture's root, and its campaign's folder. */
 interface Copied {
   readonly root: string;
   readonly dir: string;
@@ -42,8 +41,6 @@ beforeAll(() => {
 });
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** One request as the page sends it, against the campaigns under `root` on the server's clock
- *  `now`: its status, its body as text, and that body parsed. */
 async function ask<Name extends Endpoint>(
   endpoint: Name,
   query: Query<Name>,
@@ -65,7 +62,6 @@ async function ask<Name extends Endpoint>(
   return { status: response.status, text, answer: parseJsonAs<AnswerOf<Name>>(text) };
 }
 
-/** A copy of the fixture's root, to break in one way. */
 function copy(): Copied {
   copies += 1;
   const root = join(scratch, `copy-${String(copies)}`);
@@ -73,8 +69,6 @@ function copy(): Copied {
   return { root, dir: join(root, ".ana", "d2", fixture.name) };
 }
 
-/** Every answer the server gives of the fixture in `tier`, as the text it sends: every endpoint,
- *  every move, solve, task, page of the log, harness, harness file and pair of harnesses. */
 async function everything(tier: Tier): Promise<string[]> {
   const texts: string[] = [];
   const said = async <Name extends Endpoint>(endpoint: Name, query: Query<Name>) => {
@@ -105,17 +99,17 @@ async function everything(tier: Tier): Promise<string[]> {
 }
 
 describe("what a comparison came to", () => {
-  test("counts an A/A step either way where its scores without the bill clear the level", async () => {
+  test("counts an A/A step where its one-sided test of the scores without the bill clears the level", async () => {
     const units = `${KEY.split("/")[0] ?? ""}/${fixture.units}`;
     const { answer: controlReading } = await ask("campaign", { key: units }, "default");
     // At two solves a side b-1 and b-2 carry an A/A too, the first solve against the second.
     const control = controlReading.comparisons.find(({ id }) => id === "c-1");
-    // The second sample lost every task: a one-sided test of its wins reads nothing.
+    // The second sample lost every task: a one-sided test of its wins reads nothing, and counts none.
     expect([control?.noise?.tally, (control?.noise?.p ?? 0) > (control?.level ?? 1)]).toEqual([
       { wins: 0, losses: 4, ties: 0 },
       true,
     ]);
-    expect([controlReading.counters.controls, controlReading.counters.controlSteps]).toEqual([3, 1]);
+    expect([controlReading.counters.controls, controlReading.counters.controlSteps]).toEqual([3, 0]);
     const found = campaignsFound({ repo: fixture.root, trees: "directory" }).found.find(
       ({ name }) => name === fixture.units,
     );
@@ -125,7 +119,7 @@ describe("what a comparison came to", () => {
       [[0, 0, 0, 0], 0],
       [[1, 1, 1, -1], 0],
       [[1, 1, 1, 1], 3],
-      [[-1, -1, -1, -1], 3],
+      [[-1, -1, -1, -1], 0],
     ] as const) {
       const log = {
         events: events.map((event) => {
@@ -144,8 +138,8 @@ describe("what a comparison came to", () => {
 
 describe("the scores a comparison is read on", () => {
   test("are those without the bill where a report of 26 October to 2 November holds them, else its differences", () => {
-    // 13 won, 1 lost, 2 tied with the bill, and 3 won,
-    // 0 lost, 13 tied without it, which is what the step read. Scores are whole points.
+    // 13 won, 1 lost, 2 tied with the bill, and 3 won, 0 lost, 13 tied without it, which is what the
+    // step read. Scores are whole points.
     const differences = [...Array.from({ length: 13 }, () => 10), -10, 0, 0];
     const unbilled = [60, 60, 30, ...Array.from({ length: 13 }, () => 0)];
     const scored = { wins: 13, losses: 1, ties: 2, p: 0.001, differences, unbilled, unsolved: 0 };
@@ -182,7 +176,6 @@ describe("what carried a comparison's wins", () => {
         });
       }
     }
-    // A comparison with no report has nothing carried.
     expect(answer.comparisons.filter((bar) => bar.tally === null).every((bar) => bar.carried === null)).toBe(
       true,
     );
@@ -250,8 +243,8 @@ describe("the rulings and the endings each tier may see", () => {
       const { answer: reading, text } = await ask("campaign", { key: KEY }, tier);
       const withheld = reading.comparisons.map(({ id, rulings }) => [id, rulings.withheld]);
       // b-1 holds a rejection of a task that waits for a label, c-1 and b-3 one set aside in a
-      // comparison nobody settled (b-3's unruled), and b-4 never reported; the others are settled
-      // or set nothing aside.
+      // comparison nobody settled (b-3's unruled), and b-4 never reported; the others are settled or
+      // set nothing aside.
       expect(withheld).toEqual([
         ["b-1", true],
         ["r-1", false],
@@ -461,7 +454,6 @@ describe("programs kept with a harness", () => {
       [b, "tree-b", "two"],
     ] as const) {
       mkdirSync(join(states, tree, "bin"), { recursive: true });
-      // A program is a file a command can run by name, so each is executable.
       writeFileSync(
         join(states, tree, "bin", "count"),
         `#!/bin/sh\n# count [task.json]\n# Prints ${said}.\necho ${said}\n`,
@@ -487,7 +479,6 @@ describe("programs kept with a harness", () => {
       ["warning", ".toolchain/bin/host"],
     ]);
     expect(listed.text.includes(MARKERS.hidden)).toBe(false);
-    // A program carries its head comment, past the shebang; a binary and the agent's files none.
     expect(Object.fromEntries(listed.answer.files.map(({ path, about }) => [path, about]))).toEqual({
       ".toolchain/bin/count": "count [task.json]\nPrints two.",
       ".toolchain/bin/engine": null,

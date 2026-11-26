@@ -1,13 +1,12 @@
 import type { ComponentProps, ReactNode } from "react";
 import { Search as SearchIcon } from "lucide-react";
 
-/** The filter row shared by the case and evidence tables. */
 export function Filters({ children }: { children: ReactNode }) {
   return <div className="ana-filters">{children}</div>;
 }
 
-/** The one search box of the page, in a filter row, over a harness's files and in the campaign
- *  picker; `input` passes a ref, keys and the ARIA a combobox's box needs. */
+/** The page's one search box, in a filter row, over a harness's files and in the campaign picker;
+ *  `input` passes a ref, keys and the ARIA a combobox's box needs. */
 export function Search({
   value,
   onChange,

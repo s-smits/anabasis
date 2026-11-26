@@ -1,20 +1,18 @@
 #!/usr/bin/env bun
 /**
- * Prints the campaign-history sections that a Builder session opening now would receive.
- *
- *   bun .claude/skills/design-and-seats/scripts/builder-view.ts <log.jsonl | campaign name>
- *     [--parent <digest>]
+ * Prints the campaign-history sections a Builder session opening now would receive:
+ * `builder-view.ts <log.jsonl | campaign name> [--parent <digest>]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { comparisonsTold, failsTold, startTold } from "#src/builder/past.ts";
-import { campaignOf } from "#src/campaign/handover.ts";
+import { formatComparisonHistory, formatPracticeFailures, formatSessionStart } from "#src/builder/past.ts";
+import { campaignOf } from "#src/campaign/summary.ts";
 import { short } from "#src/campaign/move.ts";
 import { namesOf } from "#src/campaign/names.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { latestBuilt } from "#src/kernel/reports.ts";
 import { taskStates } from "#src/kernel/task.ts";
-import { nextId } from "#tools/d2/campaign-terms.ts";
+import { nextId } from "#tools/campaign/campaign-terms.ts";
 import { logEvents } from "#tools/runs/registry.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
@@ -43,16 +41,20 @@ function releasedIds(events: readonly LogEvent[]): Map<string, string> {
   );
 }
 
-/** The lines a session opening now would read of the past, under the headings its message gives. */
-export function builderTold(events: readonly LogEvent[], parent: string | null = parentOf(events)): string[] {
+export function formatBuilderView(
+  events: readonly LogEvent[],
+  parent: string | null = parentOf(events),
+): string[] {
   const campaign = campaignOf(events);
   const id = nextId(events, "b");
   const released = releasedIds(events);
-  const fails = failsTold(campaign.fails, released);
-  const comparisons = comparisonsTold(campaign.steps);
+  const fails = formatPracticeFailures(campaign.fails, released);
+  const comparisons = formatComparisonHistory(campaign.steps);
   return [
     `session ${id}, ${String(released.size)} released tasks`,
-    parent === null ? "start: the log names no harness yet" : `start: ${startTold(campaign, parent, id)}`,
+    parent === null
+      ? "start: the log names no harness yet"
+      : `start: ${formatSessionStart(campaign, parent, id)}`,
     `comparisons (${String(comparisons.length)}):`,
     ...comparisons,
     `failed practice solves on released tasks (${String(fails.length)}):`,
@@ -66,7 +68,7 @@ if (import.meta.main) {
     async (args: CommandArgs) => {
       const [named = ""] = args.positionals;
       const events = logEvents(await logAcross(named));
-      console.log(builderTold(events, args.value("parent") ?? parentOf(events)).join("\n"));
+      console.log(formatBuilderView(events, args.value("parent") ?? parentOf(events)).join("\n"));
     },
   );
 }

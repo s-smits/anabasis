@@ -1,22 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Build an Oracle task as one markdown file, for a reader that takes no zip or reads one badly.
- *
- *   bun --env-file=.env.runs .claude/skills/oracle-handover/scripts/document.ts <parts> --commit <sha> --out <md>
- *
- * `<parts>` holds one part a line, `#` a comment, and ` :: <why>` after a part prints under it:
- * `head <md>` (the task, once), `src <path>[:A-B | #name | #1,2]` (a file at the commit: whole,
- * lines, a declaration with its head comment, or markdown sections), `diff <from>..<to> [paths]`,
- * `pr <N>`, `log <run> <selector>... [--whole]` (`slice.ts`) and `file <local path>`.
- *
- * Source comes from a published commit (`publishedAt`), never the working tree: a document that
- * appends the main checkout's `AGENTS.md`, behind the stack's top, has the Oracle report
- * contradictions the top has resolved. Home folders become `~/` and each machine
- * `ANA_HOSTS` names `host-a`, `host-b` (said here, not in the file); a credential refuses it, and so
- * does a `.env.runs` that names hosts this command did not load. With no hosts this machine's own
- * name is the one to alias.
- * Its size is printed, never capped (the operator's words: "do not optimize for it"), in o200k
- * tokens at 3.17 bytes each, as measured on one whole document.
+ * Builds an Oracle task as one markdown file, for a reader that takes no zip or reads one badly:
+ * `bun --env-file=.env.runs document.ts <parts> --commit <sha> --out <md>` (`--aliases` prints the
+ * host aliases alone). `<parts>` holds one part a line, `#` a comment, and ` :: <why>` after a part
+ * prints under it: `head <md>`, `src <path>[:A-B | #name | #1,2]`, `diff <from>..<to> [paths]`, `pr
+ * <N>` (its summary and its diff outside `test/`), `log <run> <selector>... [--whole]` (`slice.ts`), `file <local path>` and `findings <WRI folder>
+ * [id...]` (its `reports.md` findings table, and the log parts each `Seen in:` selector names). Source comes from
+ * a published commit (`publishedAt`), never the working tree, so the Oracle does not report
+ * contradictions the stack's top has resolved. Home folders become `~/` and each machine
+ * `ANA_HOSTS` names an alias (`host-a`, ...); a credential refuses it, and so does a `.env.runs`
+ * naming hosts this command did not load. Its size is printed, never capped, in o200k tokens at
+ * 3.17 bytes each. The repository's `AGENTS.md` is always the first appendix, whole, so the Oracle
+ * reads the invariants and terms before any part.
  */
 import * as ts from "typescript5";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
@@ -27,8 +22,12 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { publishedAt } from "#tools/runs/code.ts";
 import { envRunsFile, hostsOf, ownName } from "#tools/runs/host-config.ts";
 import { ghOrThrow } from "#tools/runtime/pulls.ts";
+import { AGENTS_MD } from "#tools/loc/source-policy.ts";
 import { scanText } from "#tools/secrets/rules.ts";
-import { DEFAULT_MAX_CHARS, fenced, sliceRun } from "./slice.ts";
+import { REPORTS } from "#tools/wri/index.ts";
+import { FINDINGS_HEAD } from "#tools/wri/investigation.ts";
+import { rowsOf } from "#tools/wri/ledger.ts";
+import { DEFAULT_MAX_CHARS, fenced, parseSelector, sliceRun } from "./slice.ts";
 
 interface Part {
   readonly title: string;
@@ -54,8 +53,8 @@ const PR_TEMPLATE = [
 ].join("\n");
 export const tokensOf = (text: string): number => Math.round(new TextEncoder().encode(text).length / 3.17);
 
-/** The 1-based lines of top-level declaration `name` in TypeScript `text`, from the head comment
- *  of its first statement to the end of its last, so that overloads and merged interfaces come whole. */
+/** The 1-based lines of top-level declaration `name`, from the head comment of its first statement
+ *  to the end of its last, so that overloads and merged interfaces come whole. */
 export function declarationLines(text: string, name: string): [number, number] {
   const file = ts.createSourceFile("part.ts", text, ts.ScriptTarget.ESNext, true);
   const named = (node: ts.Statement) =>
@@ -86,7 +85,6 @@ export function declarationLines(text: string, name: string): [number, number] {
   return [line(from), line(last.getEnd())];
 }
 
-/** The 1-based lines of each markdown section whose heading is `key` or begins `key ` or `key. `. */
 export function sectionLines(lines: readonly string[], keys: readonly string[]): [number, number][] {
   // A `#` line inside a fenced block is code, not a heading.
   let fence = false;
@@ -96,7 +94,6 @@ export function sectionLines(lines: readonly string[], keys: readonly string[]):
   });
   const end = lines.at(-1) === "" ? lines.length - 1 : lines.length;
   return keys.map((key) => {
-    // A space after the heading's text lets `key ` match the whole heading as well as its first words.
     const at = headings.findIndex((heading) =>
       [`${key} `, `${key}. `].some((each) => `${heading?.[2] ?? ""} `.startsWith(each)),
     );
@@ -109,7 +106,6 @@ export function sectionLines(lines: readonly string[], keys: readonly string[]):
   });
 }
 
-/** Where GitHub shows the repository checkout `repo` names as `origin`. */
 export const webOf = (repo: string): string =>
   `https://github.com/${gitText(repo, "remote", "get-url", "origin").replaceAll(/^.*github\.com[:/]|\.git$/gu, "")}`;
 
@@ -144,7 +140,56 @@ function srcPart(at: At, spec: string): Part {
   };
 }
 
-/** Each verb of a parts line: what it makes of its arguments. */
+export const untested = (diff: string): string =>
+  diff
+    .split(/^(?=diff --git )/mu)
+    .filter((file) => !file.startsWith("diff --git a/test/"))
+    .join("");
+
+const isSelector = (word: string): boolean => {
+  if (!/[{[:]/u.test(word)) return false;
+  try {
+    parseSelector(word);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const seenParts = (seen: string): [string, string[]][] =>
+  seen.split(";").flatMap((entry) => {
+    const [run = "", ...words] = entry
+      .trim()
+      .split(/[\s,]+(?![^{[]*[}\]])/u)
+      .map((word) => word.replaceAll(/^[(`]+|[).,`]+$/gu, ""));
+    const selectors = words.filter(isSelector);
+    return selectors.length === 0 || isSelector(run) ? [] : [[run, selectors]];
+  });
+
+async function findingsPart(at: At, [folder = "", ...ids]: string[]): Promise<Part> {
+  const all = rowsOf(readFileSync(resolve(at.base, folder, REPORTS), "utf8"), "id");
+  const unknown = ids.filter((id) => !all.some(([row]) => row === id));
+  if (all.length === 0 || unknown.length > 0) {
+    throw new CommandFailure(`${folder}: no finding ${unknown.join(", ") || "in its findings table"}`);
+  }
+  const rows = all.filter(([id = ""]) => ids.length === 0 || ids.includes(id));
+  const shown = { whole: false, maxChars: DEFAULT_MAX_CHARS };
+  const slices = await Promise.all(
+    rows.flatMap(({ 0: id = "", 5: seen = "" }) =>
+      seenParts(seen).map(
+        async ([run, selectors]) => `### ${id}\n\n${await sliceRun(run, selectors, shown)}`,
+      ),
+    ),
+  );
+  return {
+    title: `findings of ${basename(folder)}`,
+    link: "",
+    body: [[FINDINGS_HEAD, ...rows.map((row) => `| ${row.join(" | ")} |`)].join("\n"), ...slices].join(
+      "\n\n",
+    ),
+  };
+}
+
 const PARTS = {
   src: (at, words) => srcPart(at, words.join(" ")),
   diff: (at, [range = "", ...paths]) => {
@@ -158,7 +203,7 @@ const PARTS = {
   pr: (at, [number = ""]) => ({
     title: `PR #${number}`,
     link: `${at.web}/pull/${number}/files`,
-    body: pullTold(at.repo, number),
+    body: `${pullTold(at.repo, number)}\n\n${fenced(untested(ghOrThrow(at.repo, ["pr", "diff", number])), "diff")}`,
   }),
   log: async (_, words) => {
     const [run = "", ...selectors] = words.filter((word) => word !== "--whole");
@@ -168,6 +213,7 @@ const PARTS = {
       body: await sliceRun(run, selectors, { whole: words.includes("--whole"), maxChars: DEFAULT_MAX_CHARS }),
     };
   },
+  findings: findingsPart,
   file: (at, [path = ""]) => ({
     title: basename(path),
     link: "",
@@ -176,10 +222,9 @@ const PARTS = {
 } as const satisfies Record<string, (at: At, words: string[]) => Part | Promise<Part>>;
 const isVerb = (verb: string): verb is keyof typeof PARTS => Object.hasOwn(PARTS, verb);
 
-/** `text` with every home folder as `~`, also where a path is written with dashes (a session's
- *  folder), every login number dropped (machine rules: none in published text), and each
- *  machine's names, `machines[i]`, in any case, as one alias. A tree and a session's scratchpad go
- *  whole, since a document would otherwise carry both, and a login's table row, to the outside. */
+/** Home folders become `~`, also where a path is written with dashes (a session's folder); login
+ *  numbers are dropped; each machine's names, in any case, become one alias. A tree and a session's
+ *  scratchpad go whole. */
 export function sanitised(text: string, machines: readonly (readonly string[])[]) {
   const aliases = new Map(
     machines.flatMap((names, index) =>
@@ -205,11 +250,13 @@ export function sanitised(text: string, machines: readonly (readonly string[])[]
   return { text: out, aliases };
 }
 
-/** The document the parts file `partsFile` names, read at commit `commit` of checkout `repo`. */
 async function documentOf(partsFile: string, repo: string, commit: string) {
   const at: At = { repo, sha: publishedAt(repo, commit), web: webOf(repo), base: dirname(partsFile) };
   const head: string[] = [];
-  const parts: Part[] = [];
+  const rules = srcPart(at, AGENTS_MD);
+  const parts: Part[] = [
+    { ...rules, body: `Read this first: the repository's invariants, terms and rules.\n\n${rules.body}` },
+  ];
   for (const line of readFileSync(partsFile, "utf8")
     .split("\n")
     .map((each) => each.trim())) {
@@ -218,6 +265,9 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
     const [spec, why] = cut === -1 ? [line, undefined] : [line.slice(0, cut), line.slice(cut + 4)];
     // A parts line is not shell: a quoted word loses its quotes and nothing more.
     const [verb = "", ...words] = spec.split(/\s+/u).map((word) => word.replace(/^(['"])(.*)\1$/u, "$2"));
+    if (verb === "src" && words[0]?.startsWith(AGENTS_MD) === true) {
+      throw new CommandFailure(`${spec}: ${AGENTS_MD} is always the first part, whole`);
+    }
     if (verb === "head") head.push(readFileSync(resolve(at.base, words.join(" ")), "utf8").trim());
     else if (isVerb(verb)) {
       const part = await PARTS[verb](at, words);
@@ -243,7 +293,6 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
   return { ...sanitised(`${text}\n`, machinesOf()), parts: parts.length };
 }
 
-/** This machine's name, then each peer's names, as `ANA_HOSTS` gives them: the aliases' order. */
 function machinesOf(): string[][] {
   const file = envRunsFile(runtimeProcess.cwd());
   const unloaded = runtimeProcess.env.ANA_HOSTS === undefined && existsSync(file);
@@ -264,7 +313,6 @@ if (import.meta.main) {
       positionals: [0, 1],
     },
     async (args: CommandArgs) => {
-      // The aliases alone, so that a head can name the hosts as the document will.
       if (args.flag("aliases")) {
         for (const [name, alias] of sanitised("", machinesOf()).aliases) console.log(`${alias} is ${name}`);
         return;

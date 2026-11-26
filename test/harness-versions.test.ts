@@ -1,8 +1,7 @@
-// The harness-versions script of the harness-audit skill, over a campaign written here with the
-// log's own `append`: the starter, the child one session froze from it (the account's worked
-// harness, one program and a guide), and a copy of the child kept under a digest it does not open
-// as, which the listing has to name and a diff has to read where it sits. Beside them lies a shared
-// tool tree (`tree-*`), which a kept state links to and which is no harness.
+// The harness-versions script of the harness-audit skill, over a campaign written with the log's own
+// `append`: the starter, a child one session froze from it, and a copy of the child kept under a digest
+// it does not open as, which the listing must name. A shared tool tree (`tree-*`) beside them is no
+// harness.
 import { afterAll, describe, expect, it } from "bun:test";
 import type { Version } from "#skills/harness-audit/scripts/harness-versions.ts";
 import { append } from "../src/kernel/log.ts";

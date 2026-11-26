@@ -25,7 +25,7 @@ Respect `tools/runtime/gate.ts:contentKey`: adjacent folds preserve commit trees
 
 Treat each Mode B group as **one surface** via [simplify](../simplify/SKILL.md) (`H1`–`H11`, Revert-to-Minimal Probe, Ladder Rung 6), optimising net simplicity over lossless history:
 
-1. **Trade tail defense (`<=5–10%`) for `>=40–50%` less machinery**: question custom lexers, speculative edge branches, and layered checks whenever a higher layer (`openVerifier` OS sandbox, `answerFormat` JSON Schema, Referee probes, or operator gates) already catches real failures. State every sacrificed edge case, its higher-layer backstop, and its falsifier in `"Not done"`; never delete blindly without problem-table grounding.
+1. **Trade tail defense (`<=5–10%`) for `>=40–50%` less machinery**: question custom lexers, speculative edge branches, and layered checks whenever a higher layer (`openVerifier` OS sandbox, `answerFormat` JSON Schema, Auditor probes, or operator gates) already catches real failures. State every sacrificed edge case, its higher-layer backstop, and its falsifier in `"Not done"`; never delete blindly without problem-table grounding.
 2. **Collapse add-retune-revert sequences (`H2`, `H4`)**: when PR `k` adds a workaround and `k+m` reverts or moves it upstream, write the final upstream shape once on `<group-base>` and drop transitional code and synthetic puzzle tests (`H10`).
 3. **Replace glue with native primitives & single folds (`H3`, `H6`)**: use `Bun.Transpiler`, runtime/OS flags, and shared production folds in place of parallel scanners.
 4. **Preserve load-bearing invariants**: wall byte-identity (`seat-view.ts`), historical `EVENT_KINDS`, and behavioral outcome tests (rewrite `I0`/`I1` through [commit-r](../commit-r/SKILL.md) with original PRs as oracle + `mutate.ts`).
@@ -37,10 +37,10 @@ Mark each member `keep` | `simplify` | `merge` | `rewrite` | `drop`; verify `mea
 Target 5–10 groups (`I0`/`I1` -> `I2` -> `I3`), enforcing three hard edges (overriding tier defaults when needed):
 - **Gates above judged sites**: violation fixes stay beneath the lint rule promoting them.
 - **Ledger rows (`tools/oxlint/not-slop.tsv`) above their rule**: rebuild reordered deltas via `formatLedger` (`tools/oxlint/not-slop-ledger.ts`) or `bun run not-slop -- prune`, holding rows until their rule arrives (`.gitattributes` `merge=union` silently creates stale rows without git conflicts).
-- **Exports with first external reader**: `tools/loc/source-policy.ts:unreadExports` fails intermediate commits exporting symbols across `AUTHORED_ROOTS` before an external caller exists.
+- **Exports with first external reader**: `bun run simplify -- --gate` (`tree/no-unused-export`) fails intermediate commits exporting symbols across `AUTHORED_ROOTS` before an external caller exists.
 
 Trial on `git worktree add --detach ../anabasis-regroup-trial origin/main`:
-- Cherry-pick groups in order; run `bun run typecheck && bun run lint -- --strict && bun tools/loc/source-policy.ts` at every group head.
+- Cherry-pick groups in order; run `bun run typecheck && bun run lint -- --strict && bun tools/loc/source-policy.ts && bun run simplify -- --gate` at every group head.
 - Require `git diff --quiet <new top> <published top>` for Mode A regroups.
 
 ## 5. Review, assemble & republish
@@ -59,4 +59,4 @@ Trial on `git worktree add --detach ../anabasis-regroup-trial origin/main`:
    - **List `--head` bottom-to-top through the highest moved PR**: `republish.ts` appends unnamed survivors *after* `--head` entries, breaking parent ordering and aborting (`holds`).
    - **Rebase mid-stack side PRs separately**: `pulls.ts:stackHolding` walks one `longest` chain only and aborts on forks.
    - **Check recovery & stack health**: `.git/ana-republish.json` blocks retries after interruption until `--resume`; confirm zero closed PRs remain in `STACK_MEMBERS` before `gh stack link`.
-   - **Re-prove cleanly**: run `bun run land -- <top> --sanitize` (reuses unchanged `contentKey` trees; reserve `--from` for operator request since it withholds `mergeable`), and dispatch `.github/workflows/ci.yml` (`linux` job) whenever `src/wall/linux-bwrap.ts` changed. Report PR reduction, before/after complexity and line metrics per group, invalidated passes, and open operator decisions.
+   - **Re-prove cleanly**: run `bun run land -- <top> --sanitize` (reuses unchanged `contentKey` trees; reserve `--from` for operator request since it withholds `mergeable`), and dispatch `.github/workflows/ci.yml` (`linux` job) whenever `src/sandbox/linux-bwrap.ts` changed. Report PR reduction, before/after complexity and line metrics per group, invalidated passes, and open operator decisions.

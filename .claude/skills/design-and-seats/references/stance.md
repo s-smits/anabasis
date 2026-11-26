@@ -26,7 +26,7 @@ reason about an unseen technical domain. The seven consequences and their justif
    model decision.
 5. **Code owns all execution conditions.** The Builder may request a campaign move, and code decides
    whether admission conditions allow it to start. Whenever a model's output informs a host decision
-   (such as a Referee ruling), code specifies the required evidence structure and refuses outputs
+   (such as a Auditor ruling), code specifies the required evidence structure and refuses outputs
    that omit it.
 6. **Permissive defaults within strict boundaries.** When in doubt about strictness, err toward more
    lenient sandboxing (hiding only hidden values, credentials, and other seats' private files) and
@@ -38,7 +38,7 @@ reason about an unseen technical domain. The seven consequences and their justif
    B17) show that overly narrow grants repeatedly terminated valid solves while broad grants leaked
    no hidden values. Narrow a grant only where concurrent writes would collide, such as two solves
    writing the same path in a shared `/tmp`. Each sandbox policy is verified by a wall test once per
-   process (`walledBase`, `probeWall`).
+   process (`sandboxBase`, `probeSandbox`).
 7. **Prefer the simple mechanism.** Every added mechanism increases the cost of reading, verifying,
    and reversing future changes, so a simple design whose events can be audited directly outperforms
    a complex one that cannot be verified (rule 13). The sole exception is evaluation integrity

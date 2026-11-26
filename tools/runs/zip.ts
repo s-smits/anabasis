@@ -64,17 +64,13 @@ const SECONDS = new Map([
 ]);
 type Level = (typeof LEVELS)[number];
 
-/** What `--latest`, `--minPromotions`, `--minTime`, `--since` and `--until` ask of a run. */
 interface Choice {
-  /** At most this many, the newest first; null for every run that passes. */
+  /** At most this many, newest first; null for every run that passes. */
   readonly latest: number | null;
-  /** At least this many `harness.promoted` events in its log. */
   readonly promotions: number;
-  /** At least this long from its first event to its last, in seconds. */
+  /** At least this long from first event to last, in seconds. */
   readonly seconds: number;
-  /** Its last event is no earlier than this, in milliseconds since the epoch. */
   readonly since: number;
-  /** Its first event is no later than this, in milliseconds since the epoch. */
   readonly until: number;
 }
 
@@ -129,14 +125,12 @@ interface Left {
   readonly why: string;
 }
 
-/** The path from `root` that the link at `path` names, where it is relative and stays in `root`. */
 function linkedIn(root: string, path: string): string | null {
   const target = readlinkSync(path);
   const named = relative(root, resolve(dirname(path), target));
   return isAbsolute(target) || named.startsWith("..") ? null : named;
 }
 
-/** Why a zip never holds `path` in `root`, or null when it may. */
 function unfit(root: string, path: string): string | null {
   if (SECRET.some((glob) => glob.match(basename(path)))) return "a secret's name";
   const stat = lstatSync(path);
@@ -144,7 +138,7 @@ function unfit(root: string, path: string): string | null {
   return stat.isDirectory() && DERIVED.has(basename(path)) ? INSTALLED : null;
 }
 
-/** Every file a zip may hold of `names` in `root`, or of all of it, by its path from there, and
+/** Every file a zip may hold of `names` in `root` (all of it by default), by path from there, and
  *  what stays where it is. */
 export function fit(root: string, names: readonly string[] = readdirSync(root).toSorted()) {
   const held: Held[] = [];
@@ -174,7 +168,6 @@ const holds = (level: Level, group: string) =>
 
 const kilobytes = (bytes: number) => `${(bytes / 1024).toFixed(0)} KB`;
 
-/** What a zip at `level` holds of each group, as its README and the command say it. */
 const sizes = (level: Level, files: readonly Held[]) =>
   GROUPS.map(([name, what, from]) => {
     const own = files.filter((file) => file.group === name);
@@ -185,7 +178,6 @@ const sizes = (level: Level, files: readonly Held[]) =>
     return { name, what, from, here };
   });
 
-/** The README a zip opens with: its runs, its groups and what was left. */
 function readme({ level, made, runs: ran, files, left }: ReturnType<typeof gather>): string {
   const reasons = Object.entries(countBy(left, ({ why }) => why));
   return [
@@ -209,7 +201,7 @@ function readme({ level, made, runs: ran, files, left }: ReturnType<typeof gathe
   ].join("\n");
 }
 
-/** Copy what `level` holds of `chosen` under `stage`, and say what the zip then is. */
+/** Copies what `level` holds of `chosen` under `stage`, and says what the zip then is. */
 function gather(chosen: readonly Run[], level: Level, stage: string) {
   const files: Held[] = [];
   const left: Left[] = [];
@@ -235,7 +227,6 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
     rmSync(scratch, { recursive: true });
   }
   const told = chosen.map((run) => {
-    // A round's folder is its own; a live solve's log lies among the other solves'.
     const [folder, found] = isCampaign(run)
       ? [run.name, fit(dirname(run.path))]
       : ["live", fit(dirname(run.path), [basename(run.path)])];
@@ -250,8 +241,8 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
       name: run.name,
       log: join(basename(run.tree), folder, basename(run.path)),
       worktree: run.tree,
-      // The commit of each launch beside the log, oldest first, which is the source each ran; the
-      // worktree's own commit is where it stands when zipped, which can differ from every one.
+      // The commit of each launch beside the log, oldest first; the worktree's own commit, where it
+      // stands when zipped, can differ from every one.
       ranAt,
       ...now,
       events: log.length,
@@ -262,7 +253,7 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
   return { schema: "runs-zip/v1", level, made: new Date().toISOString(), runs: told, files, left };
 }
 
-/** Zip `chosen` at `level` to `out`, and return what it holds. Refuses a zip over `maxBytes`. */
+/** Zips `chosen` at `level` to `out` and returns what it holds; refuses a zip over `maxBytes`. */
 export function zip(
   chosen: readonly Run[],
   level: Level,
@@ -299,7 +290,6 @@ export function zip(
   }
 }
 
-/** `2h`, `90m`, `45s` or `1.5d` as seconds. */
 function secondsOf(text: string): number {
   const found = /^(\d+(?:\.\d+)?)([smhd])$/.exec(text);
   const per = SECONDS.get(found?.[2] ?? "");
@@ -317,7 +307,6 @@ const countOf = (flag: string, text: string, least: number) => {
   return count;
 };
 
-/** A date, a date with a time and a zone, or how long ago (`36h`), as milliseconds since the epoch. */
 function momentOf(flag: string, text: string, now = Date.now()): number {
   if (AGO.test(text)) return now - secondsOf(text) * 1000;
   const at = MOMENT.test(text) ? Date.parse(text) : Number.NaN;
@@ -331,10 +320,9 @@ function momentOf(flag: string, text: string, now = Date.now()): number {
 
 const timeOf = (event: LogEvent | undefined) => (event === undefined ? Number.NaN : Date.parse(event.at));
 
-/** The campaigns of `runs` that pass `choice`, the newest last event first. A seed or a live solve
- *  is no campaign, and a log with no event passes nothing. Reading every archived log whole takes
- *  a few seconds. */
-export function newest(runs: readonly Run[], choice: Choice): Run[] {
+/** The campaigns of `runs` that pass `choice`, newest last event first. A seed or a live solve is
+ *  no campaign, and a log with no event passes nothing. */
+function newest(runs: readonly Run[], choice: Choice): Run[] {
   const read = runs
     .filter((run) => isCampaign(run) && run.seed !== true)
     .map((run) => {
@@ -362,8 +350,6 @@ export function newest(runs: readonly Run[], choice: Choice): Run[] {
     .map((one) => one.run);
 }
 
-/** The flags that choose runs, as the host is sent them, and as the `Choice` they make (null when
- *  none is given). */
 function choiceOf(values: Partial<Record<(typeof CHOOSING)[number], string>>) {
   const forwarded = CHOOSING.flatMap((flag) => {
     const value = values[flag];
@@ -384,7 +370,7 @@ function choiceOf(values: Partial<Record<(typeof CHOOSING)[number], string>>) {
 }
 
 /** The runs `choice` names among those `names` match on every host. Each record is read to choose,
- *  and only the chosen come whole, by exact name: asking for none would bring every campaign. */
+ *  and only the chosen come whole, by exact name, since asking for none would bring every campaign. */
 async function pickedAcross(names: readonly string[], choice: Choice): Promise<Run[]> {
   const chosen = newest(await readableAcross(names), choice).map((run) => run.name);
   if (chosen.length === 0) throw new Error("no campaign passes the flags that choose runs");
@@ -397,7 +383,6 @@ async function pickedAcross(names: readonly string[], choice: Choice): Promise<R
   return chosen.flatMap((name) => held.get(name) ?? []);
 }
 
-/** `bun run runs zip`. */
 export async function zipRuns(args: readonly string[]): Promise<void> {
   const { values, positionals: names } = parseArgs({
     args: [...args],
@@ -433,9 +418,9 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
     if (values.note !== undefined) {
       throw new Error("--note is added where the zip is made: zip here, or leave it out");
     }
-    // The host makes the zip by its own reading of its runs, and only the zip comes back.
+    // The host makes the zip from its own reading of its runs, and only the zip comes back.
     const host = hostNamed(values.from);
-    // The zip's folder inside is named for its file, so the host's copy takes `--out`'s name.
+    // The zip's inner folder is named for its file, so the host's copy takes `--out`'s name.
     const scratch = `/tmp/ana-runs-zip-${String(Date.now())}`;
     const there = `${scratch}/${basename(out)}`;
     const mb = megabytes === undefined ? [] : ["--max-mb", megabytes];

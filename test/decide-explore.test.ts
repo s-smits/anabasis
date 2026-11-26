@@ -1,16 +1,14 @@
-// The decision table searched rather than sampled. An environment answers each move the production
-// `decide` returns with every outcome a seat or a comparison could give it, and a breadth-first
-// search from seeds placed at each stage of a campaign asks the table of every log it reaches
-// whether the invariants below hold. There is no second model of the table: the environment invents
-// only what seats and comparisons write, and the search must reach every row and ending, so it
-// cannot pass by exploring nothing. The invariants span moves (the reference's lineage, no second
-// draw of one pair, an end within the patience) rather than restating one row.
+// The decision table searched rather than sampled: an environment answers each move the production
+// `decide` returns with every outcome a seat or a comparison could give, and a breadth-first search
+// from seeds at each campaign stage checks the invariants below on every log it reaches. The
+// environment invents only what seats and comparisons write, and the search must reach every row and
+// ending, so it cannot pass by exploring nothing.
 import { describe, expect, it } from "bun:test";
 import { stopRule } from "../src/campaign/admission.ts";
 import { epochsOf } from "../src/campaign/climb.ts";
-import { decide, practiceDue } from "../src/campaign/decide.ts";
-import { groundOf, type Plan } from "../src/campaign/ground.ts";
-import type { Decided } from "../src/campaign/move.ts";
+import { nextAction, practiceDue } from "../src/campaign/scheduler.ts";
+import { campaignState, type Plan } from "../src/campaign/state.ts";
+import type { ScheduledAction } from "../src/campaign/move.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
@@ -37,7 +35,7 @@ interface Reading {
 }
 interface State {
   readonly events: readonly LogEvent[];
-  readonly decided: Decided;
+  readonly decided: ScheduledAction;
 }
 
 const AT = "2026-11-21T00:00:00.000Z";
@@ -71,14 +69,13 @@ const CONFIRMED_STARTER: Reading = {
   old: [0, 2, 6],
   fresh: [3, 3, 2],
 };
-/** The comparison a led Builder asks for: its latest harness against the reference. */
 const BUILDER_COMPARES = {
   move: "compare",
   fresh: "latest",
   reference: "promoted",
   why: "",
   code: "build",
-} as const satisfies Extract<Decided, { move: "compare" }>;
+} as const satisfies Extract<ScheduledAction, { move: "compare" }>;
 
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at: AT, kind, data });
 const count = (events: readonly LogEvent[], kind: EventKind) =>
@@ -90,8 +87,7 @@ const heldOut = (version: string) => [
 const heldVersions = (events: readonly LogEvent[]) =>
   events.flatMap(({ kind, data }) => (kind === "task.gate" && isString(data.version) ? [data.version] : []));
 
-/** The harnesses a comparison move names, as the host resolves them. */
-function sidesOf(events: readonly LogEvent[], move: Extract<Decided, { move: "compare" }>) {
+function sidesOf(events: readonly LogEvent[], move: Extract<ScheduledAction, { move: "compare" }>) {
   const reference = referenceOf(events) ?? STARTER;
   const resolve = (named: string) =>
     ({ starter: STARTER, latest: latestBuilt(events) ?? reference, promoted: reference })[named] ?? named;
@@ -100,7 +96,7 @@ function sidesOf(events: readonly LogEvent[], move: Extract<Decided, { move: "co
 
 function compared(
   events: readonly LogEvent[],
-  move: Extract<Decided, { move: "compare" }>,
+  move: Extract<ScheduledAction, { move: "compare" }>,
   readings: readonly Reading[] = READINGS,
   level = PLAN.wanted.level,
 ) {
@@ -129,8 +125,7 @@ function compared(
   ]);
 }
 
-/** Every log a seat or a comparison could write in answer to `move`. */
-function answers(events: readonly LogEvent[], move: Decided, plan: Plan): LogEvent[][] {
+function answers(events: readonly LogEvent[], move: ScheduledAction, plan: Plan): LogEvent[][] {
   const id = `s${String(events.length)}`;
   switch (move.move) {
     case "accept": {
@@ -164,7 +159,7 @@ function answers(events: readonly LogEvent[], move: Decided, plan: Plan): LogEve
       const examined = Array.from({ length: 6 }, (_, at) => `${id}t${String(at)}`).flatMap(heldOut);
       const asks = (written: readonly LogEvent[], readings: readonly Reading[]) => {
         const left = [...events, ...written];
-        if (groundOf(left, plan).refused.size > 0) {
+        if (campaignState(left, plan).refused.size > 0) {
           return [];
         }
         return compared(left, BUILDER_COMPARES, readings).map((more) => [...written, ...more]);
@@ -216,8 +211,7 @@ const roomFor = (data: JsonObject) => {
   return !isNumber(informative) || informative > 0;
 };
 
-/** The sentence an invariant breaks on this log and move, or null where all hold. */
-function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): string | null {
+function broken(events: readonly LogEvent[], plan: Plan, decided: ScheduledAction): string | null {
   const reference = referenceOf(events) ?? STARTER;
   const reports = reportsOf(events);
   const promotedAt = events.findLastIndex(
@@ -240,15 +234,8 @@ function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): stri
   }
   const epochs = epochsOf(events);
   const currentEpoch = epochs.at(-1);
-  const underpoweredLead =
-    currentEpoch?.starter_able === false &&
-    currentEpoch.starter_tally !== null &&
-    currentEpoch.starter_tally.wins > currentEpoch.starter_tally.losses;
   const revertOwed =
-    reference !== STARTER &&
-    currentEpoch?.starter_tally !== null &&
-    currentEpoch?.confirmed === false &&
-    !underpoweredLead;
+    reference !== STARTER && currentEpoch?.starter_tally !== null && currentEpoch?.confirmed === false;
   if (spent && revertOwed && decided.move === "end" && decided.ending === "budget") {
     return "the budget ended the campaign before an unconfirmed reference reverted";
   }
@@ -319,13 +306,12 @@ function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): stri
   return null;
 }
 
-/** Every log reachable from `start` within `depth` moves, with the move the table chose on each. */
 function explore(start: readonly LogEvent[], plan: Plan, depth: number): State[] {
   const seen: State[] = [];
   // The host opens every campaign with its terms, so the stop rule reads the plan's patience.
   let frontier: (readonly LogEvent[])[] = [[event("campaign.opened", { patience: plan.patience }), ...start]];
   for (let step = 0; step <= depth; step += 1) {
-    const layer = frontier.map((events) => ({ events, decided: decide(events, plan) }));
+    const layer = frontier.map((events) => ({ events, decided: nextAction(events, plan) }));
     seen.push(...layer);
     frontier = layer.flatMap(({ events, decided }) =>
       answers(events, decided, plan).map((written) => [...events, ...written]),
@@ -489,8 +475,8 @@ describe("the decision table, searched", () => {
     for (const { plan, events, decided } of SAMPLED) {
       const spent = { ...plan, left: { dollars: 1, reserve: 5 } };
       const stopped = [...events, stop];
-      expect(broken(stopped, plan, decide(stopped, plan))).toBeNull();
-      const tight = decide(events, spent);
+      expect(broken(stopped, plan, nextAction(stopped, plan))).toBeNull();
+      const tight = nextAction(events, spent);
       expect(broken(events, spent, tight)).toBeNull();
       if (decided.move === "accept") expect(tight.move).toBe("accept");
     }
@@ -700,7 +686,7 @@ describe("the decision table, searched", () => {
       ...held("t-old"),
       event(PROMOTED_EVENT, { harness: "h1", from: STARTER, rests: [] }),
     ];
-    const move = decide(inheritedOnly, { ...PLAN, practice: 0 });
+    const move = nextAction(inheritedOnly, { ...PLAN, practice: 0 });
     expect(move.why).not.toContain("the campaign holds no task");
 
     // 3. A second no-room report on the same (fresh, old) pair keeps counts:true from its earlier roomful report.
@@ -725,34 +711,128 @@ describe("the decision table, searched", () => {
         versions: ["t-1", "t-2"],
         reading: "no-step",
         scored: { wins: 0, losses: 0, ties: 2, p: 1, unsolved: 0 },
-        valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
+        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
         aside: [],
       }),
     ];
     expect(stopRule(sticky)).toMatchObject({ checkpoints: 1, sinceStep: 1 });
   });
 
-  it("keeps prior-epoch tasks out of practicePool and releaseOrder's failed half, and caps small batches at half", () => {
-    const cond = (task: string, harness: string) => {
-      const condition = {
-        contract: "c",
-        harness,
-        task,
-        model: "m",
-        effort: "high",
-        prices: { m: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } },
-        runtime: {},
-        compaction: "off" as const,
-        solverTools: "s",
-        verifierTools: "v",
-        sandbox: "p",
-        limits: { wallSeconds: 60, turns: 10, shellDefaultSeconds: 10, shellMaxSeconds: 20, concurrency: 1 },
-        host: "h",
-        side: "test" as const,
-      };
-      const id = conditionId(condition);
-      return { id, setting: settingId(condition), recorded: event("condition.recorded", { id, condition }) };
+  const cond = (task: string, harness: string) => {
+    const condition = {
+      contract: "c",
+      harness,
+      task,
+      model: "m",
+      effort: "high",
+      prices: { m: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } },
+      runtime: {},
+      compaction: "off" as const,
+      solverTools: "s",
+      verifierTools: "v",
+      sandbox: "p",
+      limits: { wallSeconds: 60, turns: 10, shellDefaultSeconds: 10, shellMaxSeconds: 20, concurrency: 1 },
+      host: "h",
+      side: "test" as const,
     };
+    const id = conditionId(condition);
+    return { id, setting: settingId(condition), recorded: event("condition.recorded", { id, condition }) };
+  };
+
+  it("counts unchanged Builder sessions with in-epoch practice failures toward stopRule, in chronological order with comparisons", () => {
+    const pCond = cond("p-1", STARTER);
+    let seq = 0;
+    const practice = (outcome: "pass" | "fail", ruling: "earned" | "check-defect" = "earned"): LogEvent[] => {
+      const solve = `ps-${String(++seq)}`;
+      return [
+        event("solve.started", { solve, condition: pCond.id }),
+        event("solve.finished", {
+          solve,
+          ending: outcome === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+        }),
+        ...(outcome === "fail" ? [event("referee.finding", { solve, ruling })] : []),
+      ];
+    };
+    const buildStart = (session: string) => event("build.started", { session });
+    const buildFin = (session: string, changed: boolean, ended = "finished") =>
+      event("build.finished", { session, harness: STARTER, changed, ended });
+    const stepReport = (session: string, harness: string): LogEvent[] => [
+      event("build.checkpoint", { session: `c-${session}`, harness }),
+      event(REPORTED_EVENT, {
+        session,
+        old: STARTER,
+        fresh: harness,
+        starter: STARTER,
+        versions: ["t-1"],
+        reading: "step",
+        scored: { wins: 1, losses: 0, ties: 0 },
+        valid: { old: [1, 0], fresh: [0, 1], informative: { old: 1, fresh: 1 } },
+        aside: [],
+      }),
+    ];
+    const base: LogEvent[] = [pCond.recorded];
+
+    const declinedBeforeStep: LogEvent[] = [
+      ...base,
+      buildStart("b-1"),
+      ...practice("fail"),
+      buildStart("b-other"),
+      buildFin("b-1", false),
+      ...stepReport("g-1", "h1"),
+    ];
+    expect(stopRule(declinedBeforeStep)).toEqual({ checkpoints: 2, sinceStep: 0, stop: false });
+
+    const declinedAfterStep: LogEvent[] = [
+      ...base,
+      ...stepReport("g-1", "h1"),
+      buildStart("b-2"),
+      ...practice("fail"),
+      buildFin("b-2", false),
+    ];
+    expect(stopRule(declinedAfterStep)).toEqual({ checkpoints: 2, sinceStep: 1, stop: false });
+
+    for (const ignored of [
+      [...base, buildStart("b-1"), ...practice("pass"), buildFin("b-1", false)],
+      [...base, buildStart("b-1"), ...practice("fail", "check-defect"), buildFin("b-1", false)],
+      [...base, ...practice("fail"), buildStart("b-1"), buildFin("b-1", false)],
+      [...base, buildStart("b-1"), buildFin("b-1", false), ...practice("fail")],
+      [
+        ...base,
+        buildStart("b-1"),
+        ...practice("fail"),
+        event(PROMOTED_EVENT, { harness: "h1", from: STARTER, rests: [] }),
+        buildFin("b-1", false),
+      ],
+      [
+        ...base,
+        buildStart("b-1"),
+        ...practice("fail"),
+        event("harness.reverted", { harness: STARTER, from: "h1" }),
+        buildFin("b-1", false),
+      ],
+      [...base, buildStart("b-1"), ...practice("fail"), buildFin("b-1", false, "crashed")],
+      [...base, buildStart("b-1"), ...practice("fail"), buildFin("b-1", false, "killed")],
+      [...base, buildStart("b-1"), ...practice("fail"), buildFin("b-1", true)],
+      [
+        ...base,
+        event("build.checkpoint", { session: "b-1", harness: "h1" }),
+        event(REPORTED_EVENT, {
+          session: "g-empty",
+          old: STARTER,
+          fresh: "h1",
+          starter: STARTER,
+          versions: [],
+          reading: "no-step",
+          scored: { wins: 0, losses: 0, ties: 0 },
+          valid: { old: [0, 0], fresh: [0, 0], informative: { old: 1, fresh: 1 } },
+        }),
+      ],
+    ] as const) {
+      expect(stopRule(ignored)).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
+    }
+  });
+
+  it("keeps prior-epoch tasks out of practicePool and releaseOrder's failed half, and caps small batches at half", () => {
     const solve = (id: string, condition: string, comparison: string, outcome: "pass" | "fail") => [
       event("solve.started", { solve: id, condition, comparison }),
       event("solve.finished", {

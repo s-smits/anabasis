@@ -1,10 +1,3 @@
-/**
- * The one place a solve launches a command: the solver's bash calls and the harness's own tool calls
- * both come through `runWalled`, under the command wall v1's Built shell ran under
- * (`stageCommandIsolation`), on durable's local shell backend, which kills the command's process group on
- * a timeout or an abort. Whatever else the command left in its group, below it or working in the
- * seat's root is ended here.
- */
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import type { Limits } from "../kernel/condition.ts";
@@ -18,92 +11,58 @@ import {
 } from "../meta/filesystem.ts";
 import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { endHolders, hostFolder } from "../wall/seat-root.ts";
-import { commandIsolationPolicy, shellQuote, stageCommandIsolation } from "../wall/isolation.ts";
-import { BUILT_COMMAND_SCRATCH_ROOT } from "../wall/policy.ts";
-import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
+import { endHolders, hostFolder } from "../sandbox/sandbox-root.ts";
+import {
+  commandIsolationPolicy,
+  shellQuote,
+  stageCommandIsolation,
+  toolTreeEnv,
+} from "../sandbox/isolation.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
+import { BUILT_COMMAND_SCRATCH_ROOT } from "../sandbox/policy.ts";
+import { type SolveIsolationPolicy, solveIsolationPolicy } from "../sandbox/base.ts";
 
 export interface SolveDirs {
-  /** The seat's own folder, which its commands write but for `kept`. */
   readonly root: string;
   readonly home: string;
-  /** `TMPDIR`, for the seat's whole life. */
   readonly temp: string;
-  /** In the root, and written by the host alone; a command reads it. */
   readonly kept: string;
-  /** Host-only: beside the root, closed to every command. */
   readonly host: string;
 }
 
 type ShellLimits = Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds">;
 
-/** What every command of one solve runs under. */
-export interface CommandWall {
+export interface CommandSandbox {
   readonly base: SolveIsolationPolicy;
   readonly dirs: SolveDirs;
-  /** The harness's `.toolchain`, read-only and first on PATH; null when it has none. */
   readonly toolTree: string | null;
-  /** The condition's; every command is held to them here, whoever launches it. */
   readonly limits: ShellLimits;
-  /** The solve's own time, which its commands are held to near its end (`heldSeconds`). A Builder's
-   *  wall has none: its session ends when its model's turn does. */
   readonly clock?: SolveClock | undefined;
 }
 
-/** What a wall denies: the repository the command runs in, its other worktrees and the stored
- *  pack a campaign opened over. */
 export interface Walled {
   readonly repoRoot: string;
-  /** The repository's other worktrees (`worktreesOf`, `tools/d2/campaign.ts`); none where the
-   *  caller knows of none, as a test does. */
   readonly otherTrees?: readonly string[] | undefined;
-  /** The stored pack's root and bundle, which hold the exam's hidden values; none where the
-   *  campaign opened from a prompt, whose exam lies in the repository. */
   readonly packRoots?: readonly string[] | undefined;
-  /** What the wall opens again for reading inside what it closes: the verifier's tool tree an
-   *  Examiner's engines run from (`src/examiner/shell.ts`); none for any other seat. */
   readonly readAllowRoots?: readonly string[] | undefined;
 }
 
-/** Each policy's wall test, by its hash: once per process, with the promise shared by seats
- *  starting together (`probeWall`). A failed test is dropped, so the next seat tests again. */
 const WALL_TESTS = new Map<string, Promise<string | null>>();
-/** The wall test must also write and read back its own file, so refusing every operation fails. */
 const WALL_TEST_MARK = "ANA-WALL-PROBE";
-/** The wall test command keeps v1's twenty-second deadline. */
 const WALL_TEST_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
 
-/**
- * Whether a package index is reached from inside the wall, and what installs from it: `uv` where a
- * command run as a solver's fetched one and found `uv` on its path, `pip` where it fetched one
- * without, `unreached` where it did not. A prompt that
- * said "commands have network access" whatever the host did would be false on a host whose wall
- * gives commands an empty environment and no resolver, and solves there would spend turns on pip
- * installs that cannot succeed. A sentence a host makes false is the host's to make true, so the prompt says what the
- * probe found.
- */
 export type NetworkReach = "uv" | "pip" | "unreached";
-/** What every seat is told installs Python packages where the index is reached (operator,
- *  21 November 2026: "use uv if present with uv add remove etc and otherwise pip"). */
 export const INSTALLER_TOLD: Readonly<Record<Exclude<NetworkReach, "unreached">, string>> = {
   uv: " uv is installed, so use it for Python packages (`uv init`, `uv add`, `uv remove`, `uv run`, `uv tree`) rather than pip.",
   pip: " uv is not installed, so use pip for Python packages.",
 };
-/** How long an `unreached` reading stands before the next asker probes again. A reached one stands
- *  for the process's life. */
 export const UNREACHED_MS = 10 * 60_000;
-/** The reach of each policy this process has probed, by its hash, with when the probe began: the
- *  promise, so that solves that start together wait on one probe. */
 const REACH = new Map<string, { readonly at: number; readonly probe: Promise<NetworkReach> }>();
-/** Reach pinned per `(comparison, policyHash)` so both arms of one comparison see identical network
- *  and installer prompt text even if an `unreached` reading expires mid-comparison (rule 5). */
 const COMPARISON_REACH = new Map<string, Promise<NetworkReach>>();
 const REACH_MARK = "ANA-NETWORK-REACHED";
-/** The index pip reads; curl first, and the resolver pip itself uses where curl is not on the host. */
 const UV_MARK = "ANA-UV-FOUND";
 const REACH_COMMAND = `(curl -fsS -m 10 -o /dev/null https://pypi.org/simple/pip/ 2>/dev/null || python3 -c 'import urllib.request; urllib.request.urlopen("https://pypi.org/simple/pip/", timeout=10)' 2>/dev/null) && echo ${REACH_MARK} && command -v uv >/dev/null 2>&1 && echo ${UV_MARK}`;
 
-/** A solve's time: when its first turn started, null until it has, and how long the solve may be. */
 export interface SolveClock {
   started: number | null;
   readonly seconds: number;
@@ -112,47 +71,25 @@ export interface SolveClock {
 interface WalledOptions {
   readonly onData: (data: Buffer) => void;
   readonly signal?: AbortSignal | undefined;
-  /** Seconds asked for, held to the limits by `heldSeconds`; pi's backend throws
-   *  `timeout:<seconds>` when the command runs past what it was given. */
   readonly timeout?: number | undefined;
-  /** Seconds its caller already held (`heldSeconds`), taken as given instead of `timeout`. */
   readonly bound?: number | undefined;
-  /** Writes what the command brings into `into`, a fresh folder under the seat's `kept`, before it
-   *  starts. */
   readonly stage?: ((into: string) => void) | undefined;
 }
 
-/** The host's launcher, outside the wall: it writes the leader's pid and `exec`s the wall, and a
- *  seat's command reaches it only quoted, to run in `/bin/bash` inside (`stageCommandIsolation`). */
 const SHELL = new NodeExecutionEnv({ cwd: "/", shellPath: "/bin/sh", shellEnv: {} });
 
-/** The solve's reserve for command results: a minute, and an eighth of a solve shorter than eight. */
 export function reserveSeconds(wallSeconds: number): number {
   return Math.min(60, Math.floor(wallSeconds / 8));
 }
 
-/** The seconds of its time a solve has used, or null where it has no clock or has not started. */
 export function usedSeconds(clock: SolveClock | undefined, now = performance.now()): number | null {
   const started = clock?.started ?? null;
   return started === null ? null : (now - started) / 1000;
 }
 
-/**
- * How long a command that starts now may run: the condition's limits, shortened to the whole seconds
- * left before its reserve only when positive. `nearEnd` says that shortened it. `asked` is
- * what was named, floored and at least 1 s, and a named value only raises the default, up to the
- * maximum, as v1's Built shell held it.
- *
- * A command held to its own limits alone took the solve with it when the solve's deadline expired inside
- * it: at a five-minute deadline 12 of 46 Starter solves ended at it, 11 of them inside a command, with
- * nothing sent. So a command returns while there is time to act on it. One started inside
- * the reserve is left to its own limits: the solver is told the time used with every result, and
- * what it starts then is its own to judge, and one started just before the reserve is cut as the
- * solver is told it is.
- */
 export function heldSeconds(
   timeout: number | undefined,
-  { limits, clock }: Pick<CommandWall, "limits" | "clock">,
+  { limits, clock }: Pick<CommandSandbox, "limits" | "clock">,
   now = performance.now(),
 ) {
   const asked = Math.max(1, Math.floor(timeout ?? limits.shellDefaultSeconds));
@@ -165,7 +102,6 @@ export function heldSeconds(
     : { asked, seconds, nearEnd: false };
 }
 
-/** The directories of solve `id`, named, not yet made: the runner claims `root` (`claimRoot`). */
 export function solveDirs(id: string): SolveDirs {
   const root = join(BUILT_COMMAND_SCRATCH_ROOT, `solve-${id}`);
   return {
@@ -177,17 +113,11 @@ export function solveDirs(id: string): SolveDirs {
   };
 }
 
-/** Makes the folders of `dirs` below its root, which its claim made. */
 export function makeSeatDirs(dirs: SolveDirs): void {
   for (const dir of [dirs.home, dirs.temp, dirs.kept, dirs.host]) mkdirSync(dir, { recursive: true });
 }
 
-/**
- * The base of a wall over `dirs`, with its folders made: the solver's, the Builder's and the
- * Examiner's are built the same way, here. `who` names the actor in the refusal of a host that
- * cannot wall one.
- */
-export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
+export async function sandboxBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   makeSeatDirs(dirs);
   const otherTrees = wall.otherTrees ?? [];
   const base = solveIsolationPolicy({
@@ -199,7 +129,7 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
   if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);
   const tested =
     WALL_TESTS.get(base.policyHash) ??
-    probeWall({ base, dirs, toolTree: null, limits: WALL_TEST_LIMITS }, wall.repoRoot, otherTrees[0]);
+    probeSandbox({ base, dirs, toolTree: null, limits: WALL_TEST_LIMITS }, wall.repoRoot, otherTrees[0]);
   WALL_TESTS.set(base.policyHash, tested);
   const said = await tested;
   if (said !== null) {
@@ -209,16 +139,8 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
   return base;
 }
 
-/**
- * The wall test uses one command launched as every command of a seat is (`runWalled`): a
- * canary the host writes in the repository is refused to it, as is `sibling`'s `package.json`,
- * which every worktree of this repository holds, and a write in the host's folder in the seat; and
- * a file the host staged for it reaches its own folder, is written there and reads back. Null where
- * all four held, and otherwise the command's output, a line a step. The last step tests its own
- * write and read: a launch that refuses everything fails it, as one that refuses nothing fails the first.
- */
-export async function probeWall(
-  wall: CommandWall,
+export async function probeSandbox(
+  wall: CommandSandbox,
   repoRoot: string,
   sibling?: string,
 ): Promise<string | null> {
@@ -227,7 +149,6 @@ export async function probeWall(
     folder = mkdtempSync(join(resolve(repoRoot), ".ana-wall-probe-"));
     const canary = join(folder, "canary.txt");
     writeFileSync(canary, `${WALL_TEST_MARK}\n`, { mode: 0o600 });
-    // A sibling without the file proves nothing by refusing it, so it is not tried.
     const theirs = sibling === undefined ? null : join(resolve(sibling), "package.json");
     const reads = [{ name: "repository canary", path: canary }];
     if (theirs !== null && existsSync(theirs)) {
@@ -239,13 +160,11 @@ export async function probeWall(
         ({ name, path }) =>
           `if cat ${shellQuote(path)} >/dev/null 2>&1; then echo ${shellQuote(`${name}: read`)}; else echo ${shellQuote(`${name}: refused`)}; fi`,
       ),
-      // `true`, not `:`: a POSIX shell such as dash ends the script where a special builtin's
-      // redirection fails, so the wall test stays whole whichever shell runs it.
       `if true 2>/dev/null > ${shellQuote(written)}; then echo 'host folder: written'; else echo 'host folder: refused'; fi`,
       "cat brought > own && cat own || echo 'own folder: not written and read back'",
     ].join("\n");
     let out = "";
-    const { exitCode } = await runWalled(wall, command, {
+    const { exitCode } = await runSandboxed(wall, command, {
       onData: (data) => {
         out += data.toString();
       },
@@ -264,13 +183,9 @@ export async function probeWall(
   }
 }
 
-/** Whether a command run on `wall` fetched the package index, and found `uv`. A probe that fails to
- *  run reads as unreached. */
-async function probeReach(wall: CommandWall): Promise<NetworkReach> {
+async function probeReach(wall: CommandSandbox): Promise<NetworkReach> {
   let out = "";
-  // Probe without the harness's `.toolchain/` on PATH so a candidate harness installing `uv` or
-  // shadowing `curl`/`python3` cannot contaminate `COMPARISON_REACH` / `REACH` for the other arm.
-  await runWalled({ ...wall, toolTree: null }, REACH_COMMAND, {
+  await runSandboxed({ ...wall, toolTree: null }, REACH_COMMAND, {
     onData: (data) => {
       out += data.toString();
     },
@@ -280,12 +195,8 @@ async function probeReach(wall: CommandWall): Promise<NetworkReach> {
   return out.includes(UV_MARK) ? "uv" : "pip";
 }
 
-/** The reach of the wall `wall` stands for (`NetworkReach`), as this process last probed it at
- *  `now`: a reached reading stands, and an unreached one is probed again once `UNREACHED_MS` old.
- *  When `comparison` is named, the first reading for `(comparison, policyHash)` is pinned for the
- *  whole comparison so both arms receive identical network/installer prompt text (rule 5). */
 export async function networkReach(
-  wall: CommandWall,
+  wall: CommandSandbox,
   {
     now = Date.now(),
     probe = probeReach,
@@ -305,7 +216,6 @@ export async function networkReach(
   if (known !== undefined && (now - known.at < UNREACHED_MS || (await known.probe) !== "unreached")) {
     return known.probe;
   }
-  // Callers that waited on the same stale reading share the one probe the first of them started.
   const latest = REACH.get(key);
   if (latest !== undefined && latest !== known) return latest.probe;
   const fresh = { at: now, probe: probe(wall) };
@@ -313,20 +223,14 @@ export async function networkReach(
   return fresh.probe;
 }
 
-/**
- * Runs `command` on `wall`, in the seat's home, or beside a copy of what it brings (`stage`).
- */
-export async function runWalled(
-  wall: CommandWall,
+export async function runSandboxed(
+  wall: CommandSandbox,
   command: string,
   options: WalledOptions,
 ): Promise<{ exitCode: number | null }> {
   const { dirs } = wall;
-  // A solver may remove its own home or its `TMPDIR`, and the next command still has both.
   for (const dir of [dirs.home, dirs.temp]) mkdirSync(dir, { recursive: true });
   let into: string | null = null;
-  // pi's shell leads the command's group, and writes its pid here, where no command can write,
-  // before it becomes the command.
   const leader = join(dirs.host, "leader");
   rmSync(leader, { force: true });
   try {
@@ -334,18 +238,13 @@ export async function runWalled(
       into = mkdtempSync(join(dirs.kept, "in-"));
       options.stage(into);
     }
-    const policy = commandIsolationPolicy(wall.base, { ...dirs, toolTree: wall.toolTree });
-    // A command that brings files starts in a folder it makes for itself under its `TMPDIR`, fills
-    // with a copy of them, and removes when it ends. The folder has to be one it can write, as a
-    // harness's tool may write where it starts and a program it runs may too. And the host writes
-    // nothing a command can write: one that outran its end (`endHolders` ends only what works in the
-    // root) could swap a folder the host was about to write for a link. So the host stages where
-    // no command can write, and the copy is the command's own, under the wall.
+    const walled = commandIsolationPolicy(wall.base, { ...dirs, toolTree: wall.toolTree });
+    const envScript = keyIfDefined("BASH_ENV", toolTreeEnv(wall.toolTree));
+    const policy = { ...walled, environment: { ...walled.environment, ...envScript } };
     const line =
       into === null
         ? command
         : `w=$(mktemp -d "$TMPDIR/in.XXXXXX") || exit\ncp -R ${shellQuote(into)}/. "$w" && cd "$w" && {\n${command}\n}\ns=$?\ncd / && rm -rf "$w"\nexit $s`;
-    // One seat's commands run one at a time, so they share one profile file and one leader file.
     const staged = stageCommandIsolation(policy, join(dirs.host, "command.sb"), line);
     const seconds = options.bound ?? heldSeconds(options.timeout, wall).seconds;
     const result = await SHELL.exec(
@@ -367,10 +266,8 @@ export async function runWalled(
     }
     return { exitCode: result.value.exitCode };
   } finally {
-    // The group outlives its leader while a member lives, and a command pi killed on a timeout or an
-    // abort is ended the same way. One whose shell never started names no group, and a pid cut
-    // short reads as NaN, which names none either.
-    endHolders(dirs.root, existsSync(leader) ? Number.parseInt(readFileSync(leader, "utf8"), 10) : undefined);
+    const parsed = existsSync(leader) ? Number.parseInt(readFileSync(leader, "utf8"), 10) : Number.NaN;
+    endHolders(dirs.root, { group: Number.isInteger(parsed) ? parsed : undefined, spareOwn: true });
     if (into !== null) rmSync(into, { recursive: true, force: true });
   }
 }

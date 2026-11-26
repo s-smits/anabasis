@@ -1,10 +1,9 @@
 /**
  * `GET /api/tasks?key=` and `GET /api/task?key=&id=`: every task version against every comparison
- * (`taskSets`, `pairsReported`, `poolOf`), and one task's solves across them.
- * A task's public part is served in the default tier for a practice task alone; its hidden values
- * in the exam tier alone. Both are in the log only for a task it holds whole, an Examiner's or a
- * carried one (`proposalsOf`): a pack's task is proposed by its id, and its text is in the pack,
- * which this server does not read.
+ * (`taskSets`, `pairsReported`, `poolOf`), and one task's solves across them. A task's public part
+ * is served in the default tier for a practice task alone, its hidden values in the exam tier
+ * alone; the log holds either only for a task it holds whole (`proposalsOf`), since a pack's task
+ * is proposed by id.
  */
 import { fixedIn, reported } from "../../../../src/campaign/comparison.ts";
 import { passed } from "../../../../src/kernel/solves.ts";
@@ -26,7 +25,6 @@ import { campaignAt } from "./logs.ts";
 import { barsIn, outcomeOf, ownSolves, pairsIn, shareOf } from "./moves.ts";
 import { examTier, solveRow } from "./trace.ts";
 
-/** When each task version was proposed. Derived: the place of its `task.proposed`, by version. */
 const proposedIn = once(
   ({ events }) =>
     new Map(
@@ -36,7 +34,6 @@ const proposedIn = once(
     ),
 );
 
-/** Every task version as a row, in the order proposed. */
 const rowsIn = once((log): TaskRow[] => {
   const { states } = setsIn(log);
   const proposed = proposedIn(log);
@@ -54,12 +51,10 @@ const rowByVersionIn = once((log) => new Map(rowsIn(log).map((row) => [row.versi
 const taskByVersionIn = once((log) => new Map(proposalsIn(log).map(({ version, task }) => [version, task])));
 const ranByTaskIn = once((log) => Map.groupBy(ranIn(log), ({ under }) => under.task));
 
-/** The lists of a report that name a task it fixed and left out, in the order the chart takes them
- *  (`splitOf`, `moves.ts`), so that a task named in two counts where the chart counts it. */
+/** The report's lists naming a task it fixed and left out, in the chart's order (`splitOf`,
+ *  `moves.ts`), so a task named in two counts where the chart counts it. */
 const LEFT_OUT = ["disputed", "short", "withdrawn"] as const satisfies readonly (keyof LeftOut)[];
 
-/** Every task version against every comparison, pre-indexed once per log: each comparison's pairs,
- *  set-aside tasks, left-out reasons and solve count are indexed once rather than re-scanned per cell. */
 const gridIn = once((log) => {
   const [bars, pairs] = [barsIn(log), pairsIn(log)];
   const indexed = bars.map((bar) => {

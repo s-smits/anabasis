@@ -4,8 +4,8 @@ import type { Issue, Tone } from "../models.ts";
 import { Card } from "./primitives.tsx";
 import { hasText } from "../../../../src/meta/text.ts";
 
-/** One issue: its message first, and the log or path it came from behind an (i), since that matters
- *  to whoever repairs a log and not to whoever reads the page. */
+/** One issue: its message first, and the log or path it came from behind an (i), which matters to
+ *  whoever repairs a log, not whoever reads the page. */
 export function IssueCallout({ issue, onDismiss }: { issue: Issue; onDismiss?: () => void }) {
   const [where, setWhere] = useState(false);
   return (
@@ -35,7 +35,6 @@ export function IssueCallout({ issue, onDismiss }: { issue: Issue; onDismiss?: (
   );
 }
 
-/** A callout for a statement that qualifies the panel beside it. */
 export function Callout({ children, tone = "neutral" }: { children: ReactNode; tone?: Tone }) {
   return <div className={`ana-callout ana-callout--${tone}`}>{children}</div>;
 }

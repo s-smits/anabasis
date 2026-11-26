@@ -5,15 +5,15 @@ description: "Use before live runs or landing to exercise an untested execution 
 
 # System path simulation
 
-Exercise an untested path at the cheapest tier that settles the question, then stop:
+Shape behavioural changes into **separable, ablatable, simulatable slices**, and run a pre-run simulation gate at the cheapest tier that settles each slice's question before spending on any live run or external evaluation:
 
 | Tier | Runs | Cost | Proves | Cannot prove | Guide |
 | --- | --- | --- | --- | --- | --- |
 | **1. Read** | Readers on recorded or in-memory synthetic events | sec, \$0 | How folds/seat views read an event sequence | Command execution after last event | [synthetic](cases/synthetic.md) |
-| **2. Rehearse** | Real commands, wall, verifier & comparison on a seed (`faux/script`, no Referee) | min, \$0 | Command joins & sample-size power | Real model behaviour | [rehearsal](cases/rehearsal.md) |
+| **2. Rehearse** | Real commands, wall, verifier & comparison on a seed (`faux/script`, no Auditor) | min, \$0 | Command joins & sample-size power | Real model behaviour | [rehearsal](cases/rehearsal.md) |
 | **3. Live seat** | Real commands with live model seat(s) on a seed (`scripts/live-seat.ts`) | USD (operator approval) | Real model action from recorded state | Rate from 1 draw (rule 6) | [live-seat](cases/live-seat.md), [optimize](cases/optimize.md) |
 
-Use [before-after](cases/before-after.md) for cross-commit/pre-landing verification at any tier.
+Use [before-after](cases/before-after.md) for cross-commit/pre-landing verification at any tier; use [rubric-and-verifier](cases/rubric-and-verifier.md) for rubric items and the pairwise judge; use [stack-contracts.md](../run-improvement-campaign/references/stack-contracts.md) to pick the exact input/output contract seam each slice must prove before live spend.
 
 ## Rules
 
@@ -24,7 +24,7 @@ Use [before-after](cases/before-after.md) for cross-commit/pre-landing verificat
 5. Codify cleared conditions in an owning `test/` case running real writer against real reader; trash seeds after use (`/usr/bin/trash .ana/d2/sim-<what>`).
 
 ```sh
-bun tools/d2/harness-builder.ts --name <name> --dry-run
+bun tools/campaign/harness-builder.ts --name <name> --dry-run
 bun run runs replay [<name> ...]
 bun run runs seed --from <campaign> --name sim-<what> [--points | --events <n>]
 bun run runs rehearse sim-<what>
@@ -36,9 +36,9 @@ Requires operator approval naming seats, model, effort, login and USD/time cap; 
 
 | Seat | Seed cut | Command | Reader |
 | --- | --- | --- | --- |
-| Examiner | Before session | `tools/d1b/examine.ts --session x-<n> --examiner <m> --examiner-effort <e>...` | `live-seat.ts read`, `pairs` |
-| Comparison | After `build.finished` | `tools/d2/checkpoint.ts --id g-<n> --new latest` | Comparison report |
-| Stretch | Before `build.started`/rest | `harness-builder.ts` (all seat models) | Log readers |
+| Examiner | Before session | `tools/eval/examine.ts --session x-<n> --examiner <m> --examiner-effort <e>...` | `live-seat.ts read`, `pairs` |
+| Comparison | After `build.finished` | `tools/campaign/checkpoint.ts --id g-<n> --new latest` | Comparison report |
+| Stretch | Before `build.started`/rest | `harness-builder.ts`, its four seats named by `live-seat.ts start --model` (one or four, as `runs fresh`) | Log readers |
 
 Report: question & tier; seed/source/cut & live diff; pre-registered intent, rivals & outcome; what did not run; conditions (`blocking`\|`cleared`\|`accepted-risk`) with owner verdict; spend/minutes (tier 3); seed cleanup.
 

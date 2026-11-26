@@ -1,14 +1,11 @@
 /**
- * One host choice for a fresh campaign, rather than the scheduled fork parsing status prose and
- * keeping its own caps. Read the same live records as usage, and choose the least occupied
- * machine below its configured capacity, preferring one that has run the pack before. Login
- * admission shares the keeper's provider reader and capacity rule. Missing readings refuse placement.
- *
- * A login's runs are spread over the machines before anything else decides, since a login paying for
- * every run on one machine would leave that machine idle at its five-hour limit while other logins
- * have capacity. The host chosen is the one where the run's login has the fewest live runs, so one
- * login's limit leaves every machine working.
+ * One host choice for a fresh campaign, from the same live records as usage: the least occupied
+ * machine below its configured capacity, preferring one that has run the pack before, with login
+ * admission sharing the keeper's provider reader and capacity rule. A login's runs are spread over
+ * the machines first, so one login's limit leaves every machine working. Missing readings refuse
+ * placement.
  */
+import type { CodexAuthState } from "#src/agent/backends/codex-auth.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf, RUN_CAP } from "./host-config.ts";
@@ -33,7 +30,6 @@ interface Occupancy {
   readonly live: number;
   readonly capacity: number;
   readonly familiar?: boolean;
-  /** Live runs on this host that the new run's login pays for. */
   readonly sameLogin?: number;
   /** Its one-minute load a core when placement read it (`minuteLoads`); undefined where it did not
    *  answer in time. */
@@ -47,7 +43,6 @@ interface FreshHost {
   readonly load?: number | undefined;
 }
 
-/** How long placement waits for each machine's load, in milliseconds. */
 const LOAD_WAIT_MS = 5000;
 
 /** A host's load for placement: its one-minute load a core, halved where it carries no live run,
@@ -65,7 +60,7 @@ export function loginPool(wanted: string | undefined): string[] {
   return chosen;
 }
 
-/** A capacity is a positive integer, with the same default on every unconfigured machine. */
+/** A capacity is a positive integer, the same default on every unconfigured machine. */
 const capacityOf = (value: string | undefined): number => {
   const capacity = Number(value ?? RUN_CAP);
   if (!Number.isSafeInteger(capacity) || capacity < 1) {
@@ -91,12 +86,12 @@ export function leastOccupied(rows: readonly Occupancy[]): Host | undefined {
   return chosen.host;
 }
 
-/** Whether a machine, `undefined` for this one, takes a pack under the reservations of `known`. */
-export function takes(host: Host | undefined, pack: string, known = hostsOf()): boolean {
-  return host?.packs?.includes(pack) ?? !known.some((one) => one.packs?.includes(pack) === true);
+/** Whether a machine, `undefined` for this one, takes a pack under the reservations of configured hosts. */
+export function takes(host: Host | undefined, pack: string): boolean {
+  return host?.packs?.includes(pack) ?? !hostsOf().some((one) => one.packs?.includes(pack) === true);
 }
 
-/** Read every machine before making an automatic choice; silence is never spare capacity. */
+/** Reads every machine before an automatic choice: silence is never spare capacity. */
 export async function freshHosts(): Promise<FreshHost[]> {
   const known = hostsOf();
   const [answers, { order }] = await Promise.all([
@@ -147,7 +142,6 @@ export async function placeFresh(
   );
 }
 
-/** Refuse incomplete counts before selecting a login or preparing launch source. */
 export async function freshFleet(): Promise<Live[]> {
   const { live, unasked } = await liveEverywhere("configured");
   if (unasked.length > 0) {
@@ -156,7 +150,7 @@ export async function freshFleet(): Promise<Live[]> {
   return live;
 }
 
-/** Reuse the keeper's capacity rule and provider reader, with a fleet-wide cap for each login. */
+/** Admits a login by the keeper's capacity rule and provider reader, with a fleet-wide cap for each login. */
 export async function freshLogin(
   requested: string | undefined,
   live: readonly Live[],
@@ -186,9 +180,8 @@ export async function freshLogin(
   return chosen;
 }
 
-/** Ask only for key presence. Credential carriage belongs to the operator. */
+/** Asks only for key presence; carrying credentials is the operator's. */
 export async function loginPresent(host: Host, login: string): Promise<boolean> {
-  // This narrow endpoint uses the shared read controller, before exact launch preparation.
   const [result] = await asked(["active", "--here", "--login", login], [host]);
   if (result?.lines === null || result === undefined) {
     throw new Error(`${host.name}: cannot check login presence`);
@@ -196,6 +189,14 @@ export async function loginPresent(host: Host, login: string): Promise<boolean> 
   const answer = result.lines.join("\n");
   if (answer !== "true" && answer !== "false") throw new Error(`${host.name}: invalid login presence answer`);
   return answer === "true";
+}
+
+const CODEX_STATES: readonly CodexAuthState[] = ["ready", "expired", "missing", "invalid"];
+
+export async function codexPresent(host: Host): Promise<CodexAuthState | "unknown"> {
+  const [result] = await asked(["active", "--here", "--codex"], [host]);
+  const answer = result?.lines?.join("\n").trim() ?? "";
+  return CODEX_STATES.find((state) => answer === `"${state}"`) ?? "unknown";
 }
 
 /** The host a fresh run of `pack` named `named` goes to, this machine for `here`, refused where it

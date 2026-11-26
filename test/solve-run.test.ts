@@ -1,9 +1,8 @@
-// A solve's ending, read from what an attempt left behind, in every order the runner settles it;
-// then the plan's kill tests end to end on the faux provider, under the real command wall:
-// a pass whose trace and meter read back from the log and whose hidden value reaches nothing
-// the solver reads, a solve under the Starter with pi's own file tools, the host's limits over the
-// harness's, the wall, no answer, the reruns of a provider's failed turn and of moved files, and
-// the run stopping on the verifier's non-result.
+// A solve's ending, read from what an attempt left, in every order the runner settles it; then solves
+// end to end on the faux provider under the real command wall: trace and meter read back from the log,
+// the hidden value reaching nothing the solver reads, the Starter with pi's file tools, host limits
+// over the harness's, no answer, reruns of a failed turn and of moved files, and a stop on the
+// verifier's non-result.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
@@ -13,7 +12,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { type SeatTool, sit } from "../src/agent/session.ts";
+import { type AgentTool, runAgent } from "../src/agent/session.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
 import { Cancellation, type Ending, SILENT_SECONDS } from "../src/kernel/solve.ts";
@@ -46,7 +45,7 @@ import {
 } from "../src/solver/run.ts";
 import { text as toolText, tool as seatTool } from "../src/tools/answer.ts";
 import { writeStarter } from "../src/harness/starter.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const CANARY = "hidden-canary-7f3a";
@@ -98,8 +97,6 @@ afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A solve of its own: a scratch folder with a copy of the fixture harness and the log, the faux
- *  model scripted with `responses`, and everything that model was sent. */
 function setup(responses: FauxResponseStep[], overrides: Partial<SolveRequest> = {}) {
   const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-solve-run-")));
   scratches.push(scratch);
@@ -149,16 +146,12 @@ function setup(responses: FauxResponseStep[], overrides: Partial<SolveRequest> =
   return { scratch, sent, request, events, finished };
 }
 
-// Judgement only reads this request and appends verdicts; it never opens the harness or a seat.
 const judgement = setup([]);
 
-/** The answer written into its file through the shell, which is all the fixture harness selects:
- *  it is one kept before pi's file tools were a solver's. */
 const written = fauxAssistantMessage(
   fauxToolCall("bash", { command: `printf %s '{"answer":"42"}' > answer.json` }),
   toolUse,
 );
-/** A command that reads the task the host seeded the home with. */
 const look = fauxAssistantMessage(fauxToolCall("bash", { command: "cat public/task.json" }), toolUse);
 const answer = [
   look,
@@ -166,13 +159,11 @@ const answer = [
   written,
   fauxAssistantMessage(fauxToolCall("submit", {}), toolUse),
 ];
-/** Searches the solver's home for the canary, spelled so the command itself does not carry it. */
 const searchHome = fauxAssistantMessage(
   fauxToolCall("bash", { command: 'grep -rl "hidden-canary-$(echo 7f3a)" "$HOME"; echo "found:$?"' }),
   toolUse,
 );
 
-/** A wall's clock that moves only when `advance` moves it, firing each deadline it passes. */
 function virtualClock() {
   let now = 0;
   const armed = new Set<{ readonly at: number; readonly fall: () => void }>();
@@ -196,8 +187,7 @@ function virtualClock() {
 
 const virtual = virtualClock();
 
-/** Drive the real session hooks on a virtual thirty-minute wall, without an OS wall or a model. */
-async function atWall(responses: FauxResponseStep[], tools: SeatTool[] = []) {
+async function atWall(responses: FauxResponseStep[], tools: AgentTool[] = []) {
   const wall = raiseWall(30 * 60, virtual.clock);
   try {
     const { request, events } = setup(responses);
@@ -207,7 +197,7 @@ async function atWall(responses: FauxResponseStep[], tools: SeatTool[] = []) {
       turns: () => turns.length,
       modelTurns: undefined,
     };
-    const sat = await sit({
+    const sat = await runAgent({
       onTurn: wall.onTurn,
       onTool: wall.onTool,
       models: request.models,
@@ -236,7 +226,7 @@ async function atWall(responses: FauxResponseStep[], tools: SeatTool[] = []) {
   }
 }
 
-describe("a solve's wall activity", () => {
+describe.concurrent("a solve's wall activity", () => {
   it("keeps a tool running through the whole silence threshold as the solver's wall-ended fail", async () => {
     const working = seatTool({
       name: "working",
@@ -287,14 +277,12 @@ describe("a solve's wall activity", () => {
     ]);
     expect(result.ending).toMatchObject({ outcome: "non-result", kind: "provider" });
     expect("reason" in result.ending && /\d+/.exec(result.ending.reason)?.[0]).toBe("30");
-    // The provider's aborted reply is on record as an error turn, and no turn completed.
     const turns = result.events.filter(({ kind }) => kind === "solve.turn");
     expect(turns.map(({ data }) => data.stopReason)).toEqual(["error"]);
   });
 });
 
 describe("a solve's deadline across a host's sleep", () => {
-  /** A clock whose timers fire only when the test fires them, whatever `now` reads. */
   function splitClock() {
     const timers: { readonly ms: number; readonly fall: () => void; lowered: boolean }[] = [];
     const at = { now: 0 };
@@ -314,7 +302,6 @@ describe("a solve's deadline across a host's sleep", () => {
   it("is armed again for the rest when its timer fires before the solve's own clock reaches it, falls once that clock has, and lowers the timer armed last", () => {
     const { clock, timers, at } = splitClock();
     const wall = raiseWall(30 * 60, clock);
-    // Eighteen minutes of the solve's clock, and a timer that counted twelve more of sleep.
     at.now = 18 * 60_000;
     timers[0]?.fall();
     expect(wall.signal.aborted).toBe(false);
@@ -337,7 +324,7 @@ describe("a solve's deadline across a host's sleep", () => {
   });
 });
 
-describe("a solve's ending precedence", () => {
+describe.concurrent("a solve's ending precedence", () => {
   it("is a kill, then moved files, then a held answer, before the sandbox's crash", async () => {
     const kill = AbortSignal.abort();
     const all = { crash: "the model process died", moved: true, submitted: { answer: "42" } };
@@ -424,8 +411,7 @@ describe("a solve's ending precedence", () => {
   });
 });
 
-// Independent solves run side by side under the real wall, Seatbelt or Bubblewrap.
-describe.skipIf(!walled)("a solve under the real wall", () => {
+describe.concurrent.skipIf(!walled)("a solve under the real wall", () => {
   it("rejects a captured file's broken rule even when its JSON answer alone passes", async () => {
     const s = setup([
       written,
@@ -496,14 +482,13 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
       ["submit", false],
     ]);
     expect(calls[0]?.text).toContain("found:1");
-    // Every result ends with the solve time used, which is all the clock a solver has.
     const looked = calls[1]?.text;
     if (!isString(looked)) throw new Error("Missing the task's text");
     for (const fact of ["t-1", "fixture", "base"]) expect(looked).toContain(fact);
     expect(looked.match(/\b\d+:\d\d\b/g)).toEqual([expect.stringMatching(/^0:\d\d$/), "10:00"]);
     const [done] = finished();
-    // Five turns of the model answered one prompt: the two are counted apart, and a budget read
-    // in either is read from its own count (`src/kernel/compare.ts`).
+    // Five model turns answered one prompt: the two are counted apart, and a budget is read from its
+    // own count (`src/kernel/compare.ts`).
     expect(done?.data.turns).toBe(5);
     expect(done?.data.prompts).toBe(1);
     expect(done?.data.billed).toBeGreaterThan(0);
@@ -512,16 +497,14 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     expect(done?.data).not.toHaveProperty("cpu");
     const record = (kind: string) => events().find((event) => event.kind === kind)?.data;
     expect(record("solve.started")?.condition).toBe("c-fixture");
-    // A solve nobody asked for a comparison names none.
     expect(record("solve.started")).not.toHaveProperty("comparison");
     expect(record("verdict")?.answer).toEqual({ answer: "42" });
 
-    // Exit test 5: the hidden value reaches nothing the solver reads: the prompt, the tool rows,
-    // the first turn and every tool result among them, and its home.
+    // The hidden value reaches nothing the solver reads: the prompt, the tool rows, every tool result,
+    // and its home.
     expect(sent.join("\n")).not.toContain(CANARY);
     expect(sent[0]).not.toContain("Role: ");
     expect(sent[0]).toContain("answer.json");
-    // The fixture selects the shell alone, so pi's file tools and their rules are not in its prompt.
     expect(sent[0]).toContain('"name":"bash"');
     expect(sent[0]).not.toContain("Use read");
   }, 120_000);
@@ -534,7 +517,6 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
         call("read", { path: "public/answer-format.json" }),
         call("write", { path: "work/answer.py", content: 'print(\'{"answer": "41"}\')\n' }),
         call("edit", { path: "work/answer.py", edits: [{ oldText: "41", newText: "42" }] }),
-        // The file a tool wrote is the shell's by the same relative path.
         call("bash", {
           command:
             'python3 work/answer.py > answer.json 2>/dev/null || printf %s \'{"answer":"42"}\' > answer.json; pwd',
@@ -560,8 +542,6 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     expect(calls[0]?.text).toContain('"base": 7');
     expect(calls[1]?.text).toContain('"additionalProperties": false');
     expect(calls[4]?.text).toMatch(/\/home\n+\[Solve time used: 0:\d\d of 10:00\]$/);
-    // The Starter adds no tool to pi: its four tools and submit, pi's prompt with the host's part,
-    // and the starter instructions as the project's.
     expect(sent[0]).toContain('"name":"submit"');
     expect(sent[0]).toContain("answer.json");
     expect(sent[0]).toContain("1 file");
@@ -571,8 +551,6 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
   }, 120_000);
 
   it.concurrent("nudges a model that stops, up to the host's prompts whatever the harness asks", async () => {
-    // The cap counts prompts, as v1's maxTurns did: the opening one and one nudge here, each
-    // answered by a turn that calls a tool and then stops without submitting.
     const scale = look;
     const stop = fauxAssistantMessage("Done.");
     const { scratch, sent, request, events, finished } = setup([scale, stop, scale, stop, scale, stop], {
@@ -584,9 +562,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
       "solver:\n  solve_minutes: 999\n  max_turns: 9999\nshell:\n  default_seconds: 900\n  max_seconds: 9000\n",
     );
     expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
-    // Two prompts, the cap, and four turns of the model in answer to them.
     expect(finished()[0]?.data).toMatchObject({ turns: 4, prompts: 2 });
-    // Each attempt's start names the comparison the solve was made for.
     expect(events().find(({ kind }) => kind === "solve.started")?.data.comparison).toBe("g0");
     expect(sent).toHaveLength(4);
     expect(sent[0]).toContain("5 minutes");
@@ -603,7 +579,6 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
       ),
     ]);
     expect(await solve(request, noWait)).toEqual({ outcome: "flagged", reason });
-    // Not run again as a non-result is, and judged by no check.
     expect(finished()).toHaveLength(1);
     expect(sent).toHaveLength(1);
     expect(events().some(({ kind }) => kind === "verdict")).toBe(false);
@@ -614,7 +589,6 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     const limits = { ...LIMITS, modelTurns: 3 };
     const spent = setup([scale, scale, scale, scale, scale], { limits });
     expect(await solve(spent.request, noWait)).toEqual({ outcome: "fail", kind: "turns-ended" });
-    // Three turns and no fourth, though the model went on calling: the opening prompt was enough.
     expect(spent.finished()[0]?.data).toMatchObject({ turns: 3, prompts: 1 });
     expect(spent.sent).toHaveLength(3);
     expect(spent.sent[0]).toContain("10 minutes");
@@ -630,7 +604,6 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     for (const text of said) {
       expect(text.match(/\b\d+:\d\d\b/g)).toEqual([expect.stringMatching(/^0:\d\d$/), "10:00"]);
     }
-    // An answer submitted in the last turn is held and judged: the turn's calls run before it ends.
     const last = setup([written, scale, fauxAssistantMessage(fauxToolCall("submit", {}), toolUse)], {
       limits,
     });
@@ -665,15 +638,14 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     const sleep = fauxAssistantMessage(fauxToolCall("bash", { command: "sleep 20" }), toolUse);
     const { request, events } = setup([sleep, sleep], { limits: { ...LIMITS, wallSeconds: 3 } });
     expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "wall-ended" });
-    // The wall cut the command it fell in, rather than waiting the 20 s out.
     const call = events().find(({ kind }) => kind === "solve.call");
     expect(call?.data).toMatchObject({ tool: "bash", isError: true });
     expect(call?.data.ms).toBeLessThan(15_000);
   }, 120_000);
 
   it.concurrent("cuts a command before the solve's end, so the solver can still answer", async () => {
-    // A 48-second solve reserves six seconds for an answer after its command is cut. At 24 and
-    // three, a gate on a loaded host could end it wall-ended before its answer.
+    // A 48-second solve reserves six seconds for an answer after its command is cut; at 24 and three, a
+    // gate on a loaded host could end it before its answer.
     const long = fauxAssistantMessage(
       fauxToolCall("bash", { command: "echo began; sleep 50", timeout: 60 }),
       toolUse,
@@ -786,7 +758,6 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
   }, 120_000);
 
   it.concurrent("reruns a solve whose harness files moved, and the rerun counts", async () => {
-    // The first attempt's model writes into the harness mid-solve; the second finds it settled.
     let harness = "";
     const move: FauxResponseStep = () => {
       writeFileSync(join(harness, "agent", "planted.ts"), "export {};\n");
@@ -802,8 +773,8 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
   }, 120_000);
 
   it.concurrent("reruns a solve that rewrote a harness file under its old size and time", async () => {
-    // `cp -p` and `tar` put the modification time back, so the stamp holds each file's change time
-    // too, as a tool tree's does (`treeStamp`), or this rewrite would go unseen.
+    // `cp -p` and `tar` put the modification time back, so the stamp holds each file's change time too
+    // (`treeStamp`), or this rewrite would go unseen.
     let harness = "";
     const move: FauxResponseStep = () => {
       const guide = join(harness, "agent", "BUILT_AGENTS.md");
@@ -847,7 +818,6 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     spec(declares.request, '{ "presets": ["bash"], "tools": [{ "name": "scale_base", "kind": "reader" }] }');
     expect(await solve(declares.request, noWait)).toMatchObject({ outcome: "fail", kind: "broken-harness" });
     expect(declares.finished().map(({ data }) => data.harness)).toEqual([null]);
-    // It opens and has a digest, and the solve still ends as the harness's own fail.
     const selects = setup([]);
     spec(selects.request, '{ "presets": ["bash", "browse"], "tools": [] }');
     expect(await solve(selects.request, noWait)).toMatchObject({ outcome: "fail", kind: "broken-harness" });

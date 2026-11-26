@@ -47,7 +47,6 @@ function Group({
   );
 }
 
-/** Evidence expands on demand; task inputs can open their first level. Large lists remain paged. */
 export function RecordView({
   value,
   defaultExpanded = false,
@@ -59,8 +58,8 @@ export function RecordView({
   if (value === null || value === undefined) return <span className="ana-note">Not recorded</span>;
   const group = Array.isArray(value) ? value : asRecord(value);
   if (group === null) {
-    // A leaf. `String(value)` would render anything the three guards miss as `[object Object]`;
-    // JSON does render it, and a number reads the same either way.
+    // A leaf: JSON renders what `String(value)` would print as `[object Object]`, and a number reads
+    // the same either way.
     const shown = value === true ? "Yes" : "No";
     const leaf = isString(value) ? value : isBoolean(value) ? shown : JSON.stringify(value);
     return <span className="ana-record-value">{leaf}</span>;

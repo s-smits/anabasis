@@ -1,21 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Every harness a campaign keeps, with what its log holds of each, and what moved between one and
- * its parent, part by part. It reads: it writes nothing of the campaign's, starts no solve and calls
- * no model.
- *
- *   bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> [--blind] [--json]
- *   bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> --diff <harness> [--against <harness>]
- *
- * v1's final-harness-audit joined each workspace commit to its iteration, its scored set and its claim
- * through four scripts of 1,246 lines. v2 writes those joins as events, `harness.version`,
- * `harness.imported`, `harness.promoted` and the comparisons' own, and `campaignOf`
- * (`src/campaign/handover.ts`) folds them. This lists the states, opens each as a solve would
- * (`openHarness`), counts its parts, and leaves the joining to the fold. Whole-run-investigation's
- * lane 15 diffs a parent and a child part by part; `--diff` is that count, and quotes a line only under `--lines`.
+ * Every harness a campaign keeps, what its log holds of each, and what moved between one and its
+ * parent, part by part; it writes nothing, starts no solve and calls no model. `harness-versions.ts
+ * <log | campaign folder | name> [--blind] [--json]`, `--diff <harness> [--against <harness>]
+ * [--files | --lines]`, or `--chain [--lines]`. The joins are the log's own events
+ * (`harness.version`, `harness.imported`, `harness.promoted` and the comparisons'), folded by
+ * `campaignOf`; this lists the states, opens each as a solve would (`openHarness`) and counts its
+ * parts.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { type Handover, campaignOf } from "#src/campaign/handover.ts";
+import { type Handover, campaignOf } from "#src/campaign/summary.ts";
 import { short } from "#src/campaign/move.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -41,7 +35,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openHarness, pathsUnder, treeContent } from "#src/harness/open.ts";
 import { writeStarter } from "#src/harness/starter.ts";
-import { keptAs } from "#tools/d2/campaign.ts";
+import { resolveCheckpoint } from "#tools/campaign/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { diffOf as lineDiff, madeOf, writtenIn } from "#tools/wri/trajectory.ts";
 
@@ -70,18 +64,14 @@ const TOOL_TREE = ".toolchain";
 const GUIDE = `${AGENT_DIR}${GUIDE_FILE}`;
 const PARTS: ReadonlySet<string> = new Set([GUIDE, TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE]);
 
-/** How far a comparison of two versions goes: the counts, a line a written file, or the lines. */
 type Depth = "counts" | "files" | "lines";
 
 interface Parts {
-  /** Nonblank lines of the guide, null where the state holds none of its own. */
   readonly guide: number | null;
   readonly presets: readonly string[];
   readonly tools: readonly string[];
-  /** Nonblank lines of `agent/tools.ts`. */
   readonly module: number;
   readonly toolTree: { readonly files: number; readonly bytes: number; readonly linked: boolean } | null;
-  /** Files outside the four parts; `agent/config.yaml` is ignored, others may be module imports. */
   readonly other: readonly string[];
 }
 
@@ -96,13 +86,12 @@ export interface Version {
   /** The Builder turns that made it, as a `slice.ts` selector (`b-1{14-22}`), or null where no
    *  session's turns precede its making. */
   readonly turns: string | null;
-  /** The names a campaign's commands give it: `starter`, `reference` (which `promoted` names) and
-   *  `latest`, each of which names the starter while nothing else holds it. */
+  /** `starter`, `reference` (which `promoted` names) and `latest`, each of which names the starter
+   *  while nothing else holds it. */
   readonly roles: readonly string[];
   readonly promoted: readonly string[];
   readonly sessions: readonly string[];
   readonly compared: readonly string[];
-  /** Null where `opens` is. */
   readonly parts: Parts | null;
 }
 
@@ -114,13 +103,12 @@ interface Keeping {
 const lines = (text: string | null): string[] =>
   text === null ? [] : text.split("\n").filter((line) => line.trim() !== "");
 
-/** A part's text, where the state holds it as a file of its own. */
 async function own(dir: string, part: string): Promise<string | null> {
   const file = join(dir, part);
   return existsSync(file) && lstatSync(file).isFile() ? await Bun.file(file).text() : null;
 }
 
-/** The Starter Built Harness's digest as this checkout writes it, written outside the campaign. */
+/** The Starter's digest as this checkout writes it, written outside the campaign. */
 async function starterDigest(): Promise<string> {
   const scratch = mkdtempSync(join(tmpdir(), "ana-harness-audit-"));
   try {
@@ -167,8 +155,8 @@ async function partsOf(dir: string): Promise<Parts> {
   };
 }
 
-/** An open session has handed nothing over yet, so its handover carries its last checkpoint and reads
- *  "so far", rather than "left it as it was" for an open led session that has made some. */
+/** An open session has handed nothing over yet, so its handover carries its last checkpoint and
+ *  reads "so far". */
 function measured(steps: readonly Handover[], digest: string) {
   return {
     sessions: steps.flatMap((step) => {
@@ -198,10 +186,8 @@ function measured(steps: readonly Handover[], digest: string) {
   };
 }
 
-/** The Builder turns between a version's making and the session's previous making (or its start), as
- *  a `slice.ts` selector: a checkpoint carries no turn, so without it a session finds the Builder's
- *  words for one delta by reading the session whole. Null where the log holds no such
- *  turn. */
+/** A checkpoint carries no turn, so without this a session finds the Builder's words for one delta
+ *  only by reading the session whole. */
 function turnsOf(events: readonly LogEvent[], digest: string): string | null {
   const at = events.findIndex(
     ({ kind, data }) =>
@@ -225,17 +211,15 @@ function turnsOf(events: readonly LogEvent[], digest: string): string | null {
   return `${session}{${String(Math.min(...turns))}-${String(Math.max(...turns))}}`;
 }
 
-/** How a kept state opens, as a solve would read it (`openHarness`). */
 const opensAs = async (dir: string, digest: string): Promise<string> =>
   await openHarness(dir).then(
     (harness) => (harness.digest === digest ? "as kept" : `as ${short(harness.digest)}, not as kept`),
     (error: unknown) => `refused: ${errorMessage(error)}`,
   );
 
-/** Every harness the log names or the states folder keeps: in the order the log first names them,
- *  the starter first, then any state the log never names. Only the list reads how a state opens and
- *  what its parts hold, and opening one digests its whole tree (tens of seconds a call on a few
- *  gigabytes of states), so a diff or a chain asks for the versions `named` and reads neither. */
+/** Every harness the log names or the states folder keeps, in the order the log first names them,
+ *  the starter first. Opening a state digests its whole tree (tens of seconds on a few gigabytes),
+ *  so a diff or a chain asks only for the versions `named` and opens none. */
 export async function versionsOf(
   keeping: Keeping,
   detail: "opened" | "named" = "opened",
@@ -278,7 +262,6 @@ export async function versionsOf(
   );
 }
 
-/** Lines a file gained and lost, counted as a multiset of nonblank lines. */
 function lineMoves(before: string | null, after: string | null) {
   const counts = new Map<string, number>();
   for (const line of lines(before)) counts.set(line, (counts.get(line) ?? 0) + 1);
@@ -296,7 +279,6 @@ function churn(before: string | null, after: string | null): string {
   return `${lines(before).length} to ${lines(after).length} nonblank lines, +${added} -${removed}`;
 }
 
-/** Entries of a tree by path, each a file's sha256 or a link's target with its mode. */
 function entries(dir: string, only: (path: string) => boolean): Map<string, string> {
   if (!existsSync(dir)) return new Map();
   return new Map(
@@ -315,8 +297,8 @@ function moved(before: Map<string, string>, after: Map<string, string>) {
   return { added, removed, changed };
 }
 
-/** What a harness wrote, by the path a reader names it: the guide, the spec, `tools.ts` and its own
- *  programs (`writtenIn`, which leaves out what it installed), never a bytecode cache. */
+/** The guide, the spec, `tools.ts` and its own programs (`writtenIn`, which leaves out what it
+ *  installed), never a bytecode cache. */
 function authored(state: string): Map<string, string> {
   const found = new Map<string, string>();
   for (const [path, file] of writtenIn(state)) {
@@ -330,8 +312,6 @@ function authored(state: string): Map<string, string> {
   return new Map([...found].toSorted(([one], [other]) => one.localeCompare(other)));
 }
 
-/** A line for each written file that moved from `parent` to `child`: added, removed or changed, with
- *  the nonblank lines it gained and lost. A file of the same bytes is left out. */
 async function filesMoved(parent: string, child: string): Promise<string[]> {
   const [old, fresh] = [authored(parent), authored(child)];
   const rows = await Promise.all(
@@ -351,7 +331,6 @@ async function filesMoved(parent: string, child: string): Promise<string[]> {
   return shown.length === 0 ? ["no written file moved"] : shown;
 }
 
-/** What moved from `parent` to `child`, part by part, by kind and size. */
 async function diffOf(parent: string, child: string): Promise<string[]> {
   const [old, fresh] = await Promise.all([partsOf(parent), partsOf(child)]);
   const tree = moved(
@@ -376,7 +355,6 @@ async function diffOf(parent: string, child: string): Promise<string[]> {
   ];
 }
 
-/** What moved at the depth asked: the counts, then a line a written file or the moved lines. */
 async function movesAt(parent: string, child: string, depth: Depth): Promise<string[]> {
   if (depth === "lines") return lineDiff(parent, child, authored);
   const counts = await diffOf(parent, child);
@@ -405,7 +383,6 @@ function printed(version: Version): string[] {
   ];
 }
 
-/** A version less how it was measured. */
 const blinded = (version: Version): Version => ({
   ...version,
   roles: version.roles.filter((role) => role === "starter"),
@@ -414,7 +391,6 @@ const blinded = (version: Version): Version => ({
   promoted: [],
 });
 
-/** What moved into a kept version from its kept parent; nothing where either state is missing. */
 async function againstParent(
   { digest, kept, parent }: Version,
   states: string,
@@ -425,8 +401,8 @@ async function againstParent(
   return [`  against ${short(parent)}:`, ...moves.map((line) => `    ${line}`)];
 }
 
-/** Every kept version against its kept parent, in the order the log names them, with how it was made
- *  and nothing of how it was measured: no role but the starter's, no comparison, reading or promotion. */
+/** Every kept version against its kept parent, with how it was made and nothing of how it was
+ *  measured: no role but the starter's, no comparison, reading or promotion. */
 async function chainOf(versions: readonly Version[], states: string, depth: Depth): Promise<string[]> {
   const blocks = await Promise.all(
     versions.map(async (version) => {
@@ -440,7 +416,6 @@ async function chainOf(versions: readonly Version[], states: string, depth: Dept
   return shown.length === 0 ? ["no kept version has a kept parent on record"] : shown;
 }
 
-/** The list, blind or not, as text or JSON. */
 async function listed(args: CommandArgs, keeping: Keeping, versions: readonly Version[], depth: Depth) {
   if (args.value("against") !== null) args.die("--against is read with --diff");
   const blind = args.flag("blind");
@@ -455,7 +430,7 @@ async function listed(args: CommandArgs, keeping: Keeping, versions: readonly Ve
   return blocks.flat().join("\n");
 }
 
-/** A harness as the commands name one, or a digest prefix of eight characters or more that names one
+/** A harness as the commands name one, or a digest prefix of eight characters or more naming one
  *  version this campaign knows; a prefix that names two is refused with both. */
 function wholeOf(args: CommandArgs, versions: readonly Version[], flag: string, harness: string): string {
   if (!PREFIX.test(harness)) return harness;
@@ -487,11 +462,13 @@ async function main(args: CommandArgs): Promise<number> {
     return 0;
   }
   if (args.flag("json")) args.die("--json is for the list; --diff prints its lines");
-  // A role is resolved here, so that `keptAs` is handed a digest and never writes the starter into
-  // a campaign that does not keep it.
+  // A role is resolved here, so that `resolveCheckpoint` is handed a digest and never writes the starter into a
+  // campaign that does not keep it.
   const named = async (flag: string, harness: string) => {
     if (harness.startsWith("programs-of:")) {
-      args.die(`${flag} takes no control: the command that compares one makes it (tools/d2/checkpoint.ts)`);
+      args.die(
+        `${flag} takes no control: the command that compares one makes it (tools/campaign/checkpoint.ts)`,
+      );
     }
     const role = harness === "promoted" ? "reference" : harness;
     const digest = versions.find((version) => version.roles.includes(role))?.digest;
@@ -499,9 +476,8 @@ async function main(args: CommandArgs): Promise<number> {
       args.die(`${flag} ${harness} names the starter, which this campaign keeps no state of`);
     }
     const whole = digest ?? wholeOf(args, versions, flag, harness);
-    // A letter, or a name this campaign does not keep, is `keptAs`'s to resolve or refuse.
     if (!versions.some((version) => version.kept && version.digest === whole)) {
-      return { ...(await keptAs(keeping, flag, whole)), notes: [] };
+      return { ...(await resolveCheckpoint(keeping, flag, whole)), notes: [] };
     }
     const dir = join(keeping.states, whole);
     const opens = await opensAs(dir, whole);

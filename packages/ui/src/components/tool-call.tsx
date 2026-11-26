@@ -2,14 +2,9 @@ import type { ToolCall } from "../models.ts";
 import { Badge } from "./primitives.tsx";
 import { asRecord, isString, type JsonValue } from "../../../../src/meta/json-shape.ts";
 
-/*
- * One tool call of a solve or a session, as v1's task view drew it (`views/cases.tsx` at 5bc9988):
- * labelled by its number and its tool, opened in place to its arguments and its result. Two panes
- * draw calls, a session's in Moves and a solve's trace in Moves and Tasks, so the component is
- * theirs to share. The closed row also carries the first line of what the call was given, cut to
- * the row, so that reading a session's first commands takes no click a call. Its turn is the
- * heading the call stands under, so the row does not repeat it.
- */
+// One tool call, numbered and named by its tool, opened in place to its arguments and result; Moves and
+// Tasks share it. The closed row carries the first line of what the call was given, so a session's
+// first commands take no click each.
 
 /** A call's arguments as a reader wants them: a shell command as it was typed, else the JSON. */
 function shownArguments(args: JsonValue): string {
@@ -17,7 +12,6 @@ function shownArguments(args: JsonValue): string {
   return isString(command) ? command : JSON.stringify(args, null, 2);
 }
 
-/** What a closed row shows of a call: its command's first line, else its first text argument. */
 function glimpseOf(args: JsonValue | null): string | null {
   const record = args === null ? undefined : asRecord(args);
   const first = isString(record?.command) ? record.command : Object.values(record ?? {}).find(isString);
@@ -51,7 +45,6 @@ export function ToolCallDetail({ call }: { call: ToolCall }) {
   );
 }
 
-/** Whether every term of `query` is in `text`, case aside: the search of a filter row. */
 export function matchesTerms(text: string, query: string): boolean {
   const content = text.toLowerCase();
   return query

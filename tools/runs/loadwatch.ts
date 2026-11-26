@@ -1,11 +1,10 @@
 /**
- * `bun run runs loadwatch [<seconds>] [--once | -s|--short [-w|--window 1m|5m|15m] | --json]`: the CPU and
- * the load of this machine and of every host `ANA_HOSTS` lists, live in the terminal, refreshed
- * every `<seconds>` (5 by default); `--once` prints one frame and ends it with the machines in
- * order of load, the least loaded first, which is the line a session reads before it places a run;
- * `-s` (`--short`) prints only one line, `last 5m:` and then each machine's load a core over that
- * window out of 100, least loaded first, and `-w` (`--window`) names the one- or fifteen-minute
- * window instead. `--json` streams each machine's CPU in detail instead, a line a reading (`loadstream.ts`).
+ * `bun run runs loadwatch [<seconds>] [--once | -s|--short [-w|--window 1m|5m|15m] | --json]`: the
+ * CPU and load of this machine and every host `ANA_HOSTS` lists, refreshed every `<seconds>` (5 by
+ * default). `--once` prints one frame ending with the machines least loaded first, the line a
+ * session reads before placing a run; `-s` prints one line of each machine's load a core over the
+ * window (5m unless `-w` names another); `--json` streams each machine's CPU in detail
+ * (`loadstream.ts`).
  */
 import { stream } from "./loadstream.ts";
 import { byLoad, sampleOf, watchedScript, WINDOWS, type Watched } from "./load.ts";

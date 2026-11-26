@@ -18,11 +18,12 @@ Only a fresh campaign opened from a prompt at a single commit is valid climb evi
 | --- | --- | --- |
 | Starting, resuming or waking | `wri2p2.ts due`, `cycle.md` | Check `measures` drift and hook continuity; act on the live decision/trigger or oldest pending step (`wri2p2.ts next <dir>`) |
 | Promotion (1st–5th) | `runs view <name>`, `starter-reads.ts`, `wri.ts read`, `predictions-<run>.md` (plus paired sibling) | Execute the per-promotion gate below: backtrack every row of `predictions-<run>.md` at current log event count; check `written-after` transfer; decide pause-and-act now vs continue to `N+1` (up to 5 max) |
-| Starter read, non-step or ending | `runs view <name>`, `starter-reads.ts` | Resolve `outcomes-<run>.md` at current log event count (convert `pending` → `unreached` when stopped); once paused or ended, run `wri2p2.ts open` |
+| Starter read, non-step or ending | `runs view <name>`, `starter-reads.ts` | Resolve `outcomes-<run>.md` at current log event count (convert `pending` → `not-observed` when stopped); once paused or ended, run `wri2p2.ts open` |
 | Runner slot frees up | `runs active`, `runs usage`, `runs loadwatch --once`, `run-queue.md` | Step 5: dry-run, write sharp `predictions-<run>.md` (early vs multi-epoch), launch via `runs fresh` |
 | Lanes or synthesis finish | `wri2p2.ts next <dir>`, `wri2p2.ts ledger <dir>` | Execute WRI2P2 step 3 (adversarial vet, recurrence check, cross-domain, plan) |
 | Code fix ready | `stack-pr/scripts/stack.ts`, `repository-practice/scripts/preflight.ts` | Step 4: `/simplify`, model-free `system-path-simulation`, `land --sanitize`, then step 5 |
-| Spend with no milestone progress | `runs pulse <name>`, `wri.ts read --log <log>` | Diagnose via "Milestones and the walk" below |
+| Spend with no milestone progress | `runs pulse <name>`, `wri.ts read --log <log>` | Diagnose via "Milestones and the walk" below and [references/stack-contracts.md](references/stack-contracts.md) |
+| Planning repairs, checking alignment, or diagnosing cross-seam regression | [references/stack-contracts.md](references/stack-contracts.md) | Walk stages 1–9 (pseudo-data inputs/outputs and invariants) and repair the earliest broken seam |
 | Step open 2 days or double-claimed | Elapsed hours in `due`; `cycle.md` | Claim step, log deviation or assign one owner in `cycle.md` |
 | `jobstat` pauses at ≥2 promotions (or pauses/stops with 1) without outside read | Prior prediction, `score.ts table`, `compare.ts levels` | Follow [references/outside.md](references/outside.md) (`runs bench`, `outside-reads.md`); never let owed reads pile up |
 | Handover or timer audit | `timers.ts <transcripts>`, active `until.ts` hooks | Verify promotion hooks are armed in `cycle.md`, retire dead timers, report the five points |
@@ -41,14 +42,14 @@ release:   proof run at top (2 promos, unchanged) → 3 reviewers → consolidat
 Live in `.ana/wri/<YYYY-MM-DD>-cycle-<release>/` on the central archive host, never under `data/`:
 
 - `cycle.md`: authorisation, per-promotion decisions (1–5), active hooks/timers, reviews and one dated line per step ([references/cycle-ledger.md](references/cycle-ledger.md)).
-- `deviations.md`: `| step | reason |` rows for deliberate gate overrides and live-run continuations (`pause:<run>`), read directly by `wri2p2.ts` (`keptIn`) alongside investigation folders.
+- `deviations.md`: `| step | reason |` rows for deliberate gate overrides and live-run continuations (`pause:<run>`), read directly by `wri2p2.ts` (`deferredBy`) alongside investigation folders.
 - `run-queue.md`: priority-ordered launches tagged `ready: yes|no` with required gate (automated wakes launch `ready: yes` only).
 - `predictions-<run>.md` (write before `--yes`; if missed, write immediately noting current solve and event counts):
-  `| id | PR | labels | lanes | group | claim, as a count | falsified by |`
+  `| id | PR | labels | lanes | group | claim, as a count | refuted if |`
   Keep ledgers sharp (~8–15 load-bearing rows, not snowballed archives): cover every PR since the previous fork, each component contract/boundary under test, explicit **keep-or-revert bars** for newly added components, and supply/climb/honesty rows. Mark whether each claim settles **early-epoch** (by promo 1: draft audit, grounding, portability, supply floor) or **multi-epoch** (promos 2–5: `written-after` confirmation, post-promotion Examiner targeting, practice boundary, sustained climb). `group`: `first` | `again` | `off-run` | `outside`.
-- `outcomes-<run>.md`: marks each own id and `## Carried` (`<parent>:<id>`) as `held` | `falsified` | `unreached` | `pending`, with `Log events at resolution: <n>` on its own line (log growth past `<n>` automatically reopens `unreached`/`pending`). When a run stops or pauses for investigation, resolve every non-`outside` `pending` row to `held`, `falsified` or `unreached` immediately — never leave stopped runs with unresolved `pending` rows.
+- `outcomes-<run>.md`: marks each own id and `## Carried` (`<parent>:<id>`) as `confirmed` | `refuted` | `not-observed` | `pending`, with `Log events at resolution: <n>` on its own line (log growth past `<n>` automatically reopens `not-observed`/`pending`). When a run stops or pauses for investigation, resolve every non-`outside` `pending` row to `confirmed`, `refuted`, or `not-observed` immediately rather than leaving stopped runs with unresolved `pending` rows.
 - `outside-reads.md`: external benchmark ledger for `jobstat` runs ([references/outside.md](references/outside.md)).
-- `plan.md` (inside the iteration dir, linked from `cycle.md`): one row per confirmed finding (`vet-<n>`), falsified prediction, live defect and lever ([references/levers.md](references/levers.md), ≥3 lever ids), plus `## Not done` and `## Intentionally opposed` (≥1 trade-off or `none`). Retire obsolete or superseded parent predictions under `## Intentionally opposed` so `carryOf` does not snowball them into future forks. Name `Pull request: #N` (or `Pull request: none — <reason>` when vetting leaves zero code repairs), and update `plan.md` with empirical count and `date -u` whenever the PR diverges.
+- `plan.md` (inside the iteration dir, linked from `cycle.md`): one row per confirmed finding (`vet-<n>`), refuted prediction, live defect and lever ([references/levers.md](references/levers.md), ≥3 lever ids), plus `## Not done` and `## Intentionally opposed` (≥1 trade-off or `none`). Retire obsolete or superseded parent predictions under `## Intentionally opposed` so `carryOf` does not snowball them into future forks. Name `Pull request: #N` (or `Pull request: none — <reason>` when vetting leaves zero code repairs), and update `plan.md` with empirical count and `date -u` whenever the PR diverges.
 - `wri2p2.ts ledger <dir>` derives cycle, dropped and still-missing views; never write those views by hand.
 
 ### Per-promotion decision gate (1 to 5 promotions)
@@ -62,7 +63,7 @@ Every promotion (`harness.promoted`, 1st through 5th) triggers a sequential **pr
    - **Stale-code zombie check**: if `measures` shows newer proved runtime/seat fixes above the run's commit and the run's unresolved predictions are already superseded (not a paired ablation control or high-signal climb), prefer pausing after its active comparison so the slot tests the current head.
 3. **Decide pause-and-act now vs continue to promotion `N+1` (ceiling 5)**:
    - **Pause and act now** (as early as promotion 1, or at 2, 3 or 4) when backtracked predictions (`first`/`again` rows, exercised mechanism events, or a decisive falsification/defect) already supply enough evidence that another epoch would not change the repair plan, when `written-after` transfer fails, or when a newly added component already misses its keep-bar.
-   - **Continue to the next promotion (up to 5 promotions maximum)** only when transfer is healthy (or still awaiting its first starter read) AND specific named multi-epoch predictions remain `unreached`/`pending` and genuinely require a later epoch to observe (starter confirmation of the new reference, post-promotion Examiner difficulty/refusal/practice behaviour, epoch-2+ practice boundary, multi-epoch compounding, or separating genuine climb from single-epoch noise). Record in `cycle.md` the promotion `#`, settled vs open prediction ids, target promotion `N+1` and falsifier; add `| pause:<run> | past <N> promotion(s): waiting for <ids> |` in `<cycle>/deviations.md` (naming the exact trigger `"1 promotion"`, `"2 promotions"`, `"3 promotions"` or `"4 promotions"` so `keptIn` silences `due` now and automatically re-triggers when promotion `N+1` lands); and immediately re-arm `until.ts <run> --at harness.promoted:next`.
+   - **Continue to the next promotion (up to 5 promotions maximum)** only when transfer is healthy (or still awaiting its first starter read) AND specific named multi-epoch predictions remain `not-observed`/`pending` and genuinely require a later epoch to observe (starter confirmation of the new reference, post-promotion Examiner difficulty/refusal/practice behaviour, epoch-2+ practice boundary, multi-epoch compounding, or separating genuine climb from single-epoch noise). Record in `cycle.md` the promotion `#`, settled vs open prediction ids, target promotion `N+1` and falsifier; add `| pause:<run> | past <N> promotion(s): waiting for <ids> |` in `<cycle>/deviations.md` (naming the exact trigger `"1 promotion"`, `"2 promotions"`, `"3 promotions"` or `"4 promotions"` so `deferredBy` silences `due` now and automatically re-triggers when promotion `N+1` lands); and immediately re-arm `until.ts <run> --at harness.promoted:next`.
    - **Ceiling at 5 promotions**: at promotion 5, pause and investigate rather than drifting indefinitely (continue past 5 only on explicit operator direction toward the 6-confirmed milestone, naming `"5 promotions"` in `deviations.md`).
 4. **Non-promotion triggers** (when a run stays at 0 promotions): 12 elapsed hours since opening, a scored comparison with 0 untied tasks, or a natural ending after ≥1 comparison.
 5. **Always pause cleanly**: pause via `runs pause <name> --after reported --yes` (under `nohup`; add `--eval` on `jobstat` from promotion 2 onwards), never directly at `harness.promoted`, so the owed starter confirmation (`heldBy`) tallies before investigation opens. Wait until the run rests, then re-resolve `outcomes-<run>.md` at the final event count.
@@ -82,11 +83,12 @@ bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
    - **Scope matching**: default to full 20-lane WRI2P2 for fresh stack-top runs and paired ablations (`open <A>,<B>`); use a delta audit only on explicit operator direction for superseded low-alpha runs.
 3. **Adversarial vet, recurrence escalation, cross-domain check & plan**:
    - **Vet adversarially (`vetting.md`, `vettingFaults` = 0)**: backtrack every prediction id first, then actively try to **refute** each synthesis finding before confirming it — verify (a) whether `git log <run-commit>..HEAD` already fixed it on the stack, (b) whether the delta sits inside A/A or single-rollout noise, and (c) whether subtracting or simplifying an existing mechanism beats adding a new guard (`AGENTS.md` rule 13).
-   - **Recurrence escalation rule**: check `wri2p2.ts ledger <cycle>` before planning. If the same prediction or defect has been **falsified across ≥2 consecutive fresh runs**, forbid another local prompt tweak — escalate to a structural rewrite of the owning compartment (`commit-r`), a paired ablation, or explicit `## Intentionally opposed` / operator escalation (if an `AGENTS.md` §3 bound governs it).
+   - **Recurrence escalation rule**: check `wri2p2.ts ledger <cycle>` before planning. If the same prediction or defect has been **refuted across ≥2 consecutive fresh runs**, forbid another local prompt tweak and escalate to a structural rewrite of the owning compartment (`commit-r`), a paired ablation, or explicit `## Intentionally opposed` / operator escalation (if an `AGENTS.md` §3 bound governs it).
    - **Keep-or-revert rule**: if a newly added component, audit pass or gate misses its pre-registered keep-bar, plan its **removal or simplification** rather than layering patches on top.
+   - **Whole-stack contract check**: before writing `plan.md`, walk all nine stages of [references/stack-contracts.md](references/stack-contracts.md) so cross-seam misalignments are repaired at their earliest owning boundary rather than patched downstream.
    - **Cross-domain & plan**: inspect 5–10 recent vetted investigations from other domains into `cross-domain.md`; write `plan.md` covering every confirmed `vet-<n>` row, ≥3 lever ids (`references/levers.md`), `## Not done` and `## Intentionally opposed` (retiring dead/superseded predictions so `carryOf` stays lean). If vetting leaves zero code repairs, record `Pull request: none — <reason>` so the iteration closes cleanly without a pointless fork.
-4. **Implement, simplify & simulate**: fold refinements into your own owning PR when touching the same compartment (`stack-pr`), otherwise land the plan as one stacked PR at the stack top (avoid fragmenting into micro-PRs; consolidate by mechanism before release). Run `/simplify`, verify behavioural patches model-free via `system-path-simulation` (before/after archive replays, scripted rehearsals or wall probes on identical logs/seeds — never model-seated simulations), prove the full stack with `bun run land -- <top> --sanitize`, and record `Pull request: #N` in `plan.md`.
-5. **Predict & fork**: skip forking if the PR changes zero files in `CODE_TREES` (`log` in `deviations.md` as `| launch | ... |`). Otherwise dry-run `runs fresh --as forkedPR<N>` to lock the exact run name, write a crisp `predictions-<run>.md` (carrying non-opposed unheld parent ids in `## Carried`, tagging early vs multi-epoch rows, and setting keep/revert bars for new components), launch only `ready: yes` entries, and immediately arm `until.ts <run> --at harness.promoted:next`.
+4. **Implement in separable, ablatable, simulatable slices**: fold refinements into your own owning PR when touching the same compartment (`stack-pr`), otherwise land each mechanism as a clean, independently ablatable and pre-run simulatable PR at the stack top (avoid mixing unrelated mechanisms into one un-ablatable rewrite; consolidate by mechanism before release). Run `/simplify`, execute a pre-run model-free simulation gate for every behavioural slice via `system-path-simulation` against its stage contract in [references/stack-contracts.md](references/stack-contracts.md) (before/after counterfactual archive replays on real logs, seeded `runs rehearse`, wall perturbation probes, or bounded property checks — proving the defect reproduces before and clears after at \$0, never model-seated simulations), prove the full stack with `bun run land -- <top> --sanitize`, and record `Pull request: #N` in `plan.md`.
+5. **Predict & fork**: skip forking if the PR changes zero files in `CODE_TREES` (`log` in `deviations.md` as `| launch | ... |`). Otherwise verify launch/seat-family alignment against [references/stack-contracts.md](references/stack-contracts.md) stage 1, dry-run `runs fresh --as forkedPR<N>` to lock the exact run name, write a crisp `predictions-<run>.md` (carrying non-opposed unheld parent ids in `## Carried`, tagging early vs multi-epoch rows, and setting keep/revert bars for new components), launch only `ready: yes` entries, and immediately arm `until.ts <run> --at harness.promoted:next`.
 
 `next` gates: `open` → `instruct` → `lanes` → `reports` → `record` → `isolated` → `synthesise` → per-run `predictions`/`outcomes`/`carry`/`outside` → `vet` → `across` → `plan` → `implement` → `launch` → `forks` → `done`. Override any gate except `done` via `| <step>[:<run>] | <reason> |` in `deviations.md`.
 
@@ -114,8 +116,8 @@ Report Supply + the four factors (`AGENTS.md` §1) at pass open and close:
 | 1 | Climb | `runs status`, `runs view`, `close.ts` "Promotions" | `AGENTS.md` factor 1 |
 | 2 | Honesty | Report `noise`; `close.ts` "The chance of a false promotion" | A/A controls & cumulative risk |
 | 3 | Supply | `--dry-run`, `runs view`, `task.gate` | `comparisonFloor(level)` frontier tasks |
-| 4 | Verdicts | `tools/d2/settle.ts` | `AGENTS.md` factor 3 |
-| 5 | Economy | `close.ts` "Work and spend", `promotionsWorth`, `worthLine` | ≤3 attempts/epoch after setup |
+| 4 | Verdicts | `tools/campaign/settle.ts` | `AGENTS.md` factor 3 |
+| 5 | Economy | `close.ts` "Work and spend", `promotionsWorth`, `worthLine` | dollars and active hours per promotion, no attempt bar |
 
 ## The outside aim: Harness² on JobBench
 
@@ -134,18 +136,18 @@ At least one live slot stays on `jobstat`. Evaluate every `jobstat` run's newest
 | M6 next epoch | First Examiner & comparison post-M5 | Drafts held vs refused, frontier & retained sizes, `written-after` starter confirmation |
 | M7 ending | `campaign.ended` | Ending kind, closing report, final prediction outcomes |
 
-On stalls (spend without milestone progress; exclude rule-15 limit waits), walk from the active milestone and stop at the first failing link (matches WRI lane 16):
+On stalls (spend without milestone progress; exclude rule-15 limit waits), walk from the active milestone and stop at the first failing link (matches WRI lane 16); for end-to-end input/output contract invariants across all nine layers, check [references/stack-contracts.md](references/stack-contracts.md):
 
 | # | Link | Point | Fails as | Owner |
 | --- | --- | --- | --- | --- |
-| 1 | supply | 3 | `tasks`/`short` rows, refused drafts (`< comparisonFloor`) | `src/examiner/prompt.ts`, `heard` (`record.ts`), `propose_tasks` (`write.ts`), `supplyRun`/`tasksToAskFor` (`decide.ts`), `comparisonFloor` (`admission.ts`) |
-| 2 | instrument | 4 | `exam` ending, checker faults, tasks set aside, audit ceremony | `planOf` (`opening.ts`), `readChecker` (`acceptance.ts`), `reviewDraft` (`src/referee/draft-audit.ts`), check author |
-| 3 | room | 1 | `no-room`, zero `valid.informative.old` | Link 1; `roomOf` (`reports.ts`) |
-| 4 | session | 1 | Unchanged `build.finished`, idle sessions, practice all passing | `src/builder/prompt.ts`, `tools/d2/campaign-actions.ts`, `idleOf` (`campaign-terms.ts`) |
+| 1 | supply | 3 | `tasks`/`short` rows, refused drafts (`< comparisonFloor`) | `src/examiner/prompt.ts`, `taskHistory` (`record.ts`), `propose_tasks` (`write.ts`), `supplyRun`/`tasksToAskFor` (`scheduler.ts`), `comparisonFloor` (`admission.ts`) |
+| 2 | instrument | 4 | `exam` ending, checker faults, tasks set aside, audit ceremony | `planOf` (`opening.ts`), `readChecker` (`acceptance.ts`), `reviewDraft` (`src/audit/draft-audit.ts`), check author |
+| 3 | room | 1 | `no-room`, zero `valid.informative.old` | Link 1; `evalHeadroom` (`reports.ts`) |
+| 4 | session | 1 | Unchanged `build.finished`, idle sessions, practice all passing | `src/builder/prompt.ts`, `tools/campaign/campaign-actions.ts`, `idleOf` (`campaign-terms.ts`) |
 | 5 | size | 2 | Excess ties, near miss, high `scored.detectable` | `--target` for next run; link 1 |
 | 6 | host | 2 | `HOST LOADED`, `LOAD MOVED`, long `campaign.waited` | Concurrent campaigns/host |
-| 7 | promotion | 2 | `no-step` near alpha, retained loss, A/A step | Links 1 & 5; `readsStep` (`compare.ts`) |
-| 8 | next epoch | 1 | Refused drafts, thin frontier after promotion | `make` (`harness-builder.ts`), `ROWS` (`decide.ts`) |
+| 7 | promotion | 2 | `no-step` near alpha, retained loss, A/A step | Links 1 & 5; `isSignificant` (`compare.ts`) |
+| 8 | next epoch | 1 | Refused drafts, thin frontier after promotion | `make` (`harness-builder.ts`), `ROWS` (`scheduler.ts`) |
 
 ## Event hooks and timers
 
@@ -160,6 +162,6 @@ Never run recurring clock-polling loops (`1h`, `90m`, `2h/4h/6h/8h`) — a singl
 - Compartment rewrites on repeated failures: [commit-r](../commit-r/SKILL.md)
 - Cohort tables, cost repricing and multi-week trends: [promotion-tuner](../promotion-tuner/SKILL.md)
 - External benchmark or comparison diagnosis: [comparison-review](../comparison-review/SKILL.md)
-- Inspecting/exporting kept harnesses: [harness-audit](../harness-audit/SKILL.md)
+- Inspecting/exporting saved checkpoints: [harness-audit](../harness-audit/SKILL.md)
 - Stacking, consolidating and landing PRs: [stack-pr](../stack-pr/SKILL.md), [consolidate-stack](../consolidate-stack/SKILL.md)
 - Claims and external review bundles: [attribution-and-proof](../attribution-and-proof/SKILL.md), [oracle-handover](../oracle-handover/SKILL.md)

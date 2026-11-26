@@ -24,7 +24,6 @@ const functionBoundaryTypes = new Set([
   "TSEmptyBodyFunctionExpression",
 ]);
 
-/** The expressions that state their own type by being written down. */
 const selfEvidentExpressions = new Set([
   "ArrayExpression",
   "ArrowFunctionExpression",
@@ -44,24 +43,19 @@ interface WidenedBinding {
   readonly boundary: ESTree.Node | null;
 }
 
-/** This repository's broad JSON types, by the name `src/meta/json-shape.ts` exports them under.
- *  A file imports them, so its own type environment cannot open them, yet each erases a shape as
- *  `unknown` or an open dictionary does. */
+/** Broad JSON types from `src/meta/json-shape.ts`: imported, so this file's type environment cannot
+ *  open them, yet each erases a shape. */
 const importedWidenings = new Map<string, WideningTargetKind>([
   ["JsonValue", "unknown"],
   ["JsonObject", "open dictionary"],
 ]);
 
-/** The parsers and printers a JSON round trip goes through, as plain or captured globals. */
 const jsonParsers = new Set(["JSON.parse", "capturedJsonParse"]);
 const jsonPrinters = new Set(["JSON.stringify", "capturedJsonStringify"]);
 
-/** The reads that hand an element back with `undefined` beside it: an index, or a call that may
- *  find nothing. */
+/** Reads that hand an element back with `undefined` beside it. */
 const elementReaders = new Set(["at", "find", "findLast", "get", "pop", "shift"]);
 
-/** What the rule reads of one file: its own type declarations, and the name each imported
- *  binding has where it was exported. */
 interface FileTypes {
   readonly environment: TypeEnvironment;
   readonly imports: ReadonlyMap<string, string>;
@@ -80,8 +74,6 @@ function importedNames(program: ESTree.Program): ReadonlyMap<string, string> {
   return names;
 }
 
-/** The exported name of an imported type this reference spells, through parentheses, `readonly`
- *  and `Readonly`; null where the file declares the name itself or did not import it. */
 function importedTypeName(type: ESTree.TSType, types: FileTypes): string | null {
   let current = type;
   for (;;) {
@@ -106,8 +98,6 @@ function importedTypeName(type: ESTree.TSType, types: FileTypes): string | null 
   return declaredHere ? null : (types.imports.get(local) ?? null);
 }
 
-/** What a written type erases: a widening the file's own declarations show, or one of the
- *  repository's broad JSON types imported from elsewhere. */
 function wideningOf(type: ESTree.TSType, types: FileTypes): WideningTargetKind | null {
   const local = classifyWideningTarget(type, types.environment);
   if (local !== null) return local.kind;
@@ -115,7 +105,6 @@ function wideningOf(type: ESTree.TSType, types: FileTypes): WideningTargetKind |
   return imported === null ? null : (importedWidenings.get(imported) ?? null);
 }
 
-/** The expression an assertion or parenthesis chain finally wraps. */
 function unwrapExpression(expression: ESTree.Expression): ESTree.Expression {
   let current = expression;
   while (current.type === "ParenthesizedExpression") current = current.expression;
@@ -127,8 +116,7 @@ function assertionFrom(expression: ESTree.Expression): ESTree.TSAsExpression | E
   return unwrapped.type === "TSAsExpression" || unwrapped.type === "TSTypeAssertion" ? unwrapped : null;
 }
 
-/** The function this node sits in, or null at module level. Two nodes in different
- *  functions are not one flow: the value crossed a call boundary in between. */
+/** Two nodes in different functions are not one flow: the value crossed a call boundary in between. */
 function functionBoundary(node: ESTree.Node): ESTree.Node | null {
   let current = node.parent;
   while (current !== null && current.type !== "Program") {
@@ -147,7 +135,6 @@ function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | nul
   return null;
 }
 
-/** A `const` with one initializing write, so the binding holds one value for its whole life. */
 function isSingleAssignment(variable: Variable, declarator: ESTree.VariableDeclarator): boolean {
   return (
     declarator.parent.type === "VariableDeclaration" &&
@@ -157,9 +144,7 @@ function isSingleAssignment(variable: Variable, declarator: ESTree.VariableDecla
   );
 }
 
-/** True when this expression syntactically establishes its own type. A literal, object,
- *  array, function or `new` does so without naming it; an annotation or an assertion names
- *  it, and only counts when the named type is not itself a widening. */
+/** An annotation or assertion counts only when the type it names is not itself a widening. */
 function hasKnownType(
   sourceCode: SourceCode,
   expression: ESTree.Expression,
@@ -202,8 +187,6 @@ function hasKnownType(
   return hasKnownType(sourceCode, declarator.init, types, boundary, new Set([...visited, variable]));
 }
 
-/** The function this file declares under a call's callee name, as a function declaration or a
- *  `const` holding a function expression; null for anything imported, computed or rebound. */
 function localCallee(sourceCode: SourceCode, call: ESTree.CallExpression): LocalFunction | null {
   if (call.callee.type !== "Identifier") return null;
   const variable = resolveVariable(sourceCode, call.callee);
@@ -216,8 +199,6 @@ function localCallee(sourceCode: SourceCode, call: ESTree.CallExpression): Local
   return callee.type === "ArrowFunctionExpression" || callee.type === "FunctionExpression" ? callee : null;
 }
 
-/** Every value a function returns, or null where one return carries none. Nested functions are
- *  other flows and are not entered. */
 function returnedValues(
   owner: LocalFunction,
   visitorKeys: SourceCode["visitorKeys"],
@@ -242,8 +223,8 @@ function returnedValues(
   return complete && values.length > 0 ? values : null;
 }
 
-/** A call to this file's own function whose declared return type erases what every one of its
- *  returns states: `function opened(): JsonValue { return { project, budget }; }`. */
+/** A call to this file's own function whose return type erases what every return states: `function
+ *  opened(): JsonValue { return { project, budget }; }`. */
 function wideningCall(
   sourceCode: SourceCode,
   call: ESTree.CallExpression,
@@ -259,8 +240,6 @@ function wideningCall(
     : null;
 }
 
-/** `JSON.parse(JSON.stringify(known))`: a copy whose printer was handed a known value and whose
- *  parser hands back `any`. */
 function isJsonRoundTrip(
   sourceCode: SourceCode,
   call: ESTree.CallExpression,
@@ -288,8 +267,6 @@ function isJsonRoundTrip(
   );
 }
 
-/** What an expression erases of a value its source states, by a call rather than an annotation:
- *  a call to a widening local function, or a JSON round trip. */
 function erasingCall(
   sourceCode: SourceCode,
   expression: ESTree.Expression,
@@ -302,9 +279,6 @@ function erasingCall(
   return wideningCall(sourceCode, unwrapped, types);
 }
 
-/** A const whose known value was explicitly given a broad type, by annotation, by an assertion on
- *  its initializer, or by the call that produced it. Returns null when the value was never known,
- *  or never widened. */
 function widenedBinding(sourceCode: SourceCode, variable: Variable, types: FileTypes): WidenedBinding | null {
   const declarator = variableDeclarator(variable);
   if (declarator === null) return null;
@@ -337,8 +311,7 @@ function widenedBinding(sourceCode: SourceCode, variable: Variable, types: FileT
     : null;
 }
 
-/** Whether `node` sits inside `boundary`'s function, directly or in a function nested in it. A
- *  const holds one value for its whole life, so a closure that reads it reads the same flow. */
+/** A const holds one value for its whole life, so a closure in `boundary`'s function reads the same flow. */
 function isWithin(node: ESTree.Node, boundary: ESTree.Node | null): boolean {
   if (boundary === null) return true;
   for (let current = functionBoundary(node); current !== null; current = functionBoundary(current)) {
@@ -347,17 +320,12 @@ function isWithin(node: ESTree.Node, boundary: ESTree.Node | null): boolean {
   return false;
 }
 
-/** Whether an assertion target is an object, as far as this file can tell. A type imported from
- *  elsewhere cannot be opened here; TypeScript refuses to assert an object-typed value to a type
- *  that cannot overlap it, so a compiled assertion from a dictionary to such a name narrows it. */
+/** A type imported from elsewhere cannot be opened here, but TypeScript refuses to assert an
+ *  object-typed value to a type that cannot overlap it. */
 function isObjectTarget(type: ESTree.TSType, types: FileTypes): boolean {
   return isCertainlyObjectType(type, types.environment) || importedTypeName(type, types) !== null;
 }
 
-/** Does asserting to `assertedType` recreate a type the widening erased? Asserting one broad
- *  type to another narrows nothing. `unknown` and `any` erase everything, so any precise type
- *  narrows them; the object-shaped widenings only erase a shape, so `object` back to `string`
- *  changes the kind rather than narrowing it, a different defect and not this rule's. */
 function recreatesErasedType(
   widening: WideningTargetKind,
   assertedType: ESTree.TSType,
@@ -367,9 +335,7 @@ function recreatesErasedType(
   return widening === "any" || widening === "unknown" || isObjectTarget(assertedType, types);
 }
 
-/** An element read whose result may be absent: `xs[i]`, `xs.at(-1)`, `queue.shift()`,
- *  `rows.find(...)`, `byId.get(id)`. A computed key that is a string literal is a property read
- *  spelled with brackets, `values["solver-effort"]`, and is left out with `values.solver`. */
+/** A computed key that is a string literal, `values["solver-effort"]`, is a property read and is left out. */
 function isElementRead(expression: ESTree.Expression): boolean {
   if (expression.type === "MemberExpression") {
     return (
@@ -389,7 +355,6 @@ function isElementRead(expression: ESTree.Expression): boolean {
   );
 }
 
-/** A target that keeps absence, or names nothing at all, removes no `undefined` from a read. */
 function admitsAbsence(type: ESTree.TSType): boolean {
   if (type.type === "TSParenthesizedType") return admitsAbsence(type.typeAnnotation);
   if (type.type === "TSUnionType") return type.types.some(admitsAbsence);
@@ -401,25 +366,16 @@ function admitsAbsence(type: ESTree.TSType): boolean {
   );
 }
 
-/** Whether an identifier names the parameter of a `catch` clause. */
 function isCaughtValue(sourceCode: SourceCode, identifier: ESTree.IdentifierReference): boolean {
   return resolveVariable(sourceCode, identifier)?.defs.some(({ type }) => type === "CatchClause") === true;
 }
 
 /**
  * A value the source already described, widened, and a later assertion that puts the description
- * back: `const raw: unknown = { id };` then `raw as Row`.
+ * back: `const raw: unknown = { id };` then `raw as Row`. `x as unknown as T` is
+ * `no-chained-type-assertions`' and is not read here.
  *
- * `recreatesErasedType` is what separates a narrowing from a change of subject. Asserting one
- * broad type to another narrows nothing and is not reported. `any` and `unknown` erase
- * everything, so any precise type narrows them back. The object-shaped widenings erase only a
- * shape, so the assertion has to name something that is an object: one this file declares, or a
- * name imported from elsewhere, to which TypeScript would not let a dictionary be asserted unless
- * the two overlap. `object` asserted to `string` is a different defect, and not this rule's.
- * `x as unknown as T` is `no-chained-type-assertions`' and is not read here.
- *
- * There is no fix: the repair is to drop the widening, but which of the two annotations states
- * the true type is not readable from the flow alone.
+ * There is no fix: which of the two annotations states the true type is not readable from the flow.
  */
 export const noWidenThenAssertRule = defineRule({
   meta: {

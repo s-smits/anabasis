@@ -3,12 +3,12 @@
 // continuation deviations, auto-skips untriggered isolated lanes, supports zero-PR plans,
 // retires intentionally opposed predictions from carryOf, and chains until.ts `:next`.
 import { afterAll, describe, expect, it } from "bun:test";
-import { dueLines, keptIn, nextOf, openingOf } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
+import { deferredBy, dueLines, nextOf, openingOf } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { pulse } from "#tools/runs/pulse.ts";
 import type { Run } from "#tools/runs/registry.ts";
-import { clockTurns, progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
-import { carryOf } from "#tools/wri/ledger.ts";
-import { readsOf } from "#tools/wri/record.ts";
+import { clockTurns, progressOf as rowOf, triggerOf } from "#tools/runs/summary.ts";
+import { carryOf, outcomesOf } from "#tools/wri/ledger.ts";
+import { checkedStepsOf } from "#tools/wri/record.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -57,9 +57,9 @@ describe("the trigger across promotions 0..5 and non-promotion bounds", () => {
       expect(triggerOf(rowOf(live, promotedEvents(count), now))).toBe(`${String(count)} promotions`);
     }
     const tied = rowOf(live, [opening(), reported(2, 0, 0, 8)], now);
-    expect(triggerOf(tied)).toBe("a comparison left no task untied");
+    expect(triggerOf(tied)).toBe("all tasks tied in comparison");
     // A live run is timed to now, so one in a long wait still reaches the hours.
-    expect(triggerOf(rowOf(live, short, OPENED + 13 * HOUR))).toBe("13.0 h since its opening");
+    expect(triggerOf(rowOf(live, short, OPENED + 13 * HOUR))).toBe("13.0 h since opening");
   });
 
   it("reads a comparison that scored nothing as no tie, since it tested nothing", () => {
@@ -75,7 +75,7 @@ describe("the trigger across promotions 0..5 and non-promotion bounds", () => {
   });
 });
 
-describe("a run's step at promotions 1..5 and exact-count keptIn", () => {
+describe("a run's step at promotions 1..5 and exact-count deferredBy", () => {
   const row = { name: "r1", host: "here", live: true };
   const pausing = (args: string[]) => [{ pid: 1, cwd: "/w", args }];
 
@@ -90,24 +90,24 @@ describe("a run's step at promotions 1..5 and exact-count keptIn", () => {
     expect(atCeiling[0]).toStartWith("step: pause · 5 promotions; ceiling reached (5 promotions)");
     expect(atCeiling[1]).toBe("  bun run runs pause r1 --after reported --yes");
 
-    const clockPause = openingOf({ ...row, promotions: 0 }, "12.0 h since its opening", []);
+    const clockPause = openingOf({ ...row, promotions: 0 }, "12.0 h since opening", []);
     expect(clockPause[0]).toBe(
-      "step: pause · 12.0 h since its opening; the investigation opens once the run stops after its next comparison",
+      "step: pause · 12.0 h since opening; the investigation opens once the run stops after its next comparison",
     );
   });
 
   it("keeps past a promotion only when the deviation names that exact promotion trigger", () => {
     const clockDev = ["| step | reason |\n| --- | --- |\n| pause:r1 | still climbing |"];
-    expect(keptIn(clockDev, "r1", "12.0 h since its opening", 0)).toBe("still climbing");
-    expect(keptIn(clockDev, "r1", "1 promotion", 1)).toBeNull();
+    expect(deferredBy(clockDev, "r1", "12.0 h since opening", 0)).toBe("still climbing");
+    expect(deferredBy(clockDev, "r1", "1 promotion", 1)).toBeNull();
 
     const p1Dev = ["| step | reason |\n| --- | --- |\n| pause:r1 | past 1 promotion: waiting for P2 |"];
-    expect(keptIn(p1Dev, "r1", "1 promotion", 1)).toBe("past 1 promotion: waiting for P2");
-    expect(keptIn(p1Dev, "r1", "2 promotions", 2)).toBeNull();
+    expect(deferredBy(p1Dev, "r1", "1 promotion", 1)).toBe("past 1 promotion: waiting for P2");
+    expect(deferredBy(p1Dev, "r1", "2 promotions", 2)).toBeNull();
 
     const p2Dev = ["| step | reason |\n| --- | --- |\n| pause:r1 | past 2 promotions: waiting for P3 |"];
-    expect(keptIn(p2Dev, "r1", "2 promotions", 2)).toBe("past 2 promotions: waiting for P3");
-    expect(keptIn(p2Dev, "r1", "3 promotions", 3)).toBeNull();
+    expect(deferredBy(p2Dev, "r1", "2 promotions", 2)).toBe("past 2 promotions: waiting for P3");
+    expect(deferredBy(p2Dev, "r1", "3 promotions", 3)).toBeNull();
   });
 
   it("waits while a pause of the run is armed, and opens once the run has stopped", () => {
@@ -146,9 +146,8 @@ describe("the clock trigger", () => {
     expect(triggerOf(early)).toBeNull();
     const turns = clockTurns(early, minute);
     expect(turns).toBe("2026-11-04T12:00:47Z");
-    // Hostile: the trigger stands at the second said and not at the one before it.
     const read = (when: number) => triggerOf(rowOf({ name: "r1", host: "here", live: true }, opened, when));
-    expect(read(Date.parse(turns))).toBe("12.0 h since its opening");
+    expect(read(Date.parse(turns))).toBe("12.0 h since opening");
     expect(read(Date.parse(turns) - 1000)).toBeNull();
     const step = openingOf(early, null, [], null, turns);
     expect(step).toEqual([`step: run · its clock trigger turns at ${turns}`]);
@@ -157,7 +156,6 @@ describe("the clock trigger", () => {
       "due at 2026-11-04T12:00Z · nothing owed · 1 run(s) live",
       `run · r1 · its clock trigger turns at ${turns}`,
     ]);
-    // A stopped run has no clock to wait for.
     expect(openingOf({ ...early, live: false }, null, [], null, turns)).toEqual(["step: run"]);
   });
 });
@@ -180,7 +178,7 @@ describe("WRI2P2 gate hygiene: isolated auto-skip, zero-PR plans, and opposed ca
     writeFileSync(join(dir, "overview.md"), options.overview);
     writeFileSync(
       join(dir, "record.md"),
-      readsOf(["r1"])
+      checkedStepsOf(["r1"])
         .map((words) => `## ${words.join(" ")}\nread at 2026-11-23T00:00Z, exit 0\n`)
         .join("\n"),
     );
@@ -241,13 +239,20 @@ describe("WRI2P2 gate hygiene: isolated auto-skip, zero-PR plans, and opposed ca
     );
   });
 
-  it("excludes parent predictions retired under ## Intentionally opposed from carryOf", () => {
+  it("excludes parent predictions retired under ## Intentionally opposed from carryOf and normalizes legacy outcomes", () => {
     const parent = {
       name: "parent-run",
-      predictions: "| id | claim |\n| --- | --- |\n| P1 | keeps |\n| P2 | retires |\n",
-      outcomes: "| id | outcome |\n| --- | --- |\n| P1 | unreached |\n| P2 | unreached |\n",
+      predictions: "| id | claim |\n| --- | --- |\n| P1 | keeps |\n| P2 | retires |\n| P3 | ok |\n",
+      outcomes: "| id | outcome |\n| --- | --- |\n| P1 | not-observed |\n| P2 | unreached |\n| P3 | held |\n",
       plan: "## Intentionally opposed\n- P2: superseded by prompt rewrite\n",
     };
+    expect(outcomesOf(parent.outcomes)).toEqual(
+      new Map([
+        ["P1", "not-observed"],
+        ["P2", "not-observed"],
+        ["P3", "confirmed"],
+      ]),
+    );
     const child = "## Carried\n- parent-run:P1\n";
     expect(carryOf(child, [parent])).toEqual({ owed: ["parent-run:P1"], missing: [] });
     // Hostile: omitting non-opposed P1 is still caught as missing.

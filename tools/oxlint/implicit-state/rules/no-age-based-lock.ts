@@ -24,7 +24,6 @@ import { calleeName, enclosingFunction, innermost, isTestPath } from "../shared/
  * holder's state is a design choice.
  */
 const FILE_TIMES = new Set(["mtimeMs", "ctimeMs", "mtime", "ctime", "lastModified"]);
-/** Calls that take over what an old file guards: delete it, move it aside, or signal its holder. */
 const TAKEOVERS = new Set([
   "rm",
   "rmSync",
@@ -39,10 +38,9 @@ const TAKEOVERS = new Set([
   "kill",
 ]);
 const RELATIONS = new Set(["<", "<=", ">", ">="]);
-/** A name in the convention for a module constant, `STALE_MS`, or a member of one, `LIMITS.wall`. */
 const CONSTANT_NAME = /^[A-Z][A-Z0-9_]*$/u;
-/** The words a holder goes by, whole words of a name (`lockPath`, `PART_MS`) or of a literal
- *  (`"pass.lock"`, `/\.tmp\.\d+\./`): where none is near an age, what it deletes has no holder. */
+/** Whole words of a name (`lockPath`, `PART_MS`) or a literal (`"pass.lock"`): where none is near
+ *  an age, what it deletes has no holder. */
 const HOLDER_WORDS = new Set([
   "lock",
   "locks",
@@ -58,7 +56,6 @@ const HOLDER_WORDS = new Set([
   "parts",
 ]);
 
-/** Whether an expression reads a file's modification or change time. */
 function fileTime(node: ESTree.Node): boolean {
   const bare = innermost(node);
   if (bare.type === "MemberExpression") {
@@ -79,9 +76,8 @@ function fileTime(node: ESTree.Node): boolean {
 }
 
 /**
- * Whether an expression is fixed when the code is written: a number, a constant's name, or
- * arithmetic over those. A threshold a caller passes (`days * DAY_MS`) is a question the caller
- * asks, a window rather than a guess at a holder, and is not read.
+ * A threshold a caller passes (`days * DAY_MS`) is a window the caller asks for, not a guess at a
+ * holder, and is not read.
  */
 function fixed(node: ESTree.Node, constants: ReadonlySet<string>): boolean {
   const bare = innermost(node);
@@ -100,7 +96,6 @@ function fixed(node: ESTree.Node, constants: ReadonlySet<string>): boolean {
   return bare.type === "UnaryExpression" && fixed(bare.argument, constants);
 }
 
-/** An age: a difference whose subtrahend is a file time. */
 function age(node: ESTree.Node): boolean {
   const bare = innermost(node);
   return bare.type === "BinaryExpression" && bare.operator === "-" && fileTime(bare.right);
@@ -125,17 +120,11 @@ export const noAgeBasedLockRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Module constants bound to a number, whatever their names. */
     const constants = new Set<string>();
-    /** Each function (or the module, as null) with the names it calls, and the ages it compares. */
     const calls = new Map<ESTree.Node | null, Set<string>>();
     const ages = new Map<ESTree.Node | null, ESTree.Node[]>();
-    /** The functions of this file by the name they are bound to. */
     const named = new Map<string, ESTree.Node>();
-    /** Each function (or the module) whose own names or literals name a holder (`HOLDER_WORDS`). */
     const holders = new Set<ESTree.Node | null>();
-    /** Note `node`'s function where the lowercase words of `text` (`tempDirPath`: temp, dir and
-     *  path) name a holder. */
     const note = (node: ESTree.Node, text: string): void => {
       const words = text
         .replaceAll(/([a-z0-9])([A-Z])/gu, "$1 $2")
@@ -143,8 +132,6 @@ export const noAgeBasedLockRule = defineRule({
         .split(/[^a-z]+/u);
       if (words.some((word) => HOLDER_WORDS.has(word))) holders.add(enclosingFunction(node));
     };
-    /** Whether a holder is named in `fn` or a function around it, or in the module for an age outside
-     *  every function. */
     const nearHolder = (fn: ESTree.Node | null): boolean => {
       if (fn === null) return holders.has(null);
       for (let at: ESTree.Node | null = fn; at !== null; at = enclosingFunction(at)) {
@@ -152,7 +139,6 @@ export const noAgeBasedLockRule = defineRule({
       }
       return false;
     };
-    /** Whether a function takes over: it calls a takeover, or a function of this file that does. */
     const takesOver = (fn: ESTree.Node | null, seen = new Set<ESTree.Node | null>()): boolean => {
       seen.add(fn);
       return [...(calls.get(fn) ?? [])].some((name) => {

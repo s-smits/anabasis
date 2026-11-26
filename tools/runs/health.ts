@@ -168,7 +168,7 @@ function healthLines(reading: Health): string[] {
   ];
 }
 
-/** `hosts --health` includes this machine; --here is the single JSON response used by fan-out. */
+/** `hosts --health` includes this machine; `--here` is the single JSON reply the fan-out reads. */
 export async function hostsHealth(args: readonly string[]): Promise<void> {
   if (!args.includes("--health")) return await hosts(args);
   const { values } = parseArgs({

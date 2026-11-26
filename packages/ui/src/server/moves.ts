@@ -1,8 +1,8 @@
 /**
- * Campaign moves (`campaignOf` steps with log indices, timestamps, and withheld-aware rulings)
- * and comparison chart bars (`ComparisonBar`, ordered by first report or start).
+ * Campaign moves (`campaignOf` steps with log places, times and withheld-aware rulings) and the
+ * comparison chart's bars (`ComparisonBar`).
  */
-import { nextBound } from "../../../../src/campaign/handover.ts";
+import { nextBound } from "../../../../src/campaign/summary.ts";
 import { fixedIn, type Report, reported } from "../../../../src/campaign/comparison.ts";
 import {
   carriedBy,
@@ -23,8 +23,8 @@ import { rulingsOf } from "./withheld.ts";
 type Step = Move["step"];
 type ComparisonMove = Extract<Move, { readonly step: "comparison" }>;
 
-/** The events that start a step, and those that end one, by the step they belong to. A comparison
- *  stands where the log first holds it, at its start or its first report, as `campaignOf` reads it. */
+/** The events that start and end each step. A comparison stands where the log first holds it, at
+ *  its start or its first report, as `campaignOf` reads it. */
 const STARTS = new Map<string, Step>([
   ["exam.started", "examiner"],
   ["build.started", "builder"],
@@ -37,8 +37,6 @@ const ENDS = new Map<string, Step>([
   ["comparison.reported", "comparison"],
 ]);
 
-/** Where each step first starts and first ends in the log, by its kind and its id. Derived: the
- *  places of the events `campaignOf` bounds a step by, read by kind and id alone. */
 const placesIn = once(({ events }) => {
   const starts = new Map<string, number>();
   const ends = new Map<string, number>();
@@ -58,16 +56,15 @@ const placesIn = once(({ events }) => {
   return { starts, ends };
 });
 
-/** The step a recorded move of the campaign's command runs, for the three that run one. */
 const STEP_OF = new Map([
   ["examine", "examiner"],
   ["build", "builder"],
   ["compare", "comparison"],
 ]);
 
-/** What the campaign's command recorded of each step as its move began, by the step and its id
- *  (a round runs a Builder session and its comparison under one id): the host's one-minute load,
- *  and the table's row the move was made by. Read from `campaign.move`, which no fold reads. */
+/** What the campaign's command recorded of each step as its move began (a round runs a session and
+ *  its comparison under one id): the host's one-minute load, and the table's row. Read from
+ *  `campaign.move`, which no fold reads. */
 const recordsIn = once(
   ({ events }) =>
     new Map(
@@ -82,7 +79,6 @@ const recordsIn = once(
     ),
 );
 
-/** Every step of `campaignOf`, in the order they started, with where and when. */
 export const movesIn = once((log): Move[] => {
   const { events } = log;
   const { starts, ends } = placesIn(log);
@@ -99,8 +95,8 @@ export const movesIn = once((log): Move[] => {
   });
 });
 
-/** The place in the log a move's record ends at: its end, else the next step's start or the
- *  campaign's end where it was cut (`nextBound`), else the log's last event. */
+/** The place a move's record ends at: its end, else the next step's start or the campaign's end
+ *  where it was cut (`nextBound`), else the log's last event. */
 export function endOf(log: Log, move: Move): number {
   const end = placesIn(log).ends.get(`${move.step} ${move.id}`);
   if (end !== undefined && move.endedAt !== null) return end;
@@ -108,12 +104,10 @@ export function endOf(log: Log, move: Move): number {
   return bound === -1 ? log.events.length - 1 : bound - 1;
 }
 
-/** The pairs each comparison's last report tallied, by its id (`pairsReported`). */
 export const pairsIn = once(
   (log) => new Map(reportsIn(log).map((report) => [report.session, pairsReported(log.events, report)])),
 );
 
-/** The Starter Built Harness by digest, as the first comparison names it, or null before any. */
 export const starterIn = once((log): string | null => {
   const first = movesIn(log).find((move) => move.step === "comparison");
   const named = first === undefined ? undefined : fixedIn(log.events, first.id)?.starter;
@@ -121,8 +115,7 @@ export const starterIn = once((log): string | null => {
   return named ?? (isString(reportedAs) ? reportedAs : null);
 });
 
-/** What one scored task came to on its score. A tie is split by the reference harness (the old
- *  side) alone. */
+/** What one scored task came to on its score; a tie is split by the reference harness alone. */
 export function outcomeOf(pair: Paired): Outcome {
   const difference = differenceOf(pair);
   if (difference !== 0) return difference > 0 ? "won" : "lost";
@@ -131,7 +124,6 @@ export function outcomeOf(pair: Paired): Outcome {
   return valid === 0 ? "tiedNone" : "tiedSome";
 }
 
-/** A comparison's won and lost tasks by the measure that carried each (`carriedBy`). */
 function carriedIn(pairs: readonly Paired[]): { won: Measures; lost: Measures } {
   const won = { validity: 0, objective: 0 };
   const lost = { ...won };
@@ -144,13 +136,11 @@ function carriedIn(pairs: readonly Paired[]): { won: Measures; lost: Measures } 
   return { won, lost };
 }
 
-/** A side's valid answers over its solves on one task. */
 export const shareOf = (side: readonly boolean[]): Share => ({
   valid: side.filter(Boolean).length,
   solves: side.length,
 });
 
-/** The handover's count of tasks by valid solves, read as valid answers over solves. */
 function validShare(counts: readonly number[]): Share {
   let [valid, tasks] = [0, 0];
   for (const [solves, many] of counts.entries()) {
@@ -160,9 +150,9 @@ function validShare(counts: readonly number[]): Share {
   return { valid, solves: tasks * Math.max(0, counts.length - 1) };
 }
 
-/** The tally and the test of a set's scores as its step reads them: a report of one era also
- *  scored the bill, and a page that drew every bar and tally with it would show a comparison that
- *  read no step on 3 won, 0 lost, 13 tied without the bill as 13 won, 1 lost, 2 tied. */
+/** The tally and test of a set's scores as its step reads them: a report of one era also scored the
+ *  bill, and drawn with it a comparison that read no step on 3 won, 0 lost, 13 tied would show 13
+ *  won, 1 lost, 2 tied. */
 export function steppedOf(tested: {
   readonly differences: readonly number[];
   readonly unbilled?: readonly number[];
@@ -171,10 +161,9 @@ export function steppedOf(tested: {
   return { tally: { wins, losses, ties }, p };
 }
 
-/** A comparison's kind and, for a repeat, the comparison it repeats: a control sets the starter,
- *  or a harness, against the reference; a repeat sets the same two harnesses as an earlier
- *  comparison against each other again, and repeats the last of those. Derived from the handovers'
- *  harnesses in the chart's order. */
+/** A comparison's kind and, for a repeat, the comparison it repeats: a control sets the starter, or
+ *  a harness, against the reference; a repeat sets an earlier comparison's two harnesses against
+ *  each other again, and repeats the last of those. */
 function kindOf(
   move: ComparisonMove,
   starter: string | null,
@@ -269,9 +258,9 @@ export const barsIn = once((log): ComparisonBar[] => {
   });
 });
 
-/** A comparison's tallied tasks by outcome, the tasks it set aside for a person's label, and the
- *  rest of the tasks it fixed by why its report left them out. Each task counts once, in that order:
- *  a task can be both set aside and short of its solves, and the report names it in both lists. */
+/** A comparison's tallied tasks by outcome, the tasks set aside for a label, and the rest it fixed
+ *  by why its report left them out. Each task counts once, in that order, though the report may
+ *  name one in two lists. */
 function splitOf(
   pairs: readonly Paired[],
   report: Pick<Report, "scored" | "aside" | "disputed" | "short" | "withdrawn">,

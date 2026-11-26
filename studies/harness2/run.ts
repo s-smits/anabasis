@@ -1,43 +1,19 @@
 /**
- * The study's one entry point (`README.md`, "Order of work"): WorkBuddy-Bench Code installed the way
- * Harness² installs it, an Anabasis arm bundled for the benchmark's container, a free check of that
- * path, a scored run of one arm, and the reading of two arms.
- *
- *   bun studies/harness2/run.ts setup [--dataset]
- *   bun studies/harness2/run.ts bundle --arm <name> --from <starter | campaign> [--harness <kept>]
- *   bun studies/harness2/run.ts check --arm <name> [--placeholder]
- *   bun --env-file=<file> studies/harness2/run.ts score --run <name> --arm <name> [--streams 3] --yes
- *   bun studies/harness2/run.ts read --run <name> --a <arm> [--b <arm>]
- *
- * Everything the benchmark brings stays in the ignored `studies/external/`: Harness² at its pin,
- * the WorkBuddy-Bench checkout Harness²'s own setup clones, patches and overlays inside it
- * (`clone`, `patch`, `overlays`, `harness2/install.py`), the arms' mounts and every job folder
- * (`harness2-work/`). Harness²'s `workbuddy_models` is the one step left out, since it writes Vertex
- * routes alone; the study writes its own route instead, to the solver the campaigns use. What the
- * study adds is `wb/` and `../shared/harbor/pi_agent.py` (`wb/README.md`). `setup` fetches the
- * dataset only with `--dataset`, which is the operator's word that WorkBuddy-Bench's licence is
- * accepted, and then writes the paper's split with Harness²'s `scripts/split_tasks.py`.
- *
- * `bundle` makes an arm from the starter or from a campaign by name, its reference at its ending
- * unless `--harness` names another kept one as `keptAs` takes it (`../shared/bundle.ts`). The arm
- * `opencode-base` needs no bundle: it is Harness²'s own base, OpenCode at the version and variant
- * Harness² runs it (`_job_yaml`, `workbuddy.py`), over the same route to the same solver.
- *
- * `check` runs one test task with the solver's `--dry-run`, which calls no model, and prints the
- * trial as `trialsOf` reads it. `--placeholder` runs it on the study's own synthetic task instead
- * (`placeholder/`), so the container, the mount, the agent and the verifier are proved before the
- * licence word: the task is put beside the benchmark's datasets under the Code subset's bench
- * settings, and its trial is found by name, since Harness²'s `_trials_in` resolves a trial
- * against the Code tasks and needs the dataset. `score` runs every
- * test task `--streams` times and is paid, so it asks for `--yes`. A trial that ends in a non-result
- * is run again, as a campaign solves one again (rule 7): after the job, each task short of its
- * streams is run again for what it lacks, into the same jobs folder as Harness²'s `run_batch`
- * resumes one, up to `RETRIES` rounds, and the tasks still short are left out of every reading and
- * named. Each scored run leaves a record
- * in the tracked `studies/runs/harness2/<run>/`: the terms it ran on, the job it ran, and each
- * trial's score and spend as `trials.py` and `trialsOf` read them. The trajectories stay with the
- * job folders until the licence decision says they may be published. `read` sets two arms of a run
- * beside each other (`readArms`), or one arm's streams split in two, the A/A (`halves`).
+ * The study's one entry point (`README.md`, "Order of work"): verbs `setup [--dataset]`, `bundle
+ * --arm <name> --from <starter | campaign> [--harness <kept>]`, `check --arm <name>
+ * [--placeholder]`, `score --run <name> --arm <name> [--streams 3] --yes` (under `bun
+ * --env-file=<file>`) and `read --run <name> --a <arm> [--b <arm>]`. Everything the benchmark
+ * brings stays in the ignored `studies/external/`: Harness² at its pin, the WorkBuddy-Bench
+ * checkout its setup clones and patches, the arms' mounts and every job folder; the study writes
+ * its own model route to the campaigns' solver instead of `workbuddy_models`. `setup --dataset` is
+ * the operator's word that WorkBuddy-Bench's licence is accepted. `bundle` makes an arm from the
+ * starter or a campaign's reference (`../shared/bundle.ts`); `opencode-base` needs none. `check`
+ * runs one dry trial, on the synthetic `placeholder/` task with `--placeholder`, so the container,
+ * mount, agent and verifier are proved before the licence word. `score` is paid, so it asks for
+ * `--yes`; a task short of its streams after a non-result is run again up to `RETRIES` rounds, and
+ * those still short are left out and named. Each scored run leaves a record in the tracked
+ * `studies/runs/harness2/<run>/`. `read` sets two arms beside each other (`readArms`), or one arm's
+ * streams split in two, the A/A (`halves`).
  */
 import { standing } from "#tools/runs/registry.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -54,7 +30,7 @@ import { join, relative, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
-import { LIMITS } from "#tools/d2/campaign.ts";
+import { LIMITS } from "#tools/campaign/campaign.ts";
 import { bundleArm, MOUNT_RECORD, sourceNamed } from "../shared/bundle.ts";
 import { halves, readArms, shortfall, streamOf, trialsOf } from "../shared/scores.ts";
 
@@ -67,22 +43,17 @@ const RECORDS = join(REPO, "studies", "runs", "harness2");
 const PYTHON = join(HARNESS2, ".venv", "bin", "python");
 const SPLIT = join(WORK, "split-wb-code.json");
 const CODE = "wb-bench-code-v1.0";
-/** The study's synthetic task in a Code task's form (`placeholder/dataset.toml`), and its name. */
 const PLACEHOLDER = "anabasis-placeholder-code";
 const PLACEHOLDER_TASK = "placeholder-add";
 
-/** Harness² as the protocol read it (`README.md`, "What Harness² is"). */
 const PIN = "1cfe254e8d25b15f37048c3730134686abe60335";
 const ORIGIN = "https://github.com/google-research/harness2";
 
-/** The campaigns' solver, through the same provider, at Harness²'s effort for its executor. */
 const SOLVER = "google/gemini-3.5-flash";
 const EFFORT = "high";
-/** The job's route to it (`configs/models/anabasis/solver.yaml`), and where the route sends it. */
 const ROUTE = "anabasis/solver";
 const URL_ENV = "ANABASIS_WB_OPENROUTER_URL";
 const OPENROUTER = "https://openrouter.ai/api/v1/chat/completions";
-/** The harness config `wb/configs/harnesses/anabasis-pi/` holds, and where its agent finds an arm. */
 const HARNESS = "anabasis-pi/1";
 const MOUNT = "/opt/anabasis";
 /** Trials at once in one job, as Harness² runs its own (`WB_MAX_TRIALS`, `harness2/config.py`). */
@@ -90,7 +61,6 @@ const AT_ONCE = 2;
 /** Harness²'s base arm (`WB_OC_HARNESS_VER`, `harness2/config.py`), which takes no mount. */
 const OPENCODE = "opencode-base";
 const OPENCODE_HARNESS = "opencode/1.14.18";
-/** Rounds of trials run again for the tasks a job left short. */
 const RETRIES = 2;
 
 const OPTIONS = {
@@ -117,7 +87,6 @@ async function ran(cmd: readonly string[], cwd: string, env: Record<string, stri
   if (code !== 0) throw new Error(`${cmd.join(" ")} exited with ${String(code)}`);
 }
 
-/** Harness² at its pin, WorkBuddy-Bench as Harness²'s setup leaves it, and the study's additions. */
 async function setup(dataset: "fetch" | "leave"): Promise<void> {
   if (!existsSync(join(HARNESS2, ".git"))) {
     mkdirSync(HARNESS2, { recursive: true });
@@ -178,7 +147,6 @@ async function setup(dataset: "fetch" | "leave"): Promise<void> {
   );
 }
 
-/** What `trials.py` prints in Harness²'s venv. */
 const harness2Read = (args: readonly string[]) =>
   runTextSyncOrThrow([PYTHON, "-I", join(STUDY, "trials.py"), ...args], { cwd: HARNESS2 });
 
@@ -190,8 +158,6 @@ const testTasks = (): string[] =>
 
 const armDir = (arm: string) => join(WORK, "arms", arm);
 
-/** A job of `tasks` of the dataset folder `dataset` under arm `arm`, as Harness² writes its own
- *  (`_job_yaml`, `workbuddy.py`). */
 function jobOf(
   arm: string,
   { dataset, tasks }: { readonly dataset: string; readonly tasks: readonly string[] },
@@ -239,7 +205,6 @@ function jobOf(
   ].join("\n");
 }
 
-/** Runs one job through the benchmark's own runner, and returns the job file it ran. */
 async function job(slug: string, text: string): Promise<string> {
   const path = join(WB, "configs", "jobs", `${slug}.yaml`);
   writeFileSync(path, text);
@@ -272,7 +237,7 @@ async function score(run: string, arm: string, streams: number): Promise<void> {
   for (let round = 1; round <= RETRIES; round += 1) {
     const missing = shortfall(trialsOf(harness2Read(["trials", jobs, SPLIT])), tasks, streams);
     if (missing.size === 0) break;
-    // One job a count of missing trials, since a job gives every task it names the same attempts.
+    // One job per count of missing trials, since a job gives every task it names the same attempts.
     for (const count of new Set(missing.values())) {
       const short = [...missing].flatMap(([task, lacks]) => (lacks === count ? [task] : []));
       const again = jobOf(arm, { dataset: CODE, tasks: short }, count, jobs, "solve");
@@ -305,7 +270,6 @@ async function score(run: string, arm: string, streams: number): Promise<void> {
   );
 }
 
-/** One dry trial of arm `arm`, on the first test task or on the placeholder, printed as read. */
 async function check(arm: string, on: "dataset" | "placeholder"): Promise<void> {
   const placeholder = on === "placeholder";
   if (placeholder) {

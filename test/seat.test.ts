@@ -16,7 +16,7 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { type Seat, sit } from "../src/agent/session.ts";
+import { type AgentSpec, runAgent } from "../src/agent/session.ts";
 import { text, tool } from "../src/tools/answer.ts";
 
 const scratch = mkdtempSync(join(tmpdir(), "ana-seat-"));
@@ -25,9 +25,9 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 const look = fauxAssistantMessage([fauxToolCall("look", {})], TOOL_USE);
 
-/** A seat on the faux provider that answers `responses` in order, with one tool, `look`, whose
- *  every call is pushed to `looked` with the signal it ran under; `sent` holds each context. */
-function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}, provider = "faux") {
+/** A seat on the faux provider answering `responses` in order, with one tool, `look`, whose calls
+ *  are pushed to `looked` with their signal; `sent` holds each context. */
+function seated(responses: readonly FauxResponseStep[], over: Partial<AgentSpec> = {}, provider = "faux") {
   const faux = fauxProvider({
     provider,
     models: [
@@ -71,7 +71,7 @@ function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}
       return text("seen");
     },
   });
-  const seat: Seat = {
+  const seat: AgentSpec = {
     models: (home, shutdown) => {
       shutdowns.push(shutdown);
       homes.push(home);
@@ -94,7 +94,7 @@ describe("a seat's session", () => {
   it("ends when its work is over or when a stop fires, and a cut one has no crash", async () => {
     const done = seated([look, look, look]);
     Object.assign(done.seat, { over: () => done.seat.turns.length >= 2 });
-    const ended = await sit(done.seat);
+    const ended = await runAgent(done.seat);
     expect([done.seat.turns.length, ended.cut, ended.crash]).toEqual([2, false, null]);
     expect(ended.spent.turns).toBe(2);
 
@@ -108,13 +108,13 @@ describe("a seat's session", () => {
       ],
       { stops: [kill.signal, undefined] },
     );
-    const cut = await sit(killed.seat);
+    const cut = await runAgent(killed.seat);
     expect([cut.cut, cut.crash]).toEqual([true, null]);
   });
 
   it("takes its crash from what threw, or from a last turn the provider failed", async () => {
     const failed = seated([fauxAssistantMessage("", { stopReason: "error", errorMessage: "session limit" })]);
-    expect(await sit(failed.seat)).toMatchObject({ cut: false, thrown: null, crash: "session limit" });
+    expect(await runAgent(failed.seat)).toMatchObject({ cut: false, thrown: null, crash: "session limit" });
 
     for (const [hook, message] of [
       ["models", "no backend"],
@@ -125,7 +125,7 @@ describe("a seat's session", () => {
           throw new Error(message);
         },
       });
-      expect(await sit(throwing.seat)).toMatchObject({ cut: false, thrown: message, crash: message });
+      expect(await runAgent(throwing.seat)).toMatchObject({ cut: false, thrown: message, crash: message });
       expect(throwing.faux.state.callCount).toBe(0);
       expect(throwing.looked).toEqual([]);
     }
@@ -133,14 +133,14 @@ describe("a seat's session", () => {
 
   it("closes the model's process at the session's end, and removes the scratch home it made", async () => {
     const s = seated([look, fauxAssistantMessage("Done.")]);
-    await sit(s.seat);
+    await runAgent(s.seat);
     expect(s.shutdowns.length).toBeGreaterThan(0);
     expect(s.shutdowns.every((signal) => signal.aborted)).toBe(true);
     expect(s.homes.map(existsSync)).toEqual([false]);
 
     const own = join(scratch, "own-home");
     const kept = seated([fauxAssistantMessage("Done.")], { home: own });
-    await sit(kept.seat);
+    await runAgent(kept.seat);
     expect(kept.homes).toEqual([own]);
   });
 });
@@ -162,13 +162,13 @@ describe("durable session boundaries", () => {
       },
     });
     const s = seated([look, fauxAssistantMessage("Done.")], { trace: { log, of: "build" }, tools: [reader] });
-    await sit(s.seat);
+    await runAgent(s.seat);
     expect(observed).toBe(true);
     expect(read(log).map(({ kind }) => kind)).toEqual(["build.turn", "build.call", "build.turn"]);
   });
 
-  // pi-durable records every assistant entry in the conversation's `pi.usage`, an attempt it retried
-  // included, so the session's bill is that ledger's and no turn carries another's tokens or dollars.
+  // pi-durable records every assistant entry in `pi.usage`, retried attempts included, so the session's
+  // bill is that ledger's and no turn carries another's tokens or dollars.
   it("bills a retried attempt in the session's bill once, without a turn and without the next turn's dollars", async () => {
     const log = join(scratch, "retry.jsonl");
     const failed = fauxAssistantMessage("charged partial", {
@@ -180,7 +180,7 @@ describe("durable session boundaries", () => {
       { trace: { log, of: "solve" } },
       "openai-codex",
     );
-    const sat = await sit(s.seat);
+    const sat = await runAgent(s.seat);
     expect(s.faux.state.callCount).toBe(2);
     expect(sat.spent.turns).toBe(1);
     const events = read(log).filter((event) => event.kind === "solve.turn");
@@ -189,7 +189,6 @@ describe("durable session boundaries", () => {
     if (only === undefined) throw new Error("the session took no turn");
     const own = billOf(freezePrices([s.seat.model]), ledgerOf([["openai-codex/faux-seat", only.usage]]));
     expect(only.usage.cost.total).toBeCloseTo(own, 10);
-    // pi-ai's faux provider files a session's whole prompt as cache reads and writes from 1.5.0.
     const prompt = (tokens: { input: number; cacheRead: number; cacheWrite: number }) =>
       tokens.input + tokens.cacheRead + tokens.cacheWrite;
     expect(prompt(sat.spent.tokens)).toBeGreaterThan(prompt(only.usage));
@@ -208,7 +207,7 @@ describe("durable session boundaries", () => {
       served(undefined),
       fauxAssistantMessage("Done."),
     ]);
-    const sat = await sit(s.seat);
+    const sat = await runAgent(s.seat);
     const prices = freezePrices(s.faux.models);
     const at = (key: string, turn: AssistantMessage) => billOf(prices, ledgerOf([[key, turn.usage]]));
     // pi-durable files every turn under the model asked for; the session's bill keeps the served one.
@@ -224,9 +223,9 @@ describe("durable session boundaries", () => {
 });
 
 describe("refused durable tool calls", () => {
-  // Durable runs `afterTool` on the error results it writes itself from 1.5.0, and still writes an
-  // aborted round's pending calls with no hook; the committed message is what records them, once.
-  // Each refusal is pi-ai's own text, and a malformed call reaches `prepareArguments` as `{}`.
+  // Durable runs `afterTool` on the error results it writes itself, but writes an aborted round's
+  // pending calls with no hook, so the committed message records them once. A malformed call reaches
+  // `prepareArguments` as `{}`.
   it("traces an unavailable tool and invalid arguments once each, in call order, as the model read them", async () => {
     const log = join(scratch, "refused-calls.jsonl");
     const phases: string[] = [];
@@ -239,7 +238,6 @@ describe("refused durable tool calls", () => {
       parameters: Type.Object({ key: Type.String() }),
       execute: reached,
     });
-    // A harness's own tool reaches the seat as a plain JSON Schema, which TypeBox has not marked.
     const plain = {
       ...required,
       name: "note",
@@ -270,7 +268,7 @@ describe("refused durable tool calls", () => {
         },
       },
     );
-    expect(await sit(s.seat)).toMatchObject({ crash: null });
+    expect(await runAgent(s.seat)).toMatchObject({ crash: null });
     const calls = read(log).filter(({ kind }) => kind === "solve.call");
     expect(calls.map(({ data }) => [data.tool, data.args, data.isError, data.ms])).toEqual([
       ["look", { other: 1 }, true, null],
@@ -281,7 +279,6 @@ describe("refused durable tool calls", () => {
     expect(phases).toEqual(
       ["look", "absent", "look", "note"].flatMap((name) => [`start ${name}`, `end ${name}`]),
     );
-    // The trace holds each result's text as the next request gave it to the model.
     const [, sent] = s.sent;
     if (sent === undefined) throw new Error("the session made no second request");
     const results = parseJsonAs<{ messages: { role: string; content: { text: string }[] }[] }>(sent)
@@ -328,7 +325,7 @@ describe("durable's loop under a seat", () => {
       ],
       { tools: [slow] },
     );
-    await sit(s.seat);
+    await runAgent(s.seat);
     expect(order).toEqual(["start 0", "end 0", "start 1", "end 1", "start 2", "end 2"]);
   });
 
@@ -343,7 +340,7 @@ describe("durable's loop under a seat", () => {
       },
     });
     const s = seated([look, fauxAssistantMessage("Done.")], { tools: [broken], trace: { log, of: "build" } });
-    expect(await sit(s.seat)).toMatchObject({ crash: null, thrown: null });
+    expect(await runAgent(s.seat)).toMatchObject({ crash: null, thrown: null });
     expect(s.faux.state.callCount).toBe(2);
     expect(s.sent[1]).toContain("disk on fire");
     const call = read(log).find(({ kind }) => kind === "build.call");
@@ -371,7 +368,7 @@ describe("a seat's stops and its neighbours under durable", () => {
       },
     });
     const s = seated([look, look], { tools: [hang], stops: [stop.signal] });
-    const sitting = sit(s.seat);
+    const sitting = runAgent(s.seat);
     await started.promise;
     stop.abort();
     expect(await sitting).toMatchObject({ cut: true, crash: null });
@@ -396,7 +393,7 @@ describe("a seat's stops and its neighbours under durable", () => {
       look,
     ]);
     Object.assign(s.seat, { tools: [spend, ...s.seat.tools], over: () => spent });
-    expect(await sit(s.seat)).toMatchObject({ crash: null, cut: false });
+    expect(await runAgent(s.seat)).toMatchObject({ crash: null, cut: false });
     expect(s.faux.state.callCount).toBe(1);
   });
 
@@ -414,7 +411,7 @@ describe("a seat's stops and its neighbours under durable", () => {
         },
       ]),
     );
-    await Promise.all(pair.map(({ seat }) => sit(seat)));
+    await Promise.all(pair.map(({ seat }) => runAgent(seat)));
     for (const [n, { seat, looked }] of pair.entries()) {
       expect(ids[n]).toEqual([seat.id, seat.id]);
       expect(seat.turns).toHaveLength(2);

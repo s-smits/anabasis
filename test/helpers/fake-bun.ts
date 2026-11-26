@@ -1,21 +1,15 @@
 /**
- * A `bun` for tests of the gate's callers: `.githooks/pre-push` and `bun run land`. It stands at
- * the gate's step boundary only. `bun install …`, `bun run …` and the size policy's script, which
- * the gate runs by its path so that a commit from before any script named it has it, are logged with the commit checked
- * out where they ran, and pass unless ANA_FAKE_FAIL names that commit and script (`<sha> lint`);
- * ANA_FAKE_DROP names one the same way whose runner gives no verdict, exiting ANA_FAKE_DROP_CODE
- * (255, a dropped connection, unless set), the first ANA_FAKE_DROPS times (1 unless set); every
- * routed step (`run secrets|typecheck|lint|test`) whose ANA_CHECK_HOST is ANA_FAKE_DOWN exits so too;
- * anything else, a `.ts` entry point such as `tools/runtime/gate.ts`, runs on the real Bun, so the
- * hook, the landing and the gate's own choice of steps and nearby tests are the real ones.
- *
- * ANA_FAKE_TOGETHER=N holds each install until N have started, or about five seconds, and logs its
- * end, so gates run side by side overlap in the log and gates run one after another do not; the
- * install of ANA_FAKE_LATE's commit ends half a second later. ANA_FAKE_SUITE is printed by a test
- * step, which then takes two seconds, for a pulse to read; the whole suite first creates the file
- * ANA_FAKE_SUITE_TOUCH names, so a fake `gh` can move a head while it runs. A test step also logs the workers it was
- * given and whether it stops at its first failure, `workers <sha> <ANA_TEST_WORKERS> <ANA_TEST_BAIL>`,
- * each empty for none, and an install where ANA_CHECK_HOST names a place logs `where <sha> <ANA_CHECK_HOST>`.
+ * A `bun` for tests of the gate's callers, `.githooks/pre-push` and `bun run land`, standing at the
+ * gate's step boundary only. Installs, `bun run …` and the size policy's script are logged with the
+ * commit they ran at, and pass unless ANA_FAKE_FAIL names that commit and script (`<sha> lint`);
+ * ANA_FAKE_DROP names one whose runner gives no verdict, exiting ANA_FAKE_DROP_CODE (255) the first
+ * ANA_FAKE_DROPS times (1), and a routed step whose ANA_CHECK_HOST is ANA_FAKE_DOWN exits so too.
+ * Anything else, such as `tools/runtime/gate.ts`, runs on the real Bun. ANA_FAKE_TOGETHER=N holds
+ * each install until N have started (about five seconds at most), so parallel gates overlap in the
+ * log; ANA_FAKE_LATE's install ends half a second later. A test step prints ANA_FAKE_SUITE and
+ * takes two seconds, the whole suite first touching ANA_FAKE_SUITE_TOUCH; it logs `workers <sha>
+ * <ANA_TEST_WORKERS> <ANA_TEST_BAIL>`, and an install under a named ANA_CHECK_HOST logs `where
+ * <sha> <ANA_CHECK_HOST>`.
  */
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -69,14 +63,12 @@ if [ "$commit $2" = "$ANA_FAKE_FAIL" ]; then
 fi
 `;
 
-/** Writes the fake into `bin`, and returns the environment that puts it first on PATH. */
 export function fakeBun(bin: string, log: string) {
   writeFileSync(join(bin, "bun"), SCRIPT);
   chmodSync(join(bin, "bun"), 0o755);
   return { PATH: `${bin}:${Bun.env.PATH ?? ""}`, ANA_REAL_BUN: capturedExecPath, ANA_FAKE_LOG: log };
 }
 
-/** A log's lines, none when nothing wrote it. */
 export const logLines = (log: string): string[] =>
   existsSync(log)
     ? readFileSync(log, "utf8")
@@ -91,8 +83,8 @@ export const wherePassesRan = (log: string): string[] =>
     return kind === "where" ? [`${commit} ${place}`] : [];
   });
 
-/** Each gate the fake saw, in the order it began, as `<commit> <what its test step ran>`: `suite`
- *  for the whole suite, the nearby files for a static pass, or `-` when it ran none. */
+/** Each gate the fake saw, in order, as `<commit> <what its test step ran>`: `suite`, the nearby
+ *  files of a static pass, or `-` for none. */
 export function gatesRun(log: string): string[] {
   const rows = logLines(log).map((line) => line.split("\t"));
   return rows.flatMap(([commit = "", args = ""]) => {

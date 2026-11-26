@@ -1,27 +1,14 @@
 /**
- * One hook an endpoint: each asks the server for one answer of the contract (`models.ts`), with the
- * token the URL carries, and keeps what it last read on screen.
- *
- * What v1 learned stays. The previous answer stays while a refresh of the same request runs and
- * when one fails, so a server that stops leaves its last reading visible beside the error rather
- * than an empty panel. A read waits for the one before it (`poll.ts`), so a slow read cannot starve
- * its own results. And a refresh keeps every part of the last answer that it brings again unchanged
- * as the same object, so a chart whose data did not change is not drawn again on a poll that
- * changed something else (DESIGN.md: never draw a new chart on each poll).
- *
- * Only the campaign list and the selected campaign are polled: they are what changes while a
- * campaign runs. A detail is read when its selection changes, and again when the campaign's last
- * event moved (`since`), so that a detail open on a campaign that runs does not go stale. An
- * answer to another request than the one asked now, the previous selection's or the previous
- * campaign's, is no answer to it: `current` says so, and every caller shows it as pending.
- *
- * The last answer of each endpoint is also kept in the tab's session storage, and a request that
- * asks for the same path again, after a refresh or a hot reload, starts from it while the server
- * is read, rather than dropping the whole page to "Reading the campaign" and then the pane to
- * "Reading the tasks" for a few hundred milliseconds, or for as long as a restarting server takes.
- * One answer an endpoint is kept, so a long log cannot crowd the rest out
- * of the storage, and the default tier's alone: the storage is a file on this machine, and an
- * exam-side answer holds hidden values.
+ * One hook an endpoint: each asks the server for one answer of the contract (`models.ts`) with the
+ * URL's token and keeps what it last read on screen. The previous answer stays while a refresh runs
+ * and when one fails, so a stopped server leaves its last reading beside the error; a read waits
+ * for the one before it (`poll.ts`); and a refresh keeps every unchanged part as the same object,
+ * so an unchanged chart is not drawn again (DESIGN.md). Only the campaign list and the selected
+ * campaign are polled; a detail is read when its selection changes and when the campaign's last
+ * event moves (`since`). An answer to another request than the one asked now is shown as pending
+ * (`current`). The last default-tier answer of each endpoint is kept in the tab's session storage,
+ * so a reload starts from it while the server is read; an exam-side answer holds hidden values and
+ * is never kept.
  */
 import { useMemo, useState, useSyncExternalStore } from "react";
 import {
@@ -40,32 +27,23 @@ import { useRoute } from "./route.ts";
 import { asRecord, isRecord, isString } from "../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../src/meta/optional-key.ts";
 
-/** What a hook holds of its endpoint. */
 export interface Live<Answer> {
-  /** The last answer read, kept while the next loads and when it fails; null before the first. */
   readonly data: Answer | null;
-  /** The request `data` answers, as `requestPath` writes it. */
   readonly key: string | null;
-  /** `data` answers the request asked now. A caller treats an answer that does not as pending: it
-   *  is the previous selection's, kept only until the new one arrives. */
+  /** Whether `data` answers the request asked now; a caller treats one that does not as pending,
+   *  the previous selection's. */
   readonly current: boolean;
   readonly loading: boolean;
-  /** The last read's failure, cleared by the next success. */
   readonly error: string | null;
-  /** Why the server refused the last read, where it did: an exam-side endpoint on a server without
-   *  `--exam-side` is `exam-side`, which a pane shows as a quiet placeholder. */
+  /** Why the server refused the last read; `exam-side` shows as a quiet placeholder. */
   readonly refused: Refusal | null;
 }
 
-/** What a detail is read for: the campaign's key, and the time of its last event, at whose move the
- *  detail is read again (`CampaignRow.lastEventAt`). */
 export interface Of {
   readonly key: string | null;
   readonly since: string | null;
 }
 
-/** What one hook asks for: a request's path, or null for none, with the token it is asked under, and
- *  whether it is polled or read once for each `since`. */
 interface Asked {
   readonly path: string | null;
   readonly token: string | null;
@@ -85,7 +63,6 @@ const NOTHING_READ = {
   refused: null,
 } as const;
 
-/** What a refused or failed request threw. */
 class AnswerFailure extends Error {
   readonly refused: Refusal | null;
   constructor(message: string, refused: Refusal | null) {
@@ -95,12 +72,10 @@ class AnswerFailure extends Error {
 }
 
 /**
- * One hook's reads across every request it is asked, as a store React subscribes to
- * (`useSyncExternalStore`). A subscription is one request: it reads, polls where asked, and ends
- * with its request, so a new request is a new subscription, which React makes after the render
- * that asked for it and before any other effect of that commit. What the store shows outlives a
- * subscription: the last answer stays on screen while the next request is read (`current` says
- * whose it is), and a refresh that brings the same text, or the same parts, keeps the same objects.
+ * One hook's reads as a store React subscribes to (`useSyncExternalStore`). A subscription is one
+ * request: it reads, polls where asked and ends with its request. What the store shows outlives a
+ * subscription: the last answer stays while the next request is read, and a refresh that brings the
+ * same parts keeps the same objects.
  */
 class Reads<Answer> {
   #state: Omit<Live<Answer>, "current"> = NOTHING_READ;
@@ -113,7 +88,6 @@ class Reads<Answer> {
 
   readonly snapshot = (): Omit<Live<Answer>, "current"> => this.#state;
 
-  /** Starts `path` from the answer the tab kept for it, where the store holds no answer to it. */
   #seed(path: string | null): void {
     const text = path === null || this.#state.key === path ? null : keptText(path);
     if (path === null || text === null) return;
@@ -123,14 +97,12 @@ class Reads<Answer> {
     this.#state = { data: this.#data, key: path, loading: true, error: null, refused: null };
   }
 
-  /** The subscription that reads `asked`, for React to start after it renders the request. */
   subscriber({ path, token, polled }: Asked): (notify: () => void) => () => void {
     return (notify) => {
       const show = (next: Omit<Live<Answer>, "current">): void => {
         this.#state = next;
         notify();
       };
-      // A selection cleared clears its answer, as v1's inspector did: nothing is asked for.
       if (path === null) {
         this.#text = null;
         this.#data = null;
@@ -181,10 +153,8 @@ class Reads<Answer> {
   }
 }
 
-/** Where an endpoint's last answer is kept, written as its path, a line break and its text. */
 const keptKey = (path: string): string => `ana.answer.${path.slice(API_PREFIX.length).split("?")[0] ?? ""}`;
 
-/** The text the tab kept for `path`, or null. Closed storage keeps nothing. */
 function keptText(path: string): string | null {
   try {
     const held = window.sessionStorage.getItem(keptKey(path));
@@ -195,7 +165,6 @@ function keptText(path: string): string | null {
   }
 }
 
-/** Keeps a default-tier answer to `path` for the next page load of this tab. */
 function keep(path: string, text: string, answer: unknown): void {
   if (!isRecord(answer) || answer.tier !== "default") return;
   try {
@@ -205,14 +174,12 @@ function keep(path: string, text: string, answer: unknown): void {
   }
 }
 
-/** A list of a parsed answer, which the parse made and nothing else holds yet, so it may be written. */
 function parsedArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
-/** Whether the parsed answer `after` equals `before`. Where it does not, each part of it that equals
- *  the same part of `before` is replaced in place by that part, so that what did not change keeps
- *  its identity across a refresh. */
+/** Whether the parsed answer `after` equals `before`; where it does not, each part equal to the
+ *  same part of `before` is replaced by it, so what did not change keeps its identity. */
 function keptParts(before: unknown, after: unknown): boolean {
   if (Object.is(before, after)) return true;
   if (Array.isArray(before) && parsedArray(after)) {
@@ -233,7 +200,6 @@ function keptParts(before: unknown, after: unknown): boolean {
   return same;
 }
 
-/** An endpoint's path and query, the parameters in the contract's order. */
 function requestPath<Name extends Endpoint>(endpoint: Name, query: Query<Name>): string {
   const { required, optional } = PARAMETERS[endpoint];
   const values: Readonly<Record<string, string | undefined>> = query;
@@ -246,7 +212,6 @@ function requestPath<Name extends Endpoint>(endpoint: Name, query: Query<Name>):
   return `${API_PREFIX}${endpoint}${written === "" ? "" : `?${written}`}`;
 }
 
-/** The text of an answer, or the failure its error body names. */
 async function answerText(path: string, token: string | null, signal: AbortSignal): Promise<string> {
   const response = await fetch(path, {
     cache: "no-store",
@@ -269,8 +234,6 @@ async function answerText(path: string, token: string | null, signal: AbortSigna
   );
 }
 
-/** One endpoint read for `query`, or nothing while `query` is null; polled, or read again whenever
- *  `since` moves. */
 function useAnswer<Name extends Endpoint>(
   endpoint: Name,
   query: Query<Name> | null,
@@ -290,23 +253,19 @@ function useAnswer<Name extends Endpoint>(
   return { ...live, current: path !== null && live.key === path };
 }
 
-/** Every campaign in the repository's worktrees, polled. */
 export function useCampaigns(): Live<AnswerOf<"campaigns">> {
   return useAnswer("campaigns", {}, "poll");
 }
 
-/** One campaign's reading, polled while it is selected. */
 export function useCampaign(key: string | null): Live<AnswerOf<"campaign">> {
   return useAnswer("campaign", key === null ? null : { key }, "poll");
 }
 
-/** What a campaign's details are read for. */
 export const detailsOf = ({ row }: Pick<CampaignReading, "row">): Of => ({
   key: row.key,
   since: row.lastEventAt,
 });
 
-/** One move, by its place in the log. */
 export function useMove({ key, since }: Of, move: number | null): Live<AnswerOf<"move">> {
   return useAnswer("move", key === null || move === null ? null : { key, move: String(move) }, { since });
 }
@@ -323,12 +282,11 @@ export function useTask({ key, since }: Of, id: string | null): Live<AnswerOf<"t
   return useAnswer("task", key === null || id === null ? null : { key, id }, { since });
 }
 
-/** The log as a timeline. */
 export function useLog({ key, since }: Of): Live<AnswerOf<"log">> {
   return useAnswer("log", key === null ? null : { key }, { since });
 }
 
-/** One raw event, which the exam tier alone answers. An event never changes once written. */
+/** One raw event, which the exam tier alone answers; an event never changes once written. */
 export function useEvent(key: string | null, index: number | null): Live<AnswerOf<"event">> {
   return useAnswer("event", key === null || index === null ? null : { key, index: String(index) }, {
     since: null,

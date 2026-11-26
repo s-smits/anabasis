@@ -25,8 +25,8 @@ it("copies a bundle's check program without its battery, and nothing of a copy c
       existsSync(join(checks, file)),
     ),
   ).toEqual([true, true, true, false, false]);
-  // A FIFO stops the copy part of the way through, whoever runs the suite: a file of mode 0 does
-  // not stop root, which the Linux job and a container run as.
+  // A FIFO stops the copy part-way whoever runs the suite: a file of mode 0 does not stop root, as the
+  // Linux job and a container run.
   runTextSyncOrThrow(["mkfifo", join(model, "zz-pipe.ts")]);
   const to = join(root, "cut-checks");
   expect(() => checkProgram(join(root, "bundle"), to)).toThrow();

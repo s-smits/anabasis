@@ -20,11 +20,11 @@ For an internal campaign comparison, conditions match by construction (use [comp
 
 1. **Freeze the ledger** ([references/report.md](references/report.md)): record the question, prior inspections, primary measure, and arms, then record the file's SHA-256 digest (`shasum -a 256`), which serves as `--salt`.
 2. **Seal half the tasks**: `bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> --salt <sha256>` (withholds sealed scores until step 7; exclude tasks already inspected before the freeze).
-3. **Audit the instrument (levels 0–6 of [references/levels.md](references/levels.md))**: check identities, conditions, export fidelity, truncation (`CUT <n>`), and grader behaviour without reading outcome scores.
+3. **Audit the instrument (levels 0–6 of [references/levels.md](references/levels.md))**: check identities, conditions, export fidelity, truncation (`CUT <n>`), and grader behaviour without reading outcome scores. On cross-OS external reads, separate three propagation layers symmetrically across arms—OS/platform port integrity (`studies/shared/foreign-python.ts`, `src/harness/place.ts`), runtime parity (native `pi-durable` via `runs bench` vs historical exported records), and campaign-workspace coupling (`.toolchain/bin` external call rates vs guide drag)—before attributing a deficit.
 4. **Inspect the open half (levels 7–11)**: examine per-task splits, tool usage, and rollout variance symmetrically across wins and losses.
 5. **Conduct a blind second reading**: launch independent read-only sessions under neutral arm labels with file pointers and open questions only ([references/report.md](references/report.md)).
 6. **Commit >=3 rival explanations** (including an innocent/noise explanation and an instrument-defect explanation), each with a predicted count and falsifier on the sealed half.
-7. **Unseal once** (`--unseal`) and resolve each explanation as `held`, `falsified`, or `unreached` by recounting without rewording.
+7. **Unseal once** (`--unseal`) and resolve each explanation as `confirmed`, `refuted`, or `not-observed` by recounting without rewording.
 8. **Distil shape cards** ([references/backtrack.md](references/backtrack.md)) from both winning and losing rows, stripped of arm identity and direction.
 9. **Backtrack blind**: hand only the shape cards to a fresh session to locate owning modules and count recurrence across archived campaign logs.
 10. **Apply the eight-question gate** ([references/backtrack.md](references/backtrack.md)), recording the disposition and failed question for any dropped card.

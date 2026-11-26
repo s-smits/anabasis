@@ -5,7 +5,6 @@ import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { isRepresentationOwner, REPRESENTATION_OWNER } from "../shared/representation-owner.ts";
 import type { RuleExample } from "../../rule-examples.ts";
 
-/** The keyword a type predicate names for what each `typeof` answer establishes by itself. */
 const ESTABLISHED = new Map([
   ["string", "TSStringKeyword"],
   ["number", "TSNumberKeyword"],
@@ -34,7 +33,6 @@ function isInsideTypeGuard(node: ESTree.Node): boolean {
   return false;
 }
 
-/** Return whether typeof safely probes for the existence of a possibly absent binding. */
 function isExistenceProbe(node: ESTree.UnaryExpression): boolean {
   const { parent } = node;
   if (parent.type !== "BinaryExpression") return false;
@@ -43,7 +41,6 @@ function isExistenceProbe(node: ESTree.UnaryExpression): boolean {
   return other.type === "Literal" && other.value === "undefined";
 }
 
-/** The function declaration whose whole body is `return <expression>;`, or null. */
 function wholeBodyOf(expression: ESTree.Node): ESTree.Function | null {
   const statement = expression.parent;
   if (statement?.type !== "ReturnStatement") return null;
@@ -67,7 +64,6 @@ function excludesNull(returned: ESTree.Node, tested: ESTree.Node, name: string):
   );
 }
 
-/** A function type written in place, or the name of one this file declares as an alias. */
 function namesFunctionType(type: ESTree.TSType, program: ESTree.Program): boolean {
   if (type.type === "TSFunctionType") return true;
   if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") return false;
@@ -82,7 +78,6 @@ function namesFunctionType(type: ESTree.TSType, program: ESTree.Program): boolea
   });
 }
 
-/** Whether `fn` takes one `unknown` parameter called `name` and declares `name is <what answer establishes>`. */
 function predicatesAnswer(
   fn: ESTree.Function,
   name: string,
@@ -101,8 +96,8 @@ function predicatesAnswer(
 }
 
 /**
- * Whether this `typeof` is the whole of a primitive predicate in the representation owner, such as
- * `function isString(value: unknown): value is string { return typeof value === "string"; }`.
+ * Such as `function isString(value: unknown): value is string { return typeof value === "string";
+ * }` in the representation owner.
  */
 function isOwnedPrimitivePredicate(
   node: ESTree.UnaryExpression,

@@ -1,10 +1,3 @@
-/**
- * Claude Agent SDK backend (`claude` on `CLAUDE_CODE_OAUTH_TOKEN` and `claude-api` on
- * `ANTHROPIC_API_KEY`), serving pi sessions through an in-process MCP tool server
- * (`vendor/pi-claude-bridge/`) with `WebSearch`, summarized thinking, and seat-specific system
- * prompts (`src/solver/prompt.ts`, `src/builder/prompt.ts`, `src/examiner/prompt.ts`,
- * `src/referee/referee.ts`). Query spend is metered from the SDK's final `result` message (`claudeLedger`).
- */
 import {
   type EffortLevel,
   type Query,
@@ -50,16 +43,7 @@ import { type BackendSpend, claudeSpend } from "../../kernel/meter.ts";
 import { errorMessage } from "../../meta/runtime-values.ts";
 
 const CLAUDE_PROVIDER = "claude";
-/**
- * The same backend on an Anthropic API key in place of a Claude Code login: the same CLI, the same
- * models and the same prompt, billed to the key's account. It is a provider of its own, so that
- * which account spends is named on the command line (`--solver claude-api/<model>`) and stands in
- * every condition and every price key the log holds. A key in the host's environment never moves
- * a solve asked of `claude`: the CLI is handed one credential, the one its provider names.
- */
 export const CLAUDE_API_PROVIDER = "claude-api";
-/** What each of the two is called, and the one variable that holds its credential: in the host's
- *  environment, where pi reads it, and in the CLI's, where Claude Code does. */
 const ACCOUNTS = new Map([
   [
     CLAUDE_PROVIDER,
@@ -80,26 +64,12 @@ const ACCOUNTS = new Map([
 ]);
 const API = "claude-agent-sdk";
 
-/** The MCP server's name, as the bridge spells it; every tool name carries it. */
 const SERVER = "custom-tools";
 const TOOL_PREFIX = `mcp__${SERVER}__`;
-/** The CLI's own tools the solver is given, all server-side: v1's, under the `webSearch: true`
- *  every Claude profile of v1 set. */
 const CLI_TOOLS = ["WebSearch"];
-/** How long a closing query waits on its interrupt. One answered mid-turn in 16 ms. */
 const INTERRUPT_MS = 1000;
-/** How long `claudeSpendNow` waits on Claude Code's count; with a login it asks the plan's limits too. */
 const USAGE_MS = 5000;
-/**
- * How long a turn waits for Claude Code's next message before it reads the query as hung. A turn
- * streams partial messages while the model writes, and Claude Code's own retries and compactions take
- * minutes at most. A Builder's Claude Code has been seen idle after its tool results were due, with
- * no connection open and nothing queued on either side of its pipes, and never continued; the
- * session's 24-hour deadline, which stops while host actions run, would end such a turn only hours
- * later.
- */
 const QUIET_MS = 30 * 60_000;
-/** The bridge's table, for a level the model's own map does not name. */
 const EFFORTS: Readonly<Partial<Record<ThinkingLevel, EffortLevel>>> = {
   minimal: "low",
   low: "low",
@@ -112,31 +82,15 @@ interface Session {
   readonly query: Query;
   readonly prompt: PromptStream;
   readonly abort: AbortController;
-  /** Handlers Claude Code is blocked in, by tool_use id. */
   readonly parked: Map<string, (result: McpResult) => void>;
-  /** Results pi sent before Claude Code called their handler. */
   readonly early: Map<string, McpResult>;
-  /** Whether a turn is reading the query, which then takes its result itself. */
   reading: boolean;
-  /** How long a turn waits for the query's next message (`QUIET_MS`). */
   readonly quiet: number;
-  /** The provider the query serves, which keys its ledger. */
   readonly provider: string;
 }
 
-/** How one API message can end a pi turn; a failure ends it by throwing. */
 type TurnEnd = Extract<StopReason, "stop" | "length" | "toolUse">;
 
-/**
- * How the query's last API message ends the turn, by its stop reason. The set is the Messages API's
- * `BetaStopReason` (`@anthropic-ai/sdk` 0.129.0, `resources/beta/messages/messages.d.ts:3579`), which the
- * Agent SDK's stream events carry. `model_context_window_exceeded` cut the answer at the window, as
- * `max_tokens` cuts it at the output cap. Every other reason is no answer of the solver's own and fails
- * the turn, so the runner types it as the provider's non-result: `refusal` is the model declining;
- * `tool_use`, `pause_turn` and `compaction` mean Claude Code stopped with the turn unfinished, since it
- * runs pi's tools, resumes a paused server tool and finishes its own compaction before it reports; and
- * a reason this list does not know is not read as an ordinary end.
- */
 const FINAL_STOPS: ReadonlyMap<string, TurnEnd> = new Map([
   ["end_turn", "stop"],
   ["stop_sequence", "stop"],
@@ -144,13 +98,6 @@ const FINAL_STOPS: ReadonlyMap<string, TurnEnd> = new Map([
   ["model_context_window_exceeded", "length"],
 ]);
 
-/**
- * The models the sweep asked Claude Code for by their long-context id, which is what gives them a
- * million-token window on a subscription token; the CLI serves a bare id at its own default window,
- * under which a 300K compaction window is clamped. v1 measured each of the first five; every other
- * model went bare. Opus 5.5 and Sonnet 5.5 came after, and the CLI serves each a million tokens
- * under its `[1m]` id.
- */
 const LONG_CONTEXT = new Set([
   "claude-opus-5",
   "claude-opus-4-8",
@@ -161,73 +108,32 @@ const LONG_CONTEXT = new Set([
   "claude-sonnet-5-5",
 ]);
 
-/** The live queries of this process, by the caller's session id: two sessions that run at once need
- *  two ids, or the second one's turns go into the first one's query. */
 const sessions = new Map<string, Session>();
-/** Each query's last `result`, by session id, until `claudeLedger` takes it: the one a turn read, or
- *  the one the host's close of a query no turn was reading brings. A turn that begins drops it,
- *  since it holds none of that turn. */
 const reads = new Map<string, Promise<BackendSpend | null>>();
 
-/**
- * The diagnostic a turn carries for each compaction Claude Code ran before it: `details.tokensBefore`
- * and `details.seconds`, from the CLI's `compact_boundary`, as v1's `onCompaction` read it.
- */
 export const CLAUDE_COMPACTED = "claude-code-compaction";
 
-/**
- * How Claude Code fits a full context: its own auto-compaction at a window of this many tokens, or not
- * at all, in which case a context that outgrows the model ends the query on the API's refusal.
- */
 type ClaudeCompaction = { readonly window: number } | "off";
 
-/**
- * The sweep's window: v1's `CONTEXT_COMPACT_WINDOW`, which its Claude solves ran under.
- */
 export const SWEEP_COMPACT_WINDOW = 300_000;
 
-/**
- * The window bounds Claude Code 0.3.285 accepts. Its resolver drops a window outside them without a
- * word and falls back to the model's own (`gXe=1e5,ggt=1e6` in the bundled CLI of
- * `@anthropic-ai/claude-agent-sdk-darwin-arm64`), so a condition that pinned one would run another.
- */
 const WINDOW_BOUNDS = [100_000, 1_000_000] as const;
 
-/** The months as a provider spells a dated reset, by their first three letters. */
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 export interface ClaudeOptions {
-  /** The Claude Code binary the query runs, as `claudeExecutable()` resolved it on the host. */
   readonly executable: string;
   readonly compaction: ClaudeCompaction;
-  /** Claude Code's HOME, which holds its configuration and transcripts: one per solve, outside the
-   *  command wall, so no command reads them and no host Claude state reaches the query. */
   readonly home: string;
-  /** Whether the CLI's WebSearch stands beside the session's tools. Left out, it does, as it did for
-   *  the sweep's solver. */
+  readonly cwd?: string;
   readonly webSearch?: boolean;
-  /** How long Claude Code keeps its prompt cache. Left out, it keeps it for an hour on a login and
-   *  five minutes on an API key, as the CLI chooses. */
   readonly cacheTtl?: "5m" | "1h";
-  /** The seat's lifetime, independent of the invocation signal pi passes to each request. */
   readonly shutdown?: AbortSignal | undefined;
-  /** How long a turn waits for Claude Code's next message. Left out, `QUIET_MS`. */
   readonly quiet?: number;
 }
 
-/**
- * The window Claude Code gives a bare id, `fq=200000` in the bundled CLI 0.3.285. Its resolver clamps
- * the compaction window to the model's own (`window: Math.min(g, ye)` in `XA`), so a larger window
- * pinned for a bare id would run at this one.
- */
 const BARE_WINDOW = 200_000;
 
-/**
- * The compaction a condition pins for a Claude solve on `modelId`, in the words the CLI's own
- * settings use. A window the id's served context cannot hold is refused, where the CLI would clamp it
- * without a word: a bare id such as `claude-haiku-4-5` is served 200K, under which a 300K window
- * would run.
- */
 export function claudeCompactionMode(compaction: ClaudeCompaction, modelId: string): string {
   if (compaction === "off") return "off";
   const served = LONG_CONTEXT.has(modelId) ? WINDOW_BOUNDS[1] : BARE_WINDOW;
@@ -239,17 +145,10 @@ export function claudeCompactionMode(compaction: ClaudeCompaction, modelId: stri
   return `autoCompactWindow=${String(compaction.window)}`;
 }
 
-/** Whether a model is served through Claude Code, on either account. */
 export function servedByClaude(provider: string): boolean {
   return ACCOUNTS.has(provider);
 }
 
-/**
- * The Claude Code binary the Agent SDK ships in its platform package, resolved on the host. The SDK
- * resolves it itself from its own module URL (`SV` in `sdk.mjs` 0.3.285), which fails inside a bundled
- * worker and would point into the repository the solve wall denies; the host resolves it here instead,
- * passes it in and reopens it read-only, as v1 did.
- */
 export function claudeExecutable(): string {
   const sdk = dirname(Bun.resolveSync("@anthropic-ai/claude-agent-sdk", import.meta.dir));
   const platform = `@anthropic-ai/claude-agent-sdk-${runtimeProcess.platform}-${runtimeProcess.arch}`;
@@ -258,8 +157,6 @@ export function claudeExecutable(): string {
   return cli;
 }
 
-/** pi's Anthropic catalog, served through Claude Code: the same ids and the same list prices. `id`
- *  names the account, a Claude Code login unless it is `CLAUDE_API_PROVIDER`. */
 export function claudeProvider(options: ClaudeOptions, id: string = CLAUDE_PROVIDER): Provider {
   const { compaction } = options;
   const account = ACCOUNTS.get(id);
@@ -276,7 +173,6 @@ export function claudeProvider(options: ClaudeOptions, id: string = CLAUDE_PROVI
     id,
     name: account.name,
     auth: { apiKey: envApiKeyAuth(account.holds, [account.variable]) },
-    // `compat` tunes pi's own Anthropic request, which Claude Code never sends.
     models: getBuiltinModels("anthropic").map(({ compat: _unsent, ...model }) => ({
       ...model,
       provider: id,
@@ -294,7 +190,6 @@ function streamClaude(
 ): AssistantMessageEventStream {
   const out = createAssistantMessageEventStream();
   const turn = emptyTurn(model);
-  // The turn starts before the query opens, as pi's own Anthropic stream starts before its request.
   out.push({ type: "start", partial: turn });
   runTurn(claude, model, context, options ?? {}, turn).then(
     (reason) => {
@@ -322,24 +217,32 @@ async function runTurn(
 ): Promise<TurnEnd> {
   const key = options.sessionId;
   if (key === undefined) throw new Error("the Claude backend needs a sessionId: one per Claude Code query");
-  // An abort listener never fires for a signal that has already aborted, so a turn asked under one
-  // would launch Claude Code and run its query to the end.
   if (options.signal?.aborted === true) throw new Error(`session ${key} was aborted before its turn`);
   if (claude.shutdown?.aborted === true) throw new Error(`session ${key} was shut down before its turn`);
   const { results } = extractAllToolResults(context.messages.map((message) => ({ ...message })));
   let session = sessions.get(key);
+  if (session?.reading === true) {
+    throw new Error(`session ${key} already has a turn in flight: concurrent seats need distinct sessionIds`);
+  }
   if (results.length > 0) {
     if (!session) throw new Error(`no live Claude Code query in session ${key} takes these tool results`);
-    for (const result of results) deliver(session, result);
   } else {
-    // A later prompt, a nudge, goes into the live query, which holds the history itself.
     if (!session && context.messages.some((message) => message.role === "assistant")) {
       throw new Error(`no live Claude Code query in session ${key} holds this conversation`);
     }
     session ??= open(claude, model, context, options, key);
-    await session.prompt.push(userMessage(promptText(context)));
   }
-  return await readTurn(key, session, model, turn, options.signal);
+  session.reading = true;
+  try {
+    if (results.length > 0) {
+      for (const result of results) deliver(session, result);
+    } else {
+      await session.prompt.push(userMessage(promptText(context)));
+    }
+    return await readTurn(key, session, model, turn, options.signal);
+  } finally {
+    session.reading = false;
+  }
 }
 
 function open(
@@ -370,21 +273,16 @@ function open(
   const abort = new AbortController();
   const effort = claudeEffort(model, options.reasoning);
   const own = getCurrentSystemPrompt(context.messages).trim();
-  // Claude Code's working directory, which its prompt names: the solve's own, as v1's was its worker's.
   mkdirSync(claude.home, { recursive: true });
   const live = query({
     prompt: prompt.stream,
     options: {
       pathToClaudeCodeExecutable: claude.executable,
-      cwd: claude.home,
+      cwd: claude.cwd ?? claude.home,
       model: LONG_CONTEXT.has(model.id) ? `${model.id}[1m]` : model.id,
       ...keyIfDefined("effort", effort),
-      // Thinking arrives summarized rather than omitted whenever an effort is set.
       ...keyIfDefined("extraArgs", effort && { "thinking-display": "summarized" }),
-      // The session's prompt is the whole of it: Claude Code's own is not sent before it.
       systemPrompt: own,
-      // The harness's pi tools and the CLI's WebSearch are the only tools: no other built-in, no setting
-      // file, no skill, no other MCP server. With WebSearch off there is no built-in at all.
       tools: claude.webSearch === false ? [] : CLI_TOOLS,
       skills: [],
       mcpServers: { [SERVER]: createToolServer(SERVER, tools) },
@@ -416,22 +314,12 @@ function open(
   return session;
 }
 
-/**
- * The effort v1 asked Claude Code for at `level`: the model's own map, then the
- * table; none, so the CLI's default, where neither names one.
- */
 function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): EffortLevel | undefined {
   if (level === undefined) return undefined;
   // SAFETY: a catalog map spells its levels in the effort set Claude Code takes, as v1 relied on.
   return (model.thinkingLevelMap?.[level] as EffortLevel | null | undefined) ?? EFFORTS[level];
 }
 
-/**
- * The whole environment Claude Code runs in: HOME, the solve's own, PATH and TMPDIR; nothing else of
- * the host's reaches the CLI, so no host variable can move its compaction, its account or its MCP
- * servers. Its one credential is its provider's: a Claude Code login for `claude`, an API key for
- * `claude-api`, each under the variable Claude Code reads it from and never both.
- */
 function claudeEnv(
   { cacheTtl, compaction, home }: ClaudeOptions,
   credential: { readonly provider: string; readonly token: string | undefined },
@@ -443,8 +331,6 @@ function claudeEnv(
       `the Claude backend needs ${account === undefined ? "an account" : `a ${account.holds}`}`,
     );
   }
-  // One configuration directory per solve home, as v1 kept one per worker, so no host Claude state
-  // is read. It is not `.claude`, so a run on the host's own HOME still reads none.
   const config = join(home, "claude-config");
   mkdirSync(config, { recursive: true });
   return {
@@ -453,16 +339,8 @@ function claudeEnv(
     ...keyIfDefined("TMPDIR", Bun.env.TMPDIR),
     CLAUDE_CONFIG_DIR: config,
     [account.variable]: token,
-    // claude.ai's cloud MCP servers load past strict MCP config and empty setting sources unless this
-    // is off, as the sweep set it.
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",
-    // The client keeps no memory of its own: what a seat remembers is the host's to give it, and a
-    // memory folder under the configuration directory would be a second store beside the log.
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
-    // `off` is real. In the bundled CLI 0.3.285 the auto-compact condition `Uf` is false when `rht` reads
-    // DISABLE_AUTO_COMPACT or DISABLE_COMPACT, and `Uf` permits the threshold compaction (`hAe`), the
-    // reactive one after a too-long prompt (`UEr`) and the precomputed summary (`x4n`); a context that
-    // outgrows the model then ends the query. The sweep set the window.
     ...(compaction === "off"
       ? { DISABLE_AUTO_COMPACT: "1" }
       : { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(compaction.window) }),
@@ -470,7 +348,6 @@ function claudeEnv(
   };
 }
 
-/** The opening user message: Claude Code gets it once and keeps the history itself. */
 function promptText(context: TranscriptContext): string {
   const prompt = context.messages.findLast((message): message is UserMessage => message.role === "user");
   if (!prompt) throw new Error("the transcript has no user message to open the query with");
@@ -495,11 +372,6 @@ function deliver(session: Session, result: McpResult): void {
   resolve(result);
 }
 
-/**
- * Read the next API message with a pi tool call into `turn`, or the last of the prompt, and say how it
- * stopped. A message that stopped on WebSearch alone is Claude Code's to run, so the turn reads on
- * into the next, as v1's ended only on a pi call, and bills both.
- */
 async function readTurn(
   key: string,
   session: Session,
@@ -511,7 +383,6 @@ async function readTurn(
   const interrupt = () => {
     session.query.interrupt().catch(() => close(key, session));
   };
-  session.reading = true;
   reads.delete(key);
   signal?.addEventListener("abort", interrupt, { once: true });
   if (signal?.aborted === true) interrupt();
@@ -519,7 +390,6 @@ async function readTurn(
     return await readMessages(key, session, model, turn, { spent, signal });
   } finally {
     signal?.removeEventListener("abort", interrupt);
-    session.reading = false;
     for (const usage of spent) addUsage(turn.usage, usage);
   }
 }
@@ -532,7 +402,6 @@ async function readMessages(
   request: { readonly spent: Usage[]; readonly signal: AbortSignal | undefined },
 ): Promise<TurnEnd> {
   let apiStop: string | null = null;
-  // The reset of a limit the provider reported refusing on, said with a refused turn's error.
   let limited = "";
   for (;;) {
     const next = await heard(key, session);
@@ -563,12 +432,10 @@ async function readMessages(
       const { status, resetsAt } = message.rate_limit_info;
       limited = status === "rejected" && resetsAt !== undefined ? ` (limit reached|${String(resetsAt)})` : "";
     } else if (message.type === "result") {
-      // The query stays open for a later prompt; what the result reports is the query's so far.
       reads.set(key, Promise.resolve(claudeSpend(session.provider, message)));
       if (request.signal?.aborted === true) throw new Error("the Claude Code request was interrupted");
       const end = apiStop === null ? undefined : FINAL_STOPS.get(apiStop);
       if (message.subtype === "success" && !message.is_error && end !== undefined) return end;
-      // Claude Code reports the turn the host's own close interrupted as a run that failed.
       if (sessions.get(key) !== session) throw new Error("the host closed the query");
       close(key, session);
       if (message.subtype !== "success") {
@@ -580,12 +447,6 @@ async function readMessages(
   }
 }
 
-/**
- * The query's next message, or a throw once Claude Code has sent nothing for the session's quiet
- * bound. The query is closed first, so its parked handlers are answered and a turn asked of it again
- * finds none: the seat reads a provider failure, a solve is solved again, and a Builder's
- * conversation ends crashed while its campaign goes on.
- */
 async function heard(key: string, session: Session) {
   const { promise: silent, reject } = Promise.withResolvers<never>();
   const timer = setTimeout(() => {
@@ -609,10 +470,6 @@ function addUsage(into: Usage, usage: Usage): void {
   if (usage.reasoning !== undefined) into.reasoning = (into.reasoning ?? 0) + usage.reasoning;
 }
 
-/**
- * One content block of the API message. Claude Code's `<synthetic>` reports of its own failures stay
- * out. The message names the snapshot that served it, which the condition's model id may only alias.
- */
 function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMessage): void {
   if (message.message.model === "<synthetic>") return;
   turn.responseModel = message.message.model;
@@ -631,22 +488,11 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
       });
     }
   }
-  // pi-claude-bridge 0.9.1's updateUsage leaves pi's hour-long share of the cache writes unset, so pi
-  // would bill Claude Code's writes, all of them an hour long, at the five-minute price.
   const longWrite = message.message.usage.cache_creation?.ephemeral_1h_input_tokens;
   if (longWrite !== undefined) turn.usage.cacheWrite1h = longWrite;
   updateUsage(turn, message.message.usage, model);
 }
 
-/**
- * End the query and answer every parked handler, so no Claude Code call is left waiting on pi.
- *
- * The turn is interrupted before the query is aborted. An abort alone closes Claude Code's stdin and
- * gives it two seconds before a signal, and Claude Code spends them on its turn: with a call still
- * parked it asks the model again, and no meter reads that request: a query closed on a parked
- * `submit` has been seen calling it again within two seconds. Interrupted first, it calls nothing
- * and is gone inside a second. The timer is for a child that never answers the interrupt.
- */
 function close(key: string, session: Session): void {
   if (sessions.get(key) !== session) return;
   sessions.delete(key);
@@ -672,29 +518,12 @@ function close(key: string, session: Session): void {
   session.early.clear();
 }
 
-/**
- * What session `key`'s query spent by its last `result`, taken once: Claude Code's own total, and
- * `modelUsage`, the whole query's tokens and dollars by the model that served them, its compactions
- * and its calls on other models included, which no turn shows. Null where no query of this process
- * served the session. A session that ended on a call of its own, `finish` or `submit`, leaves Claude
- * Code waiting on that call's result, and the query's `result` comes only after the host's close
- * interrupts it: this waits on that close, since a cost read from the turns alone leaves most
- * billed dollars without a figure of Claude Code's beside them.
- */
 export async function claudeLedger(key: string): Promise<BackendSpend | null> {
   const read = (await reads.get(key)) ?? null;
   reads.delete(key);
   return read;
 }
 
-/**
- * What session `key`'s live query has spent so far by Claude Code's own count, the same ledger its
- * `result` carries, read through the Agent SDK's usage request, which Claude Code answers from memory
- * with no model call. Every request it makes credits that ledger, its compactions' summaries
- * (`querySource: "compact"`) included. Null where no query of this process serves the session, or the
- * experimental request fails, answers in another shape or takes longer than five seconds or the
- * session's quiet bound.
- */
 export async function claudeSpendNow(key: string): Promise<BackendSpend | null> {
   const session = sessions.get(key);
   if (session === undefined) return null;
@@ -702,7 +531,6 @@ export async function claudeSpendNow(key: string): Promise<BackendSpend | null> 
     .usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })
     .then(({ session: { total_cost_usd, model_usage } }) => {
       const spend = claudeSpend(session.provider, { total_cost_usd, modelUsage: model_usage });
-      // The request may change shape, and a renamed field would bill NaN, then nothing, from here on.
       const finite = Object.values(spend.ledger).every((each) => Object.values(each).every(Number.isFinite));
       return finite ? spend : null;
     })
@@ -710,7 +538,6 @@ export async function claudeSpendNow(key: string): Promise<BackendSpend | null> 
   return await Promise.race([read, Bun.sleep(Math.min(USAGE_MS, session.quiet)).then(() => null)]);
 }
 
-/** The query's next `result`, read, or null where the query ends or is aborted first. */
 async function resultAtClose(session: Session): Promise<BackendSpend | null> {
   const aborted = new Promise<null>((resolve) => {
     session.abort.signal.addEventListener("abort", () => resolve(null), { once: true });
@@ -746,20 +573,37 @@ function emptyUsage(): Usage {
   };
 }
 
-/**
- * When the provider limit `said` names its reset, as the next such instant after `now`, or on the
- * date it names, or null where it names none or is no limit. Two spellings: a clock time after
- * "reset", with a date before it, am or pm and the zone in parentheses where given ("resets 3:50pm
- * (Europe/Amsterdam)", "resets Oct 15 at 9pm (Europe/Amsterdam)"; the host's zone where none is; a
- * date is never read as an hour), and a
- * message ending in the instant's Unix seconds ("limit reached|1760276400"), which this backend
- * adds to a turn the provider refused on a limit it reported with its reset (`readMessages`).
- */
+const UNIT_MS = new Map([
+  ["ms", 1],
+  ["s", 1000],
+  ["m", 60_000],
+  ["h", 3_600_000],
+  ["d", 86_400_000],
+]);
+
+function delayOf(said: string, now: Date): Date | null {
+  const seconds = /\b(?:resets_in_seconds|retry-after)"?\s*[:=]\s*(\d+)/i.exec(said)?.[1];
+  if (seconds !== undefined) return new Date(now.getTime() + Number(seconds) * 1000);
+  const phrase = /\btry again in\s+((?:\d+(?:\.\d+)?\s*[a-z]+[\s,]*(?:and\s+)?)+)/i.exec(said)?.[1];
+  if (phrase === undefined) return null;
+  let ms = 0;
+  for (const [, amount = "", word = ""] of phrase.matchAll(/(\d+(?:\.\d+)?)\s*([a-z]+)/gi)) {
+    const lower = word.toLowerCase();
+    const unit = UNIT_MS.get(
+      lower === "ms" || lower.startsWith("mil") ? "ms" : lower.startsWith("mi") ? "m" : (lower[0] ?? ""),
+    );
+    if (unit === undefined) return null;
+    ms += Number(amount) * unit;
+  }
+  return new Date(now.getTime() + Math.ceil(ms));
+}
+
 export function resetOf(said: string, now: Date): Date | null {
-  // A connection "reset" with a number near it is no limit.
-  if (!/\blimit\b/i.test(said)) return null;
-  const unix = /limit reached\|(\d{10})\b/i.exec(said)?.[1];
+  if (!/(?:\b|_)limit(?:\b|_)/i.test(said)) return null;
+  const unix = /(?:limit reached\||\bresets_at"?\s*[:=]\s*)(\d{10})\b/i.exec(said)?.[1];
   if (unix !== undefined) return new Date(Number(unix) * 1000);
+  const delayed = delayOf(said, now);
+  if (delayed !== null) return delayed;
   const clock =
     /\breset[s]?\b\D{0,24}?(?:\b([a-z]{3})[a-z]*\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:\(([A-Za-z_]+(?:\/[A-Za-z_+-]+)+)\))?/i.exec(
       said,
@@ -788,8 +632,6 @@ export function resetOf(said: string, now: Date): Date | null {
       return { year, month, day, offset };
     };
     const { year, month, day, offset } = wall(now.getTime());
-    // A named month over half a year behind the zone's today is next year's ("resets Jan 4" on
-    // 28 December); a date just behind is a reset that has passed, never a year's wait.
     const wraps = dated !== undefined && month - dated > 6;
     const local = Date.UTC(
       wraps ? year + 1 : year,
@@ -798,11 +640,9 @@ export function resetOf(said: string, now: Date): Date | null {
       hour,
       Number(m),
     );
-    // The zone's offset on the reset's own day, which differs from today's across a change of clocks.
     const at = local - wall(local - offset).offset;
     return new Date(at > now.getTime() || dated !== undefined ? at : at + 86_400_000);
   } catch {
-    // A zone the host does not know names no instant it can wait for.
     return null;
   }
 }

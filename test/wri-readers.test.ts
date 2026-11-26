@@ -2,8 +2,12 @@
 // synthetic campaign: the overview's rows agree with the production folds that own each count, each
 // trigger fires on its lane with its count, the catalogue names every trigger the reader can fire,
 // and a report is collected as a finding, no finding or could not read only when its fields are even.
+import { loadRuns } from "#skills/main/runs.ts";
 import { afterAll, describe, expect, it } from "bun:test";
-import { STARTED as COMPARISON_STARTED } from "../src/campaign/comparison.ts";
+import {
+  REPORTED as COMPARISON_REPORTED,
+  STARTED as COMPARISON_STARTED,
+} from "../src/campaign/comparison.ts";
 import { conditionId } from "../src/kernel/condition.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { lastReports, referenceOf } from "../src/kernel/reports.ts";
@@ -22,12 +26,14 @@ import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { hasWholeToken } from "../src/meta/text.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
 import { taskSets } from "../src/kernel/task.ts";
-import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
+import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES, section } from "../tools/wri/catalogue.ts";
 import { draftAuditRows, groundingRows, seatSummaryRows, wallAuditRows } from "../tools/wri/components.ts";
 import { continuityRows } from "../tools/wri/continuity.ts";
 import { deliverableRows } from "../tools/wri/deliverables.ts";
 import { READERS } from "../tools/wri/derive.ts";
 import { diagnosticRows } from "../tools/wri/diagnostics.ts";
+import { findingsLedger, vettingFaults } from "../tools/wri/findings.ts";
+import { rowsOf } from "../tools/wri/ledger.ts";
 import { epochSpendLines } from "../tools/wri/epoch-spend.ts";
 import { executionRows } from "../tools/wri/execution.ts";
 import { indexOf, TRIGGERS } from "../tools/wri/folds.ts";
@@ -35,6 +41,7 @@ import { rankCatalogue } from "../tools/wri/rank-lanes.ts";
 import { gamingRows } from "../tools/wri/gaming.ts";
 import { reportIndex, reportOf, ROWS, sessionsOf } from "../tools/wri/investigation.ts";
 import { buildPackets } from "../tools/wri/packets.ts";
+import { pairRows, sideGap } from "../tools/wri/pairs.ts";
 import { portabilityRows } from "../tools/wri/portability.ts";
 import { overview } from "../tools/wri/read.ts";
 import { scoreRows } from "../tools/wri/scores.ts";
@@ -42,6 +49,8 @@ import { transferRows } from "../tools/wri/transfer.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 import { wriCampaign } from "./helpers/wri-campaign.ts";
 
+const [SOLVE_STARTED, SOLVE_FINISHED] = ["solve.started", "solve.finished"] as const;
+const EXAM_DRAFTED = "exam.drafted";
 const events = wriCampaign((tag) => `secret ${tag}`);
 const { rows, triggers } = overview(events);
 const catalogue = catalogueText();
@@ -295,17 +304,135 @@ describe("a lane's report, as the synthesis collects it", () => {
     expect(reportOf(lane(number), text, owners, names)).toMatchObject({ state, verdict, faults });
   });
 
-  it("collects no file as missing, and indexes each finding by its id with its marks", () => {
+  it("collects no file as missing, and tables each finding under its kind's number with its marks and pointer", () => {
     expect(reportOf(lane(4), null, owners, one).state).toBe("missing");
+    const seen = "Seen in: buffer-a comparison.reported{1,~1} Builder:b-1{4-7}\n";
     const report = reportOf(
       lane(4),
-      `${head}\nVerdict: finding, two.\n${finding("First")}${finding("Second")}`,
+      `${head}\nVerdict: finding, three.\n${finding("Misreading: First", seen)}${finding("leak: Second", seen)}${finding("misreading: Third | fourth", seen)}`,
       owners,
       one,
     );
+    expect(report.faults).toEqual([]);
     const index = reportIndex([report], (number) => `/r/${String(number)}.md`, []);
-    expect(index).toContain("- lane 4: ok, finding, 2 findings, at `/r/4.md`");
-    expect(index).toContain("  - 4.2, observation confirmed, cause plausible, owner pack/evaluator: Second");
+    expect(index).toContain("- lane 4: ok, finding, 3 findings, at `/r/4.md`");
+    expect(rowsOf(index, "id")).toEqual(
+      [
+        ["lane4-misreading1", "First"],
+        ["lane4-leak1", "Second"],
+        ["lane4-misreading2", "Third / fourth"],
+      ].map(([id = "", title = ""]) => [
+        id,
+        "pack/evaluator",
+        "confirmed",
+        "plausible",
+        title,
+        "buffer-a comparison.reported{1,~1} Builder:b-1{4-7}",
+        "whether a repair is owed",
+      ]),
+    );
+    const untitled = reportOf(lane(4), `${head}\nVerdict: finding, one.\n${finding()}`, owners, one);
+    expect(untitled.written.map(({ id }) => id)).toEqual(["lane4-finding1"]);
+    const vetting = (named: string) =>
+      `| id | finding | lanes | standing | owner | importance | verdict | fate |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| vet-1 | f | ${named} | new | host | I2 | plausible | |`;
+    const unnamed = (named: string) =>
+      vettingFaults(vetting(named), index, []).filter((f) => f.startsWith("no row"));
+    expect(unnamed("lane4-misreading1, lane4-leak1")).toEqual([
+      "no row names the lane findings lane4-misreading2",
+    ]);
+    expect(unnamed("4")).toEqual([]);
+    expect(
+      vettingFaults(
+        vetting("primary"),
+        "- lane 3: ok, finding, 1 finding, at `x`\n  - 3.1, observation confirmed",
+        [],
+      ),
+    ).toEqual(["no row names the lane findings 3.1"]);
+    const counted = "- lane 3: ok, finding, 2 findings, at `x`\n- lane 5: invalid, no Verdict line, at `y`\n";
+    expect(vettingFaults(vetting("primary"), counted, [])).toEqual([
+      "no row names the lane findings 3.1, 3.2",
+    ]);
+    expect(vettingFaults(vetting("3"), counted, [])).toEqual([]);
+  });
+
+  it("hands each operator question to its lanes, enforces status verdicts, computes a scorecard, and flags conflicts", () => {
+    const questions = section(readFileSync(join(REFERENCES, "questions.md"), "utf8"), "Questions");
+    const prediction = "| id | lanes | prediction |\n| --- | --- | --- |\n| p1 | 4 | the tolerance holds |";
+    const decoy = "| id | lanes | question |\n| --- | --- | --- |\n| Q999 | 4 | decoy outside section |";
+    const text = `## Orientation\n\n${decoy}\n\n## Operator questions\n\n${questions}\n| Q0 | 1, 20 | asked of lanes that may see no framing | none |\n\n## The moved variable\n\n${prediction}`;
+    const ids = [...questions.matchAll(/^\| (Q\d+) \|/gmu)].map(([, id = ""]) => id);
+    expect(ids).toHaveLength(55);
+    const owedBy = new Map(
+      lanes.map((each) => {
+        const fault =
+          reportOf(
+            each,
+            `# Lane ${String(each.number)}: x\nVerdict: no finding.\n`,
+            owners,
+            one,
+            text,
+          ).faults.find((said) => said.includes("operator's questions")) ?? "";
+        return [each, [...fault.matchAll(/Q\d+/gu)].map(([id]) => id)];
+      }),
+    );
+    const open = lanes.filter((each) => !each.blind && !each.isolated);
+    expect(open.filter((each) => (owedBy.get(each) ?? []).length === 0).map(({ number }) => number)).toEqual(
+      [],
+    );
+    expect(lanes.filter((each) => !open.includes(each)).flatMap((each) => owedBy.get(each) ?? [])).toEqual(
+      [],
+    );
+    expect(new Set([...owedBy.values()].flat())).toEqual(new Set(ids));
+    const owed4 = owedBy.get(lane(4)) ?? [];
+    expect(owed4).not.toContain("Q999");
+    const missingStatus = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed4.map((id) => `Question ${id}: 5 of 9 passes, \`checks.txt\``).join("\n")}\n`;
+    expect(reportOf(lane(4), missingStatus, owners, one, text).state).toBe("invalid");
+    const naturalNo = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed4.map((id) => `Question ${id}: no gaming found, 0 of 12 solves, \`gaming.txt\``).join("\n")}\n`;
+    expect(reportOf(lane(4), naturalNo, owners, one, text).state).toBe("invalid");
+    const bareStatus = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed4.map((id) => `Question ${id}: **yes**`).join("\n")}\n`;
+    expect(reportOf(lane(4), bareStatus, owners, one, text).state).toBe("invalid");
+
+    const written4 = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed4.map((id, idx) => `Question ${id}: ${idx === 0 ? "**yes**" : "yes"}, 5 of 9 passes, \`checks.txt\``).join("\n")}\n`;
+    const answered4 = reportOf(lane(4), written4, owners, one, text);
+    expect(answered4).toMatchObject({ state: "ok", faults: [], resolved: { p1: "confirmed" } });
+    expect(reportOf(lane(4), written4.replaceAll("\n", "\r\n"), owners, one, text)).toMatchObject({
+      state: "ok",
+      resolved: { p1: "confirmed" },
+    });
+    const owed7 = owedBy.get(lane(7)) ?? [];
+    const written7 = `# Lane 7: supply\nVerdict: no finding.\n## Questions\n${owed7.map((id) => `Question ${id}: no, 0 of 12 valid room, \`ambition.txt\``).join("\n")}\n`;
+    const answered7 = reportOf(lane(7), written7, owners, one, text);
+    expect(answered7.state).toBe("ok");
+    const invalid11 = reportOf(
+      lane(11),
+      `# Lane 11: exam\nVerdict: finding.\n## Questions\n${(owedBy.get(lane(11)) ?? []).map((id) => `Question ${id}: yes, 1/1, \`drafted.txt\``).join("\n")}\n`,
+      owners,
+      one,
+      text,
+    );
+    expect(invalid11.state).toBe("invalid");
+
+    const unframed = new Set(lanes.filter((each) => each.blind || each.isolated).map(({ number }) => number));
+    const index = reportIndex(
+      [answered4, answered7, invalid11],
+      (number) => `/r/${String(number)}.md`,
+      [],
+      text,
+      unframed,
+    );
+    expect(index).toContain("- p1: confirmed by lane 4");
+    const scorecardLine = index.split("\n").find((line) => line.includes("Scorecard:")) ?? "";
+    expect(scorecardLine).toContain("2 conflict");
+    expect(scorecardLine).toContain("incomplete");
+    const bucketSum = [
+      ...scorecardLine.matchAll(/(\d+) (?:yes|partial|no|unmeasured|conflict|incomplete|unanswered)/gu),
+    ].reduce((sum, [, n]) => sum + Number(n), 0);
+    expect(bucketSum).toBe(55);
+    expect(index).toMatch(/- Q16: [^\n]*\(conflict: lane 4 yes vs lane 7 no\)/u);
+    expect(index).toMatch(/- Q20: [^\n]*no line from lane 11/u);
+    expect(index).not.toContain("- Q0:");
+    expect(index).not.toContain("- Q999:");
+    expect(index).toMatch(/- Q1: [^\n]* \(lane 6, 13 not opened\)/u);
   });
 
   it("excludes ladder comparisons from scoreRows just like lastReports does", () => {
@@ -434,7 +561,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     const fired = overview([
       {
         at: AT,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: { draft: { evaluator: "export const checks = { c: ({ files }) => files.length > 0 };" } },
       },
       { at: AT, kind: "verdict", data: { solve: "s1", task: "v1", kind: "pass" } },
@@ -445,7 +572,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     const silent = overview([
       {
         at: AT,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: { draft: { evaluator: "type Req = { artifact: any; files?: any };" } },
       },
       { at: AT, kind: "verdict", data: { solve: "s1", task: "v1", kind: "pass" } },
@@ -453,7 +580,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(silent.find((trigger) => trigger.name === "NO DELIVERABLES CAPTURED")).toBeUndefined();
   });
 
-  it("fires FAMILY CONCENTRATION without printing the family name", () => {
+  it("fires FAMILY CONCENTRATION run-wide and per writing session without printing the family name", () => {
     const tasks = Array.from({ length: 8 }, (_, index) => {
       const version = `v-${String(index)}`;
       const family = index < 6 ? "SECRET-FAMILY-ALPHA" : "SECRET-FAMILY-BETA";
@@ -470,6 +597,33 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(trigger).toMatchObject({ lane: TRIGGERS["FAMILY CONCENTRATION"] });
     expect(trigger?.detail).toContain("6 of 8 held tasks across 2 families");
     expect(trigger?.detail).not.toContain("SECRET-FAMILY");
+
+    const x1Ids = Array.from({ length: 10 }, (_, i) => `a-${String(i)}`);
+    const x2Ids = Array.from({ length: 6 }, (_, i) => `b-${String(i)}`);
+    const sessionTasks: LogEvent[] = [
+      ...x1Ids.flatMap((version, i) => [
+        {
+          at: AT,
+          kind: "task.proposed" as const,
+          data: { version, task: { taskId: version, family: `SECRET-FAM-${String(i)}`, publicInput: {} } },
+        },
+        { at: AT, kind: "task.gate" as const, data: { version, gate: 1, outcome: "passed" } },
+      ]),
+      { at: AT, kind: "exam.finished", data: { session: "x-1", held: x1Ids } },
+      ...x2Ids.flatMap((version) => [
+        {
+          at: AT,
+          kind: "task.proposed" as const,
+          data: { version, task: { taskId: version, family: "SECRET-CLONE-FAM", publicInput: {} } },
+        },
+        { at: AT, kind: "task.gate" as const, data: { version, gate: 1, outcome: "passed" } },
+      ]),
+      { at: AT, kind: "exam.finished", data: { session: "x-2", held: x2Ids } },
+    ];
+    const perSession = overview(sessionTasks).triggers.find((each) => each.name === "FAMILY CONCENTRATION");
+    expect(perSession).toMatchObject({ lane: TRIGGERS["FAMILY CONCENTRATION"] });
+    expect(perSession?.detail).toContain("by session: x-2 6 of 6 (1 family)");
+    expect(perSession?.detail).not.toContain("SECRET-");
   });
 
   it("counts zero-billed compactions in BILLING RESIDUAL and epoch-spend only for open sessions", () => {
@@ -550,7 +704,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       ...events,
       {
         at: AT,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: {
           draft: {
             evaluator: "export const checks = { f: ({ files }) => files.length > 0 };",
@@ -757,7 +911,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
           billed: 0.2,
         },
       },
-      { at: AT, kind: "exam.drafted", data: { session: "d-1", draft: draftHash } },
+      { at: AT, kind: EXAM_DRAFTED, data: { session: "d-1", draft: draftHash } },
       { at: AT, kind: "draft.finished", data: { session: "d-1", ended: "finished", billed: 5 } },
       {
         at: AT,
@@ -843,7 +997,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
           scored: { wins: 1, losses: 1, ties: 0 },
         },
       },
-      // Overshoot comparison started AFTER pause(--after reported, base 0) was already reached
+      // An overshoot comparison started after the pause point (`--after reported`, base 0) was reached.
       {
         at: AT,
         kind: "comparison.started",
@@ -862,7 +1016,8 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     const byName = (name: keyof typeof TRIGGERS) => fired.filter((trigger) => trigger.name === name);
     expect(byName("DRAFT AUDITED")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDITED"] });
     expect(byName("DRAFT AUDIT DEFECTS")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDIT DEFECTS"] });
-    expect(byName("DRAFT AUDIT DEFECTS")[0]?.detail).toContain("unverified final pass");
+    expect(byName("DRAFT AUDIT DEFECTS")[0]?.detail).toContain("replayed final pass");
+    expect(byName("DRAFT AUDIT DEFECTS")[0]?.detail).not.toContain("unverified final pass");
     expect(byName("DRAFT AUDIT REFUSED")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDIT REFUSED"] });
     expect(byName("DRAFT AUDIT SKIPPED")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDIT SKIPPED"] });
     expect(byName("VERIFIER TOOL PROVENANCE")[0]).toMatchObject({
@@ -879,9 +1034,52 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(byName("ROLE YIELD SKEW")[0]).toMatchObject({ lane: TRIGGERS["ROLE YIELD SKEW"] });
 
     const daText = draftAuditRows(compLog).join("\n");
-    expect(daText).toContain("final-pass unverified defects: yes (1)");
+    expect(daText).toContain("final-pass defects: replayed (1)");
     expect(daText).not.toContain("SECRET-REF-PROSE");
     expect(daText).not.toContain("SECRET-WHY");
+    const unprobedLog: LogEvent[] = [
+      {
+        at: AT,
+        kind: "referee.draft",
+        data: {
+          session: "d-1",
+          pass: 2,
+          verdict: "defects",
+          findings: [
+            { kind: "vacuous-pass", probe: 1 },
+            { kind: "objective-defect", probe: 9 },
+          ],
+          probeRows: [{ id: 1 }],
+          turns: 2,
+          billed: 0.4,
+        },
+      },
+      { at: AT, kind: EXAM_DRAFTED, data: { session: "d-1", draft: draftHash } },
+      {
+        at: AT,
+        kind: "referee.draft",
+        data: {
+          session: "d-2",
+          pass: 2,
+          verdict: "defects",
+          findings: [{ kind: "vacuous-pass", probe: 1 }],
+          probeRows: [{ id: 1 }],
+          turns: 2,
+          billed: 0.3,
+        },
+      },
+      { at: AT, kind: EXAM_DRAFTED, data: { session: "d-2", draft: draftHash } },
+    ];
+    expect(draftAuditRows(unprobedLog).join("\n")).toContain(
+      "final-pass defects: unverified (1), replayed (1)",
+    );
+    expect(gamingRows(unprobedLog).join("\n")).toContain("audit-unverified-freeze");
+    expect(
+      overview(unprobedLog).triggers.find((trigger) => trigger.name === "DRAFT AUDIT DEFECTS")?.detail,
+    ).toContain("unverified final pass");
+    expect(
+      overview(unprobedLog).triggers.find((trigger) => trigger.name === "DRAFT AUDIT DEFECTS")?.detail,
+    ).toContain("replayed final pass");
     const grText = groundingRows(compLog, examsDir).join("\n");
     expect(grText).toContain("1 drafted check (1 with tools)");
     expect(grText).not.toContain("SECRET-FAULT");
@@ -1002,7 +1200,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       },
       {
         at: STAMP,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: {
           session: "d-1",
           draft: {
@@ -1080,12 +1278,10 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(byName("SPECIFICATION GAMING LEAD")[0]).toMatchObject({
       lane: TRIGGERS["SPECIFICATION GAMING LEAD"],
     });
-    expect(byName("SPECIFICATION GAMING LEAD")[0]?.detail).toContain("ceremony-only");
     expect(byName("SPECIFICATION GAMING LEAD")[0]?.detail).toContain("identical-objective cluster");
 
     const text = gamingRows(gamingLog).join("\n");
     expect(text).toContain("draft-rule-drop");
-    expect(text).toContain("audit-ceremony-only");
     expect(text).toContain("practice-hill-climbing");
     expect(text).toContain("untried-compare-fishing");
     expect(text).toContain("repeated-objective-cluster");
@@ -1123,7 +1319,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       { at: STAMP, kind: "campaign.opened", data: { budget: { dollars: 100, reserve: 1 } } },
       {
         at: STAMP,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: {
           draft: {
             rules: [{ id: "R1", statement: "Required rule" }],
@@ -1139,7 +1335,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       },
       { at: STAMP, kind: "task.proposed", data: { version: "v-held", taskId: "x-1-001", session: "x-1" } },
       { at: STAMP, kind: "task.proposed", data: { version: "v-prac", taskId: "x-1-002", session: "x-1" } },
-      // Builder references x-1-002 BEFORE it is released -> must flag time-indexed held-task leak!
+      // The Builder names x-1-002 before its release, which must flag a time-indexed held-task leak.
       {
         at: STAMP,
         kind: "build.call",
@@ -1155,7 +1351,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       { at: STAMP, kind: "task.gate", data: { version: "v-prac", gate: 1, outcome: "passed" } },
       { at: STAMP, kind: "task.state", data: { version: "v-prac", state: "released" } },
       { at: STAMP, kind: "build.checkpoint", data: { session: "b-1", harness: candDigest } },
-      // Examiner wake call mentions 8-char short digest -> must flag exam harness-digests leak!
+      // An Examiner wake naming an 8-character short digest must flag an exam harness-digest leak.
       {
         at: STAMP,
         kind: "exam.started",
@@ -1183,7 +1379,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
         kind: "condition.recorded",
         data: { id: pracCondId, condition: requireJsonValue(pracCond) },
       },
-      // Practice solve runs dead-cli (must NOT mask dead-cli from comparison solves!).
+      // A practice solve runs dead-cli, which must not mask dead-cli from comparison solves.
       { at: STAMP, kind: "solve.started", data: { solve: "sp-1", condition: pracCondId, side: "practice" } },
       {
         at: STAMP,
@@ -1202,7 +1398,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
         kind: "solve.finished",
         data: { solve: "sp-1", ending: { outcome: "pass" }, seconds: 20, turns: 7 },
       },
-      // 4 comparison solves run write-package (which invokes check-package internally), all 7 turns < 90s (must NOT trigger PASSES AT A SMALL WALL SHARE).
+      // Four comparison solves run write-package, all seven turns under 90 s: no PASSES AT A SMALL WALL SHARE.
       ...Array.from({ length: 4 }, (_, nth): LogEvent[] => [
         {
           at: STAMP,
@@ -1257,7 +1453,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(portText).not.toContain("record_id");
 
     const diagText = diagnosticRows(cluster6Log, states).join("\n");
-    // 3 bins shipped; write-package ran, check-package credited via write-package, ONLY dead-cli (1) unused despite practice call.
+    // Three bins; check-package is credited through write-package, and only dead-cli is unused.
     expect(diagText).toContain("shipped 3 bin programs, 1 never invoked across 4 comparison solves");
 
     const firedNames = overview(cluster6Log).triggers.map(({ name }) => name);
@@ -1299,5 +1495,361 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       },
     ];
     expect(seatSummaryRows(padded)[0]).toContain("pause overshoots: g-2 after pause(reported)");
+  });
+
+  it("reads unit-scale sideGap near zero without dividing by zero or misclassifying atBest", () => {
+    const unitPairs = [
+      {
+        task: "u-zero",
+        old: [true, true],
+        fresh: [true, true],
+        objective: {
+          direction: "higher" as const,
+          scale: "unit" as const,
+          old: [0, 0],
+          fresh: [0.895, 0.905],
+        },
+      },
+      {
+        task: "u-low",
+        old: [true],
+        fresh: [true],
+        objective: { direction: "lower" as const, scale: "unit" as const, old: [0.05], fresh: [0] },
+      },
+    ];
+    const bests = new Map([
+      ["u-zero", 0.9],
+      ["u-low", 0],
+    ]);
+    const oldGap = sideGap(unitPairs, "old", bests);
+    const freshGap = sideGap(unitPairs, "fresh", bests);
+    expect(oldGap).toMatchObject({ read: 2, unread: 0, atBest: 0 });
+    expect(oldGap.ratio).toBeCloseTo((1.9 + 1.05) / 2, 12);
+    expect(freshGap).toMatchObject({ read: 2, unread: 0, atBest: 2 });
+    expect(freshGap.ratio).toBeCloseTo(1, 12);
+  });
+});
+
+describe("the findings ledger", () => {
+  it("names each confirmed I0 or I1 row that waits on the operator in the newest window, and no other", () => {
+    const root = mkdtempSync(join(tmpdir(), "wri-ledger-"));
+    const vetted = ["confirmed", "plausible"].flatMap((verdict) =>
+      ["I0", "I1", "I2"].flatMap((importance) =>
+        ["operator", "repair"].map((fate) => ({ verdict, importance, fate })),
+      ),
+    );
+    mkdirSync(join(root, "2026-11-26-run"));
+    writeFileSync(
+      join(root, "2026-11-26-run", "vetting.md"),
+      [
+        "| id | finding | lanes | standing | owner | importance | verdict | fate |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        ...vetted.map(
+          ({ verdict, importance, fate }, at) =>
+            `| vet-${String(at + 1)} | f | primary | new | operator | ${importance} | ${verdict} | ${fate}: why |`,
+        ),
+      ].join("\n"),
+    );
+    const listed = findingsLedger(root, Date.parse("2026-11-26T00:00:00Z"), 7).filter((line) =>
+      /^- I[0-3]: 2026-/u.test(line),
+    );
+    const owed = vetted.flatMap(({ verdict, importance, fate }, at) =>
+      verdict === "confirmed" && fate === "operator" && importance !== "I2"
+        ? [`- ${importance}: 2026-11-26-run vet-${String(at + 1)}`]
+        : [],
+    );
+    expect(listed).toEqual(owed);
+    expect(owed).toHaveLength(2);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("reports corrected lane numbers and catches seat serving gaps, draft freeze deadlocks, unexercised judged lanes, and write refusals", () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const log: LogEvent[] = [
+      {
+        at,
+        kind: "campaign.opened",
+        data: {
+          seats: {
+            builder: { model: "claude/claude-opus-5-5", effort: "high" },
+            examiner: { model: "claude/claude-opus-5-5", effort: "high" },
+            reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "medium" },
+          },
+          solver: { model: "claude/claude-opus-5-5", effort: "medium" },
+          judged: true,
+        },
+      },
+      { at, kind: "draft.started", data: { session: "d-1" } },
+      { at, kind: "referee.draft", data: { session: "d-1", pass: 1, verdict: "defects", findings: [] } },
+      { at, kind: "referee.draft", data: { session: "d-1", pass: 2, verdict: "defects", findings: [] } },
+      { at, kind: "draft.finished", data: { session: "d-1", ended: "finished" } },
+      {
+        at,
+        kind: EXAM_DRAFTED,
+        data: {
+          session: "d-1",
+          draft: {
+            objective: {
+              quantity: "quality",
+              direction: "higher",
+              scale: "unit",
+              items: [{ id: "clarity", weight: 1, kind: "judge", criterion: "Clear structure and claims" }],
+            },
+          },
+        },
+      },
+      { at, kind: "campaign.ended", data: { ending: "exam", why: "unaccepted" } },
+      {
+        at,
+        kind: "referee.turn",
+        data: { reader: "r-1", turn: 1, stopReason: "error", model: null, error: "timeout" },
+      },
+      {
+        at,
+        kind: COMPARISON_STARTED,
+        data: { session: "g-1", old: "starter", fresh: "cand", starter: "starter" },
+      },
+      {
+        at,
+        kind: COMPARISON_REPORTED,
+        data: { session: "g-1", reading: "no-step", differences: [] },
+      },
+      {
+        at,
+        kind: "solve.call",
+        data: {
+          solve: "s-1",
+          tool: "write",
+          isError: true,
+          text: "EPERM: operation not permitted, realpath '/Users/x'",
+        },
+      },
+      {
+        at,
+        kind: "solve.call",
+        data: {
+          solve: "s-2",
+          tool: "edit",
+          isError: true,
+          text: "EACCES: permission denied, open '/tmp/outside'",
+        },
+      },
+    ];
+    const lines = diagnosticRows(log, join(tmpdir(), "nonexistent-states-dir")).join("\n");
+    expect(lines).toContain("[WARN] honesty (lane 9): seat serving gap: 1 unserved error turn (referee 1)");
+    expect(lines).toContain(
+      "[WARN] verdicts (lane 18): drafting failed to freeze: 2 draft-audit pass(es) (max pass 2, last defects) without contract.frozen",
+    );
+    expect(lines).toContain(
+      "[WARN] verdicts (lane 11): unexercised judged lane: exam declared judge items yet 0 referee.pair votes completed across 1 reported comparisons",
+    );
+    expect(lines).toContain(
+      "[WARN] honesty (lane 19): solver write/edit permission refusals: 2/2 solves hit EPERM/EACCES",
+    );
+
+    const clear = diagnosticRows([], join(tmpdir(), "nonexistent-states-dir")).join("\n");
+    expect(clear).toContain("all 11 structural checks clear");
+  });
+
+  it("catches environment-aborted unexercised judged lanes and per-harness write-refusal arm asymmetry", () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const starterDigest = "1".repeat(64);
+    const builtDigest = "2".repeat(64);
+    const starterCond = conditionOf("v-1", starterDigest);
+    const builtCond = conditionOf("v-1", builtDigest);
+    const starterCid = conditionId(starterCond);
+    const builtCid = conditionId(builtCond);
+    const starterSolves: LogEvent[] = Array.from({ length: 20 }, (_, i) => [
+      { at, kind: SOLVE_STARTED, data: { solve: `st-${String(i)}`, condition: starterCid } },
+      ...(i < 2
+        ? [
+            {
+              at,
+              kind: "solve.call" as const,
+              data: {
+                solve: `st-${String(i)}`,
+                tool: "write",
+                isError: true,
+                text: "EPERM: operation not permitted",
+              },
+            },
+          ]
+        : []),
+      {
+        at,
+        kind: SOLVE_FINISHED,
+        data: { solve: `st-${String(i)}`, ending: { outcome: "pass" } },
+      },
+    ]).flat();
+    const builtSolves: LogEvent[] = Array.from({ length: 40 }, (_, i) => [
+      { at, kind: SOLVE_STARTED, data: { solve: `bu-${String(i)}`, condition: builtCid } },
+      {
+        at,
+        kind: SOLVE_FINISHED,
+        data: { solve: `bu-${String(i)}`, ending: { outcome: "pass" } },
+      },
+    ]).flat();
+    const envAbortedLog: LogEvent[] = [
+      { at, kind: "campaign.opened", data: { judged: true } },
+      {
+        at,
+        kind: EXAM_DRAFTED,
+        data: {
+          session: "d-1",
+          draft: {
+            objective: {
+              quantity: "quality",
+              direction: "higher",
+              scale: "unit",
+              items: [{ id: "clarity", weight: 1, kind: "judge", criterion: "Clear structure" }],
+            },
+          },
+        },
+      },
+      { at, kind: "condition.recorded", data: { id: starterCid, condition: requireJsonValue(starterCond) } },
+      { at, kind: "condition.recorded", data: { id: builtCid, condition: requireJsonValue(builtCond) } },
+      {
+        at,
+        kind: COMPARISON_STARTED,
+        data: { session: "g-1", old: starterDigest, fresh: builtDigest, starter: starterDigest },
+      },
+      ...starterSolves,
+      ...builtSolves,
+      { at, kind: "referee.pair", data: { comparison: "g-1", judge: null, holistic: null } },
+      { at, kind: "campaign.ended", data: { ending: "environment", why: "judge error" } },
+    ];
+    const lines = diagnosticRows(envAbortedLog, join(tmpdir(), "nonexistent-states-dir")).join("\n");
+    expect(lines).toContain(
+      "[WARN] verdicts (lane 11): unexercised judged lane: exam declared judge items yet 0 referee.pair votes completed across 1 started comparison before ending environment",
+    );
+    expect(lines).toContain(
+      `[WARN] honesty (lane 19): solver write/edit permission refusals: 2/60 solves hit EPERM/EACCES; by harness: starter ${starterDigest.slice(0, 8)} 2/20 (10.0%)`,
+    );
+
+    const completedPairLog: LogEvent[] = [
+      ...envAbortedLog,
+      { at, kind: "referee.pair", data: { comparison: "g-1", judge: 1, holistic: 1 } },
+    ];
+    expect(
+      diagnosticRows(completedPairLog, join(tmpdir(), "nonexistent-states-dir")).join("\n"),
+    ).not.toContain("unexercised judged lane");
+
+    const operatorEnded = envAbortedLog.filter(({ kind }) => kind !== "campaign.ended");
+    expect(
+      diagnosticRows(
+        [...operatorEnded, { at, kind: "campaign.ended", data: { ending: "operator", why: "paused" } }],
+        join(tmpdir(), "nonexistent-states-dir"),
+      ).join("\n"),
+    ).not.toContain("unexercised judged lane");
+  });
+
+  it("excludes reverted-to-starter epochs from the PROMOTION UNCONFIRMED denominator", () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const revertLog: LogEvent[] = [
+      { at, kind: "harness.promoted", data: { harness: "h-first00", from: "starter" } },
+      { at, kind: "harness.reverted", data: { harness: "starter", from: "h-first00", reason: "no step" } },
+      { at, kind: "harness.promoted", data: { harness: "h-second0", from: "starter" } },
+    ];
+    const unconfirmed = overview(revertLog).triggers.find(({ name }) => name === "PROMOTION UNCONFIRMED");
+    expect(unconfirmed?.detail).toStartWith("2 of 2 promotions:");
+    expect(unconfirmed?.detail).toContain("h-first0 in epoch 2, closed");
+    expect(unconfirmed?.detail).toContain("h-second in epoch 4, open");
+  });
+
+  it("summarises judged pair counts, swap disagreements, extract coverage, and spend per comparison in pairRows", () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const judgedLog: LogEvent[] = [
+      {
+        at,
+        kind: COMPARISON_STARTED,
+        data: { session: "g-j", old: "h0", fresh: "h1", starter: "h0", tasks: ["v-1"] },
+      },
+      { at, kind: "referee.brief", data: { comparison: "g-j", billed: 0.4 } },
+      {
+        at,
+        kind: "referee.pair",
+        data: {
+          comparison: "g-j",
+          judge: 0.5,
+          holistic: 1,
+          criteria: { clarity: 0.5, depth: 0, holistic: 1 },
+          disagreed: ["depth"],
+          extracts: { files: 4, empty: 1, faults: 0, truncated: 2 },
+          billed: 1.25,
+        },
+      },
+      {
+        at,
+        kind: "referee.pair",
+        data: {
+          comparison: "g-j",
+          judge: null,
+          holistic: null,
+          extracts: { files: 2, empty: 0, faults: 1, truncated: 0 },
+          billed: 0.35,
+        },
+      },
+    ];
+    const output = pairRows(judgedLog).join("\n");
+    expect(output).toContain(
+      "== g-j judge: 1/2 pairs (1 null), swap disagreements 1/3 votes, extracts 6 files (1 empty, 1 faults, 2 truncated), billed $2.00",
+    );
+    expect(output).not.toContain("depth");
+    expect(output).not.toContain("clarity");
+  });
+
+  it("excludes judge instrument rows from CONTROL COVERAGE and REFUSALS BY CHECK, and loads explicitly named seeded runs", async () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const judgedChecks: LogEvent[] = [
+      {
+        at,
+        kind: "checker.read",
+        data: {
+          rows: [
+            { id: "check-a", instrument: "author", named: 1, caught: 1 },
+            { id: "clarity", instrument: "judge", named: 0, caught: 0 },
+          ],
+        },
+      },
+      { at, kind: SOLVE_STARTED, data: { solve: "s-pass", condition: "c-1" } },
+      { at, kind: SOLVE_FINISHED, data: { solve: "s-pass", ending: { outcome: "pass" } } },
+      { at, kind: SOLVE_STARTED, data: { solve: "s-fail", condition: "c-1" } },
+      { at, kind: SOLVE_FINISHED, data: { solve: "s-fail", ending: { outcome: "fail" } } },
+      {
+        at,
+        kind: "verdict",
+        data: { solve: "s-fail", task: "v-1", kind: "fail", blocking: ["check-a"] },
+      },
+    ];
+    const fired = overview(judgedChecks).triggers.map(({ name }) => name);
+    expect(fired).not.toContain("CONTROL COVERAGE");
+    expect(fired).not.toContain("REFUSALS BY CHECK");
+
+    const runsDir = mkdtempSync(join(tmpdir(), "wri-seeded-runs-"));
+    try {
+      const opened = `${JSON.stringify({ at, kind: "campaign.opened", data: { project: "jobstat" } })}\n`;
+      for (const [name, seeded] of [
+        ["jobstat-live", false],
+        ["jobstat-seed", true],
+      ] as const) {
+        const folder = join(runsDir, "here", name);
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, "log.jsonl"), opened);
+        if (seeded) writeFileSync(join(folder, "seed.json"), '{"from":"prior"}\n');
+      }
+      const repo = join(import.meta.dir, "..");
+      const byExactSeed = await loadRuns(
+        { home: runsDir, since: "2026-11-01", names: ["jobstat-seed"], repo },
+        "unpriced",
+      );
+      expect(byExactSeed.runs.map(({ name }) => name)).toEqual(["jobstat-seed"]);
+      const byDomain = await loadRuns(
+        { home: runsDir, since: "2026-11-01", names: ["jobstat"], repo },
+        "unpriced",
+      );
+      expect(byDomain.runs.map(({ name }) => name)).toEqual(["jobstat-live"]);
+    } finally {
+      rmSync(runsDir, { recursive: true, force: true });
+    }
   });
 });

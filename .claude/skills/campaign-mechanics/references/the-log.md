@@ -11,7 +11,7 @@ cumulative spend in `src/kernel/reports.ts`; and per-seat execution traces (`sol
 
 A **condition** (`src/kernel/condition.ts`) is a content-addressed record capturing the contract,
 harness, task version, model and effort, price table, runtime packages and Bun version, compaction
-mode, tool trees, and sandbox isolation profile and platform (`tools/d2/campaign.ts`). It omits
+mode, tool trees, and sandbox isolation profile and platform (`tools/campaign/campaign.ts`). It omits
 ambient executables on the host `PATH` (such as `python3`) because hashing them would invalidate all
 prior solves whenever a campaign migrates between hosts; whether to include them remains an operator
 decision. Instead, each launch receipt records the detected environment (`hostPython`,
@@ -23,6 +23,6 @@ archival experimental record, making log decoding the one intentional exception 
 ban on backwards-compatibility paths (`tools/oxlint/HABITS.md`, 12.3).
 
 Every seat's sandbox blocks access to the repository and all of its worktrees (`worktreesOf`,
-`tools/d2/campaign.ts`). `runs retire` moves any campaign idle for 24 hours into `data/runs/` in the
+`tools/campaign/campaign.ts`). `runs retire` moves any campaign idle for 24 hours into `data/runs/` in the
 main worktree and deletes seed directories; the archive directory is git-ignored and likewise
 blocked by the sandbox.

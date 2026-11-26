@@ -1,5 +1,5 @@
 /**
- * A check program's pack as a campaign stages it (`tools/d2/exam.ts`): its brief, tasks and
+ * A check program's pack as a campaign stages it (`tools/campaign/exam.ts`): its brief, tasks and
  * controls, the contract and public resources it supplies to a solve, and the backends a seat runs on.
  */
 import type { Api, Model } from "@earendil-works/pi-ai";
@@ -19,24 +19,20 @@ import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { type PublicResource, publicResource } from "#src/tools/answer.ts";
 
-/** Subset of fields read from a `brief.json`. */
 interface PackBrief {
   readonly domain: string;
-  /** Domain scope and practitioner conventions when declared (present in prompt-drafted exams from
-   *  `tools/d2/exam.ts`, absent in v1 bundle briefs). */
+  /** Present in prompt-drafted exams (`tools/campaign/exam.ts`), absent in v1 bundle briefs. */
   readonly scope?: string;
   readonly conventions?: string;
   readonly ruleDecisions: readonly (JsonObject & { id: string; statement: string; visibility: string })[];
   readonly truthChecks: readonly { assertion: string; execution: { publicInputPaths: string[] } }[];
-  /** Declared optimisation objective, if any (`src/kernel/contract.ts`). */
   readonly objective?: Objective;
   readonly artifactSchema: readonly JsonObject[];
   readonly designRuleConstants: readonly JsonObject[];
   readonly designRuleSets?: readonly JsonObject[];
 }
 
-/** Structure of `controls.json`: answers that must pass and perturbations that a named check
- *  must reject. */
+/** `controls.json`: answers that must pass and perturbations a named check must reject. */
 interface PackControls {
   readonly accept: readonly { taskId: string; artifact: JsonValue; files?: ControlFile[] }[];
   readonly reject: readonly {
@@ -47,14 +43,12 @@ interface PackControls {
   }[];
 }
 
-/** Battery files inside a `correctness-model` directory that are excluded when staging checks. */
 const BATTERY_FILES = new Set(["tasks.json", "controls.json"]);
 
 /**
- * Copies a bundle's check program to `to` while omitting its battery files (`tasks.json` and
- * `controls.json`, which contain hidden task values and controls). Copies into a sibling `.partial`
- * directory and renames atomically so an interrupted copy never leaves an incomplete check tree
- * that later runs mistake for a staged program. Returns `to`.
+ * Copies a bundle's check program to `to` without its battery files, which hold hidden task values
+ * and controls. The copy goes to a sibling `.partial` and is renamed, so an interrupted copy never
+ * leaves a check tree a later run mistakes for a staged program.
  */
 export function checkProgram(bundle: string, to: string): string {
   const filter = (path: string) => !BATTERY_FILES.has(basename(path));
@@ -65,21 +59,28 @@ export function checkProgram(bundle: string, to: string): string {
   return to;
 }
 
-/** Builds backend options matching the default Claude configuration with state stored in `home`
- *  (campaigns may override the compaction window via `--solver-window` in `tools/d2/setting.ts`).
- *  Uses a 5-minute cache TTL because 99.1% of 110,009 recorded solver turns occurred within five
- *  minutes of the previous turn, whereas the default 1-hour cache writes billed 13% more. */
+/** Backend options as the default Claude configuration, with state in `home` (`--solver-window` in
+ *  `tools/campaign/setting.ts` overrides the compaction window). The cache TTL is 5 minutes because
+ *  nearly every solver turn follows the previous one within five minutes, and the 1-hour cache
+ *  writes bill more. */
 export function sweepOptions(
   home = homedir(),
   window = SWEEP_COMPACT_WINDOW,
   shutdown?: AbortSignal,
+  cwd?: string,
 ): BackendOptions {
   return {
-    claude: { executable: claudeExecutable(), compaction: { window }, home, cacheTtl: "5m", shutdown },
+    claude: {
+      executable: claudeExecutable(),
+      compaction: { window },
+      home,
+      ...keyIfDefined("cwd", cwd),
+      cacheTtl: "5m",
+      shutdown,
+    },
   };
 }
 
-/** Resolves a `provider/model` identifier against this host's configured backends. */
 export function modelNamed(name: string): Model<Api> {
   const [provider = "", ...id] = name.split("/");
   const model = backends(sweepOptions()).getModel(provider, id.join("/"));
@@ -87,20 +88,19 @@ export function modelNamed(name: string): Model<Api> {
   return model;
 }
 
-/** Reads a pack's brief and task list (including hidden values). */
 export function readPack(bundle: string) {
   const read = (file: string): string => readFileSync(join(bundle, file), "utf8");
   return { brief: parseJsonAs<PackBrief>(read(BRIEF_FILE)), tasks: parseJsonAs<Task[]>(read(TASKS_FILE)) };
 }
 
-/** Reports how `toolId` resolves for `bundle`: `"pack"` if installed inside `.toolchain/`,
- *  `"host"` if forwarded via `.toolchain/host-tools.json`, or `false` if unavailable. */
+/** `"pack"` if installed inside `.toolchain/`, `"host"` if forwarded via
+ *  `.toolchain/host-tools.json`, or `false`. */
 export function toolOnPath(bundle: string): (toolId: string) => ToolAvailability {
   const tools = join(bundle, ".toolchain");
   return (toolId) => resolveVerifierTool(tools, toolId)?.kind ?? false;
 }
 
-/** Reads a pack's accept and reject controls in file order with their author-assigned labels. */
+/** Accept and reject controls in file order, with their author-assigned labels. */
 export function packControls(bundle: string): Control[] {
   const { accept, reject } = parseJsonAs<PackControls>(readFileSync(join(bundle, CONTROLS_FILE), "utf8"));
   return [
@@ -119,7 +119,6 @@ export function packControls(bundle: string): Control[] {
   ];
 }
 
-/** Builds a `Contract` from a pack brief's public rule decisions and the draft's answer format. */
 export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract {
   return {
     answerFormat,
@@ -130,16 +129,15 @@ export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract 
   };
 }
 
-/** Wraps a v1 task as a `TaskPackage`, attaching the deduplicated rule IDs cited by its family's checks. */
+/** Wraps a v1 task as a `TaskPackage`, attaching the deduplicated rule IDs its family's checks cite. */
 export function packageOf(checks: string, task: Task): TaskPackage {
   const cited = applicableTruthChecks(readBrief(checks), task).flatMap((check) => check.citedDecisionIds);
   return { ...task, ruleIds: [...new Set(cited)], checks };
 }
 
 /**
- * Projects a pack brief into the public resources shown to solvers, ported from
- * `7af7315:src/truth/public-resources.ts:118-144` (with row projections from lines 66-111): each
- * row retains only its declared fields in order, omitting absent keys.
+ * The public resources shown to solvers, ported from `7af7315:src/truth/public-resources.ts`: each
+ * row keeps only its declared fields, in order, omitting absent keys.
  */
 export function sweepResources(brief: PackBrief): PublicResource[] {
   const rows = (list: readonly JsonObject[], keys: readonly string[]): JsonObject[] =>
@@ -147,20 +145,32 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
       Object.fromEntries(keys.flatMap((key) => (row[key] === undefined ? [] : [[key, row[key]]]))),
     );
   const named: [string, JsonValue[]][] = [
-    // Include domain scope and conventions when declared (prompt-drafted exams state units and
-    // tolerances here; v1 bundles omit both and receive no `public-scope` file).
+    // Prompt-drafted exams state units and tolerances here; v1 bundles omit both and receive no
+    // `public-scope` file.
     [
       "public-scope",
       brief.scope === undefined && brief.conventions === undefined
         ? []
         : [{ domain: brief.domain, scope: brief.scope ?? "", conventions: brief.conventions ?? "" }],
     ],
-    // Expose the declared objective alongside the public rules so solvers know what is measured.
     [
       "public-objective",
       brief.objective === undefined
         ? []
-        : [{ ...brief.objective, statement: objectiveLine(brief.objective) }],
+        : [
+            {
+              ...brief.objective,
+              ...keyIfDefined(
+                "items",
+                brief.objective.items?.map(({ id, weight, kind }) => ({
+                  id,
+                  weight,
+                  ...keyIfDefined("kind", kind),
+                })),
+              ),
+              statement: objectiveLine(brief.objective),
+            },
+          ],
     ],
     [
       "public-validity-rules",
@@ -169,7 +179,6 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
         publicInputPaths: check.execution.publicInputPaths,
       })),
     ],
-    // Mirrors `public-resources.ts:113-117` and `66-75`.
     [
       "public-rule-decisions",
       rows(

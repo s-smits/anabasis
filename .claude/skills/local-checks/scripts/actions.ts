@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 /**
- * How many GitHub Actions runs each workflow started over a window, split by the event that started
- * it, with the first run each made in the window.
- *
- *   bun .claude/skills/local-checks/scripts/actions.ts [--hours 24]
+ * How many GitHub Actions runs each workflow started over a window, by the event that started it,
+ * with each one's first run in the window: `actions.ts [--hours 24]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -16,7 +14,6 @@ interface Run {
   readonly createdAt: string;
 }
 
-/** One line a workflow, most runs first: its count, its count by event, and its first run. */
 function tally(runs: readonly Run[]): string[] {
   const names = [...new Set(runs.map((run) => run.workflowName))];
   const rows = names.map((name) => {

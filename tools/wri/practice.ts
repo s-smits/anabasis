@@ -1,25 +1,14 @@
 /**
- * Every practice solve, one a row, with the place its harness held in the log when it started:
+ * Every practice solve, one a row, with the place its harness held in the log when it started (lane 12):
  *
  *   bun tools/wri/practice.ts <log>
  *   bun tools/wri/practice.ts --log <log> [--session b-2]
  *
- * A row names the Builder session (`practiceOf`, `tools/wri/folds.ts`), the turn of the `practice` call
- * that returned it, the task, the harness and its role: `starter`, `reference` (promoted before the
- * solve started), `compared g-N` (frozen for a comparison, with that comparison's reading, earlier or
- * later), or `practised-only`. It then says whether the state moved since the session's previous
- * practice call: from the solves' own harness digests, which every solve's condition records, with
- * the session's file-tool and shell calls that wrote the harness between the two calls beside it. A
- * shell write leaves no `edit` call, so the digests are the reading and the calls are the context;
- * where a solve's condition names no harness, the row says that it rests on the calls alone.
- *
- * Without it lane 13 sessions build this table by hand, parsing solve ids out of the practice call's
- * text, and can take solves under practised-only states for probes of the starter. The role column
- * is that count's fold.
- *
- * It prints outcomes, so lane 14 reads it only after it has graded. It decides nothing: which
- * practice taught the Builder what is the lane's reading of the turns around each call (`slice.ts
- * Builder:<session>{<turn>}`).
+ * A row names the Builder session, the `practice` call's turn, the task, the harness and its role
+ * (`starter`, `reference`, `compared g-N` or `practised-only`), and whether the state moved since the
+ * session's previous practice call. The solves' harness digests are the reading, and the calls that
+ * wrote the harness are context, since a shell write leaves no `edit` call. It prints outcomes, so the
+ * blind grading lane reads it only after grading.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { starterIn } from "#src/campaign/climb.ts";
@@ -35,11 +24,10 @@ import { proposedTasks } from "./tasks.ts";
 
 const USAGE = "usage: bun tools/wri/practice.ts (<log> | --log <log>) [--session <id>]";
 const OPTIONS = { log: "text", session: "text" } as const;
-/** A shell command that names the harness's own folders writes there as often as it reads. It names
- *  the guide's folder too, unlike `harnessTriggers`' `.toolchain` test, which lists tool files alone. */
+/** A shell command that names the harness's own folders writes there as often as it reads; it names
+ *  the guide's folder too. */
 const NAMES_HARNESS = /(^|[\s"'=/])(harness\/|\.toolchain|agent\/)/;
 
-/** A `practice` call of a session: where the log holds it and the turn it was asked in. */
 interface Asked {
   readonly index: number;
   readonly turn: number | null;
@@ -52,7 +40,6 @@ interface Making {
   readonly reading: string;
 }
 
-/** The facts a role is read from: the starter, each promotion and each comparison's new harness. */
 function rolesOf(log: Index) {
   const started = log.events.flatMap(({ kind, data }, at) =>
     kind === "comparison.started" ? [{ at, data }] : [],
@@ -91,8 +78,6 @@ function rolesOf(log: Index) {
   };
 }
 
-/** The session's calls between two log indices that wrote its harness: its file tools by name, and
- *  shell commands naming the harness's folders. */
 function editsBetween(build: Build, from: number, until: number): string {
   const calls = build.calls.filter(({ index }) => index > from && index < until);
   const files = calls.filter(({ tool }) => FILE_WRITERS.has(tool)).length;
@@ -103,7 +88,6 @@ function editsBetween(build: Build, from: number, until: number): string {
   return `${String(files)} file-tool, ${String(shell)} shell naming the harness`;
 }
 
-/** One session's rows, a practice solve each, and its calls that started none. */
 function sessionRows(
   log: Index,
   build: Build,
@@ -146,7 +130,6 @@ function sessionRows(
   return { rows, empty: calls.filter(({ index }) => !answered.has(index)).length, solves };
 }
 
-/** The table, a session at a time, then the totals by role and how the solves ended. */
 export function practiceRows(events: readonly LogEvent[], only: string | null = null): string[] {
   const log = indexOf(events);
   const roleOf = rolesOf(log);

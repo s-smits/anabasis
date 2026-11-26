@@ -47,7 +47,6 @@ const CELL_CHARS = 80;
 const DIGEST = /^[0-9a-f]{64}$/u;
 const NOT_RECORDED = "n/r";
 const SLICE = ".claude/skills/oracle-handover/scripts/slice.ts";
-/** The selector seat `slice.ts` reads for each of the log's seats. */
 const SLICE_SEATS = new Map(
   Object.entries({
     build: "Builder",
@@ -58,14 +57,12 @@ const SLICE_SEATS = new Map(
   } satisfies Record<Seat, string>),
 );
 const VERBS = ["kinds", "events", "solves", "trace"];
-/** The numeric comparisons `--where` takes, each against a number written after it. */
 const BOUNDS = new Map([
   [">", (value: number, bound: number) => value > bound],
   [">=", (value: number, bound: number) => value >= bound],
   ["<", (value: number, bound: number) => value < bound],
   ["<=", (value: number, bound: number) => value <= bound],
 ]);
-/** The columns of `solves`, which `--where` and `--count-by` name; a number is printed with these digits. */
 const SOLVE_COLUMNS = [
   "solve",
   "comparison",
@@ -109,7 +106,6 @@ interface EventQuery {
   readonly full: boolean;
 }
 
-/** Where one `data` key stood: the JSON types it held and the lines it held them on. */
 interface KeyHeld {
   readonly types: Set<string>;
   readonly lines: number[];
@@ -119,19 +115,17 @@ interface KindHeld {
   readonly keys: Map<string, KeyHeld>;
 }
 
-/** A log named by its path or by its campaign's folder. */
-export function logPath(named: string): string {
+function logPath(named: string): string {
   return existsSync(named) && statSync(named).isDirectory() ? join(named, LOG_FILE) : named;
 }
 
-/** Lines of the log are its events' indices from 1, as `grep -n` and `sed -n` count them. */
+/** Log lines count from 1, as `grep -n` and `sed -n` count them. */
 const lineOf = (index: number) => index + 1;
 function span(lines: readonly number[]): string {
   const [first = 0, last = first] = [lines[0], lines.at(-1)];
   return first === last ? `line ${String(first)}` : `lines ${String(first)}-${String(last)}`;
 }
 
-/** Each kind and each of its `data` keys: the types each held and the lines it stood on. */
 function kindRows(events: readonly LogEvent[], only?: ReadonlySet<string>): string[] {
   const kinds = new Map<string, KindHeld>();
   for (const [index, { kind, data }] of events.entries()) {
@@ -161,14 +155,12 @@ function kindRows(events: readonly LogEvent[], only?: ReadonlySet<string>): stri
   return rows;
 }
 
-/** A field by its dotted path into an event's `data`. */
 function fieldOf(data: JsonValue, path: string): JsonValue | undefined {
   let value: JsonValue | undefined = data;
   for (const part of path.split(".")) value = asRecord(value)?.[part];
   return value;
 }
 
-/** A value as one cell: a string as itself, anything else as JSON, absent as `-`. */
 const whole = (value: JsonValue | undefined): string =>
   value === undefined ? "-" : isString(value) ? value : JSON.stringify(value);
 
@@ -182,11 +174,7 @@ function cell(value: JsonValue | undefined, full: boolean): string {
     : said;
 }
 
-/**
- * Whether an event's field meets one `--where`, on the uncut value: `f=v`, `f!=v` and `f~prefix` on
- * its text, `f>n`, `f>=n`, `f<n` and `f<=n` on its number. A field that is absent or not a number
- * meets no numeric bound, and is `unmeasured`, so that `eventRows` counts it apart instead of as 0.
- */
+/** Whether an event's field meets one `--where`, on the uncut value. */
 function meets(data: JsonValue, condition: string): boolean | "unmeasured" {
   const [, path = "", op = "", wanted = ""] = /^([\w.]+)(!=|>=|<=|=|~|>|<)(.*)$/u.exec(condition) ?? [];
   const bound = BOUNDS.get(op);
@@ -200,7 +188,6 @@ function meets(data: JsonValue, condition: string): boolean | "unmeasured" {
   return op === "=" ? value === wanted : value !== wanted;
 }
 
-/** The items whose fields meet every `--where`, and the words that say so, with those a bound left out. */
 function filtered<T>(items: readonly T[], dataOf: (item: T) => JsonValue, where: readonly string[]) {
   let unmeasured = 0;
   const chosen = items.filter((item) => {
@@ -213,7 +200,6 @@ function filtered<T>(items: readonly T[], dataOf: (item: T) => JsonValue, where:
   return { chosen, filters: where.length === 0 ? "" : ` where ${where.join(" and ")}${left}` };
 }
 
-/** One kind's events a row each, or several kinds' with the kind named, or one field's counts. */
 function eventRows(events: readonly LogEvent[], query: EventQuery): string[] {
   const range = /^(\d+)(?:-(\d+))?$/u.exec(query.lines ?? "");
   const from = Number(range?.[1] ?? 1);
@@ -270,10 +256,7 @@ function eventRows(events: readonly LogEvent[], query: EventQuery): string[] {
   ];
 }
 
-/**
- * One solve's columns as values: a number stays a number for `--where`, a field the log does not
- * record is null (`n/r`), and the seconds and share of the deadline of a solve with no end are absent.
- */
+/** A field the log does not record is null (`n/r`). */
 function solveRecord(solve: Solve, ruled: string | null | undefined, family: string | null): JsonObject {
   const ended = solve.outcome !== null;
   const share = ended && solve.wallSeconds > 0 ? Math.round((solve.seconds / solve.wallSeconds) * 100) : null;
@@ -305,8 +288,7 @@ function solveCell(record: JsonObject, column: string): string {
   return whole(value);
 }
 
-/** Every solve a row as the folds read it, or one column's counts among them, then by role and outcome. */
-export function solveRows(events: readonly LogEvent[], only: SolveQuery): string[] {
+function solveRows(events: readonly LogEvent[], only: SolveQuery): string[] {
   const index = indexOf(events);
   const families = familiesOf(events);
   const records = index.solves
@@ -347,7 +329,6 @@ export function solveRows(events: readonly LogEvent[], only: SolveQuery): string
   ];
 }
 
-/** The `slice.ts` command for each seat's trace or solve whose id is `id`, or ends or begins so. */
 function traceRows(events: readonly LogEvent[], id: string, log: string): string[] {
   const owners = new Map<string, string>();
   for (const { seat, id: owner } of tracesIn(events)) owners.set(`${seat} ${owner}`, owner);

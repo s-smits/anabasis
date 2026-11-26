@@ -1,6 +1,6 @@
-// The replay that `bun run land --sanitize` makes of a chain whose parent moved (`restacked`,
+// The replay `bun run land --sanitize` makes of a chain whose parent moved (`restacked`,
 // `tools/runtime/restack.ts`), over real commits: each pull request's own commits move onto the new
-// head beneath it, from the head it was built on, and nothing of the parent's old commits comes with them.
+// head beneath it, and none of the parent's old commits come with them.
 import { afterAll, describe, expect, it } from "bun:test";
 import { gitText } from "#src/meta/git.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -33,7 +33,6 @@ git("init", "-q", "-b", "main");
 git("config", "user.name", "t");
 git("config", "user.email", "t@t.dev");
 const trunk = step("base.txt", "base\n");
-// #1 holds two commits, #2 one on #1, #3 one on #2.
 step("a.txt", "a\n");
 const a = step("a2.txt", "a2\n");
 const b = step("b.txt", "b\n");

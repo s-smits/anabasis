@@ -6,31 +6,19 @@ import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "../.
 import { terminateAndReapProcessGroupId } from "../../src/meta/subprocess.ts";
 
 /**
- * Serves the front-end page and its API on loopback only. Bun bundles `index.html` on demand and
- * reloads the page on edits; the API reads campaign logs on each request so newly appended events
- * appear on the next poll.
- *
- *   bun serve.ts [--exam-side] [--repo <dir>]        PORT changes the port (5173)
- *
- * Every API request requires the bearer token printed at startup, because on macOS a Builder or
- * solver shell can reach loopback ports. The token is generated once and persisted in `.token`
- * beside this file (ignored by Git and excluded by each seat's sandbox alongside the repository)
- * so that server restarts keep open browser tabs authenticated instead of invalidating them.
- * Passing `--exam-side` enables the exam tier, which exposes task text, hidden values, answers,
- * and Referee rulings; run it only where no Builder or solver is active. Passing `--repo <dir>`
- * reads campaigns from `<dir>/.ana/d2/<name>/log.jsonl` (such as a fixture from
- * `test/fixture-campaign.ts` or another checkout) instead of scanning all worktrees of this
- * repository.
- *
- * The entry process supervises a serving child and restarts it whenever `HEAD` moves. A rebase can
- * rewrite many files in a single burst, leaving Bun's file watcher serving a stale module that
- * imports a removed component until the server process is restarted.
+ * Serves the page and its API on loopback only: `bun serve.ts [--exam-side] [--repo <dir>]`, `PORT`
+ * changing the port (5173). Every API request needs the token printed at start, since on macOS a
+ * seat's shell can reach loopback ports; it persists in `.token` beside this file, ignored by Git
+ * and hidden from every seat, so a restart keeps open tabs signed in. `--exam-side` enables the
+ * exam tier (task text, hidden values, answers, rulings): run it only where no Builder or solver is
+ * active. `--repo <dir>` reads `<dir>/.ana/d2/<name>/log.jsonl` instead of this repository's
+ * worktrees. The entry process restarts its serving child whenever `HEAD` moves, since a rebase can
+ * leave Bun's watcher serving a stale module.
  */
 /** Environment variable marking the supervised child process that serves HTTP requests. */
 const SERVING = "ANA_UI_SERVING";
 const MOVED_MS = 2000;
 
-/** Returns the current `HEAD` commit hash, or an empty string if Git cannot resolve it. */
 async function headOf(): Promise<string> {
   const git = capturedSpawn(["git", "rev-parse", "HEAD"], { cwd: import.meta.dir, stderr: "ignore" });
   return (await new Response(git.stdout).text()).trim();
@@ -52,8 +40,8 @@ if (Bun.env[SERVING] === undefined) {
     terminateAndReapProcessGroupId(child.pid).then(leave, leave);
   };
   for (const signal of ["SIGINT", "SIGTERM"] as const) runtimeProcess.on(signal, end);
-  // A parent holding a pipe to it (Bun's `stdin: "pipe"` is a socket), as the browser tests do, ends
-  // it by exiting however it exits; a terminal, `/dev/null` or a closed fd 0 changes nothing.
+  // A parent holding a pipe to it (Bun's `stdin: "pipe"` is a socket), as the browser tests do, ends it
+  // by exiting however it exits; a terminal, `/dev/null` or a closed fd 0 changes nothing.
   try {
     const input = fstatSync(0);
     if (input.isFIFO() || input.isSocket()) Bun.stdin.text().then(end, end);
@@ -73,7 +61,6 @@ if (Bun.env[SERVING] === undefined) {
     child = start();
   }
 }
-// Exits the serving child when its parent terminates and closes stdin.
 Bun.stdin.text().then(leave, leave);
 
 const { values } = parseArgs({

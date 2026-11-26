@@ -1,32 +1,20 @@
 /**
- * What a run keeps of its start beside the campaign's log, `launch-<session>.json`: the flags, the
- * commit, whether the tree was dirty, the load it started under and the Bun. The log holds the
- * host's code by content and no commit, so this is where a run's commit is on record, and the flags
- * are what a campaign is run again on (`bun run runs continue`).
- *
- * The campaign command keeps one a run, as `launch-run-<n>.json` (`keepReceipt`,
- * `tools/d2/harness-builder.ts`), and `bun run runs launch` writes its output beside it under the
- * same `n` (`nextRun`). An older campaign may instead hold one for each round, standalone
- * comparison or session it started, under that session's id. One reader numbers the next run.
+ * What a run keeps of its start beside the campaign's log, `launch-<session>.json`: flags, commit,
+ * whether the tree was dirty, load, Bun, login and Python. The log names the host's code by
+ * content, not commit, so this is where a run's commit is on record, and its flags are what
+ * `bun run runs continue` runs again on. The campaign command keeps one a run as `launch-run-<n>.json`
+ * (`keepReceipt`, `tools/campaign/harness-builder.ts`); an older campaign may hold one per round or
+ * session. `nextRun` numbers the next run.
  *
  *   bun run runs source <name> [--holds <commit>]... [--has <text>]...
  *   bun run runs source (--holds <commit> | --has <text>)...
  *
- * `source` says each run's commit, whether its tree was clean, the load it started under, where the
- * commit is published and whether it holds a named fix: the first two checks of "was the mechanism
- * live in run X" (attribution-and-proof), what an outside reader can open (oracle-handover) and
- * whether a patch can reach a live run (run-improvement-campaign). It prints no flag and no path a
- * receipt holds.
- *
- * Without a name it lists every campaign a reader reads whose every launch carries what is asked
- * (`ranWith`), and `runs replay` takes the same flags. A fix is asked for by its commit (`--holds`),
- * or by text its code holds (`--has`, in `src`, `tools` and `packages`), which a restack that rewrote
- * the fix's commits leaves in place, where a run of an earlier head of a pull request holds no
- * commit of its later heads. Runs are compared and triaged only with runs that had the mechanism in
- * question (the operator's choice), and a run that lacks it is none of its evidence (AGENTS.md,
- * section 9). Named runs use the same predicate before printing their details, so neither `--has`
- * is ignored nor mixed launches printed for `--holds`. More than one name is refused: otherwise the
- * first name would silently discard the others.
+ * `source` says each run's commit, whether its tree was clean, its load, where the commit is
+ * published and whether it holds a named fix; it prints no flag or path a receipt holds. Without a
+ * name it lists every campaign whose every launch carries what is asked (`ranWith`), as `runs
+ * replay` does. A fix is asked for by its commit (`--holds`) or by text its code holds (`--has`, in
+ * `src`, `tools` and `packages`), which survives a restack that rewrites the fix's commits. More
+ * than one name is refused, since the first would silently discard the others.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitMaybe } from "#src/meta/git.ts";
@@ -35,11 +23,10 @@ import { dirname, join } from "#src/meta/path.ts";
 import { compareCodeUnits, hashJsonValue } from "#src/meta/stable-json.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { toolchainPathDirs } from "#src/wall/policy.ts";
+import { toolchainPathDirs } from "#src/sandbox/policy.ts";
 import { isCampaign, Misused, type Run } from "./registry.ts";
 import { readAcross, readableAcross } from "./snapshots.ts";
 
-/** What a run is asked to have run with: commits its launch holds, and text its source holds. */
 interface Asked {
   readonly holds: readonly string[];
   readonly has: readonly string[];
@@ -64,21 +51,19 @@ export interface Receipt {
   readonly python?: HostPython | null;
 }
 
-/** The first `python3` on the wall's path, with the packages it holds whoever runs it. */
 export interface HostPython {
   readonly version: string;
-  /** Each as `name==version`, sorted. */
   readonly packages: readonly string[];
 }
 
 const RECEIPT = /^launch-(.+)\.json$/;
-/** The refs `source` names of one commit before it counts the rest. */
+/** How many refs `source` names for one commit before it counts the rest. */
 const SHOWN = 3;
-/** A flag value longer than this is a sentence, such as a prompt, and `source` names it only. */
+/** A flag value longer than this is a sentence, such as a prompt, and `source` only names it. */
 const SHOWN_CHARS = 40;
 
-/** Where `--has` looks: the code a run executes, and none of the documents that name a mechanism
- *  before it is built. */
+/** Where `--has` looks: the code a run executes, not the documents that name a mechanism before it
+ *  is built. */
 const CODE = ["src", "tools", "packages"];
 /**
  * Prints a Python's version and packages. Run with `-I`: a solve's home is its own, so the user's
@@ -104,8 +89,8 @@ print(json.dumps([sys.version.split()[0], [named(many) for many in found.values(
 const PYTHON_SECONDS = 10;
 const runOf = (session: string) => Number(/^run-(\d+)$/.exec(session)?.[1] ?? 0);
 
-/** What the first `python3` among `dirs` is and holds, or null where none is there or it does not
- *  answer. A launch goes on either way: this is a fact for reading, and it decides nothing. */
+/** What the first `python3` among `dirs` is and holds, or null where none answers. A launch goes on
+ *  either way: this is a fact for reading. */
 export function hostPython(dirs: readonly string[] = toolchainPathDirs()): HostPython | null {
   const path = dirs.map((dir) => join(dir, "python3")).find((file) => existsSync(file));
   if (path === undefined) return null;
@@ -115,7 +100,7 @@ export function hostPython(dirs: readonly string[] = toolchainPathDirs()): HostP
   return exitCode === 0 ? pythonIn(decodeOutput(stdout)) : null;
 }
 
-/** What `PYTHON_PROBE` printed, or null: a program named python3 may print something else. */
+/** What `PYTHON_PROBE` printed, or null, since a program named python3 may print something else. */
 export function pythonIn(said: string): HostPython | null {
   try {
     const [version, packages] = parseJsonAs<[string, string[]]>(said);
@@ -125,7 +110,6 @@ export function pythonIn(said: string): HostPython | null {
   }
 }
 
-/** A launch's flags by name, each with its value or `true` for one that takes none. */
 function flagsOf({ flags }: Receipt): Map<string, string | true> {
   const named = new Map<string, string | true>();
   for (const [at, word] of flags.entries()) {
@@ -138,7 +122,7 @@ function flagsOf({ flags }: Receipt): Map<string, string | true> {
 }
 
 /** A flag's value as `source` may print it: never a path, an env file's name, a login or a text
- *  longer than a word or two, such as a prompt. */
+ *  longer than a word or two. */
 function shown(name: string, value: string | true): string {
   if (value === true) return "";
   const hidden = /env|login/u.test(name) || /[/~\\\s]|^\./u.test(value) || value.length > SHOWN_CHARS;
@@ -146,8 +130,8 @@ function shown(name: string, value: string | true): string {
 }
 
 /**
- * The line `source` says of how a launch's flags and login differ from the launch before it, or the
- * first launch's flag names, so that a reader need not open the receipts by hand for them.
+ * The line `source` prints of how a launch's flags and login differ from the launch before, or the
+ * first launch's flag names.
  */
 function flagLines(launch: Receipt, before: Receipt | undefined): string[] {
   const now = flagsOf(launch);
@@ -164,8 +148,8 @@ function flagLines(launch: Receipt, before: Receipt | undefined): string[] {
   return [`  ${login}; flags ${moved.length === 0 ? "as before" : moved.join(", ")}`];
 }
 
-/** The line `source` says of a launch's Python: its packages by count and short digest, enough to
- *  tell two launches apart, since the receipt holds the list. */
+/** The line `source` prints of a launch's Python: its packages by count and short digest, enough to
+ *  tell two launches apart. */
 function pythonLines({ python }: Receipt): string[] {
   if (python === undefined) return [];
   if (python === null) return ["  no python3 answered on the wall's path"];
@@ -173,14 +157,13 @@ function pythonLines({ python }: Receipt): string[] {
   return [`  python ${version}, ${String(packages.length)} packages ${hashJsonValue(packages).slice(0, 8)}`];
 }
 
-/** Keep `receipt` as the run of `session` beside `log`. */
 export function writeReceipt(log: string, session: string, receipt: Receipt): void {
   writeFileSync(join(dirname(log), `launch-${session}.json`), `${capturedJsonStringify(receipt, null, 2)}\n`);
 }
 
-/** Every receipt beside `log`, oldest first, with the session it was kept under. None for a
- *  campaign whose rounds were started by hand or that has not started. Two runs started in one
- *  millisecond are ordered by their number, which `nextRun` gave them in turn. */
+/** Every receipt beside `log`, oldest first, with its session; none for a campaign started by hand
+ *  or not yet started. Two runs started in one millisecond are ordered by the number `nextRun` gave
+ *  them. */
 export function receipts(log: string): (Receipt & { readonly session: string })[] {
   const folder = dirname(log);
   if (!existsSync(folder)) return [];
@@ -195,31 +178,28 @@ export function receipts(log: string): (Receipt & { readonly session: string })[
     );
 }
 
-/** The receipt of the last run of the campaign command beside `log`, if one kept one. */
 export const lastLaunch = (log: string) =>
   receipts(log).findLast(({ session }) => session.startsWith("run-"));
 
-/** Whether `run` is a seed no launch went on from: a rehearsal's copy, whose record is its source's.
- *  A seed copies no receipt (`seed.ts`), so one a launch continued is a run like any other. */
+/** Whether `run` is a seed no launch went on from: a rehearsal's copy, whose record is its
+ *  source's. A seed copies no receipt (`seed.ts`), so one a launch continued is a run like any
+ *  other. */
 export const unlaunchedSeed = (run: Pick<Run, "path" | "seed">): boolean =>
   run.seed === true && lastLaunch(run.path) === undefined;
 
-/** The session the next run of the campaign command beside `log` keeps its receipt under. */
 export function nextRun(log: string): string {
   const kept = receipts(log).filter(({ session }) => session.startsWith("run-")).length;
   return `run-${String(kept + 1)}`;
 }
 
-/** The lines `source` says of the runs beside `log`, read against repository `repo`. */
 export function sources(log: string, repo: string, fixes: readonly string[]): string[] {
   const launches = receipts(log);
   if (launches.length === 0) {
     return ["no launch receipt: every round here was started by hand, and its commit is on no record"];
   }
   return launches.flatMap((launch, at) => {
-    // The remote branches and the tags that hold the commit: where an outside reader can open it,
-    // and the tag of a run's commit (run-management) keeps it after its branch is rewritten. None for a
-    // commit never pushed, and for one this repository does not hold.
+    // The remote branches and tags that hold the commit: where an outside reader can open it, and a
+    // run's tag keeps it after its branch is rewritten.
     const refs = ["--format=%(refname:lstrip=2)", "refs/remotes", "refs/tags"];
     const branches = (gitMaybe(repo, "for-each-ref", "--contains", launch.commit, ...refs) ?? "")
       .split("\n")
@@ -232,9 +212,8 @@ export function sources(log: string, repo: string, fixes: readonly string[]): st
       `  published ${published}`,
       ...flagLines(launch, launches[at - 1]),
       ...pythonLines(launch),
-      // Whether the commit holds the fix among its ancestors: false for a fix it does not hold and
-      // for either commit unknown here, which is why a restacked fix is asked for by its replayed
-      // commit.
+      // Whether the commit holds the fix among its ancestors: false where either commit is unknown
+      // here, which is why a restacked fix is asked for by its replayed commit.
       ...fixes.map(
         (fix) =>
           `  ${gitMaybe(repo, "merge-base", "--is-ancestor", fix, launch.commit) === null ? "does not hold" : "holds"} ${fix.slice(0, 9)}`,
@@ -243,8 +222,8 @@ export function sources(log: string, repo: string, fixes: readonly string[]): st
   });
 }
 
-/** Whether every launch of the campaign at `log` ran with what `asked` names, read in `repo`: false
- *  for a campaign with no receipt, whose code is on no record, and for a commit unknown here. */
+/** Whether every launch of the campaign at `log` ran with what `asked` names: false for a campaign
+ *  with no receipt and for a commit unknown here. */
 export function ranWith(log: string, repo: string, asked: Asked): boolean {
   const launches = receipts(log);
   return (
@@ -272,7 +251,6 @@ export function askedIn(args: readonly string[]): { asked: Asked; names: string[
   return { asked: values, names: positionals };
 }
 
-/** `bun run runs source`. */
 export async function source(args: readonly string[]): Promise<void> {
   const { asked, names } = askedIn(args);
   if (names.length > 1) throw new Error("source takes at most one run name");

@@ -1,15 +1,11 @@
 /**
- * Practice feedback discipline, coarse-band channel audit, and 2x2 starter-read family transfer
- * matrix (lanes 11 and 7):
+ * Practice discipline, the coarse-band channel and the starter-read family transfer matrix (lane 12):
  *
  *   bun tools/wri/wri.ts reader transfer --log <log>
  *
- * Implements the practised-vs-unpractised family split across starter-read task origins (`chosen`,
- * `before`, `after`) directly from production `starterReads` and `familiesOf`, plus per-Builder
- * practice concentration, edit-before-practice hygiene, diagnostic tool usage (`read_trace`,
- * `check_harness`, `preview_harness`), and pre-promotion practice release checks.
- * Wall-safe: prints only tallies, percentages, session ids, and counts — never family names, task
- * text, or raw objective values.
+ * Splits each starter read's tasks by origin (`chosen`, `before`, `after`) and by whether their family
+ * was practised, from `starterReads` and `familiesOf`, and audits each Builder's practice. It prints
+ * tallies, percentages, session ids and counts, never family names, task text or raw objective values.
  */
 import { ORIGINS, type Origin, type StarterRead, starterReads } from "#src/campaign/climb.ts";
 import { testOf, type Tally } from "#src/kernel/compare.ts";
@@ -20,7 +16,7 @@ import { callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { indexOf, practiceOf, summed, text, wlt } from "./folds.ts";
+import { indexOf, practiceOf, summed, text, formatTally } from "./folds.ts";
 
 const SHORT_ORIGIN: Readonly<Record<Origin, string>> = {
   [ORIGINS[0]]: "chosen",
@@ -141,14 +137,14 @@ function starterTransferSection(events: readonly LogEvent[]): string[] {
     const chosen = byOrigin.get(ORIGINS[0]) ?? EMPTY_CELL;
     const parts = ORIGINS.map((origin) => {
       const cell = byOrigin.get(origin) ?? EMPTY_CELL;
-      return `${SHORT_ORIGIN[origin]} prac ${wlt(cell.practised)} (${winShare(cell.practised)}) / unprac ${wlt(cell.unpractised)} (${winShare(cell.unpractised)})`;
+      return `${SHORT_ORIGIN[origin]} prac ${formatTally(cell.practised)} (${winShare(cell.practised)}) / unprac ${formatTally(cell.unpractised)} (${winShare(cell.unpractised)})`;
     });
-    return `${read.session} transfer (${read.confirmed ? "confirmed" : "unconfirmed"}, ${String(afterBatches)} post-promo batches, ${String(afterFamilies)} unseen families): after prac ${wlt(after.practised)} (${winShare(after.practised)}) vs unprac ${wlt(after.unpractised)} (${winShare(after.unpractised)}) | chosen prac ${wlt(chosen.practised)} vs unprac ${wlt(chosen.unpractised)} | all: ${parts.join("; ")}`;
+    return `${read.session} transfer (${read.confirmed ? "confirmed" : "unconfirmed"}, ${String(afterBatches)} post-promo batches, ${String(afterFamilies)} unseen families): after prac ${formatTally(after.practised)} (${winShare(after.practised)}) vs unprac ${formatTally(after.unpractised)} (${winShare(after.unpractised)}) | chosen prac ${formatTally(chosen.practised)} vs unprac ${formatTally(chosen.unpractised)} | all: ${parts.join("; ")}`;
   });
   const totalParts = ORIGINS.map((origin) => {
     const prac = summed(splits.map(({ byOrigin }) => (byOrigin.get(origin) ?? EMPTY_CELL).practised));
     const unprac = summed(splits.map(({ byOrigin }) => (byOrigin.get(origin) ?? EMPTY_CELL).unpractised));
-    return `${SHORT_ORIGIN[origin]}: prac ${wlt(prac)} (${winShare(prac)}) vs unprac ${wlt(unprac)} (${winShare(unprac)})`;
+    return `${SHORT_ORIGIN[origin]}: prac ${formatTally(prac)} (${winShare(prac)}) vs unprac ${formatTally(unprac)} (${winShare(unprac)})`;
   });
   return [...lines, `transfer totals (${plural(reads.length, "starter read")}): ${totalParts.join(" | ")}`];
 }

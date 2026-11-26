@@ -1,11 +1,9 @@
 #!/usr/bin/env bun
 /**
  * What a seat's shell may do under a tree's command wall, without a model: each command of a
- * battery runs as a seat's commands run (`runWalled`, `src/tools/command.ts`) in a seat root of its
- * own, and one tree's answers are set beside another's.
- *
- *   bun .claude/skills/system-path-simulation/scripts/wall-probe.ts <tree>
- *   bun .claude/skills/system-path-simulation/scripts/wall-probe.ts <before> <after> [--battery <file.ts>]
+ * battery runs as a seat's commands run (`runSandboxed`, `src/tools/command.ts`) in a seat root of its
+ * own, and one tree's answers are set beside another's: `wall-probe.ts <tree>` or `wall-probe.ts
+ * <before> <after> [--battery <file.ts>]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { rmSync } from "#src/meta/filesystem.ts";
@@ -46,8 +44,8 @@ const BATTERY: readonly Probe[] = [
   },
   { label: "bun", run: "bun -e 'console.log(1+1)' 2>&1 | tail -n 1" },
   {
-    // The registry is asked first, so an install that hangs is told from a network that does: an
-    // alarm ends the install inside the wall's own limit, and the row then reads `install=142`.
+    // The registry is asked first, so an install that hangs is told from a network that does: an alarm
+    // ends the install inside the wall's own limit, and the row then reads `install=142`.
     label: "npm install",
     run: `command -v npm >/dev/null || { echo absent; exit 0; }; curl -s -m 15 -o /dev/null -w 'registry=%{http_code} ' https://registry.npmjs.org/is-number; mkdir -p "$HOME/n" && cd "$HOME/n" && echo '{"name":"n","version":"1.0.0"}' > package.json && { perl -e 'alarm shift; exec @ARGV' 40 npm install --no-audit --no-fund --silent is-number >/dev/null; } 2>/dev/null; echo "install=$?"; node -e "try { require('is-number'); console.log('ok') } catch { console.log('missing') }"`,
   },
@@ -129,7 +127,6 @@ const BATTERY: readonly Probe[] = [
   },
 ];
 
-/** The commands of `before` that `after` answers with another exit code or other words. */
 export function differing(
   before: readonly Answer[],
   after: readonly Answer[],
@@ -148,8 +145,10 @@ async function answers(tree: string, battery: readonly Probe[]): Promise<Answer[
   // wall changed these signatures fails here, naming the call.
   const { command, base, seat } = {
     command: (await import(join(tree, "src/tools/command.ts"))) as typeof import("#src/tools/command.ts"),
-    base: (await import(join(tree, "src/wall/base.ts"))) as typeof import("#src/wall/base.ts"),
-    seat: (await import(join(tree, "src/wall/seat-root.ts"))) as typeof import("#src/wall/seat-root.ts"),
+    base: (await import(join(tree, "src/sandbox/base.ts"))) as typeof import("#src/sandbox/base.ts"),
+    seat: (await import(
+      join(tree, "src/sandbox/sandbox-root.ts")
+    )) as typeof import("#src/sandbox/sandbox-root.ts"),
   };
   const dirs = command.solveDirs(`wall-probe-${String(runtimeProcess.pid)}`);
   const release = await seat.claimRoot(dirs.root);
@@ -171,7 +170,7 @@ async function answers(tree: string, battery: readonly Probe[]): Promise<Answer[
       };
       let exit: string;
       try {
-        exit = String((await command.runWalled(wall, run, { onData })).exitCode);
+        exit = String((await command.runSandboxed(wall, run, { onData })).exitCode);
       } catch (error) {
         // A command past its limit throws `timeout:<seconds>`, which is its answer here.
         exit = `threw ${errorMessage(error).slice(0, 40)}`;

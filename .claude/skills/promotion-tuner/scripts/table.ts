@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * The campaigns on record as rows: when each reached its first comparison and its first promotion,
- * and what each promotion took in elapsed, active and unloaded hours and in dollars. It starts no
- * solve, calls no model and writes nothing.
+ * The campaigns on record as rows: when each reached its first comparison and promotion, and what
+ * each promotion took in elapsed, active and unloaded hours and in dollars. It starts no solve,
+ * calls no model and writes nothing.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, money, printed } from "#skills/main/print.ts";
@@ -15,13 +15,15 @@ const SINCE = "2026-10-01";
 const LAST = 20;
 const USAGE = `usage:
   bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts
-    [--since <date>] [--name <part of a campaign>]... [--rows recent|runs|promotions|cost] [--last <n>]
+    [--since <date>] [--name <part of a campaign>]... [--rows recent|runs|promotions|cost|releases]
+    [--last <n>]
     [--has <text>]... [--holds <commit>]... [--format md|tsv] [--runs <dir>]
 
 --since   campaigns whose last event is at or after this date; ${SINCE} by default
 --name    these campaigns only, matched by part of the name (repeatable)
 --rows    recent (default): live runs and the latest finished runs that promoted; runs: one row a
-          run; promotions: one row a promotion; cost: one row a run, its dollars repriced on one meter
+          run; promotions: one row a promotion; cost: one row a run, its dollars repriced on one meter;
+          releases: one row a release the runs launched after, its A/As pooled against the honesty bar
 --last    how many finished runs recent lists, ${String(LAST)} by default
 --has     only runs whose every launch ran with code that holds this text (repeatable)
 --holds   only runs whose every launch holds this commit (repeatable)
@@ -40,18 +42,17 @@ const OPTIONS = {
 const ACTIVE = "active h";
 const UNLOADED = "unloaded h";
 const FIRST_PROMOTION = "1st promotion h";
-const ROW_MODES = ["recent", "runs", "promotions", "cost"] as const;
-/** The measures a run's row gives as its own counts. */
+const ROW_MODES = ["recent", "runs", "promotions", "cost", "releases"] as const;
+const HONESTY = [MEASURES.aa, MEASURES.aaValidity, MEASURES.aaObjective];
 const COUNTED = [
   MEASURES.perComparison,
   MEASURES.confirmed,
   MEASURES.after,
   MEASURES.room,
   MEASURES.onValidity,
-  MEASURES.aa,
-  MEASURES.aaValidity,
-  MEASURES.aaObjective,
+  ...HONESTY,
 ];
+const RELEASE_HEAD = ["launched after", "runs", ...HONESTY.map(({ name }) => name)];
 const RUN_HEAD = [
   "run",
   "host",
@@ -84,7 +85,7 @@ const RECENT_HEAD = [
   `${ACTIVE} a rung`,
   `${UNLOADED} a rung`,
   "$ a rung",
-  "h a promotion, set-up included",
+  "h per promotion (setup included)",
 ];
 const COST_HEAD = [
   "run",
@@ -119,7 +120,6 @@ const CAVEAT = [
   "Unloaded hours also take out the share of each stretch an overloaded host could not serve (1 - cores/load), as if the run were CPU-bound: an upper bound on what load cost, an estimate.",
   "One run is one draw, and the spread between runs is wide: trend.ts sets groups of runs against it, and results are never compared across settings.",
 ];
-/** What `--rows cost` adds to the caveat. */
 const REPRICED =
   "Repriced: every recorded turn at today's list prices through today's seat meter, the one measure every run shares; it leaves out a backend's excess over its turns (compactions, retries), which only runs from #563 on record, so repriced/recorded just under 1 on a newer run is that excess.";
 
@@ -168,7 +168,6 @@ const recentRows = (runs: readonly Run[]) =>
     ];
   });
 
-/** The medians of the finished runs a recent view lists, so a live run is read against them. */
 function recentSummary(runs: readonly Run[]): string {
   const past = runs.filter((run) => !run.live);
   const medians = [MEASURES.firstPromotion, MEASURES.rung, MEASURES.rungDollars].map(
@@ -193,7 +192,13 @@ const promotionRows = (runs: readonly Run[]) =>
     ]),
   );
 
-/** Dollars over a count, or none where nothing was priced or counted. */
+const releaseRows = (runs: readonly Run[]) =>
+  [...Map.groupBy(runs, ({ release }) => release), ["every release", runs] as const].map(([release, own]) => [
+    release,
+    String(own.length),
+    ...HONESTY.map((measure) => measure.counts(own)),
+  ]);
+
 const per = (dollars: number | null, count: number) =>
   money(dollars === null || count === 0 ? null : dollars / count);
 
@@ -246,6 +251,7 @@ async function main(args: CommandArgs): Promise<number> {
     ["runs", () => printed(RUN_HEAD, runRows(runs), format)],
     ["promotions", () => printed(PROMOTION_HEAD, promotionRows(runs), format)],
     ["cost", () => printed(COST_HEAD, costRows(runs), format)],
+    ["releases", () => printed(RELEASE_HEAD, releaseRows(runs), format)],
   ]);
   const table = tables.get(rows);
   if (table === undefined) return args.die(`--rows takes ${ROW_MODES.join(", ")}; got ${rows}`);

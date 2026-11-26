@@ -13,15 +13,15 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
+import { type CommandSandbox, solveDirs, sandboxBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
-import { claimRoot } from "../src/wall/seat-root.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
+import { claimRoot } from "../src/sandbox/sandbox-root.ts";
 
 const context = BACKGROUND_CONTEXT;
 const SECRET = "repository-canary-must-stay-hidden";
 
-async function withSeat(run: (env: ExecutionEnv, wall: CommandWall, canary: string) => Promise<void>) {
+async function withSeat(run: (env: ExecutionEnv, wall: CommandSandbox, canary: string) => Promise<void>) {
   const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-env-repo-")));
   const canary = join(repoRoot, "canary.txt");
   writeFileSync(canary, SECRET);
@@ -29,8 +29,8 @@ async function withSeat(run: (env: ExecutionEnv, wall: CommandWall, canary: stri
   const release = await claimRoot(dirs.root);
   let env: ExecutionEnv | undefined;
   try {
-    const base = await walledBase(dirs, { repoRoot }, "the environment test");
-    const wall: CommandWall = {
+    const base = await sandboxBase(dirs, { repoRoot }, "the environment test");
+    const wall: CommandSandbox = {
       base,
       dirs,
       toolTree: null,

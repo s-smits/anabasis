@@ -1,7 +1,13 @@
 // A mechanism tried on the record reads as production does at today's values, and each form of a
 // resource does what its reading claims, on the cases that would make the claim false.
 import { describe, expect, it } from "bun:test";
-import { knobbed, type Mechanism, TODAY } from "#skills/promotion-tuner/scripts/mechanisms.ts";
+import {
+  knobbed,
+  knobsOf,
+  type Mechanism,
+  STANDARD,
+  TODAY,
+} from "#skills/promotion-tuner/scripts/mechanisms.ts";
 import { paired, type Solve, type Task } from "#skills/promotion-tuner/scripts/record.ts";
 import { differenceOf, flipP } from "../src/kernel/compare.ts";
 
@@ -21,7 +27,6 @@ const task = (old: readonly Solve[], fresh: readonly Solve[], direction: Task["d
   old,
   fresh,
 });
-/** Both sides valid and equal by every answer's measure, the new one spending `fresh` to `old`. */
 const validOnlyNew = (billed: number) =>
   task([solve(1, null, false), solve(1, null, false)], [solve(billed), solve(billed)]);
 const steps = (one: Mechanism, tasks: readonly Task[]) =>
@@ -40,13 +45,23 @@ describe("knobs at today's values", () => {
       valid.map((is) => solve(1, measure, is));
     const measures = values.flatMap((one) => values.map((other) => [one, other] as const));
     const validities = flags.flatMap((old) => flags.map((fresh) => [old, fresh] as const));
+    const votes = [
+      { fresh: 0, old: 0, judge: 1, holistic: 0.5 },
+      { fresh: 1, old: 1, judge: -1, holistic: 0 },
+    ];
+    const readings = (plain: Task): Task[] => [
+      plain,
+      { ...plain, scale: "unit" },
+      { ...plain, judged: { weights: { code: 1, judge: 1 }, votes } },
+    ];
     const grid = (["lower", "higher", null] as const).flatMap((direction) =>
       measures.flatMap(([one, other]) =>
-        validities.map(([old, fresh]) => task(side(old, one), side(fresh, other), direction)),
+        validities.flatMap(([old, fresh]) => readings(task(side(old, one), side(fresh, other), direction))),
       ),
     );
     for (const each of grid) expect(today.score(each)).toBe(differenceOf(paired(each)));
-    expect(grid.length).toBe(3 * 9 * 9 * 3 * 3);
+    expect(grid.length).toBe(3 * 9 * 9 * 3 * 3 * 3);
+    expect(new Set(grid.map((each) => differenceOf(paired(each)))).size).toBeGreaterThan(9);
   });
 
   it("round a half point as production does", () => {
@@ -62,5 +77,41 @@ describe("knobs at today's values", () => {
     expect(steps(today, won)).toBe(flipP(won.map(today.score)) <= LEVEL);
     expect(steps(today, won)).toBe(true);
     expect(steps(today, won.slice(1))).toBe(false);
+  });
+
+  it("keeps every STANDARD spec distinct from TODAY and enforces knob boundaries", () => {
+    const fail = (why: string): never => {
+      throw new Error(why);
+    };
+    for (const spec of STANDARD) {
+      expect(knobsOf(spec, fail)).not.toEqual(TODAY);
+    }
+    expect(STANDARD).toContain("test=flip");
+    expect(STANDARD).not.toContain("test=rank");
+    const capped = knobbed(knobsOf("mostBill=1.5", fail), "cap");
+    const atLimit = Array.from({ length: 6 }, () =>
+      task([solve(1, 10), solve(1, 10)], [solve(1.5, 20), solve(1.5, 20)], "higher"),
+    );
+    const overLimit = Array.from({ length: 6 }, () =>
+      task([solve(1, 10), solve(1, 10)], [solve(1.51, 20), solve(1.51, 20)], "higher"),
+    );
+    expect(steps(capped, atLimit)).toBe(true);
+    expect(steps(capped, overLimit)).toBe(false);
+    const rawFlip = knobbed(knobsOf("test=flip", fail), "raw-flip");
+    const rank = knobbed(TODAY, "rank");
+    const asymmetric = [
+      ...Array.from({ length: 3 }, () => validOnlyNew(1)),
+      ...Array.from({ length: 3 }, () =>
+        task([solve(1, 10), solve(1, 10)], [solve(1, 15), solve(1, 15)], "higher"),
+      ),
+      ...Array.from({ length: 2 }, () =>
+        task([solve(1, 12), solve(1, 12)], [solve(1, 10), solve(1, 10)], "higher"),
+      ),
+    ];
+    expect(rank.test?.(asymmetric.map(rank.score), LEVEL, asymmetric)).toBe(true);
+    expect(rawFlip.test?.(asymmetric.map(rawFlip.score), LEVEL, asymmetric)).toBe(false);
+    const noRetained = knobbed(knobsOf("retained=out", fail), "no-retained");
+    expect(noRetained.score({ ...validOnlyNew(1), retained: true })).toBe(0);
+    expect(noRetained.score({ ...validOnlyNew(1), retained: false })).toBe(600);
   });
 });

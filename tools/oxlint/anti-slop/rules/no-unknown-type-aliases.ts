@@ -14,17 +14,15 @@ import type { RuleExample } from "../../rule-examples.ts";
 
 type DeclaredType = ESTree.TSInterfaceDeclaration | ESTree.TSTypeAliasDeclaration;
 
-/** What a walk over the types an export hands out does at each property and each named type. */
 interface Outward {
-  /** Judges a property; true walks on into its type. */
   readonly property: (member: ESTree.TSPropertySignature) => boolean;
   readonly reference: (reference: ESTree.TSTypeReference) => void;
 }
 
 /**
- * The built-in containers that hand their reader a value, and which type argument that value is:
- * an array's element, a promise's result, a map's value. A `Set<unknown>` is left out on purpose:
- * it is asked only whether it holds a value nothing has parsed yet (`INTERRUPTED.has(data.ended)`).
+ * The built-in containers that hand their reader a value, and which type argument that value is. A
+ * `Set<unknown>` is left out on purpose: it is asked only whether it holds a value nothing has
+ * parsed yet (`INTERRUPTED.has(ended)`).
  */
 const CONTAINER_SLOTS: ReadonlyMap<string, number> = new Map([
   ["Array", 0],
@@ -36,20 +34,17 @@ const CONTAINER_SLOTS: ReadonlyMap<string, number> = new Map([
   ["WeakMap", 1],
 ]);
 
-/** The members a declaration writes in its own body: an interface's, or a type literal an alias names. */
 function ownMembers(declared: DeclaredType): readonly ESTree.TSSignature[] {
   if (declared.type === "TSInterfaceDeclaration") return declared.body.body;
   return declared.typeAnnotation.type === "TSTypeLiteral" ? declared.typeAnnotation.members : [];
 }
 
-/** The written name of a member's key, or null where it is computed. */
 function memberName(member: ESTree.TSPropertySignature): string | null {
   if (member.computed) return null;
   if (member.key.type === "Identifier") return member.key.name;
   return member.key.type === "Literal" ? String(member.key.value) : null;
 }
 
-/** A tuple member's type, past the label, `?` or `...` it may be spelled with. */
 function tupleElement(element: ESTree.TSTupleElement): ESTree.TSType {
   const written = element.type === "TSNamedTupleMember" ? element.elementType : element;
   return written.type === "TSOptionalType" || written.type === "TSRestType"
@@ -57,12 +52,10 @@ function tupleElement(element: ESTree.TSTupleElement): ESTree.TSType {
     : written;
 }
 
-/** Whether another module can name it: `export`, or a default export. */
 function isExported(node: ESTree.Node): boolean {
   return node.parent?.type === "ExportNamedDeclaration" || node.parent?.type === "ExportDefaultDeclaration";
 }
 
-/** The interfaces and aliases a module declares at its top level without exporting them. */
 function moduleLocalTypes(program: ESTree.Program): Map<string, readonly DeclaredType[]> {
   const locals = new Map<string, DeclaredType[]>();
   for (const statement of program.body) {
@@ -72,7 +65,7 @@ function moduleLocalTypes(program: ESTree.Program): Map<string, readonly Declare
   return locals;
 }
 
-/** Walk every type a value of this type hands its reader: all of it but a function's parameters. */
+/** Every type a value of this type hands its reader: all of it but a function's parameters. */
 function walkOutward(type: ESTree.TSType, on: Outward): void {
   if (type.type === "TSTypeReference") {
     on.reference(type);
@@ -111,7 +104,6 @@ function walkDeclared(declared: DeclaredType, on: Outward): void {
   else walkOutward(declared.typeAnnotation, on);
 }
 
-/** A class member another module can read: not `private`, `protected` or `#private`. */
 function isPublic(element: ESTree.PropertyDefinition | ESTree.MethodDefinition): boolean {
   return (
     element.key.type !== "PrivateIdentifier" &&

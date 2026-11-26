@@ -1,5 +1,5 @@
-// What a campaign runs by (`src/campaign/opening.ts`): its opening as the log records it, and the
-// plan move 7 reads beside the log.
+// What a campaign runs by (`src/campaign/opening.ts`): its opening as the log records it, and the plan
+// (`planOf`) read beside the log.
 
 import { describe, expect, it } from "bun:test";
 import { openingOf, planOf } from "../src/campaign/opening.ts";
@@ -25,7 +25,6 @@ describe("what a campaign runs by", () => {
     expect(opening).toMatchObject({ seats: { examiner: null }, prompt: null, solver: null });
     expect(opening).not.toHaveProperty("limit");
     expect(opening).not.toHaveProperty("sessions");
-    // A campaign that opened from a prompt holds it, with who solves, and its plan says so.
     const asked = {
       ...opened.data,
       prompt: "Queues.",
@@ -56,5 +55,19 @@ describe("what a campaign runs by", () => {
     expect(planOf([capped("2")], ASKED).promotions).toBe(2);
     expect(planOf([capped("none")], ASKED).promotions).toBeNull();
     expect(planOf([opened], ASKED).promotions).toBeNull();
+  });
+
+  it("keeps authored checks manual under attended mode even when judging is admitted", () => {
+    const rows = [
+      { id: "c-author", instrument: "author" },
+      { id: "j-rubric", instrument: "judge" },
+    ];
+    const readEvent = event("checker.read", { rows, admitted: [] });
+    const withFlags = (attended: boolean, judged: boolean) =>
+      planOf([event("campaign.opened", { ...opened.data, attended, judged }), readEvent], ASKED).admits;
+    expect(withFlags(false, false)).toEqual(["c-author"]);
+    expect(withFlags(false, true)).toEqual(["c-author", "j-rubric"]);
+    expect(withFlags(true, false)).toEqual([]);
+    expect(withFlags(true, true)).toEqual(["j-rubric"]);
   });
 });

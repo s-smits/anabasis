@@ -17,14 +17,12 @@ interface Route {
   readonly also?: readonly (readonly [string, string])[];
 }
 
-/** Hook input fields: a shell command (string or argv list) and edited file paths. */
 export interface ToolInput {
   readonly command?: string | readonly string[];
   readonly file_path?: string;
   readonly notebook_path?: string;
 }
 
-/** Normalised tool call extracted from hook input: the shell command string and target file paths. */
 interface Call {
   readonly command: string;
   readonly paths: readonly string[];
@@ -48,7 +46,7 @@ const ROUTES: readonly Route[] = [
   {
     id: "run",
     command:
-      /\bbun run runs (fresh|launch|continue|keep|move|pause|stop|copy|retire|bench)\b|tools\/d2\/(harness-builder|round|session|checkpoint|promote|import|word|close)\.ts|live-seat/u,
+      /\bbun run runs (fresh|launch|continue|keep|move|pause|stop|copy|retire|bench)\b|tools\/campaign\/(harness-builder|round|session|checkpoint|promote|import|signal|close)\.ts|tools\/eval\/(accept|examine|draft)\.ts|live-seat/u,
     said: "Paid runs (AGENTS.md §10): obtain authorisation for the named run, launch in a dedicated clean worktree (never main), prove the path model-free and record one falsifiable prediction before solving. Never print `--env-file`; account limits follow rule 15.",
     skill: "run-management",
     also: [
@@ -60,8 +58,8 @@ const ROUTES: readonly Route[] = [
   {
     id: "reading",
     command:
-      /\bbun run runs (view|replay|source|status|pulse|active|zip)\b|tools\/wri\/|wri2p2\.ts|studies\/harness2\/(score|compare)\.ts/u,
-    said: "Run evidence (AGENTS.md §9): a run proves only its own commit (`bun run runs source --has <text>`). Read log events and folds before prose; separate outcome counts with denominators.",
+      /\bbun run runs (view|replay|source|status|pulse|active|zip)\b|tools\/wri\/|wri2p2\.ts|studies\/harness2\/(score|compare)\.ts|\blog\.jsonl\b/u,
+    said: "Run evidence (AGENTS.md §9): a run proves only its own commit (`bun run runs source --has <text>`). Prefer owning folds (`runs view`, `table.ts`, `reading.ts`, `starter-reads.ts`, `harness-versions.ts`, or `src/kernel/log.ts:read`, where log events wrap payloads under `{ at, kind, data }`); separate outcome counts with denominators.",
     skill: "whole-run-investigation",
     also: [
       ["claims", "attribution-and-proof"],
@@ -76,7 +74,7 @@ const ROUTES: readonly Route[] = [
   {
     id: "rehearsal",
     command: /\bbun run runs (rehearse|seed)\b|--dry-run\b/u,
-    said: "Rehearsals prove code paths and log events, not model behaviour (Referee is empty, so scripted rejections remain unruled).",
+    said: "Rehearsals prove code paths and log events, not model behaviour (Auditor is empty, so scripted rejections remain unruled).",
     skill: "system-path-simulation",
     also: [
       ["archive scoring or decision replay", "promotion-tuner"],
@@ -98,7 +96,7 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "seats",
-    path: /(^|\/)src\/(builder|examiner|solver|referee|harness)\/|(^|\/)tools\/d2\/(campaign-actions|harness-builder)\.ts$/u,
+    path: /(^|\/)src\/(builder|examiner|solver|audit|harness)\/|(^|\/)tools\/campaign\/(campaign-actions|campaign-status|campaign-terms|harness-builder)\.ts$/u,
     said: "Seat wall (rule 3; AGENTS.md §2–3): perturbing hidden values, checks or held-out winners must leave Builder and solver messages byte-identical (`test/builder.test.ts`, `test/builder-led.test.ts`). Verify with `bun .claude/skills/design-and-seats/scripts/seat-view.ts` (`builder-view.ts <name>` inspects Builder openings). Give models facts, not directives.",
     skill: "design-and-seats",
     also: [
@@ -109,7 +107,7 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "measurement",
-    path: /(^|\/)src\/kernel\/(compare|reports|size|solve)\.ts$|(^|\/)src\/campaign\/(comparison|round|decide|admission|climb|ground)\.ts$/u,
+    path: /(^|\/)src\/kernel\/(compare|reports|size|solve)\.ts$|(^|\/)src\/campaign\/(comparison|round|scheduler|admission|climb|state)\.ts$/u,
     said: "Evaluation (AGENTS.md §7; rules 1, 4, 5, 12): pre-register terms, solve both arms afresh, keep one owner per decision. Verify reader changes with `bun run runs replay` and replay decision-rule changes over `data/runs/` before editing (`size.ts`, `reading.ts`, `draw.ts`, `starter-reads.ts`).",
     skill: "comparison-reading",
     also: [
@@ -120,7 +118,7 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "campaign",
-    path: /(^|\/)src\/campaign\/|(^|\/)tools\/d2\//u,
+    path: /(^|\/)src\/campaign\/|(^|\/)tools\/(campaign|eval)\//u,
     said: "Campaign control (AGENTS.md §6): endings, admissions, settings and practice release. Rehearse changed round or campaign paths with `bun run runs rehearse` (`ending.ts <name>` shows endings and stop state).",
     skill: "campaign-mechanics",
     also: [
@@ -131,8 +129,8 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "wall",
-    path: /(^|\/)src\/wall\/|(^|\/)src\/tools\/command\.ts$/u,
-    said: "OS isolation (AGENTS.md §10): Seatbelt on macOS, Bubblewrap on Linux. One platform's suite proves nothing on the other; grant whole folders; an unavailable wall yields a typed non-result.",
+    path: /(^|\/)src\/sandbox\/|(^|\/)src\/tools\/command\.ts$/u,
+    said: "OS isolation (AGENTS.md §10): Seatbelt on macOS, Bubblewrap on Linux (`src/sandbox/`). One platform's suite proves nothing on the other; grant whole folders; an unavailable sandbox yields a typed non-result.",
     skill: "repository-practice",
   },
   {
@@ -144,7 +142,7 @@ const ROUTES: readonly Route[] = [
   {
     id: "lint",
     path: /(^|\/)(tools\/oxlint\/|\.oxlintrc\.json$)/u,
-    said: "Lint rules (`tools/oxlint/HABITS.md` §12.13): register in `tools/oxlint/plugins.ts` and `.oxlintrc.json` (or `staged-rules.json`), include `meta.docs.examples`, state `no fix` when report-only, update `FIXER-DECISIONS.md`, and verify with `test/lint-registry.test.ts` and `test/rule-examples.test.ts`.",
+    said: "Lint rules (`tools/oxlint/HABITS.md` §12.13): register in `tools/oxlint/plugins.ts` and `.oxlintrc.json`, include `meta.docs.examples`, state `no fix` when report-only, update `FIXER-DECISIONS.md`, and verify with `test/lint-registry.test.ts` and `test/rule-examples.test.ts`.",
     skill: "simplify",
   },
   {
@@ -196,10 +194,9 @@ const ROUTES: readonly Route[] = [
   },
 ];
 
-/** Matches file headers inside a Codex patch (`*** Add|Update|Delete File: <path>`). */
+/** File headers inside a Codex patch (`*** Add|Update|Delete File: <path>`). */
 const PATCHED = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gmu;
 
-/** Extracts the shell command and edited file paths from a hook's `tool_input` payload. */
 function callOf(input: unknown): Call {
   if (!isRecord(input)) return { command: "", paths: [] };
   const { command, file_path: file, notebook_path: notebook } = input;
@@ -214,7 +211,7 @@ function callOf(input: unknown): Call {
   return { command: shell, paths: [file, notebook, ...patched].filter(isString) };
 }
 
-/** Returns the routes entered by `input` that are not yet present in `seen`, in table order. */
+/** The routes `input` enters that `seen` lacks, in table order. */
 export function momentsOf(input: unknown, seen: ReadonlySet<string>): Route[] {
   const { command, paths } = callOf(input);
   return ROUTES.filter(
@@ -227,7 +224,7 @@ export function momentsOf(input: unknown, seen: ReadonlySet<string>): Route[] {
 function main(text: string): string {
   const hook = capturedJsonParse(text);
   if (!isRecord(hook)) return "";
-  // Remember delivered routes by session id. Unsafe ids create no state, so guidance repeats.
+  // Unsafe session ids create no state, so guidance repeats.
   const session = hook.session_id;
   const file =
     isString(session) && /^[\w-]{1,128}$/u.test(session) ? join(tmpdir(), "ana-moments", session) : null;

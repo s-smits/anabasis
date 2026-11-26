@@ -1,12 +1,9 @@
 /**
- * A reader of a log's words as a pass runs one, with its embedder injected, so a test can cut a real
- * child process part-way through a read and count what each read embedded. No model and no network.
- *
- *   bun test/helpers/vectors-slow.ts <log> --store <dir> --count <file> --hang-after <batches>
- *
- * Once `--hang-after` batches are in, the first read to come here hangs until its limit kills it, which
- * proves the cut without a timing to guess. The file `<count>.hung` says one has, and every later read
- * goes through. `<count>` gets one line per batch, the number of texts in it.
+ * A reader of a log's words with its embedder injected, so a test can cut a real child process
+ * mid-read and count what each read embedded: `bun test/helpers/vectors-slow.ts <log> --store <dir>
+ * --count <file> --hang-after <batches>`. After `--hang-after` batches the first read hangs until
+ * its limit kills it, `<count>.hung` marks that, and later reads go through; `<count>` gets one
+ * line per batch, its text count.
  */
 import { read } from "#src/kernel/log.ts";
 import { appendFileSync, existsSync, writeFileSync } from "#src/meta/filesystem.ts";

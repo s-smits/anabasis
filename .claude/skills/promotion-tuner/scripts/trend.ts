@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Windowed campaign trend report: compares runs opened in the most recent window of days against
- * preceding windows, pack by pack, across supply, climb, holding, honesty, and economy metrics.
- * Read-only diagnostic tool (`AGENTS.md` section 1); it launches no solves and makes no decisions.
+ * Windowed campaign trend report: runs opened in the newest window of days against preceding
+ * windows, pack by pack, across supply, climb, holding, honesty and economy. Read-only; it launches
+ * no solves and makes no decisions.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, printed } from "#skills/main/print.ts";
 import { loadRuns, type Run, rungsOf } from "#skills/main/runs.ts";
-import { type Shift, shiftOf } from "#skills/main/stats.ts";
+import { falseSteps as againstBar, type Shift, shiftOf } from "#skills/main/stats.ts";
 import { DAY_MS } from "#src/meta/clock.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { median } from "#src/meta/tally.ts";
@@ -51,7 +51,6 @@ const LEVEL = 0.05;
 const FLOOR = 6;
 const ALL = "all packs";
 const MIXED = "no single direction";
-/** What a pattern says, by whether promotions came faster. */
 const READINGS = new Map([
   [
     "apart faster",
@@ -62,18 +61,14 @@ const READINGS = new Map([
   ["together slower", "promotions came slower and fewer held"],
 ]);
 
-/** One quantity read over a list of runs. */
 export interface Measure {
   readonly factor: "supply" | "climb" | "holding" | "honesty" | "economy";
   readonly name: string;
   readonly better: "higher" | "lower";
-  /** Its value over the runs, null where its denominator is empty. */
   readonly of: (runs: readonly Run[]) => number | null;
-  /** The counts the value is made of. */
   readonly counts: (runs: readonly Run[]) => string;
 }
 
-/** One window of days and the runs that opened in it. */
 export interface Window {
   /** 0 for the newest, counting back. */
   readonly back: number;
@@ -82,23 +77,27 @@ export interface Window {
   readonly runs: readonly Run[];
 }
 
-/** A difference between two windows in one measure, as read. */
 export interface Change {
-  /** The newest value over the earlier, less one; null where either is missing or the earlier is 0. */
+  /** The newest value over the earlier, less one; null where either is missing or the earlier is 0.
+   */
   readonly relative: number | null;
   readonly shift: Shift;
-  readonly verdict: "too few runs" | "inside the spread" | "moved, better" | "moved, worse" | "no value";
+  readonly verdict:
+    | "too few runs"
+    | "within inter-run variance"
+    | "moved, better"
+    | "moved, worse"
+    | "no value";
 }
 
 type Each = (run: Run) => number;
 
 const total = (runs: readonly Run[], each: Each) => runs.reduce((sum, run) => sum + each(run), 0);
 const promoted: Each = (run) => run.promotions.length;
-/** Every run read counts once, which a share of runs takes as its denominator. */
 const one: Each = () => 1;
 
-/** A ratio of two sums over the runs, so that a longer run weighs by its exposure; more is better
- *  unless `lower` says otherwise. */
+/** A ratio of two sums over the runs, so a longer run weighs by its exposure; more is better unless
+ *  `lower` says otherwise. */
 function rate(factor: Measure["factor"], name: string, part: Each, whole: Each, per = 1): Measure {
   return {
     factor,
@@ -112,8 +111,8 @@ function rate(factor: Measure["factor"], name: string, part: Each, whole: Each, 
   };
 }
 
-/** The median of what the runs list, a time or a cost that a ratio of sums would let one slow run
- *  set; less is better. */
+/** The median of what the runs list, for a time or a cost one slow run would set in a ratio of
+ *  sums; less is better. */
 function middle(factor: Measure["factor"], name: string, values: (run: Run) => readonly number[]): Measure {
   return {
     factor,
@@ -126,8 +125,17 @@ function middle(factor: Measure["factor"], name: string, values: (run: Run) => r
 
 const lower = (measure: Measure): Measure => ({ ...measure, better: "lower" });
 
-/** Every measure a list of runs is read by, in the order a table gives them: `table.ts` prints a
- *  run's own counts from these, so a rate has one spelling. */
+function falseSteps(name: string, part: Each, whole: Each): Measure {
+  const measure = lower(rate("honesty", name, part, whole));
+  const levels = (runs: readonly Run[]) => [...new Set(runs.flatMap(({ aaLevels }) => aaLevels))];
+  return {
+    ...measure,
+    counts: (runs) => againstBar(total(runs, part), total(runs, whole), levels(runs)),
+  };
+}
+
+/** Every measure a list of runs is read by, in table order: `table.ts` prints a run's own counts
+ *  from these, so a rate has one spelling. */
 export const MEASURES = {
   reported: rate(
     "supply",
@@ -158,9 +166,9 @@ export const MEASURES = {
     run.promotions.slice(0, 1).map((first) => first.elapsed),
   ),
   byHorizon: rate("climb", "runs promoted by the horizon", (run) => Math.min(promoted(run), 1), one),
-  speed: rate("climb", "promotions a 100 active hours", promoted, (run) => run.active, 100),
-  perComparison: rate("climb", "promotions a comparison", promoted, (run) => run.compared),
-  rung: middle("climb", "hours a rung", (run) => rungsOf(run).map((rung) => rung.epochElapsed)),
+  speed: rate("climb", "promotions per 100 active hours", promoted, (run) => run.active, 100),
+  perComparison: rate("climb", "promotions per comparison", promoted, (run) => run.compared),
+  rung: middle("climb", "hours per rung", (run) => rungsOf(run).map((rung) => rung.epochElapsed)),
   confirmed: rate(
     "holding",
     "promotions the starter confirmed, of those it read",
@@ -179,37 +187,28 @@ export const MEASURES = {
     (run) => run.onValidity,
     (run) => run.stepped,
   ),
-  aa: lower(
-    rate(
-      "honesty",
-      "A/A steps, of A/A able to read one",
-      (run) => run.aaSteps,
-      (run) => run.controls,
-    ),
+  aa: falseSteps(
+    "A/A false steps, of powered A/As",
+    (run) => run.aaSteps,
+    (run) => run.controls,
   ),
-  aaValidity: lower(
-    rate(
-      "honesty",
-      "A/A steps where reference validity varied",
-      (run) => run.aaValiditySteps,
-      (run) => run.aaValidityControls,
-    ),
+  aaValidity: falseSteps(
+    "A/A false steps where reference validity varied",
+    (run) => run.aaValiditySteps,
+    (run) => run.aaValidityControls,
   ),
-  aaObjective: lower(
-    rate(
-      "honesty",
-      "A/A steps on objective alone",
-      (run) => run.aaObjectiveSteps,
-      (run) => run.aaObjectiveControls,
-    ),
+  aaObjective: falseSteps(
+    "A/A false steps on objective alone",
+    (run) => run.aaObjectiveSteps,
+    (run) => run.aaObjectiveControls,
   ),
-  rungDollars: middle("economy", "dollars a rung", (run) => rungsOf(run).map((rung) => rung.dollars)),
-  perPromotion: lower(rate("economy", "dollars a promotion", (run) => run.dollars, promoted)),
+  rungDollars: middle("economy", "dollars per rung", (run) => rungsOf(run).map((rung) => rung.dollars)),
+  perPromotion: lower(rate("economy", "dollars per promotion", (run) => run.dollars, promoted)),
   // On one meter across the windows, over the runs whose every turn it priced.
   repriced: lower(
     rate(
       "economy",
-      "repriced dollars a promotion",
+      "repriced dollars per promotion",
       (run) => run.repriced ?? 0,
       (run) => (run.repriced === null ? 0 : promoted(run)),
     ),
@@ -217,7 +216,7 @@ export const MEASURES = {
   perConfirmed: lower(
     rate(
       "economy",
-      "dollars a confirmed promotion",
+      "dollars per confirmed promotion",
       (run) => run.dollars,
       (run) => run.confirmed,
     ),
@@ -225,8 +224,6 @@ export const MEASURES = {
 } satisfies Record<string, Measure>;
 const LISTED: readonly Measure[] = Object.values(MEASURES);
 
-/** The runs by the window each opened in, newest window first; a run outside every window is in
- *  none. */
 export function windowsOf(runs: readonly Run[], until: number, days: number, back: number): Window[] {
   return Array.from({ length: back + 1 }, (_, nth) => {
     const [from, to] = [until - (nth + 1) * days * DAY_MS, until - nth * days * DAY_MS];
@@ -234,14 +231,11 @@ export function windowsOf(runs: readonly Run[], until: number, days: number, bac
   });
 }
 
-/** One pack's windows under the settings its newest window holds, and how many earlier runs under
- *  other settings were left out. */
 export function comparable(windows: readonly Window[]) {
   const held = new Set(windows[0]?.runs.map(({ setting }) => setting));
   return keptOf(windows, ({ setting }) => held.has(setting));
 }
 
-/** The windows with only the runs `keep` holds, and how many it left out. */
 function keptOf(windows: readonly Window[], keep: (run: Run) => boolean) {
   const kept = windows.map((window) => ({ ...window, runs: window.runs.filter(keep) }));
   const size = (each: readonly Window[]) => each.reduce((sum, { runs }) => sum + runs.length, 0);
@@ -252,9 +246,9 @@ function keptOf(windows: readonly Window[], keep: (run: Run) => boolean) {
  *  A run that ended on its own terms is known at any age. */
 const cutShort = (run: Run) => run.live || run.ending === "no ending" || run.ending === "operator";
 
-/** A block's windows with every run read at its horizon by `at` (`loadRuns`), and the line that says
- *  so. Where no newest run was cut short past `FLOOR`, each run is read whole, and only runs cut
- *  short before the floor are left out. */
+/** A block's windows with every run read at its horizon by `at` (`loadRuns`), and the line that
+ *  says so. Where no newest run was cut short past `FLOOR`, each run is read whole, and only runs
+ *  cut short before the floor are left out. */
 function atHorizon(windows: readonly Window[], at: (run: Run, hours: number) => Run) {
   const ages = (windows[0]?.runs ?? []).flatMap((run) =>
     cutShort(run) && run.elapsed >= FLOOR ? [run.elapsed] : [],
@@ -279,7 +273,7 @@ export function changeOf(measure: Measure, then: readonly Run[], now: readonly R
   const relative = before === null || after === null || before === 0 ? null : after / before - 1;
   if (shift.p === null || before === null || after === null) return { relative, shift, verdict: "no value" };
   if ((shift.least ?? 1) > LEVEL) return { relative, shift, verdict: "too few runs" };
-  if (shift.p > LEVEL) return { relative, shift, verdict: "inside the spread" };
+  if (shift.p > LEVEL) return { relative, shift, verdict: "within inter-run variance" };
   const up = after > before;
   return {
     relative,
@@ -288,7 +282,6 @@ export function changeOf(measure: Measure, then: readonly Run[], now: readonly R
   };
 }
 
-/** A measure's value over the runs beside the counts it is made of, to the digits its size needs. */
 export function valued(measure: Measure, runs: readonly Run[]): string {
   const value = measure.of(runs);
   if (value === null) return MISSING;
@@ -309,7 +302,6 @@ const day = (at: number) => new Date(at).toISOString().slice(0, 10);
 const labelOf = ({ back }: Window) => (back === 0 ? "now" : `${String(back)} back`);
 const counted = (count: number, what: string) => `${String(count)} ${what}${count === 1 ? "" : "s"}`;
 
-/** What a window pools, so that a reader sees what its runs do not share. */
 function pooledLine(window: Window): string {
   const distinct = (key: "release" | "setting") => [...new Set(window.runs.map((run) => run[key]))];
   const opened = `${labelOf(window)}: opened ${day(window.from)} to ${day(window.to - 1)}`;
@@ -317,7 +309,6 @@ function pooledLine(window: Window): string {
   return `${opened}, ${counted(window.runs.length, "run")}, ${counted(distinct("setting").length, "setting")}, ${distinct("release").join(", ")}`;
 }
 
-/** The climb set against what holds it, between two windows: the pattern and its three counts. */
 export function guardOf(
   then: readonly Run[],
   now: readonly Run[],
@@ -354,7 +345,6 @@ export function guardOf(
   };
 }
 
-/** One pack's block: what its windows pool, the measures by window, and the guard lines. */
 function packLines(
   pack: string,
   read: { windows: readonly Window[]; left: number; line: string },
@@ -379,12 +369,12 @@ function packLines(
     "factor",
     "measure",
     ...[now, ...earlier].map(labelOf),
-    ...earlier.map((then) => `now against ${labelOf(then)}`),
+    ...earlier.map((then) => `current vs ${labelOf(then)}`),
   ];
   const verdicts = changes.flat().map(({ verdict }) => verdict);
   const moved = verdicts.filter((verdict) => verdict.startsWith("moved")).length;
   const counts = {
-    tested: moved + verdicts.filter((verdict) => verdict === "inside the spread").length,
+    tested: moved + verdicts.filter((verdict) => verdict === "within inter-run variance").length,
     moved,
   };
   if (format === "tsv") return { lines: [printed(head, rows, format)], ...counts };
@@ -394,6 +384,7 @@ function packLines(
   const notes = [
     read.line,
     left > 0 && `Left out: ${String(left)} earlier runs under settings the newest window does not hold.`,
+    "Honesty here counts the windows' runs to the horizon above; the honesty bar pools whole runs by release (`table.ts --rows releases`).",
     pack === ALL &&
       "Every pack and setting is pooled here, so a difference can be the mix of packs alone: read each pack's block first.",
     earlier.length === 0 && "No earlier window holds a run to read the newest against.",
@@ -419,7 +410,7 @@ function packLines(
             change === undefined ? [] : [[measure, change] as const],
           ),
         );
-        return `Climb against what holds it, now against ${labelOf(then)}: ${guardOf(then.runs, now.runs, kept).line}`;
+        return `Climb vs confirmation (current vs ${labelOf(then)}): ${guardOf(then.runs, now.runs, kept).line}`;
       }),
       "",
     ],
@@ -451,7 +442,6 @@ async function main(args: CommandArgs): Promise<number> {
       ...window,
       runs: pack === ALL ? window.runs : window.runs.filter((run) => run.pack === pack),
     }));
-    // Every pack pooled is read only as a whole, where a setting is one pack's concern.
     const read = pack === ALL || args.flag("any-setting") ? { windows: own, left: 0 } : comparable(own);
     const block = packLines(pack, { ...atHorizon(read.windows, at), left: read.left }, format);
     console.log(block.lines.join("\n"));
@@ -463,20 +453,18 @@ async function main(args: CommandArgs): Promise<number> {
   const bench = args.value("bench");
   if (bench !== null) {
     const scores = scoresOf(bench, args.value("bench-tasks")?.split(",") ?? null);
-    // No name keeps every campaign, so a store whose arms no campaign built folds none.
     const names = campaignsOf(scores);
     const built =
       names.length === 0 ? { runs: [], skipped: [] } : await loadRuns({ ...kept, since: "", names });
-    // An arm is joined by its digest, so the windows' runs stand in where a record names no campaign.
     console.log(outsideLines(scores, [...built.runs, ...runs], format).join("\n"));
     skipped.push(...built.skipped);
   }
   if (format === "tsv") return 0;
   console.log(
-    `\n${String(tested)} differences tested at ${String(LEVEL)} in the packs' own blocks, ${String(moved)} read moved. Where nothing changed, each test reads moved one time in twenty; the tests share runs and counts, so such readings come in groups rather than as a steady share.`,
+    `\n${String(tested)} per-pack tests at alpha=${String(LEVEL)}: ${String(moved)} flagged as shifted. Under a true null, each test fires at 5%; because metrics share runs and counts, false shifts tend to cluster rather than occur independently.`,
   );
   console.log(
-    "A campaign is the unit: p is the share of ways to deal the two windows' campaigns out again that move the measure as far apart. No row is a step or a comparison of harnesses, and none decides a promotion.",
+    "Campaigns are the unit of analysis: p is the permutation share of window reassignments that separate the metric at least as far. Rows are descriptive only and do not represent a step or govern promotion.",
   );
   if (skipped.length > 0) console.log(`not read (${String(skipped.length)}): ${skipped.join("; ")}`);
   return 0;

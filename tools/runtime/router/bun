@@ -62,5 +62,6 @@ place="${place%"${place##*[![:space:]]}"}"
 if [[ "$place" != here && -z "${ANA_HOSTS:-}" ]]; then
   main="$(dirname "$(git -C "$top" rev-parse --path-format=absolute --git-common-dir)")"
   [[ ! -f "$main/.env.runs" ]] || hosts=(--env-file="$main/.env.runs")
+  export ANA_RUNNER_HOST_FILE="$main/.env.runs"
 fi
 exec "$bun" ${hosts[@]+"${hosts[@]}"} "$HOME/.local/share/ana-runner/run.js" "$top" "$pin" "$task" "$@"

@@ -1,10 +1,8 @@
 #!/usr/bin/env bun
 /**
- * The recent real campaigns a system audit reads, each as a fixed snapshot: its log's path, how many
- * whole events it held when read, its last event, the hash of those lines and the commits its
- * launches ran. It reads: it writes nothing of a campaign's and calls no model.
- *
- *   bun .claude/skills/system-audit/scripts/recent.ts [--limit 12] [--min-events 50] [--json]
+ * The recent real campaigns a system audit reads, each as a fixed snapshot: its log's path, its
+ * whole events when read, its last event, the hash of those lines and the commits its launches ran.
+ * It writes nothing and calls no model: `recent.ts [--limit 12] [--min-events 50] [--json]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { lastAt } from "#skills/main/logs.ts";

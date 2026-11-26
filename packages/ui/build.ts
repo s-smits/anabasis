@@ -1,9 +1,8 @@
 import { rmSync } from "../../src/meta/filesystem.ts";
 
 /**
- * Builds the static front-end bundle into `dist/`. Because campaign logs contain hidden evaluation
- * values, the static bundle embeds no log data and no environment variables; the page instead
- * fetches all state from the API server it connects to.
+ * Builds the static bundle into `dist/`. Campaign logs hold hidden values, so the bundle embeds no
+ * log data or environment; the page reads everything from its API server.
  */
 rmSync("./dist", { recursive: true, force: true });
 const result = await Bun.build({

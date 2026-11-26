@@ -1,6 +1,6 @@
-// Each kind of operator word has one lifetime, owned by `src/campaign/word.ts`: a stop, other tasks
+// Each kind of operator word has one lifetime, owned by `src/campaign/signal.ts`: a stop, other tasks
 // and a total are pending until the event that acts on one names it, and a pause holds for its wait
-// and is answered by nothing, so `pendingWords` lists no pause and no retired `cause` word left
+// and is answered by nothing, so `pendingSignals` lists no pause and no retired `cause` word left
 // as pending, and the host does not spell the pause's wait out for itself.
 import { describe, expect, it } from "bun:test";
 import {
@@ -11,9 +11,9 @@ import {
   pauseSince,
   pauseWaitMs,
   paused,
-  pendingWords,
+  pendingSignals,
   unpromotedStep,
-} from "../src/campaign/word.ts";
+} from "../src/campaign/signal.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 
@@ -33,7 +33,7 @@ describe("an operator's word", () => {
       word({ word: "tasks" }),
       word({ word: "budget", dollars: 50 }),
     ];
-    expect(pendingWords(left)).toEqual([
+    expect(pendingSignals(left)).toEqual([
       { at: 1, word: "stop", why: "enough", dollars: null },
       { at: 2, word: "tasks", why: "", dollars: null },
       { at: 3, word: "budget", why: "", dollars: 50 },
@@ -43,13 +43,13 @@ describe("an operator's word", () => {
       event("campaign.move", { move: "examine", answers: [2] }),
       event("campaign.opened", { answers: [3] }),
     ];
-    expect(pendingWords(answered).map(({ word: kind }) => kind)).toEqual(["stop"]);
-    expect(pendingWords([...answered, event("campaign.ended", { answers: [1] })])).toEqual([]);
+    expect(pendingSignals(answered).map(({ word: kind }) => kind)).toEqual(["stop"]);
+    expect(pendingSignals([...answered, event("campaign.ended", { answers: [1] })])).toEqual([]);
   });
 
   it("is never pending as a pause or as a word no move reads, however long ago it was left", () => {
-    // An older log holds `cause`, a kind no writer leaves now: it stays readable, and the words
-    // around it are read as ever.
+    // An older log holds `cause`, a kind no writer leaves now: it stays readable, and the words around
+    // it read as ever.
     const left = [
       event("campaign.opened", {}),
       word({ word: "pause" }),
@@ -57,7 +57,7 @@ describe("an operator's word", () => {
       word({ word: 7 }),
       word({ word: "stop" }),
     ];
-    expect(pendingWords(left).map(({ at, word: kind }) => [at, kind])).toEqual([[4, "stop"]]);
+    expect(pendingSignals(left).map(({ at, word: kind }) => [at, kind])).toEqual([[4, "stop"]]);
     expect(ANSWERED).not.toContain(PAUSE);
   });
 

@@ -10,7 +10,6 @@ const at = "2026-10-14T00:00:00.000Z";
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
 const [starter, first, second, third] = ["a".repeat(64), "b".repeat(64), "c".repeat(64), "d".repeat(64)];
 
-/** A session from `parent` that left `version`, then its comparison against `old`. */
 const round = (id: string, parent: string, version: string, old: string): LogEvent[] => [
   event("build.started", { session: id, parent }),
   event("harness.version", { session: id, parent, version }),

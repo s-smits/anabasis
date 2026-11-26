@@ -40,9 +40,9 @@ A fresh blinded session counts each shape across archived campaigns/domains/harn
 ## Dispositions & examples
 
 Classify each card as **Defect**, **Instrument fact**, **Limit of the claim**, **Lead** (`predictions-<run>.md`), **Domain choice** (operator), or **Dropped** (citing failed gate #):
-- *"Guide stated 20 turns / 30 min outside campaign"* → Defect (`studies/shared/claude-export.ts`).
+- *"Guide stated 20 turns / 30 min outside campaign"* → Defect (`studies/shared/pi-solve.ts` / `portableGuide`).
 - *"7 dangling symlinks in moved export"* → Defect in export.
-- *"Tool assumed build-workspace path"* → Lead (counted across kept harnesses).
+- *"Tool assumed build-workspace path"* → Lead (counted across saved checkpoints).
 - *"200k char cap / 7-criteria rubric"* → Instrument fact / claim limit.
 - *"Built arm wrote less on unrewarded fields"* → `"Write more"` dropped by Q2; selection question = Lead.
 - *"4/8 ties with pilot Starter"* → Dropped.

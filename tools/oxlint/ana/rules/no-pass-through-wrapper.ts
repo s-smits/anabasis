@@ -34,15 +34,12 @@ export const noPassThroughWrapperRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Every name this file declares or imports, so a receiver it owns reads as a fixed argument. */
     const named = new Set<string>(["this"]);
     /** Candidates held until the whole file is read, because a receiver may be declared below. */
     const found: { node: AnyFunction; name: string; callee: string; root: string }[] = [];
 
-    /** The single expression a function body returns, or null when it is anything else. */
     function returned(node: AnyFunction): ESTree.Expression | null {
       const { body } = node;
-      // A `declare function` has no body at all; nothing is forwarded through nothing.
       if (body === null) return null;
       if (body.type !== "BlockStatement") return body;
       const [only] = body.body;
@@ -52,14 +49,12 @@ export const noPassThroughWrapperRule = defineRule({
       return null;
     }
 
-    /** The root identifier of a callee that is a name a caller could write, else null. */
     function calleeRoot(node: ESTree.Node): string | null {
       if (node.type === "Identifier") return node.name;
       if (node.type === "ThisExpression") return "this";
       return isNamedMember(node) ? calleeRoot(node.object) : null;
     }
 
-    /** Whether a call's arguments are exactly these parameter names, in order. */
     function forwards(call: ESTree.CallExpression, parameters: readonly ESTree.ParamPattern[]): boolean {
       // A function with no parameters forwards nothing; its body names a computation or a receiver.
       if (parameters.length === 0 || call.arguments.length !== parameters.length) return false;

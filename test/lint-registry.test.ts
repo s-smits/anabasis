@@ -1,12 +1,11 @@
 /**
- * The records lint keeps beside its rules: the plugin map every list of rules reads
- * (`tools/oxlint/plugins.ts`), the two configs, the fixer declarations, the ledger of core rules
- * left off and the not-slop ledger. A drifted entry in any of them configures, exempts or answers
- * nothing, and lint stays green, so each case names what drifted.
+ * The records lint keeps beside its rules: the plugin map (`tools/oxlint/plugins.ts`),
+ * `.oxlintrc.json`, the fixer declarations, the core rules left off and the not-slop ledger. A
+ * drifted entry configures, exempts or answers nothing while lint stays green, so each case names
+ * what drifted.
  */
 import { describe, expect, it } from "bun:test";
 import config from "../.oxlintrc.json" with { type: "json" };
-import staged from "../tools/oxlint/staged-rules.json" with { type: "json" };
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
@@ -19,9 +18,15 @@ import {
   NOT_SLOP_LEDGER,
   readLedger,
   siteId,
+  staleLedgerProblems,
   TREE_RULE_PREFIX,
   unanswerable,
 } from "../tools/oxlint/not-slop-ledger.ts";
+import {
+  COMMENT_RATCHET_FILE,
+  formatCommentRatchet,
+  readCommentRatchet,
+} from "../tools/oxlint/comment-ratchet.ts";
 import { PLUGINS } from "../tools/oxlint/plugins.ts";
 import { TREE_FINDING_ARGUMENTS } from "../tools/oxlint/tree-findings.ts";
 import { type Diagnostic, lintSite, OXLINT_BINARY } from "../tools/runtime/lint.ts";
@@ -29,14 +34,13 @@ import { present } from "./helpers/matchers.ts";
 
 /** How every rule and scan kind is named, and what its prefix makes it (HABITS 12.13). */
 const RULE_NAME = /^(?:no|prefer|require|max)-[a-z]+(?:-[a-z]+)*$/u;
-/** The documents that list rules by name, prefixed or in a table. */
 const DOCUMENTS = [
   "tools/oxlint/HABITS.md",
   "tools/oxlint/FIXER-DECISIONS.md",
   "tools/oxlint/rules-off.tsv",
   ".claude/skills/simplify/SKILL.md",
 ];
-/** `ana/no-deep-nesting` or `tree/no-unowned-fact` spelled in prose. */
+/** `ana/no-deep-nesting` or `tree/no-unused-export` spelled in prose. */
 const PREFIXED =
   /(?<![\w./-])(?:ana|anti-slop|implicit-state|implicit-state-opinionated|tree)\/[a-z][a-z0-9-]*[a-z0-9](?![\w/.-])/gu;
 /** A backticked name in the fixer record, which names plugin rules alone. */
@@ -56,7 +60,6 @@ const KINDS = Object.keys(TREE_FINDING_ARGUMENTS).map((kind) => `${TREE_RULE_PRE
 const KNOWN = new Set([...RULES, ...KINDS]);
 const nameOf = (id: string): string => id.slice(id.indexOf("/") + 1);
 
-/** Every rule's source, by its plugin and name. */
 const SOURCES = [...PLUGINS.keys()].flatMap((plugin) =>
   readdirSync(join(OXLINT, plugin, "rules"))
     .filter((file) => file.endsWith(".ts"))
@@ -77,11 +80,10 @@ describe("the rule registry", () => {
     expect(SOURCES.map(({ id }) => id).toSorted()).toStrictEqual(RULES.toSorted());
   });
 
-  it("runs every rule from one of the two configs, and configures none that does not exist", () => {
+  it("runs every rule from .oxlintrc.json, and configures none that does not exist", () => {
     const configured = [
       ...Object.keys(config.rules),
       ...config.overrides.flatMap((override) => Object.keys(override.rules)),
-      ...Object.keys(staged.rules),
     ].filter((id) => PLUGINS.has(id.split("/")[0] ?? ""));
     expect(configured.filter((id) => !KNOWN.has(id))).toStrictEqual([]);
     expect(RULES.filter((id) => !configured.includes(id))).toStrictEqual([]);
@@ -153,7 +155,7 @@ describe("the core rules left off", () => {
     );
     expect(unrecorded).toEqual([]);
     const malformed = OFF.filter(
-      (row) => !/^\d+$/u.test(row.sites) || !["off", "staged"].includes(row.status) || row.reason === "",
+      (row) => !/^\d+$/u.test(row.sites) || row.status !== "off" || row.reason === "",
     );
     expect(malformed).toEqual([]);
   });
@@ -192,7 +194,6 @@ const row = (overrides: Partial<Answer>): Answer => ({
   ...overrides,
 });
 
-/** A finding at `line`, spanning `head` from its first character, over `source`. */
 function finding(source: string, line: number, head: string): Diagnostic {
   const lines = source.split("\n");
   const offset =
@@ -240,6 +241,7 @@ describe("the not-slop ledger", () => {
       ["anti-slop/prefer-subpath-import", true],
       ["ana/no-such-rule", true],
       ["ana/no-inline-slop-answer", true],
+      ["ana/no-comments", true],
       ["anti-slop/no-runtime-typeof", false],
       ["tree/no-duplicate-block", false],
     ] as const) {
@@ -258,5 +260,49 @@ describe("the not-slop ledger", () => {
       ["aaaaaaaaaaaa", "the answer a union merge kept last"],
       ["bbbbbbbbbbbb", "the one typeof behind isString"],
     ]);
+  });
+
+  it("reports unread rows and stale rows only within the caller's selected rule slice", () => {
+    const treeAnswer = row({ id: "111111111111", rule: "tree/no-duplicate-block", path: "src/a.ts" });
+    const liveTree = row({ id: "222222222222", rule: "tree/no-transposed-argument", path: "src/b.ts" });
+    const lintAnswer = row({ id: "333333333333", rule: "anti-slop/no-runtime-typeof", path: "src/c.ts" });
+    const ledger = { answers: [treeAnswer, liveTree, lintAnswer], unread: ["line 2: bad row"] };
+    const seen = new Set([liveTree.id]);
+    expect(
+      staleLedgerProblems(ledger, seen, (answer) => answer.rule.startsWith(TREE_RULE_PREFIX)),
+    ).toStrictEqual([
+      `${NOT_SLOP_LEDGER}: line 2: bad row`,
+      `${NOT_SLOP_LEDGER}: ${treeAnswer.id} ${treeAnswer.rule} ${treeAnswer.path}: no finding has this id any more; bun run not-slop -- prune`,
+    ]);
+    expect(
+      staleLedgerProblems(ledger, seen, (answer) => !answer.rule.startsWith(TREE_RULE_PREFIX)),
+    ).toStrictEqual([
+      `${NOT_SLOP_LEDGER}: line 2: bad row`,
+      `${NOT_SLOP_LEDGER}: ${lintAnswer.id} ${lintAnswer.rule} ${lintAnswer.path}: no finding has this id any more; bun run not-slop -- prune`,
+    ]);
+  });
+});
+
+describe("the comment ratchet", () => {
+  it("keeps tools/oxlint/comment-ratchet.tsv valid, sorted, positive, and pointing at existing files", () => {
+    const text = read(COMMENT_RATCHET_FILE);
+    const { entries, unread } = readCommentRatchet(text);
+    expect(unread).toStrictEqual([]);
+    expect(text).toBe(formatCommentRatchet(entries));
+    const missing = [...entries.keys()].filter((path) => !existsSync(join(REPO, path)));
+    expect(missing).toStrictEqual([]);
+  });
+
+  it("rejects malformed, zero, or duplicate ratchet rows and drops zero counts when formatting", () => {
+    const bad = readCommentRatchet("path\tcount\nsrc/a.ts\t0\nsrc/b.ts\t2\nsrc/b.ts\t1\nnot-a-row\n");
+    expect(bad.unread).toHaveLength(3);
+    expect(
+      formatCommentRatchet(
+        new Map([
+          ["src/b.ts", 2],
+          ["src/a.ts", 0],
+        ]),
+      ),
+    ).toBe("path\tcount\nsrc/b.ts\t2\n");
   });
 });

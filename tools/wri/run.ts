@@ -1,45 +1,39 @@
 /**
- * The triggers of the lanes that read how a run was conducted rather than what it measured: the
- * endings a campaign went on from and the operator's words (lane 13), the Builder's conversation
- * across its compactions (lane 23), the exam a campaign drafted from its prompt (lane 2), the
- * launches that ran it (lane 22), and whether its log reads in order (lane 22 too). Lane 5's count
- * of the Referee's refused evidence sits here too, since `read.ts` stands near the size policy's
- * ceiling.
+ * The triggers of how a run was conducted rather than what it measured: endings the campaign went on
+ * from and the operator's words, the Builder's conversation across compactions, the drafted exam,
+ * the launches, whether the log reads in order, and the Referee's refused evidence.
  */
-import { ANSWERED, PAUSE, pendingWords } from "#src/campaign/word.ts";
+import { ANSWERED, PAUSE, pendingSignals } from "#src/campaign/signal.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import type { Receipt } from "../runs/receipt.ts";
-import { fired, firedIf, type Index, share, tally, text, type Trigger } from "./folds.ts";
+import { fired, emitIf, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
-/** Lane 13: endings the campaign went on from, and the operator's words with how many an event
- *  acted on, read as the host reads them (`pendingWords`). It does not count the moves a Builder
- *  made where the table named another: the Builder is not told the table's move, so that count
- *  would read bookkeeping. */
+/** Endings the campaign went on from, and the operator's words with how many an event acted on,
+ *  read as the host reads them (`pendingSignals`). */
 function moveTriggers(log: Index): Trigger[] {
   const last = log.events.length - 1;
   const endings = log.events.flatMap(({ kind, data }, index) =>
     kind === "campaign.ended" && index < last ? [`${text(data.ending)} at event ${String(index)}`] : [],
   );
   const words = log.events.filter(({ kind }) => kind === "campaign.word");
-  // A pause names the verb that left it and its point, where its log is new enough to hold them.
   const said = ({ data }: LogEvent): string =>
     data.word === PAUSE && isString(data.why) ? `${PAUSE} (${data.why})` : text(data.word);
   // A pause is answered by its time, not by a move (`paused`), so only the other words are owed one.
   const owed = words.filter(({ data }) => ANSWERED.some((each) => each === data.word)).length;
   return [
-    ...firedIf(endings.length > 0, "ENDED AND WENT ON", endings.join("; ")),
-    ...firedIf(
+    ...emitIf(endings.length > 0, "ENDED AND WENT ON", endings.join("; ")),
+    ...emitIf(
       words.length > 0,
       "OPERATOR WORDS",
-      `${tally(countBy(words, said))}; of the words a move answers, ${share(owed - pendingWords(log.events).length, owed)} acted on`,
+      `${tally(countBy(words, said))}; of the words a move answers, ${share(owed - pendingSignals(log.events).length, owed)} acted on`,
     ),
   ];
 }
 
-/** Lane 23: each Builder session's compactions beside its turns and its calls of `read_opening`. */
+/** Each Builder session's compactions beside its turns and its `read_opening` calls. */
 function conversationTriggers(log: Index): Trigger[] {
   const per = (kind: LogEvent["kind"]) => countBy(log.of(kind), (data) => text(data.session));
   const [compacted, turns] = [per("build.compacted"), per("build.turn")];
@@ -52,11 +46,10 @@ function conversationTriggers(log: Index): Trigger[] {
           `${session}: ${plural(times, "compaction")} in ${plural(turns[session] ?? 0, "turn")}, read_opening ${String(opened)}`,
         ];
   });
-  return firedIf(lines.length > 0, "BUILDER COMPACTED", lines.join("; "));
+  return emitIf(lines.length > 0, "BUILDER COMPACTED", lines.join("; "));
 }
 
-/** Lane 2: the drafts an exam took, how each drafting session ended, and the measurement it
- *  recorded. */
+/** The drafts an exam took, how each drafting session ended, and the measurement it recorded. */
 function draftTriggers(log: Index): Trigger[] {
   const drafted = log.of("exam.drafted");
   if (drafted.length === 0) return [];
@@ -72,13 +65,12 @@ function draftTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 22: the launches beside the log, where there is more than one, more than one commit, a
- *  dirty tree, or a campaign command that left no receipt. It counts the solver's Python by version
- *  and packages, among the receipts that hold one, since a host's pin can move both between two
- *  launches at one commit, on one login and one Bun. */
+/** The launches beside the log, where there is more than one, more than one commit, a dirty tree,
+ *  or a campaign command that left no receipt; with the solver's Python by version and packages,
+ *  since a host's pin can move both between two launches at one commit. */
 function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   if (launches.length === 0) {
-    return firedIf(
+    return emitIf(
       log.of("campaign.opened").length > 0,
       "NO LAUNCH RECEIPT",
       "a campaign command opened this log and no receipt lies beside it",
@@ -91,15 +83,15 @@ function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   const pythons = new Set(
     launches.flatMap(({ python }) => python ?? []).map((python) => JSON.stringify(python)),
   );
-  return firedIf(
+  return emitIf(
     launches.length > 1 || dirty > 0,
     "LAUNCHES",
     `${String(launches.length)} launch${launches.length === 1 ? "" : "es"} at ${plural(commits.size, "commit")} (${[...commits].join(", ")}), ${String(dirty)} from a dirty tree, under ${plural(logins.size, "login")}, ${plural(buns.size, "Bun version")} and ${plural(pythons.size, "recorded Python")} for the solver`,
   );
 }
 
-/** Lane 22: what an append-only log of one writer cannot hold: a clock that runs backwards, a solve
- *  that finished without starting, a comparison started twice under one id. */
+/** What an append-only log of one writer cannot hold: a clock that runs backwards, a solve that
+ *  finished without starting, a comparison started twice under one id. */
 function orderTriggers(log: Index): Trigger[] {
   const backwards = log.events.filter(
     (event, index) => index > 0 && event.at < (log.events[index - 1]?.at ?? ""),
@@ -114,20 +106,18 @@ function orderTriggers(log: Index): Trigger[] {
     ...(orphans.length > 0 ? [`${plural(orphans.length, "solve")} finished with no start`] : []),
     ...(twice.length > 0 ? [`comparison started twice: ${twice.map(([id]) => id).join(", ")}`] : []),
   ];
-  return firedIf(said.length > 0, "LOG OUT OF ORDER", said.join("; "));
+  return emitIf(said.length > 0, "LOG OUT OF ORDER", said.join("; "));
 }
 
-/** Lane 5: the rulings the host refused for want of their evidence, by the ruling asked for. */
 function refusalTriggers(log: Index): Trigger[] {
   const refused = log.of("referee.refused");
-  return firedIf(
+  return emitIf(
     refused.length > 0,
     "RULINGS REFUSED",
     tally(countBy(refused, (data) => text(asRecord(data.asked)?.ruling))),
   );
 }
 
-/** Every trigger of this module, in lane order. */
 export function runTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   return [
     ...refusalTriggers(log),

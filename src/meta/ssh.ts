@@ -1,16 +1,9 @@
-/**
- * Every ssh connection to a host the runs verbs or the check runner make, with a private, reusable
- * control socket for each destination. BatchMode keeps a connection that would ask for a password from
- * waiting for an answer nobody gives. The check runner reads these through its `hosts.js` rather
- * than keeping a list of its own.
- */
 import { lstatSync, mkdirSync } from "./filesystem.ts";
 import { tmpdir } from "./os.ts";
 import { join } from "./path.ts";
 import { runtimeProcess } from "./process.ts";
 import { sha256 } from "./digest.ts";
 
-/** The short socket name also fits macOS's Unix socket limit under its long temp root. */
 export function sshOptions(destination: string): string[] {
   const uid = runtimeProcess.getuid?.();
   const directory = join(tmpdir(), `ana-ssh-${String(uid ?? runtimeProcess.pid)}`);
@@ -20,9 +13,6 @@ export function sshOptions(destination: string): string[] {
     throw new Error("the SSH control directory must be private and owned by this user");
   }
   const socket = join(directory, sha256(destination).slice(0, 16));
-  // ssh refuses a control socket of 104 bytes or more and adds 17 while it makes one, so under a deeper
-  // temp root each connection goes alone rather than failing, as every connection under a deep
-  // scratch root would.
   const control =
     new TextEncoder().encode(socket).length + 17 < 104
       ? ["-o", "ControlMaster=auto", "-o", "ControlPersist=300", "-o", `ControlPath=${socket}`]

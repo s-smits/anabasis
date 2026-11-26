@@ -4,27 +4,23 @@ import { withoutProse } from "../shared/masked.ts";
 import { statementBelow } from "../shared/statements.ts";
 
 /**
- * Flags a `const` without a type annotation whose initialiser is a bare identifier or dotted
- * property path and whose only read in the enclosing function is in the immediately following
- * statement (unless the path is later reassigned in the same scope or narrowed across a closure).
- * Auto-fixes when evaluation order and closure capture are unaffected.
+ * Flags an unannotated `const` whose initialiser is a bare identifier or dotted property path and
+ * whose only read is the next statement, unless the scope writes to the path or a closure below
+ * would lose a narrowing. Auto-fixes when evaluation order and closure capture are unaffected.
  */
-/** Each opening bracket against the closing one that would balance it. */
 const OPENS = new Map([
   ["(", ")"],
   ["[", "]"],
   ["{", "}"],
 ]);
 
-/** Whether statement text ahead of a read can change a value before the read takes it: an update,
- *  an assignment, a `delete`, an `await` or `yield`, or a completed call or group. Text rather
- *  than a proof, so it errs towards leaving the edit to the author. */
+/** Whether text ahead of a read can change the value first: an update, an assignment, a `delete`,
+ *  an `await` or `yield`, or a completed call or group. Text rather than a proof, so it errs
+ *  towards leaving the edit to the author. */
 function changedBefore(ahead: string): boolean {
   return /\+\+|--|\bdelete\b|\bawait\b|\byield\b|\)|(?<![=!<>])=(?![=>])/u.test(ahead);
 }
 
-/** Whether this text narrows a dotted path, or any dotted prefix of it but the root, in a
- *  comparison, a `typeof` or an `instanceof`, which is how this tree narrows. */
 function narrowedIn(text: string, path: string): boolean {
   const dots: number[] = [];
   for (let at = path.indexOf(".", path.indexOf(".") + 1); at > 0; at = path.indexOf(".", at + 1)) {
@@ -65,20 +61,17 @@ export const noRenamingTemporaryRule = defineRule({
     },
   },
   createOnce(context) {
-    /** The dotted text of an initialiser worth no line, or null when it is work or a decision. */
     function rename(node: ESTree.Expression): string | null {
       if (node.type === "Identifier") return node.name;
       if (node.type !== "MemberExpression" || node.computed || node.optional) return null;
       return rename(node.object) === null ? null : context.sourceCode.getText(node);
     }
 
-    /** Whether this scope writes to the path, which makes the binding the value before the write. */
     function replaced(scope: string, path: string): boolean {
       const escaped = path.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
       return new RegExp(String.raw`(?<!\b(?:const|let|var)\s{1,4})${escaped}\s*=(?!=)`, "u").test(scope);
     }
 
-    /** The nearest bracket still open at `index`, or "" at the statement's own level. */
     function enclosing(text: string, index: number): string {
       const closed = new Map([
         [")", 0],
@@ -99,13 +92,8 @@ export const noRenamingTemporaryRule = defineRule({
     }
 
     /**
-     * Whether the value's text can stand where the name stands.
-     *
-     * Two positions where it cannot, and neither is visible to the match alone. In `{ label }`
-     * the name is the key as well as the value, so substituting renames the key, or, with a
-     * dotted value, writes `{ row.name }`, which does not parse. And `reader()` on a binding of
-     * `stream.read` calls an unbound function, where `stream.read()` binds a receiver: the same
-     * call with a different `this`.
+     * In `{ label }` the name is the key as well as the value, and `reader()` on a binding of
+     * `stream.read` calls an unbound function where `stream.read()` binds a receiver.
      */
     function substitutable(text: string, index: number, name: string, value: string): boolean {
       const after = text.slice(index + name.length).trimStart();
@@ -114,7 +102,6 @@ export const noRenamingTemporaryRule = defineRule({
       return !shorthand && !(value.includes(".") && after.startsWith("("));
     }
 
-    /** The nearest enclosing function or program body, as source text. */
     function scopeText(node: ESTree.Node): string {
       for (let at: ESTree.Node | null = node.parent; at !== null; at = at.parent) {
         const kind = at.type;
@@ -145,7 +132,6 @@ export const noRenamingTemporaryRule = defineRule({
 
         // Not after a dot, so a property of the same name is not a use, but `...name` is one.
         const spelling = new RegExp(String.raw`(?<![\w$])(?<!(?<!\.\.)\.)${node.id.name}(?![\w$:])`, "gu");
-        // The declaration itself is one occurrence; a second is the single read that keeps it.
         const uses = scopeText(node).match(spelling);
         if (uses?.length !== 2) return;
         // That read has to be the next statement: further down, the binding is a snapshot.
@@ -153,7 +139,6 @@ export const noRenamingTemporaryRule = defineRule({
         if (next === null) return;
         const below = context.sourceCode.getText(next);
         if (below.match(spelling) === null) return;
-        // The value before a write this scope makes, and a guard a closure below would lose.
         const scope = scopeText(node);
         if (replaced(scope, value)) return;
         if (/=>|\bfunction\b/u.test(below) && narrowedIn(scope, value)) return;
@@ -164,25 +149,22 @@ export const noRenamingTemporaryRule = defineRule({
           messageId: "renamed",
           data: { name, value },
           fix: (fixer) => {
-            // In the tree the read is an identifier; in the text it may also be a word in a
-            // string, a template or a comment, and substituting there would be a silent wrong edit.
+            // In the text the read may also be a word in a string, a template or a comment, so only
+            // masked text is edited.
             const masked = withoutProse(below);
             const reads = [...masked.matchAll(spelling)];
             const [read] = reads;
             if (reads.length !== 1 || read?.index === undefined) return null;
             if (!substitutable(masked, read.index, name, value)) return null;
-            // The visitor decides one declarator and the edit removes the statement that holds
-            // it, so `const one = input.value, keep = 2;` took `keep` with it. Removing the
-            // declarator alone would leave its comma to place, which is a layout decision; the
-            // report stands and the author makes that edit.
+            // Removing one declarator of several would leave its comma to place, so that statement is
+            // reported but not edited.
             if (declaration.declarations.length !== 1) return null;
-            // The binding read the value when it was declared; the path reads it where the name
-            // stood. Those differ when the statement changes the value first (`state.value++ -
-            // before`) or when the read waits in a closure, so neither is edited.
+            // The path reads the value where the name stood, so a change ahead of the read or a read in
+            // a closure is not edited.
             if (changedBefore(masked.slice(0, read.index)) || /=>|\bfunction\b/u.test(masked)) return null;
             const at = next.start + read.index;
-            // Removing the declaration alone, rather than the span up to the next statement,
-            // leaves a comment written on its line or below it where its author put it.
+            // Removing the declaration alone leaves a comment on its line or below it where its author
+            // put it.
             return [fixer.remove(declaration), fixer.replaceTextRange([at, at + name.length], value)];
           },
         });

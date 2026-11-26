@@ -1,37 +1,33 @@
-/**
- * A log's proposals and accepted answers, in the log's order.
- */
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { type FileManifest, manifestOf } from "./answer-files.ts";
 import { eventsOf, type LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
 
-/** A task no session proposed came with the opening: a stored pack's or the drafted exam's. */
 export const OPENING = "the opening exam";
 
-/** A `task.proposed` event. A pack's task is proposed by its id and its family. A task an Examiner
- *  session wrote is logged whole, since no pack holds it. */
 interface Proposal {
   readonly version: string;
   readonly taskId: string | null;
-  /** The task's family, which a comparison tallies by (`compared`, `comparison.ts`); null where the
-   *  proposal names none, as an old pack's may not. */
   readonly family: string | null;
-  /** The Examiner session that wrote it; null for a pack's task. */
   readonly session: string | null;
-  /** The task whole, where the proposal holds it. A few old proposals also hold their author's
-   *  `claim` beside the task, which nothing reads any more (`write.ts`). */
   readonly task: Task | null;
 }
 
-/** An instance by what a solver and the checks read of it, whatever id it carries: what a writing
- *  session takes no second time and names a checked instance by (`write.ts`). */
 export function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
   return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
 }
 
-/** Every proposal of a log, in the order the tasks were proposed. */
+const pastRubric = (rubric: unknown) =>
+  Array.isArray(rubric)
+    ? {
+        rubric: rubric.flatMap((row) => {
+          const { id, criterion } = asRecord(row) ?? {};
+          return isString(id) && isString(criterion) ? [{ id, criterion }] : [];
+        }),
+      }
+    : {};
+
 export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
   return eventsOf(events, "task.proposed").flatMap(({ event: { data } }) => {
     if (!isString(data.version)) return [];
@@ -50,6 +46,7 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
                 family: task.family,
                 publicInput: task.publicInput ?? null,
                 hidden: task.hidden ?? null,
+                ...pastRubric(task.rubric),
               }
             : null,
       },
@@ -57,16 +54,12 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
   });
 }
 
-/** Each task's writer: the session that proposed it, or the opening. */
 export const writersOf = (events: readonly LogEvent[]) =>
   new Map(proposalsOf(events).map(({ version, session }) => [version, session ?? OPENING]));
 
-/** Each task's family as its author named it, null where it named none. */
 export const familiesOf = (events: readonly LogEvent[]) =>
   new Map(proposalsOf(events).map(({ version, family }) => [version, family]));
 
-/** The family sizes of `tasks` (versions), largest first, and how many name no family: how far a set
- *  of tasks is independent evidence. It names no family. */
 export function familySizes(events: readonly LogEvent[], tasks: readonly string[]) {
   const named = familiesOf(events);
   const kin = Map.groupBy(tasks, (task) => named.get(task) ?? null);
@@ -74,8 +67,6 @@ export function familySizes(events: readonly LogEvent[], tasks: readonly string[
   return { sizes: sizes.toSorted((one, other) => other - one), unnamed: kin.get(null)?.length ?? 0 };
 }
 
-/** Accepted answers for one proposed version, each with the files it delivered. They remain on the
- *  exam side. */
 export function acceptedAnswers(
   events: readonly LogEvent[],
   version: string | undefined,
@@ -96,13 +87,10 @@ export function acceptedAnswers(
   );
 }
 
-/** The solves a person labelled wrong among the passes drawn for review. */
 export function wrongPasses(passes: Readonly<Record<string, JsonValue>>): Set<string> {
   return new Set(Object.keys(passes).filter((solve) => passes[solve] === "wrong"));
 }
 
-/** `events` with each solve in `wrong` read as a rejection: its ending a fail and its verdict no
- *  pass. The log is unchanged; settlement, reported pairs and answer history read this one view. */
 export function failWrongPasses(
   events: readonly LogEvent[],
   wrong: ReadonlySet<string>,
@@ -116,7 +104,6 @@ export function failWrongPasses(
   });
 }
 
-/** Settled wrong passes across the log. A comparison can be settled only once (`settleReading`). */
 export function wrongPassesIn(events: readonly LogEvent[]): Set<string> {
   return new Set(
     eventsOf(events, "comparison.reported").flatMap(({ event: { data } }) => [
@@ -125,8 +112,6 @@ export function wrongPassesIn(events: readonly LogEvent[]): Set<string> {
   );
 }
 
-/** The tasks a log holds whole in a proposal: an Examiner's instances, which no pack holds. Each is
- *  given once, as the last proposal of its id holds it. */
 export function writtenTasks(events: readonly LogEvent[]): Task[] {
   return [
     ...new Map(

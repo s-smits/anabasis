@@ -1,7 +1,10 @@
 // A login reads open or closed from one reading. A picker rechecks once the reset or cache expiry
-// arrives, and the next full `usage` overrules what was kept.
+// arrives, and any later reading of the login overrules what was kept.
 import { describe, expect, it } from "bun:test";
-import { closedOf, notClosed, stateWords } from "../tools/runs/login-state.ts";
+import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
+import { closedOf, closures, notClosed, noted, noteReadings, stateWords } from "../tools/runs/login-state.ts";
 import type { Reading } from "../tools/runs/logins.ts";
 
 const NOW = Date.parse("2026-11-05T21:00:00Z");
@@ -47,14 +50,48 @@ describe("a login's state, from one reading", () => {
   });
 });
 
-describe("what a picker takes from the last reading kept", () => {
+describe("what a picker takes from the closures kept", () => {
   const earlyReset = NOW + HOUR / 6;
-  const closed = { at: NOW - HOUR / 2, weeks: {}, closed: { "3": WEEK_RESET, "2": earlyReset } };
+  const at = NOW - HOUR / 2;
+  const kept = { "3": { at, until: WEEK_RESET }, "2": { at, until: earlyReset } };
 
   it("rechecks at the reset or after 45 minutes, leaving time for a keeper retry within the hour", () => {
-    expect(notClosed(["2", "3"], [closed], earlyReset)).toEqual(["2"]);
-    const expiry = closed.at + (3 * HOUR) / 4;
-    expect(notClosed(["3"], [closed], expiry - 1)).toEqual([]);
-    expect(notClosed(["2", "3"], [closed], expiry)).toEqual(["2", "3"]);
+    expect(notClosed(["2", "3"], kept, earlyReset)).toEqual(["2"]);
+    const expiry = at + (3 * HOUR) / 4;
+    expect(notClosed(["3"], kept, expiry - 1)).toEqual([]);
+    expect(notClosed(["2", "3"], kept, expiry)).toEqual(["2", "3"]);
+  });
+
+  it("keeps a closure until a reading finds the login open, and an unread login as it was", () => {
+    const failed: Reading = { login: "3", plain: false, error: "429" };
+    expect(noted({}, [reading("2", { pct: 100 }), reading("3")], NOW)).toEqual({
+      "2": { at: NOW, until: FIVE_RESET },
+    });
+    expect(noted(kept, [reading("2"), failed], NOW)).toEqual({ "3": kept["3"] });
+    expect(noted(kept, [], WEEK_RESET)).toEqual({});
+  });
+
+  it("ignores corrupt or malformed cache files and round-trips valid closures", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ana-closures-"));
+    const file = join(dir, "logins-closed.json");
+    try {
+      expect(closures(file)).toEqual({});
+      for (const bad of ["", "{broken", "null", "[]", '"str"', "123"]) {
+        writeFileSync(file, bad);
+        expect(closures(file)).toEqual({});
+      }
+      writeFileSync(
+        file,
+        JSON.stringify({ "1": { at: NOW, until: FIVE_RESET }, "2": { at: "bad" }, "3": null }),
+      );
+      expect(closures(file)).toEqual({ "1": { at: NOW, until: FIVE_RESET } });
+      noteReadings([reading("2", { pct: 100 })], NOW, file);
+      expect(closures(file)).toEqual({
+        "1": { at: NOW, until: FIVE_RESET },
+        "2": { at: NOW, until: FIVE_RESET },
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

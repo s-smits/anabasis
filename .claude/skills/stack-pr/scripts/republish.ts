@@ -1,34 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Publish a consolidated stack in the order of `--head`, bottom to top.
- *
- *   bun .claude/skills/stack-pr/scripts/republish.ts --head <pr>=<commit> ... [--absorb <pr>=<into>] ...
- *     [--yes] [--no-verify]
- *   bun .claude/skills/stack-pr/scripts/republish.ts --onto-main <pr> [--yes] [--no-verify]
- *   bun .claude/skills/stack-pr/scripts/republish.ts --resume [--yes]
- *
- * `--onto-main` replays the open stack holding <pr> onto origin/main and names every head itself:
- * the repair once what the stack stood on has landed (`replayedHeads`). A parent rewritten within
- * the stack `bun run land --sanitize` replays itself, without unstacking.
- *
- * Without `--yes` it shows each branch before and after, and every operation in order. With it,
- * it unstacks, retargets every survivor and every absorbed pull request to main, pushes moved heads
- * atomically with leases on the heads GitHub showed, sets bases bottom to top, closes absorbed pull
- * requests with a comment naming where their changes went, and relinks. An absorbed pull request
- * left on its survivor's branch is marked merged by the push where the survivor's new head holds
- * its commits, and GitHub then stacks the two itself and refuses the survivor's base. Unnamed
- * survivors follow the named ones in their old order and keep their heads; name every survivor when
- * reordering the whole stack.
- *
- * Done by hand, each of these steps can go wrong: zsh reads `$sha:refs/...` as a `:r` modifier,
- * macOS's /bin/bash 3.2 has no `mapfile`, and a main rewritten mid-consolidation (same tree, new
- * commits) leaves a stack built on the old main to be replayed before it can land. So the script
- * runs git without a shell, refuses before it writes anything unless the bottom holds origin/main's
- * head and each head holds the one beneath it (what `bun run land` will ask). Pushing reordered
- * heads while their old bases remain attached lets GitHub mark pull requests merged into
- * intermediate branches, so unstacking and retargeting precede the push, as the hostile test checks.
- * `--no-verify` passes the operator's word to skip the pre-push hook; the stack stays
- * unproved until `bun run land -- <top> --sanitize`.
+ * Publishes a consolidated stack in the order of `--head`, bottom to top: `republish.ts --head
+ * <pr>=<commit>... [--absorb <pr>=<into>]... [--yes] [--no-verify]`, `--onto-main <pr>` (replays
+ * the open stack holding it onto origin/main and names every head itself, `replayedHeads`), or
+ * `--resume`. Without `--yes` it shows each branch before and after and every operation in order;
+ * with it, it unstacks, retargets survivors and absorbed pull requests to main, pushes moved heads
+ * atomically with leases, sets bases bottom to top, closes absorbed pull requests with a comment
+ * naming where their changes went, and relinks. Unnamed survivors follow the named ones in their
+ * old order and keep their heads. It runs git without a shell and refuses before writing unless the
+ * bottom holds origin/main's head and each head holds the one beneath it. Pushing reordered heads
+ * while their old bases remain attached lets GitHub mark pull requests merged into intermediate
+ * branches, so unstacking and retargeting precede the push. `--no-verify` skips the pre-push hook
+ * on the operator's word; the stack stays unproved until `bun run land -- <top> --sanitize`.
  */
 import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -36,7 +19,7 @@ import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { shellQuote } from "#src/wall/isolation.ts";
+import { shellQuote } from "#src/sandbox/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
 import { formerHeadOnGitHub, leasedPush, restacked, Unreplayable } from "#tools/runtime/restack.ts";
 import {
@@ -50,15 +33,13 @@ import {
   trunkOf,
 } from "#tools/runtime/pulls.ts";
 
-/** One surviving pull request: its new head and final base. */
 interface Move {
   readonly pull: Pull;
   readonly to: string;
   readonly base: string;
 }
 
-/** What a consolidation publishes, read against GitHub's open pull requests and the trunk: its name
- *  and its head on origin. */
+/** What a consolidation publishes, read against GitHub's open pull requests and the trunk. */
 interface Consolidation {
   readonly trunk: string;
   readonly trunkSha: string;
@@ -96,7 +77,6 @@ export function pairs(option: string, given: readonly string[]): Map<number, str
   return found;
 }
 
-/** The consolidation the heads and absorptions describe, or a refusal that names what does not hold. */
 export function planConsolidation(
   root: string,
   pulls: readonly Pull[],
@@ -160,10 +140,8 @@ export function planConsolidation(
   };
 }
 
-/** The new head of every pull request on `line`, bottom to top, replayed onto origin/main
- *  (`restacked`, `tools/runtime/restack.ts`). A stack standing on a merged branch needs an unstack,
- *  a base edit, a rebase in a scratch worktree, a map of its heads and this script; `--onto-main` is
- *  that sequence. */
+/** The new head of every pull request on `line`, replayed onto origin/main (`restacked`,
+ *  `tools/runtime/restack.ts`). */
 export function replayedHeads(root: string, line: readonly Pull[], trunkName: string): Map<number, string> {
   if (line.length === 0) throw new CommandFailure("no open stack to replay");
   const trunk = gitText(root, "rev-parse", "--verify", trunkHead(trunkName));
@@ -175,20 +153,18 @@ export function replayedHeads(root: string, line: readonly Pull[], trunkName: st
   }
 }
 
-/** Where a republish keeps its plan from its first write until its last: between the retarget and
- *  the bases set again, the chain of bases it rewrites is broken, so a run cut short there could not
- *  be planned again from GitHub, and such a stack would be mended by hand. */
+/** Between the retarget and the bases set again the chain of bases is broken, so a run cut short
+ *  there could not be planned again from GitHub. */
 const recordOf = (root: string): string =>
   join(gitText(root, "rev-parse", "--path-format=absolute", "--git-common-dir"), "ana-republish.json");
 
-/** The plan of a republish cut short in this clone, or null. */
 export function keptRepublish(root: string): { plan: Consolidation; verify: Verify } | null {
   const record = recordOf(root);
   return existsSync(record) ? parseJsonAs(readFileSync(record, "utf8")) : null;
 }
 
-/** The one push that moves every head origin does not hold yet (`at`, by branch; GitHub's head where
- *  unread), each with a lease on the head GitHub showed. */
+/** The one push that moves every head origin does not hold yet, each with a lease on the head
+ *  GitHub showed. */
 export function pushArgs(
   plan: Consolidation,
   verify: Verify,
@@ -200,7 +176,6 @@ export function pushArgs(
   return moved.length === 0 ? [] : leasedPush(moved, verify);
 }
 
-/** Each branch before and after. The publisher below owns the operation order in both modes. */
 function shown(plan: Consolidation): string[] {
   const top = plan.moves.at(-1);
   return [
@@ -225,9 +200,9 @@ function shown(plan: Consolidation): string[] {
   ];
 }
 
-/** Show or carry out the same sequence, detaching every surviving base before any head moves. Each
- *  step is safe to repeat, and the detaching and the push are skipped where origin already holds
- *  every new head, so a run cut short is finished by running its kept plan again (`--resume`). */
+/** Detaches every surviving base before any head moves. Each step is safe to repeat, and the
+ *  detaching and the push are skipped where origin already holds every new head, so a run cut short
+ *  is finished by `--resume`. */
 export function republish(
   root: string,
   plan: Consolidation,

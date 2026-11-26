@@ -12,21 +12,19 @@ interface Observation {
   /** Whether a keeper was attached on the remote host; omitted in observations written by older checkouts. */
   readonly kept?: boolean;
   readonly stderr: string | null;
-  /** Log byte length when the last `"whole"` snapshot completed; used to skip unchanged closed runs. */
+  /** Log byte length when the last `"whole"` snapshot completed, to skip unchanged closed runs. */
   readonly wholeBytes?: number;
 }
 const OBSERVATION = "observation.json";
 
 /** Liveness of a run: whether a writer process is active and whether a `runs keep` supervisor is
- *  attached. Derived from the latest fetched observation for remote snapshots and from `running`
- *  for local runs. */
+ *  attached, from the latest fetched observation for remote runs and from `running` for local ones. */
 export interface Life {
   readonly writing: boolean;
   readonly kept: boolean;
 }
 
-/** Reads only the bounded tail of the most recent regular `launch-*.err` file, ignoring symlinks
- *  and avoiding reading an entire growing log into memory. */
+/** Reads only the bounded tail of the newest regular `launch-*.err`, ignoring symlinks. */
 export async function stderrTail(log: string): Promise<string | null> {
   const folder = dirname(log);
   const newest = readdirSync(folder)
@@ -41,24 +39,22 @@ export async function stderrTail(log: string): Promise<string | null> {
   return boundText(tail, 2048, "tail", 20).shown;
 }
 
-/** Atomically writes observation metadata to a new inode, preserving any earlier hardlinked snapshot. */
+/** Writes observation metadata to a new inode, preserving any earlier hardlinked snapshot. */
 export const keepObservation = (folder: string, observation: Observation) =>
   remember(join(folder, OBSERVATION), capturedJsonStringify(observation));
 
-/** Reads the cached observation metadata inside `folder`, or null if absent. */
 export function observationAt(folder: string): Observation | null {
   const stored = join(folder, OBSERVATION);
   return existsSync(stored) ? parseJsonAs<Observation>(readFileSync(stored, "utf8")) : null;
 }
 
-/** Reads the cached remote liveness observation for a fetched peer campaign, or returns null for
- *  local runs so local PIDs are never confused with remote liveness. */
+/** The cached remote liveness of a fetched peer campaign; null for local runs, so local PIDs are
+ *  never confused with remote liveness. */
 export function observationOf(run: Run): Observation | null {
   const remote = run.archived !== undefined && run.archived !== HERE;
   return remote ? observationAt(dirname(run.path)) : null;
 }
 
-/** Determines whether `run` currently has a live writer or keeper process. */
 export function lifeOf(run: Run, running: readonly Running[]): Life {
   const seen = observationOf(run);
   return seen === null
@@ -66,8 +62,8 @@ export function lifeOf(run: Run, running: readonly Running[]): Life {
     : { writing: seen.open, kept: seen.kept === true };
 }
 
-/** Returns true if `run` may still append to its log. Shared authoritative liveness predicate used
- *  by capacity checks, `retire`, `copy`, and investigations. */
+/** Whether `run` may still append to its log: the one liveness predicate for capacity checks,
+ *  `retire`, `copy` and investigations. */
 export const stillRunning = (run: Run, running: readonly Running[]): boolean => {
   const { writing, kept } = lifeOf(run, running);
   return writing || kept;

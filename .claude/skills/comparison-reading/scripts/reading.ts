@@ -1,21 +1,14 @@
 #!/usr/bin/env bun
 /**
- * Compares recorded comparison reports against the current comparison rules.
- *
- *   bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign folder | name>
- *     [--comparison <id>] [--level <n>]
- *   bun .claude/skills/comparison-reading/scripts/reading.ts --zone <log | name>...
- *
- * For each comparison's final report, prints its reading, full and unbilled sign-flip tests,
- * frontier and retained tallies, A/A control, room verdict, and omitted-task counts. Re-evaluates
- * the step via `readsStep` and the A/A control via `readsStepEitherWay` (optionally at `--level`),
- * flagging any divergence from the recorded reading.
- *
- * From `pairsReported`, reports the power zone (reference tasks with no, some, or every solve valid,
- * and tasks untied on validity, on the objective alone via `carriedBy`, or tied) and, under an
- * objective, each arm's median ratio to the author's best recorded answer (`sideGap`). `--zone`
- * emits the zone table as TSV across logs. Because `sideGap` depends on hidden values, output
- * remains on the exam side.
+ * Compares recorded comparison reports against the current comparison rules: `reading.ts <log.jsonl
+ * | campaign folder | name> [--comparison <id>] [--level <n>]`, or `reading.ts --zone <log |
+ * name>...` for the zone table as TSV across logs. For each comparison's final report it prints the
+ * reading, full and unbilled sign-flip tests, frontier and retained tallies, A/A control, room
+ * verdict and omitted-task counts, and re-reads the step (`isSignificant`) and the A/A
+ * (`isSignificant`, one-sided as `climb.ts` reads it), flagging any divergence. From `pairsReported` it reports the power zone
+ * (reference tasks with no, some or every solve valid; tasks untied on validity, on the objective
+ * alone via `carriedBy`, or tied) and each arm's median ratio to the author's best recorded answer
+ * (`sideGap`); since `sideGap` depends on hidden values, output stays on the exam side.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { billedRate } from "#src/campaign/admission.ts";
@@ -25,8 +18,7 @@ import {
   flipP,
   type Paired,
   pointsOf,
-  readsStep,
-  readsStepEitherWay,
+  isSignificant,
   scoresIn,
   testedSet,
   testOf,
@@ -34,7 +26,7 @@ import {
   UNMEASURED,
 } from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { lastReports, pairsReported, poolOf, roomOf } from "#src/kernel/reports.ts";
+import { lastReports, pairsReported, poolOf, evalHeadroom } from "#src/kernel/reports.ts";
 import { ended, solvesIn } from "#src/kernel/solves.ts";
 import {
   asRecord,
@@ -48,7 +40,7 @@ import { basename, dirname } from "#src/meta/path.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { percent } from "#tools/wri/execution.ts";
 import { equalMost, equalNeed, shortOf, spareOf } from "#tools/wri/clearance.ts";
-import { wlt } from "#tools/wri/folds.ts";
+import { formatTally } from "#tools/wri/folds.ts";
 import { type SideGap, sideGap } from "#tools/wri/pairs.ts";
 
 const USAGE = `usage:
@@ -61,23 +53,20 @@ A campaign's name is read where \`logAcross\` finds it, on this host or another 
 --level       read the step and the A/A at this level, in place of each comparison's own
 --zone        one TSV row a comparison that tallied a task, across every log named`;
 const OPTIONS = { comparison: "text", level: "text", zone: "flag" } as const;
-/** The kinds of task a report lists apart from the tallied ones, in the order they are told. */
 const APART = ["aside", "short", "disputed", "flagged", "withdrawn"] as const;
-/** The columns of `--zone`, in the order of `zoneRows`. */
+const NOT_RECORDED = "not recorded";
 export const ZONE_HEADER =
   "campaign\tcomparison\tkind\tepoch\treading\ttasks\tref_none\tref_some\tref_all\tref_valid_share\tuntied_validity\tuntied_objective\ttied\tuntied_share\taa_untied\taa_share";
 
-/** A tally with its p. */
 type Tested = Tally & { readonly p: number };
 
-/** A comparison's start: its data, and the mean dollars a finished solve billed before it. */
 interface Start {
   readonly data: JsonObject;
   readonly rate: number | null;
 }
 
-/** A comparison's dollar cap as its start holds it, and its test (the tasks its start names at its
- *  solves a side) priced at the mean dollars a finished solve billed before it. Null is unrecorded. */
+/** The test is the tasks its start names at its solves a side, priced at the mean dollars a
+ *  finished solve billed before it. Null is unrecorded. */
 interface Cap {
   readonly dollars: number | null;
   readonly reserve: number | null;
@@ -87,13 +76,10 @@ interface Cap {
   readonly capped: boolean | null;
 }
 
-/** Where a comparison's tallied tasks sat for the reference, `valid` of its `solves` passing, and what
- *  untied each. */
 type Zone = Readonly<
   Record<"tasks" | "none" | "some" | "all" | "valid" | "solves" | "validity" | "objective" | "tied", number>
 >;
 
-/** One comparison as its last report reads, and as this tree's rules read it again. */
 export interface Row {
   readonly session: string;
   readonly reading: string;
@@ -101,12 +87,10 @@ export interface Row {
   readonly fresh: string | null;
   readonly level: number;
   readonly solves: number | null;
-  /** The test as tallied, and the same tasks without the bill in a report of 26 October to
-   *  2 November, which the step read; null where nothing was tallied, and `unbilled` null in any
-   *  other report. */
+  /** The test as tallied, and `unbilled` the same tasks without the bill where the report recorded
+   *  them, else null; null where nothing was tallied. */
   readonly scored:
     | (Tested & {
-        /** The share detected four times in five: null where none is, undefined where unrecorded. */
         readonly detectable: number | null | undefined;
         readonly falseRate: number | null;
       })
@@ -114,12 +98,10 @@ export interface Row {
   readonly unbilled: Tested | null;
   readonly frontier: Tested | null;
   readonly retained: Tested | typeof UNMEASURED | null;
-  /** The reference against itself: its tally, flip rate and whether it reads a step either way. */
-  readonly aa: (Tally & { readonly flips: number | null; readonly either: boolean }) | null;
-  /** The p of the scores read for the reference instead: null where nothing was tallied. */
+  readonly aa: (Tally & { readonly flips: number | null; readonly step: boolean }) | null;
   readonly reverse: number | null;
-  /** On the scores the test read: a step's wins to spare, or a reading without one's losses short
-   *  of a step (null where turning every loss does not reach one); null where nothing was tallied. */
+  /** A step's wins to spare, or a reading without one's losses short of a step (null where turning
+   *  every loss does not reach one). */
   readonly margin: { readonly spare: number } | { readonly short: number | null } | null;
   /** On equal margins: the wins a step needs beside the losses read, and the tally with the most
    *  losses the untied tasks could hold and read a step (null where none). */
@@ -133,24 +115,17 @@ export interface Row {
   readonly room: "none" | "too-hard" | "room";
   readonly tallied: number;
   readonly apart: Readonly<Record<(typeof APART)[number], number>>;
-  /** This tree's `stepOf` at `level`; null where the report holds no frontier with its unbilled
-   *  scores to read it on. */
   readonly reread: "step" | "no-step" | null;
-  /** A starter comparison sets the starter as the new side; the epoch counts the promotions before it. */
   readonly kind: "starter" | "candidate";
   readonly epoch: number;
-  /** Null where the report tallied no pair. */
   readonly zone: Zone | null;
-  /** Each side against the best answer on record; null where no pair held an objective. */
   readonly gap: { readonly old: SideGap; readonly fresh: SideGap } | null;
 }
 
-/** The numbers `value` holds, or null where it is no list of numbers. */
 function numbers(value: JsonValue | undefined): readonly number[] | null {
   return Array.isArray(value) && value.every(isNumber) ? value : null;
 }
 
-/** A recorded tally with its p, or null where `value` holds none. */
 function testedIn(value: JsonValue | undefined): Tested | null {
   const set = asRecord(value);
   const [wins, losses, ties, p] = [set?.wins, set?.losses, set?.ties, set?.p];
@@ -159,18 +134,15 @@ function testedIn(value: JsonValue | undefined): Tested | null {
     : null;
 }
 
-/** How many entries the list at `value` holds. */
 function count(value: JsonValue | undefined): number {
   return Array.isArray(value) ? value.length : 0;
 }
 
-/** The step this tree's rule reads on the report, or null where it holds too little to read. */
 function rereadOf(data: JsonObject, level: number): "step" | "no-step" | null {
   if (!Array.isArray(asRecord(data.scored)?.differences)) return null;
-  return readsStep(scoresIn(data.scored), level) ? "step" : "no-step";
+  return isSignificant(scoresIn(data.scored), level) ? "step" : "no-step";
 }
 
-/** The A/A of a report, read either way at `level`. */
 function aaOf(noise: JsonValue | undefined, level: number): Row["aa"] {
   const set = asRecord(noise);
   const differences = numbers(set?.differences);
@@ -182,17 +154,14 @@ function aaOf(noise: JsonValue | undefined, level: number): Row["aa"] {
     losses,
     ties,
     flips: isNumber(set.flips) ? set.flips : null,
-    either: readsStepEitherWay(numbers(set.unbilled) ?? differences, level),
+    step: isSignificant(numbers(set.unbilled) ?? differences, level),
   };
 }
 
-/** A number at `value`, or null. */
 function numberOf(value: JsonValue | undefined): number | null {
   return isNumber(value) ? value : null;
 }
 
-/** The cap the comparison started under, and its test, both sides, at the dollars a finished solve
- *  billed before it started. */
 function capOf(start: Start | undefined, data: JsonObject): Cap {
   const cap = asRecord(start?.data.cap);
   const each = numberOf(data.solves);
@@ -209,19 +178,20 @@ function capOf(start: Start | undefined, data: JsonObject): Cap {
   };
 }
 
-/** How the scores the test read stand from `level` (`clearance.ts`). */
+/** How the scores the test read stand from `level` (`tools/wri/clearance.ts`). */
 function nearOf(scores: readonly number[], level: number): Pick<Row, "reverse" | "margin" | "need"> {
   if (scores.length === 0) return { reverse: null, margin: null, need: null };
   const losses = scores.filter((one) => one < 0).length;
   const untied = scores.filter((one) => one !== 0).length;
   return {
     reverse: flipP(scores.map((one) => -one)),
-    margin: readsStep(scores, level) ? { spare: spareOf(scores, level) } : { short: shortOf(scores, level) },
+    margin: isSignificant(scores, level)
+      ? { spare: spareOf(scores, level) }
+      : { short: shortOf(scores, level) },
     need: { losses, wins: equalNeed(losses, level), untied, most: equalMost(untied, level) },
   };
 }
 
-/** One comparison's row from its report's data, read at `level` or at its own. */
 function rowOf(
   session: string,
   data: JsonObject,
@@ -232,7 +202,7 @@ function rowOf(
   const scored = asRecord(data.scored);
   const tested = testedIn(data.scored);
   const unbilled = numbers(scored?.unbilled);
-  // In an older report the frontier held the test's detectable share and false rate (`reportLines`).
+  // In an older report the frontier held the test's detectable share and false rate.
   const sized = testedSet(scored, asRecord(data.frontier));
   const detected = sized?.detectable;
   const retained = data.retained === UNMEASURED ? UNMEASURED : testedIn(data.retained);
@@ -257,7 +227,7 @@ function rowOf(
     aa: aaOf(data.noise, at),
     ...nearOf(tested === null ? [] : scoresIn(data.scored), at),
     cap: capOf(start, data),
-    room: roomOf(data),
+    room: evalHeadroom(data),
     tallied: count(data.versions),
     apart: {
       aside: count(data.aside),
@@ -271,7 +241,6 @@ function rowOf(
   };
 }
 
-/** The zone and the gap of a report's pairs, against the best answer on record of each task. */
 function pairedOf(pairs: readonly Paired[], bests: ReadonlyMap<string, number>): Pick<Row, "zone" | "gap"> {
   const gap = pairs.some(({ objective }) => objective !== undefined)
     ? { old: sideGap(pairs, "old", bests), fresh: sideGap(pairs, "fresh", bests) }
@@ -298,7 +267,6 @@ function pairedOf(pairs: readonly Paired[], bests: ReadonlyMap<string, number>):
   return { zone, gap };
 }
 
-/** Each comparison of `events` that reported, by its last report, or the one named `only`. */
 export function rowsOf(events: readonly LogEvent[], level: number | null, only: string | null): Row[] {
   // The rate admission prices a test at on the log up to each start (`billedRate`), with the log's
   // solves folded once instead of once a comparison.
@@ -321,12 +289,10 @@ export function rowsOf(events: readonly LogEvent[], level: number | null, only: 
     }));
 }
 
-/** A p to four places. */
 function pOf(p: number): string {
   return p < 0.0001 ? p.toExponential(1) : p.toFixed(4);
 }
 
-/** What the tree's rule says beside the recorded reading. */
 function rereadLine({ reading, reread, level, scored }: Row): string {
   if (reread === null) {
     const alone =
@@ -339,12 +305,10 @@ function rereadLine({ reading, reread, level, scored }: Row): string {
   return `  read again at ${String(level)} (stepOf, frontier and retained together): ${reread}${agrees ? ", as recorded" : `, where the report recorded ${reading}`}`;
 }
 
-/** Dollars to the cent, or unrecorded. */
 function dollars(value: number | null): string {
-  return value === null ? "not recorded" : `$${value.toFixed(2)}`;
+  return value === null ? NOT_RECORDED : `$${value.toFixed(2)}`;
 }
 
-/** How the scores stand from the level by their largest margins (`clearance.ts`). */
 function marginOf(margin: Row["margin"]): string {
   if (margin === null) return "";
   if ("spare" in margin) return `a step with ${String(margin.spare)} of its largest wins to spare`;
@@ -352,7 +316,6 @@ function marginOf(margin: Row["margin"]): string {
   return `${String(margin.short)} of its largest losses turned to wins read a step`;
 }
 
-/** How near the test stood to its level, and the cap against what the test billed. */
 function nearLines({ reverse, margin, need, cap, level }: Row): string[] {
   const losses = (n: number) => `${String(n)} ${n === 1 ? "loss" : "losses"}`;
   const most =
@@ -365,50 +328,46 @@ function nearLines({ reverse, margin, need, cap, level }: Row): string[] {
       : [
           `  p read for the reference ${pOf(reverse)}; at ${String(level)}, ${marginOf(margin)}; on equal margins ${losses(need.losses)} need ${need.wins === null ? "more wins than any tally holds" : `${String(need.wins)} wins`}, and ${most}`,
         ];
-  const capSaid =
+  const capSummary =
     cap.dollars === null
       ? "no cap recorded"
-      : `cap ${dollars(cap.dollars)}${cap.reserve === null ? "" : ` (reserve ${dollars(cap.reserve)} a solve)`}`;
+      : `cap ${dollars(cap.dollars)}${cap.reserve === null ? "" : ` (reserve ${dollars(cap.reserve)} per solve)`}`;
   const test =
     cap.solves === null
-      ? "its test's solves not recorded"
-      : `its test, ${String(cap.solves)} solves a side at the ${dollars(cap.rate)} a finished solve billed before it, comes to ${dollars(cap.cost)}`;
+      ? "test rollouts not recorded"
+      : `test (${String(cap.solves)} rollouts per arm at ${dollars(cap.rate)} per prior solve) estimated at ${dollars(cap.cost)}`;
   return [
     ...near,
-    `  ${capSaid}; ${test}; cut by its cap ${cap.capped === null ? "not recorded" : cap.capped ? "yes" : "no"}`,
+    `  ${capSummary}; ${test}; capped ${cap.capped === null ? NOT_RECORDED : cap.capped ? "yes" : "no"}`,
   ];
 }
 
-/** The tested part of a row, or what a row without a test says. */
 function testLines({ scored, unbilled, frontier, retained }: Row): string[] {
-  if (scored === null) return ["  nothing was tallied: nothing was tested"];
+  if (scored === null) return ["  no tasks scored (no statistical test)"];
   const untied = scored.wins + scored.losses;
-  const retainedSaid =
+  const retainedSummary =
     retained === UNMEASURED
       ? UNMEASURED
       : retained === null
         ? "none"
-        : `${wlt(retained)} p ${pOf(retained.p)}`;
+        : `${formatTally(retained)} p=${pOf(retained.p)}`;
   return [
-    `  scored ${wlt(scored)} p ${pOf(scored.p)}, ${String(untied)} untied${unbilled === null ? "" : `; without the bill (a report of 26 October to 2 November, which the step read) ${wlt(unbilled)} p ${pOf(unbilled.p)}`}`,
-    `  detects four times in five ${scored.detectable === undefined ? "a share not recorded" : `${percent(scored.detectable)} of untied tasks won`}; false rate ${scored.falseRate === null ? "not recorded" : `${(100 * scored.falseRate).toFixed(1)}%`}`,
-    `  frontier ${frontier === null ? "none" : `${wlt(frontier)} p ${pOf(frontier.p)}`}; retained ${retainedSaid}`,
+    `  scored ${formatTally(scored)} p=${pOf(scored.p)}, ${String(untied)} untied${unbilled === null ? "" : `; unbilled ${formatTally(unbilled)} p=${pOf(unbilled.p)}`}`,
+    `  80% power detectable win share: ${scored.detectable === undefined ? NOT_RECORDED : percent(scored.detectable)}; estimated false-positive rate: ${scored.falseRate === null ? NOT_RECORDED : `${(100 * scored.falseRate).toFixed(1)}%`}`,
+    `  frontier ${frontier === null ? "none" : `${formatTally(frontier)} p=${pOf(frontier.p)}`}; retained ${retainedSummary}`,
   ];
 }
 
-/** A part of a whole to two places, or blank where the whole is none. */
 function share(part: number, whole: number): string {
   return whole === 0 ? "" : (part / whole).toFixed(2);
 }
 
-/** One side's distance from the best answer on record, or that nothing was read. */
 function sideLine({ ratio, atBest, read: gave, unread }: SideGap): string {
   const left = unread === 0 ? "" : `, ${String(unread)} unread`;
   if (ratio === null) return `nothing read${left}`;
   return `${ratio.toFixed(2)} x best, at it on ${String(atBest)} of ${String(gave)} tasks${left}`;
 }
 
-/** Where the tallied tasks sat for the reference and what untied them, and each side's gap. */
 function pairedLines({ zone, gap }: Row): string[] {
   return [
     ...(zone === null
@@ -420,60 +379,55 @@ function pairedLines({ zone, gap }: Row): string[] {
   ];
 }
 
-/** One TSV row, in the order of `HEADER`, a comparison of `events` that tallied a task. */
 export function zoneRows(campaign: string, events: readonly LogEvent[]): string[][] {
   return rowsOf(events, null, null).flatMap(({ session, kind, epoch, reading, zone: z, aa }) => {
     if (z === null) return [];
     const aaUntied = aa === null ? null : aa.wins + aa.losses;
-    const said = [campaign, session, kind, String(epoch), reading === "unknown" ? "" : reading];
+    const meta = [campaign, session, kind, String(epoch), reading === "unknown" ? "" : reading];
     const counts = [z.tasks, z.none, z.some, z.all].map(String);
     const untied = [z.validity, z.objective, z.tied].map(String);
-    const aaSaid =
+    const aaCols =
       aa === null || aaUntied === null ? ["", ""] : [String(aaUntied), share(aaUntied, aaUntied + aa.ties)];
     return [
       [
-        ...said,
+        ...meta,
         ...counts,
         share(z.valid, z.solves),
         ...untied,
         share(z.validity + z.objective, z.tasks),
-        ...aaSaid,
+        ...aaCols,
       ],
     ];
   });
 }
 
-/** The lines of one row, each harness `called` by its letter. */
 function rowLines(row: Row, called: Called): string[] {
   const apart = APART.flatMap((kind) =>
     row.apart[kind] === 0 ? [] : [`${String(row.apart[kind])} ${kind}`],
   );
   const aa = row.aa;
   return [
-    `${row.session}  ${row.reading}  ${row.fresh === null ? "nothing new" : called(row.fresh)} against ${called(row.old)}, ${row.solves === null ? "?" : String(row.solves)} solves a side, level ${String(row.level)}`,
+    `${row.session}  ${row.reading}  ${row.fresh === null ? "no candidate" : called(row.fresh)} vs ${called(row.old)}, ${row.solves === null ? "?" : String(row.solves)} rollouts per arm, alpha=${String(row.level)}`,
     ...testLines(row),
     aa === null
-      ? "  A/A: none in the report"
-      : `  A/A ${wlt(aa)}${aa.wins + aa.losses === 0 && aa.ties > 0 ? " (every task tied)" : ""}, flip rate ${percent(aa.flips)}, ${aa.either ? "reads a step either way, where none can be" : "reads no step either way"}`,
+      ? "  A/A: not recorded"
+      : `  A/A ${formatTally(aa)}${aa.wins + aa.losses === 0 && aa.ties > 0 ? " (all tasks tied)" : ""}, flip rate ${percent(aa.flips)}, ${aa.step ? "false positive" : "no false positive"}`,
     ...nearLines(row),
     ...pairedLines(row),
-    `  room for the reference: ${row.room}; ${String(row.tallied)} tallied${apart.length === 0 ? "" : `, ${apart.join(", ")}`}`,
+    `  reference headroom: ${row.room}; ${String(row.tallied)} scored${apart.length === 0 ? "" : `, ${apart.join(", ")}`}`,
     rereadLine(row),
   ];
 }
 
-/** The summary over every row: the readings by word, the A/A that read a step, the readings the
- *  tree reads otherwise. */
 function summaryLine(rows: readonly Row[]): string {
   const words = new Map<string, number>();
   for (const { reading } of rows) words.set(reading, (words.get(reading) ?? 0) + 1);
   const said = [...words].map(([word, n]) => `${String(n)} ${word}`).join(", ");
-  const aaSteps = rows.filter(({ aa }) => aa?.either === true).length;
+  const aaSteps = rows.filter(({ aa }) => aa?.step === true).length;
   const otherwise = rows.filter(({ reread, reading }) => reread !== null && reread !== reading).length;
-  return `${String(rows.length)} comparisons reported${rows.length === 0 ? "" : `: ${said}`}; ${String(aaSteps)} A/A read a step either way; ${String(otherwise)} read otherwise by this tree's stepOf`;
+  return `${String(rows.length)} comparisons reported${rows.length === 0 ? "" : `: ${said}`}; ${String(aaSteps)} A/A read a step; ${String(otherwise)} read otherwise by this tree's stepOf`;
 }
 
-/** The summary, then each row's lines, each harness called by its letter in `events`. */
 export function readingLines(events: readonly LogEvent[], rows = rowsOf(events, null, null)): string[] {
   const called = calledBy(namesOf(events));
   return [summaryLine(rows), ...rows.flatMap((row) => rowLines(row, called))];

@@ -5,13 +5,13 @@ description: "Use before launching, resuming, pausing, copying, moving, inspecti
 
 # Run management
 
-Each campaign runs as one process writing one append-only log (`tools/d2/harness-builder.ts`; [campaign-mechanics](../campaign-mechanics/SKILL.md)) and is controlled via `bun run runs` (`tools/runs/cli.ts`, `registry.ts`). Run `bun run runs` for the verb list and `<verb> --help` for flags. Mutating verbs dry-run by default and require `--yes`.
+Each campaign runs as one process writing one append-only log (`tools/campaign/harness-builder.ts`; [campaign-mechanics](../campaign-mechanics/SKILL.md)) and is controlled via `bun run runs` (`tools/runs/cli.ts`, `registry.ts`). Run `bun run runs` for the verb list and `<verb> --help` for flags. Mutating verbs dry-run by default and require `--yes`.
 
 Named verbs route automatically to the holding host (refusing if missing or duplicated). Read-only verbs refresh cached peer logs (`pulse` polls without copying). Archived runs live in `data/runs/<host>/<name>/`; lifecycle verbs refuse archived runs (`copy <name> --to <worktree>` first).
 
 | Verb | Purpose | Owner |
 | --- | --- | --- |
-| `fresh <pack>... [--model opus\|sonnet\|gpt\|<p>/<id>] [--effort hhmm] [--login N] [--logins <list>] [--budget 800] [--as <sfx>] [--at <c>] [--host <h>] [--yes] [-- <flags>]` | Create detached worktree at published commit and launch | `fresh.ts` |
+| `fresh <pack>... [--model opus\|sonnet\|gpt\|<p>/<id>[,×4]] [--effort hhmm] [--login N] [--logins <list>] [--budget 800] [--as <sfx>] [--at <c>] [--host <h>] [--yes] [-- <flags>]` | Create detached worktree at published commit and launch | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | Start new campaign in current worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <ev>] [--yes] [-- <flags>]` | Resume stopped run from log (or drain at `--after`) | `manage.ts` |
 | `pause <name> [--after <ev>] [--eval] [--yes]` | Stop at clean boundary (`--eval` then runs `runs bench --wait`) | `manage.ts` |
@@ -35,8 +35,9 @@ Named verbs route automatically to the holding host (refusing if missing or dupl
 bun --env-file=<file> run runs fresh <pack> [--model sonnet] [--login N] [--as <suffix>] [--host <host>] --yes
 ```
 
-`fresh` reads `<pack>-prompt.txt` from `ANA_PROMPTS` (default `anabasis-prompts`), names `<pack>-fresh-<model>[-<suffix>]-<host>[-r<n>]` in `<pack>-fresh`, defaults to Opus (`--effort hhmm` Opus, `xxhh` Sonnet, `hhhh` else; `gpt` = `openai-codex/gpt-6.1-sol`), \$800 budget and 20-turn / 30-minute solve limits (`LIMITS`, `tools/d2/campaign.ts`), in detached worktree `anabasis-<name>` at `--at` (`HEAD`).
+`fresh` reads `<pack>-prompt.txt` from `ANA_PROMPTS` (default `anabasis-prompts`), names `<pack>-fresh-<model>[-<suffix>]-<host>[-r<n>]` in `<pack>-fresh`, defaults to Opus in every seat (`--effort hhmm` Opus, `xxhh` Sonnet, `hhhh` else; `gpt` = `openai-codex/gpt-6.1-sol`), \$800 budget and 20-turn / 30-minute solve limits (`LIMITS`, `tools/campaign/campaign.ts`), in detached worktree `anabasis-<name>` at `--at` (`HEAD`).
 
+- **Seats**: `--model a,b,c,d` names one model a seat in `--effort` order (Builder, Examiner, Auditor, solver), each at its own default letter unless `--effort` is given. The Auditor is also the judge, so a judged pack names one from another family than the solver: `--model opus,opus,gpt,opus`.
 - **Placement**: check `runs loadwatch --once` before `fresh`, `continue` or `move`; pass `--host` if least-loaded under cap (`ANA_RUN_CAP` / `capacity`, default 2) differs from dry-run pick. Launch sequentially (dry runs do not reserve slots).
 - **Env & logins**: pass `--env-file=<file>` (+ `--env-file=.env.runs` for `ANA_LOGINS`, `ANA_LOGIN_RUNS`, `ANA_LOGIN_SUBS`, `ANA_HOSTS`, `ANA_KEEP`); never print or copy env files. Without `--login`, picks an open login under `ANA_LOGIN_RUNS` resetting soonest.
 - **Provenance**: after launch, run `git tag -f run/<first-9-sha> <commit> && git push origin run/<first-9-sha>`.
@@ -47,8 +48,8 @@ bun --env-file=<file> run runs fresh <pack> [--model sonnet] [--login N] [--as <
 - **`continue`**: reuses latest receipt flags/login (args after `--` replace stored flags; `--budget` raises cap). Refuses `--at` another commit while `openComparisons` is non-empty; measured runs stay at opening commit.
 - **`pause`**: stops at clean boundary (`reported`, `promoted`, `examined`, `finished`, `compacted`, or `|`-joined; `reported` also awaits pending starter confirmation). Default `--after next` drains in-flight solves via a time-bounded `PAUSE` word. One waiter per run, launched under `nohup` from a detached worktree.
 - **`keep`**: auto-attached when alternate logins exist (`ANA_KEEP=off` disables); rotates logins when waits exceed `--wait-hours`, restarts after crashes/`environment` (≤3 restarts without a turn), exits on terminal endings.
-- **Operator words** (`tools/d2/word.ts --name <name>`): `--stop "<why>"`, `--budget N`, `--tasks "<why>"` (invisible to seats; `--promotions N|none` is a launch flag).
-- **`sync` & `stop`**: `sync` refuses solver-visible updates on busy hosts without `--force`; prefer `pause` over `stop` (`stop` writes no `campaign.ended`).
+- **Operator words** (`tools/campaign/signal.ts --name <name>`): `--stop "<why>"`, `--budget N`, `--tasks "<why>"` (invisible to seats; `--promotions N|none` is a launch flag).
+- **`sync` & `stop`**: `sync` refuses solver-visible updates on busy hosts without `--force`; prefer `pause` over `stop` (direct `stop --yes` kills in-flight processes and appends `campaign.ended` with `ending: "stop"` unless already ended or paused).
 
 ## Related skills
 

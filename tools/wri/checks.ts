@@ -16,8 +16,8 @@ import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
-import { passAgreement, settledPassLabels } from "#src/referee/agreement.ts";
-import { stagedExamOf } from "#tools/d2/exam.ts";
+import { passAgreement, settledPassLabels } from "#src/audit/agreement.ts";
+import { stagedExamOf } from "#tools/campaign/exam.ts";
 import { count, indexOf, items, refusals, refusalsByCheck, type Solve, strings, text } from "./folds.ts";
 import { askedOf, sideOf } from "./rejections.ts";
 
@@ -76,7 +76,6 @@ function controlsLine(reading: JsonObject | undefined): string {
   return `controls read: ${controls}; the do-nothing answer: ${met}`;
 }
 
-/** One row a check, then the verdicts under the rows' program by who asked for them. */
 export function checkRows(events: readonly LogEvent[], disk: OnDisk): string[] {
   const log = indexOf(events);
   const frozen = frozenChecker(events)?.checks;

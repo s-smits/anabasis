@@ -1,14 +1,14 @@
 /**
- * Tracks silent model-routing degradations across campaigns, writing one TSV file per affected
- * campaign to `data/runs/degradations/<campaign>.tsv` under the main worktree (one row per session
- * or solve and served model, with turn counts and first/last timestamps). The periodic gather
- * (`runs fetch` without a name) updates these files for every fetched log and every local campaign
- * modified in the last hour, printing a summary line whenever a campaign's record changes.
+ * Tracks silent model-routing degradations, writing one TSV per affected campaign to
+ * `data/runs/degradations/<campaign>.tsv` under the main worktree (a row per session or solve and
+ * served model, with turn counts and first and last times). The periodic gather (`runs fetch`
+ * without a name) updates them for every fetched log and every local campaign modified in the last
+ * hour.
  *
  *   bun tools/runs/degradations.ts <log or campaign name>...
  */
 import type { LogEvent } from "#src/kernel/log.ts";
-import { type Degradation, degradations, SEATS, tracesIn } from "#src/kernel/trace.ts";
+import { type Degradation, degradations, SEATS, tracesIn, unservedTurns } from "#src/kernel/trace.ts";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -28,11 +28,9 @@ const COLUMNS = [
   "last",
 ] as const satisfies readonly (keyof Degradation)[];
 
-/** Summarises the distinct `(served, asked)` model substitutions present in `rows`. */
 const which = (rows: readonly Degradation[]) =>
   [...new Set(rows.map(({ asked, served }) => `${served} for ${asked}`))].join("; ");
 
-/** Formats `rows` as a tab-separated table with a header line, or returns an empty string if none exist. */
 function recordOf(rows: readonly Degradation[]): string {
   if (rows.length === 0) return "";
   return [COLUMNS.join("\t"), ...rows.map((row) => COLUMNS.map((column) => String(row[column])).join("\t"))]
@@ -40,8 +38,8 @@ function recordOf(rows: readonly Degradation[]): string {
     .join("");
 }
 
-/** Updates degradation TSV records for `brought` logs and recently modified local campaigns,
- *  returning one notification line for each record that changed. */
+/** Updates the records for `brought` logs and recently modified local campaigns, returning one line
+ *  for each record that changed. */
 export function recordDegradations(brought: readonly string[], repo: string, now = Date.now()): string[] {
   const own = runs(repo)
     .filter(isCampaign)
@@ -60,17 +58,25 @@ export function recordDegradations(brought: readonly string[], repo: string, now
   });
 }
 
-/** Formats the investigation summary of model-routing degradations across all turns in `events`
- *  that record a served model. */
 export function degradationLines(events: readonly LogEvent[]): string[] {
   const rows = degradations(events);
-  // Exclude Referee turns because their start events do not record a requested model (`degradations`).
+  const unserved = unservedTurns(events);
   const named = tracesIn(events).flatMap((each) =>
-    each.part === "turn" && each.model !== null && each.seat !== "referee" ? [each] : [],
+    each.part === "turn" && each.model !== null ? [each] : [],
   );
   const total = rows.reduce((sum, row) => sum + row.turns, 0);
+  const unservedBySeat = Object.entries(countBy(unserved, ({ seat }) => seat))
+    .map(([seat, count]) => `${seat} ${String(count)}`)
+    .join(", ");
+  const unservedLines =
+    unserved.length === 0
+      ? []
+      : [
+          `${String(unserved.length)} of ${String(named.length + unserved.length)} turns went unserved (${unservedBySeat})`,
+        ];
   const all = `all ${String(named.length)} turns naming a model were served as their seat asked`;
-  if (rows.length === 0) return [all];
+  if (rows.length === 0 && unserved.length === 0) return [all];
+  if (rows.length === 0) return [...unservedLines, all];
   const comparisonOf = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "solve.started" && isString(data.solve) && isString(data.comparison)
@@ -90,6 +96,7 @@ export function degradationLines(events: readonly LogEvent[]): string[] {
   ).map(([under, count]) => `  solves under ${under}: ${String(count)} served another model`);
   return [
     `${String(total)} of ${String(named.length)} turns naming a model were served by another than their seat asked for`,
+    ...unservedLines,
     ...seats,
     ...compared,
     ...rows.map(

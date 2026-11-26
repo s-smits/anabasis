@@ -1,8 +1,9 @@
 /** Live campaigns and simulation seats on one machine, shared by usage and placement. */
 import { Type } from "typebox";
+import { SEATS } from "#src/campaign/opening.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
+import { parseArgs } from "#src/meta/process.ts";
 import { lastLaunch } from "./receipt.ts";
 import { lifeOf } from "./diagnosis.ts";
 import { flagOf, ownArgs, processes, runs, SEAT } from "./registry.ts";
@@ -16,7 +17,10 @@ export interface Live {
   readonly unwritten?: true;
 }
 
-/** A peer's answer to `active --here`. */
+const SEAT_OPTIONS = Object.fromEntries(
+  [...SEATS, "solver"].map((name) => [name, { type: "string" as const }]),
+);
+
 const LIVE = Type.Array(
   Type.Object({
     name: Type.String(),
@@ -26,22 +30,33 @@ const LIVE = Type.Array(
 );
 
 /** The payer of a run that seats an `openai-codex/` model and names no numbered login: the Codex
- *  CLI's login of the machine it runs on. Each machine signs Codex in on its own, so a cap on it
- *  counts one machine's runs (`fullOn`, `logins.ts`), so that one GPT run a machine is kept by code
- *  rather than by hand. */
+ *  CLI's login of the machine it runs on. Each machine signs Codex in on its own, so its cap counts
+ *  one machine's runs (`fullOn`, `logins.ts`). */
 export const CODEX = "codex";
 
-/** Who pays a run on `login` with the launch flags `flags`: the login, or the Codex CLI's where it
- *  names none and a seat goes through it. */
+export function seatFlagsOf(flags: readonly string[]): Record<string, string | undefined> {
+  const { values } = parseArgs({
+    args: [...flags],
+    options: SEAT_OPTIONS,
+    allowNegative: true,
+    strict: false,
+  });
+  return Object.fromEntries(
+    Object.entries(values).flatMap(([key, value]) =>
+      key in SEAT_OPTIONS && isString(value) ? [[key, value]] : [],
+    ),
+  );
+}
+
 export const payerOf = (login: string | undefined, flags: readonly string[]): string | undefined =>
   login ??
-  (Object.values(looseFlagsOf(flags)).some((value) => isString(value) && value.startsWith("openai-codex/"))
+  (Object.values(seatFlagsOf(flags)).some((value) => isString(value) && value.startsWith("openai-codex/"))
     ? CODEX
     : undefined);
 
-/** The live seats of the skill `system-path-simulation` among the processes `table`, each by the seed
- *  and the login its own flags name, since a seat keeps no launch receipt. A shell that started one
- *  names it too, so a seed is listed once. */
+/** The live seats of the skill `system-path-simulation` among the processes `table`, each by the
+ *  seed and login its own flags name, since a seat keeps no launch receipt. A shell that started
+ *  one names it too, so a seed is listed once. */
 export function seatsIn(table: readonly { readonly args: readonly string[] }[], host: string): Live[] {
   const seats = table.flatMap(({ args }) => {
     const own = ownArgs(args);
@@ -82,8 +97,8 @@ export function countedAgainst(live: readonly Live[], name: string): Live[] {
   return live.filter((run) => run.name !== name && !(kept && run.unwritten === true && run.name > name));
 }
 
-/** The runs `host` said it writes, from the lines of its answer to `active --here`, or null where
- *  the answer is no JSON list. */
+/** The runs `host` said it writes, from its answer to `active --here`, or null where the answer is
+ *  no JSON list. */
 export function liveOf(host: string, lines: readonly string[] | null): Live[] | null {
   return (
     answerOf(LIVE, lines)?.map(({ name, login, unwritten }) => ({

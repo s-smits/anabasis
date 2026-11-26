@@ -7,21 +7,18 @@ import type { ESTree, SourceCode } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 
 const moduleMockMethods = new Set(["doMock", "mock", "unstable_mockModule"]);
-/** The framework methods that replace the process's clock for every caller at once. */
 const clockMethods = new Set(["setSystemTime", "useFakeTimers"]);
 /**
- * The process-wide globals whose members steer the code that reads them: the clock, chance, the
- * network, the spawner and the process. `console` is left out because what a test does to it
- * observes output and hands the code nothing it reads.
+ * The process-wide globals whose members steer the code that reads them. `console` is left out:
+ * what a test does to it observes output and hands the code nothing it reads.
  */
 const steeringGlobals = new Set(["Bun", "Date", "Math", "crypto", "globalThis", "performance", "process"]);
 /**
- * The members that are the program's input or output rather than a dependency: `env`, the
- * process's `exitCode`, and `execPath`, which code reads through `capturedExecPath` and a test
- * writes only to prove that the live one is not read (`test/linux-bwrap.test.ts`).
+ * The program's input or output rather than a dependency. Code reads `execPath` through
+ * `capturedExecPath`, and a test writes it only to prove the live one is not read
+ * (`test/linux-bwrap.test.ts`).
  */
 const ownMembers = new Set(["env", "execPath", "exitCode"]);
-/** The frameworks whose `vi` or `jest` object these methods belong to, by the name each exports. */
 const frameworkSources = new Map([
   ["vitest", "vi"],
   ["@jest/globals", "jest"],
@@ -32,7 +29,6 @@ function importedName(node: ESTree.Node): string | null {
   return node.imported.type === "Identifier" ? node.imported.name : node.imported.value;
 }
 
-/** The import binding `identifier` resolves to, or null where it is not one. */
 function importOf(sourceCode: SourceCode, identifier: ESTree.IdentifierReference) {
   const variable = resolveVariable(sourceCode, identifier);
   const definition = variable?.defs.find(
@@ -42,7 +38,6 @@ function importOf(sourceCode: SourceCode, identifier: ESTree.IdentifierReference
   return { source: definition.parent.source.value, node: definition.node };
 }
 
-/** Whether `expression` is `name` imported from `bun:test`. */
 function isBunTest(sourceCode: SourceCode, expression: ESTree.Expression, name: string): boolean {
   if (expression.type !== "Identifier") return false;
   const binding = importOf(sourceCode, expression);
@@ -68,8 +63,6 @@ function isTestFrameworkObject(
   );
 }
 
-/** Whether `expression` names what every importer shares: any import binding, or one of
- *  `steeringGlobals` reached as the global. */
 function isSharedObject(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
   if (expression.type !== "Identifier") return false;
   if (importOf(sourceCode, expression) !== null) return true;
@@ -79,18 +72,15 @@ function isSharedObject(sourceCode: SourceCode, expression: ESTree.Expression): 
   return variable === null || variable.defs.length === 0;
 }
 
-/** The name a string literal spells, or null; a non-string literal renders to a name no set holds. */
 function literalName(key: ESTree.Node): string | null {
   return key.type === "Literal" ? String(key.value) : null;
 }
 
-/** The member a member expression names with an identifier, `vi.mock`, or a literal, `vi["mock"]`. */
 function memberName(member: ESTree.MemberExpression): string | null {
   if (!member.computed && member.property.type === "Identifier") return member.property.name;
   return literalName(member.property);
 }
 
-/** Whether `target` and `key` name a member of a module or steering global that is a dependency. */
 function replacesShared(
   sourceCode: SourceCode,
   target: ESTree.Expression | undefined,
@@ -99,7 +89,6 @@ function replacesShared(
   return target !== undefined && key !== null && !ownMembers.has(key) && isSharedObject(sourceCode, target);
 }
 
-/** The method a member callee names on a test framework object, or null. */
 function frameworkMethod(sourceCode: SourceCode, callee: ESTree.Expression): string | null {
   if (callee.type !== "MemberExpression" || !isTestFrameworkObject(sourceCode, callee.object)) return null;
   return memberName(callee);
@@ -108,13 +97,10 @@ function frameworkMethod(sourceCode: SourceCode, callee: ESTree.Expression): str
 function moduleMockCall(sourceCode: SourceCode, callee: ESTree.Expression): boolean {
   if (callee.type !== "MemberExpression") return false;
   if (memberName(callee) === "module" && isBunTest(sourceCode, callee.object, "mock")) return true;
-  // A plain member names the method with an identifier, `vi.doMock`, and a computed one with a
-  // string literal, `vi["doMock"]`; both are the same name, so the set decides both.
   const method = frameworkMethod(sourceCode, callee);
   return method !== null && moduleMockMethods.has(method);
 }
 
-/** `setSystemTime(date)` from `bun:test`, or `vi.useFakeTimers()` and its kin: a faked clock. */
 function clockCall(sourceCode: SourceCode, node: ESTree.CallExpression): boolean {
   const { callee } = node;
   if (callee.type === "Identifier") {
@@ -126,7 +112,6 @@ function clockCall(sourceCode: SourceCode, node: ESTree.CallExpression): boolean
   return method === "useFakeTimers" || node.arguments.length > 0;
 }
 
-/** The method `callee` names on the global `Object`, or null. */
 function objectMethod(sourceCode: SourceCode, callee: ESTree.Expression): string | null {
   if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier") return null;
   const declared = resolveVariable(sourceCode, callee.object)?.defs.length ?? 0;
@@ -134,8 +119,6 @@ function objectMethod(sourceCode: SourceCode, callee: ESTree.Expression): string
   return memberName(callee);
 }
 
-/** `spyOn(target, "member")` or `vi.spyOn(…)`, anywhere, and in a test `Object.defineProperty(target,
- *  "member", …)` or `Object.assign(target, …)`, over a member of what every importer shares. */
 function memberReplacementCall(
   sourceCode: SourceCode,
   node: ESTree.CallExpression,

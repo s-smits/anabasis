@@ -1,48 +1,111 @@
-/**
- * The domain contract: the one public document the Builder and the Examiner both work against. It is
- * frozen once the first exam is admitted, and its hash enters every condition. A frozen contract
- * changes only through the operator, and a change opens a new condition.
- */
 import type { TSchema } from "typebox";
 import { Compile } from "typebox/compile";
-import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 
-export interface Rule {
+const RUBRIC_ITEM_ID = /^[a-z][a-z0-9-]*$/u;
+
+interface Rule {
   readonly id: string;
   readonly statement: string;
 }
 
-/** The objective a check program may declare beside its checks: a quantity its evaluator computes
- *  from a valid answer, and which way is better. Two valid answers on one task are compared by it
- *  (`src/kernel/compare.ts`, `ObjectiveRule`), so it is public: a solver and a Builder read it
- *  with the rules. */
+export type RubricItem =
+  | { readonly id: string; readonly weight: number; readonly kind?: "code" }
+  | { readonly id: string; readonly weight: number; readonly kind: "judge"; readonly criterion: string };
+
 export interface Objective {
   readonly quantity: string;
   readonly direction: "lower" | "higher";
+  readonly scale?: "unit";
+  readonly items?: readonly RubricItem[];
 }
 
 export interface Contract {
-  /** The schema every answer must follow. */
   readonly answerFormat: JsonValue;
-  /** The objective, where the check program declares one. */
   readonly objective?: Objective;
-  /** Whatever a practitioner would take as given. */
   readonly conventions: string;
-  /** The requirements a task may cite. */
   readonly rules: readonly Rule[];
-  /** What a task in this domain may ask. */
   readonly scope: string;
 }
 
-/** The objective in a sentence, for the prompts and the public resource that state it. */
-export function objectiveLine({ quantity, direction }: Objective): string {
-  return `Of two valid answers to one task, the one with the ${direction} ${quantity} is the better; a valid answer beats any invalid one, whatever its measure.`;
+export const CRITERION = { least: 20, most: 220, perContract: 4 };
+const RESERVED_RUBRIC_IDS = new Set(["holistic"]);
+
+export const hasJudge = (objective: Objective | undefined): boolean =>
+  (objective?.items ?? []).some(({ kind }) => kind === "judge");
+
+export function codeObjective(objective: Objective | undefined): Objective | undefined {
+  if (objective?.items === undefined) return objective;
+  const { items } = objective;
+  const code = items.filter(({ kind }) => kind !== "judge");
+  if (code.length === 0) return undefined;
+  return code.length === items.length ? objective : { ...objective, items: code };
 }
 
-/** The contract's identity: the hash of its canonical JSON. A rule id named twice would let a
- *  citation mean two requirements, so such a contract has none. */
+function criterionFault(text: unknown): string | null {
+  if (!isString(text)) return "requires a criterion";
+  if (text.includes("\n")) return "states its criterion on one line";
+  const { length } = text.trim();
+  return length < CRITERION.least || length > CRITERION.most
+    ? `states its criterion in ${String(CRITERION.least)} to ${String(CRITERION.most)} characters`
+    : null;
+}
+
+export function rubricFaults(objective: Objective | undefined, checkIds: readonly string[] = []): string[] {
+  const items = objective?.items;
+  if (items === undefined) return [];
+  if (items.length === 0) return ["objective.items must contain at least one item when declared"];
+  const faults: string[] = [];
+  if (objective?.direction !== "higher") faults.push('objective.items requires direction "higher"');
+  if (objective?.scale !== "unit") faults.push('objective.items requires scale "unit"');
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (
+      !isString(item.id) ||
+      !RUBRIC_ITEM_ID.test(item.id) ||
+      Object.hasOwn(Object.prototype, item.id) ||
+      RESERVED_RUBRIC_IDS.has(item.id)
+    ) {
+      faults.push(`objective.items names an invalid item ${isString(item.id) ? item.id : ""}`);
+      continue;
+    }
+    if (seen.has(item.id)) faults.push(`objective.items names ${item.id} twice`);
+    if (checkIds.includes(item.id)) faults.push(`objective.items.${item.id} shares its id with a check`);
+    seen.add(item.id);
+    if (!isNumber(item.weight) || !Number.isFinite(item.weight) || item.weight <= 0) {
+      faults.push(`objective.items.${item.id} requires a positive finite weight`);
+    }
+    const kind: unknown = item.kind;
+    if (kind !== undefined && kind !== "code" && kind !== "judge") {
+      faults.push(`objective.items.${item.id} is of kind code or judge`);
+    }
+    const criterion = item.kind === "judge" ? criterionFault(item.criterion) : null;
+    if (criterion !== null) faults.push(`objective.items.${item.id} ${criterion}`);
+  }
+  if (items.filter(({ kind }) => kind === "judge").length > CRITERION.perContract) {
+    faults.push(`objective.items holds at most ${String(CRITERION.perContract)} judged items`);
+  }
+  return faults;
+}
+
+export function objectiveLine(
+  { quantity, direction, items }: Objective,
+  reader: "exam" | "build" = "build",
+): string {
+  const base = `Of two valid answers to one task, the one with the ${direction} ${quantity} is the better; a valid answer beats any invalid one, whatever its measure.`;
+  if (items === undefined || items.length === 0) return base;
+  const listed = items
+    .map((item) =>
+      item.kind === "judge"
+        ? `${item.id} (${String(item.weight)}, judged by a model${reader === "exam" ? ` on: ${item.criterion}` : ""})`
+        : `${item.id} (${String(item.weight)})`,
+    )
+    .join(", ");
+  return `${base} Weighted rubric on [0, 1]: ${listed}.`;
+}
+
 export function contractHash(contract: Contract): string {
   answerSchema(contract.answerFormat);
   const ids = contract.rules.map((rule) => rule.id);
@@ -51,17 +114,6 @@ export function contractHash(contract: Contract): string {
   return hashJsonValue(contract);
 }
 
-/**
- * Why an answer does not follow a contract's answer format, or null when it does. `submit` asks
- * it of a solver's answer file and refuses the file with what this returns, and the runner asks it
- * again of what was submitted (`src/tools/answer.ts`, `src/solver/run.ts`). The checker is
- * TypeBox's compiled one, which pi-ai 1.4.0's validator ran. It coerces nothing, so an
- * answer follows as given or not at all, and which answers follow does not move with pi's
- * packages. A format that refers to itself without reading a value has no verdict: the checker
- * runs out of stack and the fault says so, where pi-schema 1.5.2 under Bun never returns (its
- * check of a reference is a call in tail position, which the engine turns into a jump) and
- * TypeBox's interpreted `Value.Check` never returns from a name that is its own reference.
- */
 const COMPILED = new WeakMap<object, ReturnType<typeof Compile>>();
 
 export function answerFormatFault(answerFormat: Contract["answerFormat"], answer: JsonValue): string | null {
@@ -82,11 +134,6 @@ export function answerFormatFault(answerFormat: Contract["answerFormat"], answer
   }
 }
 
-/**
- * The answer format as the schema TypeBox's checker takes. A format
- * that is not a JSON Schema object is refused: the checker reads one as no constraint at all, so
- * the M1 stand-in contract, which carried v1's prose `artifactSchema` rows, passed every answer.
- */
 function answerSchema(answerFormat: Contract["answerFormat"]): TSchema {
   if (!isString(asRecord(answerFormat)?.type)) {
     throw new Error("the contract's answer format is not a JSON Schema with a type");

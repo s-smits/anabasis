@@ -17,7 +17,6 @@ const GITHUB_PAT = ["ghp", "16C7e42F292c6912E7710c838347Ae178B4a"].join("_");
 const SHORT_URL = join("post", "gres", "://", "u", ":", "p", "@", "example.test/db");
 
 const MUST_FIRE: readonly (readonly [string, string])[] = [
-  // The three shapes that opened real incidents on this repository's first push.
   ["url-credentials", `DB: "${URL_CREDS}"`],
   ["json-web-token", `APP_JWT: "${JWT}"`],
   ["provider-key", `Authorization: Bearer ${join("sk-ant-api03-", "Xy7Qm2Lp9RtVw4Zc8Nb1Hj6Kd3Gs0Ge5")}`],
@@ -27,8 +26,8 @@ const MUST_FIRE: readonly (readonly [string, string])[] = [
   ["secret-assignment", `const apiKey = ${JSON.stringify(join("9f8c2b1e4d7a", "6f3c0b5e8d1a", "2c4f6b9e"))}`],
 ];
 
-// Every one of these was a live false positive on the tracked tree before the rules were tuned.
-// A scanner that fires on names, markers, and declared fixtures is a scanner people learn to skip.
+// Each of these is a false positive a scanner must not fire on: one that fires on names, markers and
+// declared fixtures is one people learn to skip.
 const MUST_NOT_FIRE: readonly string[] = [
   'apiKeyEnv: "OPENROUTER_API_KEY",',
   'ANTHROPIC_API_KEY: "ambient-key",',

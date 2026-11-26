@@ -1,7 +1,3 @@
-/**
- * The verifier: whether an answer passes a task's checks, decided on the verifier's own tree and
- * nowhere else. Answers are stored, so a verdict can be recomputed at any time.
- */
 import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import {
   copyFileSync,
@@ -14,7 +10,15 @@ import {
 import { sha256OfFile } from "../meta/digest.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
-import { asRecord, isBoolean, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import {
+  asRecord,
+  isBoolean,
+  isNumber,
+  isRecord,
+  isString,
+  type JsonValue,
+  unitScore,
+} from "../meta/json-shape.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
 import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
@@ -22,28 +26,20 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
 import { containsPath } from "../meta/path-containment.ts";
-import { commandIsolationPolicy, isolatedArgv, toolTreeSearchDirs } from "../wall/isolation.ts";
-import { hostFolder, releaseRoot } from "../wall/seat-root.ts";
-import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
-import { closedHome, hostScratch, toolchainPathDirs } from "../wall/policy.ts";
+import { commandIsolationPolicy, isolatedArgv, toolTreeSearchDirs } from "../sandbox/isolation.ts";
+import { hostFolder, releaseRoot } from "../sandbox/sandbox-root.ts";
+import { type SolveIsolationPolicy, solveIsolationPolicy } from "../sandbox/base.ts";
+import { closedHome, hostScratch, toolchainPathDirs } from "../sandbox/policy.ts";
 import type { CellInput, CellResult, CheckInput, CheckResult } from "./check-child.ts";
-import type { Objective } from "./contract.ts";
+import { codeObjective, type Objective, type RubricItem, rubricFaults } from "./contract.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-
-// Core check-projection primitives adapted from v1 (`evaluation-public-task.ts`, `evaluate.ts`),
-// omitting `structuredClone` because `runCell` serialises projections synchronously to child stdin.
 
 interface CheckExecution {
   families: "all" | string[];
   artifactPaths: string[];
   publicInputPaths: string[];
-  /** Relative deliverable paths, or `$` for all files. Omitted grants no files. */
   filePaths?: string[];
-  /** `whole`: the task's hidden values as their author wrote them, the form a drafted exam's
-   *  checks are told they read (`src/examiner/draft.ts`), rather than `required`, whose rows by
-   *  check id no draft writes, and which stopped every such draft on `check-hidden-operand-missing`
-   *  before any check ran. */
   hidden: "none" | "required" | "whole";
   requiredToolIds?: [string, ...string[]];
   evidence: { kind: "authored" } | { kind: "external"; requiredToolIds: [string, ...string[]] };
@@ -55,14 +51,10 @@ interface BriefTruthCheck {
   execution: CheckExecution;
 }
 
-/** The brief declares its checks and may declare an objective (`Objective`):
- *  the evaluator then exports `objective(request)`, a finite number of a valid answer, which the
- *  verifier measures after the checks pass (`OBJECTIVE`). An answer the checks refuse has none. */
 export interface Brief {
   correctnessContract: string;
   truthChecks: BriefTruthCheck[];
   objective?: Objective;
-  /** External engines declared for `objective(request, runtime)` when it runs installed tools. */
   objectiveTools?: readonly string[];
 }
 
@@ -81,45 +73,38 @@ export interface EvaluationRequest {
 
 export const CHECK_PROGRAM_CONTRACT = "check-program/v1";
 
-/** A task as its pack stores it: the public part the solver read, and the hidden part only checks
- *  that declare it receive. */
-export type Task = PublicTask<JsonValue> & { readonly hidden: JsonValue };
+export type Task = PublicTask<JsonValue> & {
+  readonly hidden: JsonValue;
+};
 
-/** The verifier's side of a contract: the checks, and the tools only they run. */
 export interface VerifierTree {
-  /** The check program's directory: `brief.json`, `evaluator.ts` and whatever they read. */
   readonly checks: string;
-  /** The verifier's tool tree, the only place a check's tools are found. */
   readonly tools: string;
 }
 
-/** An engine of the field, as the verifier's tool tree holds it for a check: the name a check runs
- *  it by, the program the tree resolves the name to, and that program's sha256. */
 export interface Engine {
   readonly name: string;
   readonly path: string;
   readonly sha256: string;
-  /** True when host-forwarded or resolving via symlink outside the pack's `.toolchain/`. */
   readonly external: boolean;
 }
 
-/** What a check's wall closes beside the repository and the home, as a seat's does (`Walled`,
- *  `src/tools/command.ts`): the repository's other worktrees, and the stored pack's root and bundle,
- *  which hold every task's hidden values. */
 interface Closed {
   readonly otherTrees?: readonly string[] | undefined;
   readonly packRoots?: readonly string[] | undefined;
-  /** One check's time, its tools included; `PER_CHECK_MS` where unset. */
   readonly checkMs?: number | undefined;
 }
 
 export type Verdict =
-  | { readonly kind: "pass"; readonly objective?: number }
+  | {
+      readonly kind: "pass";
+      readonly objective?: number;
+      readonly scores?: Readonly<Record<string, number>>;
+    }
   | { readonly kind: "fail"; readonly blocking: readonly string[] }
   | { readonly kind: "faulty"; readonly check: string; readonly reason: string }
   | { readonly kind: "non-result"; readonly reason: string };
 
-/** Whether an answer passes a task's checks. No answer is a fail. */
 export type Verifier = (
   task: Task,
   answer: JsonValue | undefined,
@@ -129,23 +114,12 @@ export type Verifier = (
 
 interface Wall {
   readonly tree: VerifierTree;
-  /** The check program's files, as `checkProgramFiles` lists them. */
   readonly program: readonly string[];
-  /** Declared tool ids pre-resolved to their direct executable paths (`resolveVerifierTool`). */
   readonly toolMap: Readonly<Record<string, string>>;
-  /** The base of every check's command wall, or why this host has none. */
   readonly base: SolveIsolationPolicy | { readonly unsupported: string };
   readonly checkMs: number;
 }
 
-/** The objective, run as a check is, in the verdict's cell: the evaluator's `objective` export,
- *  given the whole answer, its files, the whole public task and the task's hidden values, with no
- *  tool. Its files let it measure a work product the prompt asks for, such as a workbook. It is
- *  the author's own computation, so `accept.ts` lists it as a fault until the operator admits it by
- *  name (rule 10). Its hidden values let it measure against what the task was built from, such as
- *  the parameters that generated its data, so it has a best value no recomputation reaches; an
- *  objective that could only recompute from the public input what the solver could recompute too
- *  ties nearly every task at its best. */
 export const OBJECTIVE: BriefTruthCheck = {
   id: "objective",
   citedDecisionIds: [],
@@ -159,12 +133,8 @@ export const OBJECTIVE: BriefTruthCheck = {
   },
 };
 
-/** Manifest listing ambient host tool names a drafted exam (`tools/d2/exam.ts`) is permitted to
- *  invoke inside the verifier cell; stored packs install binaries directly under `.toolchain/bin/`. */
 export const HOST_TOOLS_FILE = "host-tools.json";
 
-/** Resolved verifier executable with its provenance: physically installed inside the pack's
- *  `.toolchain/` (`pack`) or forwarded from the ambient host toolchain path (`host`). */
 interface ResolvedVerifierTool {
   readonly kind: "pack" | "host";
   readonly path: string;
@@ -175,42 +145,64 @@ const CHECK_CHILD = join(import.meta.dir, "check-child.ts");
 const CHECK_CHILD_SOURCES = [import.meta.dir, resolve(import.meta.dir, "..", "meta")];
 const REPO = resolve(import.meta.dir, "..", "..");
 const CHECKS_AT_ONCE = 4;
-/** Per-check wall timeout including its tools; exceeding it marks the check faulty. */
 export const PER_CHECK_MS = 120_000;
 
-/** Objective measure of a passing verdict, or null. */
 export function objectiveOf(verdict: Verdict | null | undefined): number | null {
   return verdict?.kind === "pass" ? (verdict.objective ?? null) : null;
 }
 
-/** Blocking check ids of a failing verdict, or empty. */
+export function scoresOf(verdict: Verdict | null | undefined): Readonly<Record<string, number>> | null {
+  return verdict?.kind === "pass" ? (verdict.scores ?? null) : null;
+}
+
+export function validScores(raw: JsonValue | undefined): Readonly<Record<string, number>> | null {
+  const rec = asRecord(raw);
+  if (rec === null) return null;
+  const scores: Record<string, number> = {};
+  for (const [id, val] of Object.entries(rec)) {
+    const score = isNumber(val) ? unitScore(val) : null;
+    if (score === null) return null;
+    scores[id] = score;
+  }
+  return Object.keys(scores).length > 0 ? scores : null;
+}
+
+export function formatScores(
+  scores: Readonly<Record<string, number>>,
+  entry: (id: string, value: number) => string = (id, value) => `${id}=${String(value)}`,
+  separator = ", ",
+): string {
+  return Object.entries(scores)
+    .toSorted(([a], [b]) => compareCodeUnits(a, b))
+    .map(([id, value]) => entry(id, value))
+    .join(separator);
+}
+
 export function blockingOf(verdict: Verdict | null | undefined): readonly string[] {
   return verdict?.kind === "fail" ? verdict.blocking : [];
 }
 
-/** The faulty check id and reason of `verdict`, or null for any other verdict kind. */
 export function faultyOf(
   verdict: Verdict | null | undefined,
 ): { readonly check: string; readonly reason: string } | null {
   return verdict?.kind === "faulty" ? { check: verdict.check, reason: verdict.reason } : null;
 }
 
-/** True when a verdict decided pass or fail rather than faulty or non-result. */
 export function decides(verdict: Verdict): verdict is Extract<Verdict, { kind: "pass" | "fail" }> {
   return verdict.kind === "pass" || verdict.kind === "fail";
 }
 
-/** One-line canonical spelling of a verdict for equality and display. */
 export function spelled(verdict: Verdict): string {
   if (verdict.kind === "fail") return `fail ${[...verdict.blocking].toSorted().join(",")}`;
   if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
   if (verdict.kind === "pass") {
-    return verdict.objective === undefined ? "pass" : `pass ${String(verdict.objective)}`;
+    if (verdict.objective === undefined) return "pass";
+    if (verdict.scores === undefined) return `pass ${String(verdict.objective)}`;
+    return `pass ${String(verdict.objective)} [${formatScores(verdict.scores, undefined, ",")}]`;
   }
   return `non-result ${verdict.reason}`;
 }
 
-/** Ambient host tool names and draft provenance read from `toolsDir/host-tools.json`. */
 function hostManifestIn(toolsDir: string): { readonly draft: boolean; readonly tools: ReadonlySet<string> } {
   const manifest = join(toolsDir, HOST_TOOLS_FILE);
   if (!existsSync(manifest)) return { draft: false, tools: new Set() };
@@ -230,11 +222,6 @@ function toolLookup(toolsDir: string) {
   };
 }
 
-/** Resolve one declared verifier tool by provenance: a binary under `toolsDir` takes precedence
- *  (`pack` on operator-installed packs; `host` when staged from a drafted exam under Rule 10),
- *  otherwise an ambient host binary named in `host-tools.json` (`host`). Preserves the lexical
- *  executable path (for Python PEP 405 venvs and argv0-relative tools) while hashing the canonical
- *  `realpathSync` target so binary updates move the digest. */
 export function resolveVerifierTool(
   toolsDir: string,
   name: string,
@@ -252,7 +239,6 @@ export function resolveVerifierTool(
   };
 }
 
-/** Tool ids a check requires, whether declared under external evidence or execution dependencies. */
 export function requiredToolsOf(execution: CheckExecution): readonly string[] {
   return execution.evidence.kind === "external"
     ? execution.evidence.requiredToolIds
@@ -266,7 +252,6 @@ const declaredTools = (brief: Brief) => [
   ]),
 ];
 
-/** Resolve and hash every declared verifier engine (`resolveVerifierTool`). */
 export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
   const lookup = toolLookup(tools);
   const toolsReal = existsSync(tools) ? realpathSync(tools) : null;
@@ -278,7 +263,6 @@ export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
   });
 }
 
-/** Truth checks whose declared family scope includes `task.family`. */
 export function applicableTruthChecks(brief: Brief, task: { family: string }): BriefTruthCheck[] {
   if (brief.correctnessContract !== CHECK_PROGRAM_CONTRACT) {
     throw new Error("unsupported-correctness-contract");
@@ -288,11 +272,6 @@ export function applicableTruthChecks(brief: Brief, task: { family: string }): B
   );
 }
 
-/**
- * Rebuild a value carrying only the declared paths. A declared path grants the value at that path,
- * whole: `$.system` hands over its subtree, which is what a collection predicate naming a root
- * already means. Declaring a parent therefore grants its whole subtree.
- */
 function projectPaths(value: JsonValue, paths: readonly string[][]): JsonValue {
   if (paths.some((path) => path.length === 0)) return value;
   const below = (key: string) => paths.flatMap((path) => (path[0] === key ? [path.slice(1)] : []));
@@ -320,10 +299,6 @@ function projectJsonPaths(value: JsonValue, paths: readonly string[]): JsonValue
   return projectPaths(value, parsed);
 }
 
-/** One projection per check, and the check process and its private tool cell both eat it. That is
- *  what keeps the declared paths a wall rather than a note: `evaluate.ts` builds the tool-input
- *  leaves from this same value, so bytes a check may hand an installed tool are bytes it was
- *  already allowed to read, and a wider tool operand cannot be reached around the projection. */
 function checkPublicInputs(
   check: BriefTruthCheck,
   request: Pick<EvaluationRequest, "artifact" | "publicTask" | "files">,
@@ -346,12 +321,6 @@ function checkPublicInputs(
   };
 }
 
-/** Each fresh child receives only its declared inputs and its own check's hidden value, which is
- *  what makes the declared paths a contract rather than documentation: a check able to read a path
- *  it never declared, or another check's expectation, would be deciding on evidence no coverage row
- *  records it as using. A check that declares `hidden: "required"` and finds no expectation of its
- *  own throws here rather than running, because a check quietly deciding without its operand is
- *  indistinguishable from a check that was never applicable, and only one of those is a defect. */
 export function checkEvaluationRequest(
   check: BriefTruthCheck,
   request: EvaluationRequest,
@@ -372,13 +341,6 @@ export function checkEvaluationRequest(
   return { ...checkPublicInputs(check, request), hidden };
 }
 
-/**
- * A check program's files by their path under its directory, nested directories walked, in code-unit
- * order, each directory read in that order so a refusal names the same entry on every filesystem. A
- * program is plain files: a symlink, or anything else that is neither a file nor a
- * directory, is refused rather than followed, since a link would let the program's version and its
- * cell's copy read bytes from outside the directory the version names.
- */
 export function checkProgramFiles(checks: string): string[] {
   const walk = (under: string): string[] =>
     readdirSync(join(checks, under), { withFileTypes: true })
@@ -392,25 +354,25 @@ export function checkProgramFiles(checks: string): string[] {
   return walk("").toSorted(compareCodeUnits);
 }
 
-/** A check program's version: the sha256 of each of its files, by its path under the directory.
- *  Every file counts, since the verifier copies them all into each check's cell. */
 export function checkProgramVersion(checks: string): Record<string, string> {
   return Object.fromEntries(
     checkProgramFiles(checks).map((file) => [file, sha256OfFile(join(checks, file))]),
   );
 }
 
-/** A check program's declaration of its checks, as its author wrote it. */
 export function readBrief(checks: string): Brief {
   const brief = parseJsonAs<Brief>(readFileSync(join(checks, CHECK_BRIEF), "utf8"));
   if (brief.truthChecks.some((check) => check.id === OBJECTIVE.id)) {
     throw new Error(`a check is named ${OBJECTIVE.id}, which names the objective`);
   }
+  const [fault] = rubricFaults(
+    brief.objective,
+    brief.truthChecks.map(({ id }) => id),
+  );
+  if (fault !== undefined) throw new Error(fault);
   return brief;
 }
 
-/** Safe `$HOME` read-allow roots for resolved engine binaries whose realpath lies under `$HOME`
- *  outside `tools` (never reopening `$HOME` itself). Shared by `openVerifier` and `inExaminerWall`. */
 export function engineReadRoots(
   tools: string,
   paths: readonly string[],
@@ -443,17 +405,13 @@ const stopVerdict = (
       ? { kind: "faulty", check: id, reason: outcome.faulty }
       : null;
 
-/**
- * A verifier over one tree. The brief is read and the wall's base taken once, here, so every
- * verdict it gives is under the same checks and the same wall. The tree is resolved first: the wall
- * takes only absolute roots.
- */
 export function openVerifier(given: VerifierTree & Closed): Verifier {
   const tree: VerifierTree = { checks: resolve(given.checks), tools: resolve(given.tools) };
   const brief = readBrief(tree.checks);
+  const scored = codeObjective(brief.objective);
   const [firstTool, ...moreTools] = brief.objectiveTools ?? [];
   const objective: BriefTruthCheck | null =
-    brief.objective === undefined
+    scored === undefined
       ? null
       : firstTool === undefined
         ? OBJECTIVE
@@ -494,10 +452,16 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
     if (checks.length === 0) {
       return { kind: "faulty", check: "brief", reason: `no check applies to family ${task.family}` };
     }
-    const ran = await runCell(wall, { checks, objective, request, signal });
+    const ran = await runCell(wall, {
+      checks,
+      objective,
+      ...keyIfDefined("objectiveScale", scored?.scale),
+      ...keyIfDefined("rubricItems", scored?.items),
+      request,
+      signal,
+    });
     if ("nonResult" in ran) return { kind: "non-result", reason: ran.nonResult };
     if ("held" in ran) return { kind: "faulty", check: ran.held, reason: ran.reason };
-    // Every check ran, and the first that cannot decide or is faulty, in the brief's order, decides.
     const blocking: string[] = [];
     for (const [index, result] of ran.results.entries()) {
       const { id } = checks[index] ?? OBJECTIVE;
@@ -512,17 +476,12 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
       stopVerdict(OBJECTIVE.id, measured) ?? {
         kind: "pass",
         ...keyIfDefined("objective", "value" in measured ? measured.value : undefined),
+        ...keyIfDefined("scores", "value" in measured ? measured.scores : undefined),
       }
     );
   };
 }
 
-/**
- * A verdict that decides, for the host to act on. A non-result is thrown instead, and each caller decides
- * what it ends (a run, a draft's reading, a Referee's replay): it comes from
- * the verifier, never the task, and a non-result is never counted, so a run on a broken verifier, one
- * that returns one for every check, would count nothing and look clean.
- */
 export async function decided(
   verify: Verifier,
   task: Task,
@@ -536,14 +495,12 @@ export async function decided(
   return verdict;
 }
 
-/** One check's input to the cell: its own projection of the answer, and the tools it declares. */
 const inputOf = (check: BriefTruthCheck, request: EvaluationRequest): CheckInput => ({
   checkId: check.id,
   request: checkEvaluationRequest(check, request),
   tools: requiredToolsOf(check.execution),
 });
 
-/** The check that last marked itself active among those still running in `runningDir`, or null. */
 function heldCheck(runningDir: string): string | null {
   if (!existsSync(runningDir)) return null;
   let held: { readonly seq: number; readonly checkId: string } | null = null;
@@ -562,30 +519,21 @@ function heldCheck(runningDir: string): string | null {
   return held?.checkId ?? null;
 }
 
-/**
- * One verdict's cell: a walled process that runs every check, and the objective where the answer
- * passes them, and writes their answers (`check-child.ts`). Its own time is the checks' times in
- * waves of `CHECKS_AT_ONCE`, one more for the objective and one for its start, so it runs out only
- * where a check holds the process's thread, and that check, which the cell names as it runs, is at
- * fault. A cell that runs out before any check starts, a cancel and a host that cannot wall a check
- * are non-results.
- */
 async function runCell(
   wall: Wall,
   run: {
     readonly checks: readonly BriefTruthCheck[];
     readonly objective: BriefTruthCheck | null;
+    readonly objectiveScale?: "unit";
+    readonly rubricItems?: readonly RubricItem[];
     readonly request: EvaluationRequest;
     readonly signal: AbortSignal | undefined;
   },
 ): Promise<CellResult | { readonly nonResult: string } | { readonly held: string; readonly reason: string }> {
-  const { checks, objective, request, signal } = run;
+  const { checks, objective, objectiveScale, rubricItems, request, signal } = run;
   const { base } = wall;
   if (signal?.aborted === true) return { nonResult: "the verifier was cancelled" };
   if ("unsupported" in base) return { nonResult: `this host cannot wall a check: ${base.unsupported}` };
-  // The cell is a seat of its own: one root the checks write, the program in the host's folder in
-  // it, which they read and cannot write, and the profile beside the root, out of their reach.
-  // The root lies in the host's own scratch, which the wall closes whole but for the cell it runs.
   const root = hostScratch("cell-");
   const dirs = {
     root,
@@ -594,7 +542,8 @@ async function runCell(
     kept: join(root, "kept"),
     host: hostFolder(root),
   };
-  const cellMs = (Math.ceil(checks.length / CHECKS_AT_ONCE) + 2) * wall.checkMs;
+  const itemWaves = Math.ceil((rubricItems?.length ?? 1) / CHECKS_AT_ONCE);
+  const cellMs = (Math.ceil(checks.length / CHECKS_AT_ONCE) + itemWaves + 1) * wall.checkMs;
   let child: Bun.Subprocess | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let abort: (() => void) | null = null;
@@ -602,7 +551,6 @@ async function runCell(
     for (const dir of [dirs.home, dirs.temp, dirs.host]) mkdirSync(dir, { recursive: true });
     const runningDir = join(dirs.temp, ".ana-running");
     mkdirSync(runningDir, { recursive: true });
-    // The program goes below the host's folder, so no file of it can stand as `result.json`.
     const copy = join(dirs.kept, "program");
     for (const file of wall.program) {
       mkdirSync(dirname(join(copy, file)), { recursive: true });
@@ -616,11 +564,11 @@ async function runCell(
       width: CHECKS_AT_ONCE,
       checks: checks.map((check) => inputOf(check, request)),
       objective: objective === null ? null : inputOf(objective, request),
+      ...keyIfDefined("objectiveScale", objectiveScale),
+      ...keyIfDefined("rubricItems", rubricItems),
       running: runningDir,
     };
     const policy = commandIsolationPolicy(base, { ...dirs, toolTree: wall.tree.tools });
-    // The wall a seat's command takes, without its shell: the cell leads its own group, and the
-    // group is ended below.
     const process = capturedSpawn({
       cmd: isolatedArgv(policy, join(dirs.host, "check.sb"), [capturedExecPath, CHECK_CHILD]),
       cwd: root,
@@ -639,8 +587,6 @@ async function runCell(
       stopped.resolve({ nonResult: reason });
     };
     timer = setTimeout(() => {
-      // A check that never yields holds the cell past every check's own time: it is at fault, as
-      // one that runs out its time is. A cell that started no check could not run, and decides nothing.
       const held = heldCheck(input.running);
       if (held === null) return stop(`the cell ran past ${String(cellMs)} ms`);
       killProcessGroupId(process.pid, "SIGKILL");
@@ -655,7 +601,7 @@ async function runCell(
     if ("nonResult" in outcome || "held" in outcome) return outcome;
     const { stderr, exitCode } = outcome;
     return (
-      writtenResult(join(root, "result.json"), checks.length) ?? {
+      writtenResult(join(root, "result.json"), checks.length, objectiveScale, rubricItems) ?? {
         nonResult: `the cell exited ${String(exitCode)} without a result: ${stderr.slice(-2000).trim()}`,
       }
     );
@@ -664,14 +610,11 @@ async function runCell(
   } finally {
     if (timer !== null) clearTimeout(timer);
     if (abort !== null) signal?.removeEventListener("abort", abort);
-    // End work left in the cell's group; the root's release also ends detached holders, whose
-    // process group is their own.
     if (child !== null) await terminateAndReapProcessGroupId(child.pid);
     await releaseRoot(root);
   }
 }
 
-/** What the cell wrote of a check or the objective that leaves it undecided, or null. */
 const undecided = (value: unknown) => {
   const written = asRecord(value);
   if (isString(written?.nonResult)) return { nonResult: written.nonResult };
@@ -679,8 +622,54 @@ const undecided = (value: unknown) => {
   return null;
 };
 
-/** The cell's answers, or null where it wrote none that reads as one for each of its `count` checks. */
-function writtenResult(path: string, count: number): CellResult | null {
+function weightedRubric(
+  raw: JsonValue | undefined,
+  items: readonly RubricItem[],
+): { readonly value: number; readonly scores: Readonly<Record<string, number>> } | null {
+  const rec = asRecord(raw);
+  if (rec === null || Object.keys(rec).length !== items.length) return null;
+  const maxWeight = Math.max(...items.map(({ weight }) => weight));
+  if (!Number.isFinite(maxWeight) || maxWeight <= 0) return null;
+  const scores: Record<string, number> = {};
+  let weighted = 0;
+  let totalWeight = 0;
+  for (const item of items) {
+    const val = Object.hasOwn(rec, item.id) ? rec[item.id] : undefined;
+    const norm = isNumber(val) ? unitScore(val) : null;
+    if (norm === null) return null;
+    scores[item.id] = norm;
+    const scaled = item.weight / maxWeight;
+    weighted += scaled * norm;
+    totalWeight += scaled;
+  }
+  const mean = totalWeight > 0 ? unitScore(weighted / totalWeight) : null;
+  return mean === null ? null : { value: mean, scores };
+}
+
+function readMeasured(
+  raw: JsonValue | undefined,
+  objectiveScale?: "unit",
+  rubricItems?: readonly RubricItem[],
+) {
+  const rec = asRecord(raw);
+  if (rubricItems !== undefined && rubricItems.length > 0) {
+    return weightedRubric(rec?.scores, rubricItems) ?? undecided(raw);
+  }
+  const value = rec?.value;
+  if (!isNumber(value) || !Number.isFinite(value)) return undecided(raw);
+  if (objectiveScale === "unit") {
+    const norm = unitScore(value);
+    return norm === null ? undecided(raw) : { value: norm };
+  }
+  return { value: value === 0 ? 0 : value };
+}
+
+function writtenResult(
+  path: string,
+  count: number,
+  objectiveScale?: "unit",
+  rubricItems?: readonly RubricItem[],
+): CellResult | null {
   if (!existsSync(path)) return null;
   let written: ReturnType<typeof asRecord>;
   try {
@@ -694,8 +683,7 @@ function writtenResult(path: string, count: number): CellResult | null {
     const item = isBoolean(passed) ? { passed } : undecided(each);
     return item === null ? [] : [item];
   });
-  const value = asRecord(written?.measured)?.value;
-  const measured = isNumber(value) && Number.isFinite(value) ? { value } : undecided(written?.measured);
+  const measured = readMeasured(written?.measured, objectiveScale, rubricItems);
   if (listed.length !== count || results.length !== count) return null;
   return written?.measured !== null && measured === null ? null : { results, measured };
 }

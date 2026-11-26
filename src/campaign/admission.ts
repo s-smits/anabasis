@@ -1,9 +1,3 @@
-/**
- * Supply and patience admission gates for paid comparisons (`admitComparison`) and standalone
- * Builder sessions (`admitSession`). `refusals` owns all supply refusal codes (`no-held`,
- * `held-short`, `unread`, `cap-short`, `stopped`) read by `decide.ts`. Rehearsals skip supply
- * admission while keeping term validation; already-started moves resume without re-checking.
- */
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { append, type EventKind, eventsOf, type LogEvent, read } from "../kernel/log.ts";
@@ -14,7 +8,7 @@ import {
   lastReports,
   patienceOf,
   poolOf,
-  roomOf,
+  evalHeadroom,
 } from "../kernel/reports.ts";
 import { ended, practiceRan, rejectionAside, solvesIn, standsOf } from "../kernel/solves.ts";
 import { sizeLines } from "../kernel/size.ts";
@@ -39,9 +33,12 @@ export interface Wanted {
   readonly builds: boolean;
   readonly cap: Cap | null;
   readonly pastStop?: string | undefined;
+  readonly judged?: boolean;
 }
 
-type SizedWant = Pick<Wanted, "target" | "level" | "solves" | "cap" | "pastStop">;
+export const JUDGED_TASK_DOLLARS = 1.5;
+
+type SizedWant = Pick<Wanted, "target" | "level" | "solves" | "cap" | "pastStop" | "judged">;
 
 interface WantedSession extends Pick<Wanted, "cap" | "pastStop"> {
   readonly practiceSolves?: number | undefined;
@@ -53,7 +50,6 @@ interface Starting {
   readonly id: string;
   readonly wanted: Wanted;
   readonly seats: Seats;
-  /** Term validation (`refuseTerms`, `round.ts`); runs after supply checks before any log append. */
   readonly own: () => void;
 }
 
@@ -62,13 +58,12 @@ interface Admission {
   readonly notes: readonly string[];
 }
 
-export const EXAMINE = "tools/d1b/examine.ts";
-/** Extra frontier buffer above `sweepOf(level)` for one set-aside task and one tie. */
+export const EXAMINE = "tools/eval/examine.ts";
 const MARGIN = 2;
 const STARTED = "comparison.started";
 const REFERENCE_KINDS: readonly EventKind[] = ["harness.promoted", "harness.reverted"];
 const UNREAD =
-  "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do";
+  "the campaign's checker has never been read: run tools/eval/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do";
 const UNRELEASED = "no task is released: the Builder has nothing to practise on";
 const holding = (rows: readonly (readonly [boolean, string])[]) =>
   rows.flatMap(([holds, text]) => (holds ? [text] : []));
@@ -93,10 +88,6 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
   };
 }
 
-/**
- * Per-epoch improvement patience (`patienceOf`): counts unique compared Builder-modified `(fresh, old)`
- * pairs with room or a step, plus completed unchanged sessions after an adjudicated practice failure.
- */
 export function stopRule(events: readonly LogEvent[]) {
   const stands = standsOf(events);
   const failed = practiceRan(events).filter(
@@ -134,7 +125,7 @@ export function stopRule(events: readonly LogEvent[]) {
     const pair = `${fresh} ${isString(old) ? old : ""}`;
     const earlier = pairs.get(pair);
     const step = (earlier?.step === true || data.reading === "step") && !revertedHarnesses.has(fresh);
-    const counts = earlier?.counts === true || data.reading === "step" || roomOf(data) === "room";
+    const counts = earlier?.counts === true || data.reading === "step" || evalHeadroom(data) === "room";
     pairs.set(pair, { index: earlier?.index ?? index, step, counts });
   }
   const moves = [...pairs.values().filter(({ counts }) => counts), ...declined].toSorted(
@@ -146,14 +137,13 @@ export function stopRule(events: readonly LogEvent[]) {
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 
-export function comparisonFloor(level: number): number {
-  return sweepOf(level) + MARGIN;
-}
+export const comparisonFloor = (level: number): number => sweepOf(level) + MARGIN;
 
-function sizeOf(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "solves">) {
+function sizeOf(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "solves" | "judged">) {
   const scored = Math.min(wanted.target, supply.held);
   const floor = comparisonFloor(wanted.level);
-  return { scored, floor, test: 2 * scored * wanted.solves };
+  const judging = wanted.judged === true ? JUDGED_TASK_DOLLARS * scored * Math.max(1, wanted.solves / 2) : 0;
+  return { scored, floor, test: 2 * scored * wanted.solves, judging };
 }
 
 function stopVerdict({ stop }: Supply, pastStop: string | undefined) {
@@ -171,17 +161,17 @@ function stopVerdict({ stop }: Supply, pastStop: string | undefined) {
 }
 
 export function refusals(supply: Supply, wanted: SizedWant) {
-  const { scored, floor, test } = sizeOf(supply, wanted);
+  const { scored, floor, test, judging } = sizeOf(supply, wanted);
   const { cap } = wanted;
   const [size = ""] = sizeLines(scored, wanted.level);
-  const price = supply.billed === null ? null : test * supply.billed;
+  const price = supply.billed === null ? null : test * supply.billed + judging;
   const askForMore = `An Examiner session writes more held-out tasks (examine, or ${EXAMINE} by hand)`;
   const stop = stopVerdict(supply, wanted.pastStop);
   const rows = [
     [
       "no-held",
       supply.held === 0,
-      "the log holds no held-out task to score: an Examiner session writes them (examine), or tools/d2/prepare.ts takes a pack's tasks in",
+      "the log holds no held-out task to score: an Examiner session writes them (examine), or tools/campaign/prepare.ts takes a pack's tasks in",
     ],
     [
       "held-short",
@@ -206,14 +196,14 @@ export function refusals(supply: Supply, wanted: SizedWant) {
 function faultNote(supply: Supply): readonly [boolean, string] {
   return [
     (supply.faults ?? 0) > 0 && !supply.frozen,
-    `the checker's last reading holds ${String(supply.faults)} fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/c/accept.ts)`,
+    `the checker's last reading holds ${String(supply.faults)} fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/eval/accept.ts)`,
   ];
 }
 
 function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
-  const { scored, floor, test } = sizeOf(supply, wanted);
+  const { scored, test, judging } = sizeOf(supply, wanted);
   const { cap, pastStop } = wanted;
-  const afforded = cap === null ? test : Math.floor(cap.dollars / cap.reserve);
+  const afforded = cap === null ? test : Math.max(0, Math.floor((cap.dollars - judging) / cap.reserve));
   return {
     refusals: [
       ...holding([
@@ -226,11 +216,11 @@ function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
     ],
     notes: [
       `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(scored)} to score`,
-      ...(scored < floor ? [] : sizeLines(scored, wanted.level)),
+      ...sizeLines(scored, wanted.level),
       ...holding([
         [
           supply.awaiting > 0,
-          `${String(supply.awaiting)} held-out task(s) wait for a person's label and are not scored (tools/d2/prepare.ts)`,
+          `${String(supply.awaiting)} held-out task(s) wait for a person's label and are not scored (tools/campaign/prepare.ts)`,
         ],
         [
           supply.exhausted > 0,
@@ -240,7 +230,7 @@ function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
         faultNote(supply),
         [
           cap !== null && afforded < test,
-          `the cap of $${String(cap?.dollars)} holds a reserve of $${String(cap?.reserve)} for ${String(afforded)} solves, and the comparison's test alone makes ${String(test)}${wanted.builds ? ", after a session whose spend the same cap holds" : ""}: it is cut short and reads not-scored unless its solves bill well under their reserve`,
+          `the cap of $${String(cap?.dollars)} holds a reserve of $${String(cap?.reserve)} for ${String(afforded)} solves${judging > 0 ? ` beside about $${judging.toFixed(2)} of judging` : ""}, and the comparison's test alone makes ${String(test)}${wanted.builds ? ", after a session whose spend the same cap holds" : ""}: it is cut short and reads not-scored unless its solves bill well under their reserve`,
         ],
       ]),
       ...stopVerdict(supply, pastStop).notes,
@@ -265,7 +255,7 @@ function sessionAdmission(supply: Supply, wanted: WantedSession): Admission {
       [stop.refuses, stop.why],
     ]),
     notes: [
-      `${String(supply.released)} released for practice · no comparison follows this session: tools/d2/checkpoint.ts compares what the campaign's sessions leave`,
+      `${String(supply.released)} released for practice · no comparison follows this session: tools/campaign/checkpoint.ts compares what the campaign's sessions leave`,
       ...holding([
         [supply.released === 0, UNRELEASED],
         faultNote(supply),
@@ -279,13 +269,8 @@ function sessionAdmission(supply: Supply, wanted: WantedSession): Admission {
   };
 }
 
-function alreadyStarted(
-  events: readonly LogEvent[],
-  id: string,
-  kind: typeof STARTED | "build.started",
-): boolean {
-  return eventsOf(events, kind).some(({ event }) => event.data.session === id);
-}
+const alreadyStarted = (events: readonly LogEvent[], id: string, kind: typeof STARTED | "build.started") =>
+  eventsOf(events, kind).some(({ event }) => event.data.session === id);
 
 function admitStart(
   log: string,
@@ -311,7 +296,6 @@ function admitStart(
   return [...notes];
 }
 
-/** Builder-safe admission refusal (campaign-level counts/commands only, never task names). */
 export class Refused extends Error {}
 
 export function admitComparison(log: string, starting: Starting): string[] {

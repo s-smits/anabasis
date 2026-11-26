@@ -34,7 +34,7 @@ Anabasis campaign built without seeing any of the eight?
 | Base | none | the stock Claude Code surface with an empty `CLAUDE.md`: Harness²'s own first rollout of each task |
 | Harness² k=1 | adapts on each scored task: 4 rollouts and 3 improver sessions a task, a library a profession | its delivered output on each task |
 | Harness² held-out | none beyond the k=1 sweep | task N of a profession (N = 2, 3) solved once by the final harness the sweep built on task N-1, frozen. Tasks of a profession run in order and a library holds only earlier tasks, so that harness never saw task N. Task 1 has no such harness, so the arm scores 5 tasks, and every arm is also read on those 5 |
-| Anabasis | one fresh campaign from the shared text, at the stack's top, which never sees the 8 tasks; stopped at 06:30 if it has not ended | its reference harness at the stop, written out by `studies/shared/claude-export.ts` and solved once a task |
+| Anabasis | one fresh campaign from the shared text, at the stack's top, which never sees the 8 tasks; stopped at 06:30 if it has not ended | its reference harness at the stop, written out by `488884bb2:studies/shared/claude-export.ts` and solved once a task |
 
 Two totals are read: all 8 tasks, and the 5 held-out tasks with every arm on the same 5, which is
 the fair one. The k=1 arm adapts on the task it is scored on, and the held-out arm and Anabasis do
@@ -46,7 +46,7 @@ not.
   event, which the runner prints on each attempt line and Harness²'s proposer writes into each
   task's summary. A session killed before its `result` event reports none; such sessions are
   counted apart and priced from their messages' token counts at list price, marked as estimates.
-- **The Anabasis build:** the campaign log's bill at list price (`tools/d2/close.ts`).
+- **The Anabasis build:** the campaign log's bill at list price (`tools/campaign/close.ts`).
 - **The judge:** each call's `total_cost_usd`.
 - **Time:** wall clock from an arm's first event to its last, an arm and a task.
 
@@ -69,7 +69,7 @@ Every arm's dollars are split into build, solve and judge.
   prompt and pi's tools; every arm is scored by `claude -p` with Claude Code's own prompt and tools
   and the harness as `CLAUDE.md`. Scoring is the same for every arm, so the gap bears only on how an
   Anabasis harness built on one surface carries to the other. The export's note says what of a
-  campaign's solve is not there (`claude-export.ts`).
+  campaign's solve is not there (`488884bb2:studies/shared/claude-export.ts`).
 - **The campaign's limits.** Anabasis builds at 20 model turns and 30 minutes a solve and is scored
   under the runner's limits.
 - **Size.** 8 tasks, one stream an arm, no A/A, one judge call a task.

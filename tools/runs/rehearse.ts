@@ -1,43 +1,16 @@
 /**
- *   bun run runs rehearse --name <seed> <the flags of tools/d2/harness-builder.ts> [--supply N]
+ * A campaign over a seeded log (`seed.ts`) with a script in each model seat and no model called, so a
+ * campaign's path can be walked before it is paid for. Everything under the seats is a paid campaign's;
+ * flags and defaults are the rehearsed command's, except that no `--cap` is needed and the flags that
+ * name a model are refused. A solve's script answers `pass`, `fail` or `none`: `--held` gives it under
+ * the reference and new harnesses as `old:new` (default `none:pass`, a step), `--starter` under the
+ * starter (default `none`). `--supply N` adds copies of the source's answered tasks, so a climb of
+ * more than one epoch can be rehearsed.
+ *
+ *   bun run runs rehearse --name <seed> <the flags of tools/campaign/harness-builder.ts> [--supply N]
  *     [--held none:pass] [--starter none]
- *   bun run runs rehearse --name <seed> --id <comparison> <the flags of tools/d2/checkpoint.ts> ...
- *   bun run runs rehearse --name <seed> --no-comparison <the flags of tools/d2/session.ts> ...
- *
- * A campaign over a seeded log (`seed.ts`) with a script in each model seat and no model called,
- * so a campaign's path can be walked before it is paid for. Flags that hold `--id` are a
- * standalone comparison's, and rehearse one comparison with no Builder session
- * (`tools/d2/checkpoint.ts`). With `--no-comparison` the flags are a session's, and rehearse one
- * Builder session with no comparison after it (`tools/d2/session.ts`). Otherwise the flags are the
- * Harness Builder's (`tools/d2/harness-builder.ts`), and the live Builder is rehearsed: its script
- * edits the guide and finishes each conversation, until it ends or
- * `--moves` are made. The Examiner is scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
- * cut, in their order, until none is left; with `--supply N` it then proposes up to N further
- * instances copied from the source's answered tasks, each with a copy mark in its public input so
- * that it is another instance, which the script answers as it answers the task it copies. That is
- * how a climb of more than one epoch is rehearsed: the Examiner of a source that climbed once
- * wrote tasks for one epoch, and a rehearsal with `--held none:pass --starter pass --supply 30`
- * goes round the table again, from the promoted harness through other tasks, the starter comparison, a
- * session and a step, until the supply is spent.
- * The scripted Examiner tries each task it has an answer for through try_answer and puts its tasks
- * to the gate, which reads their packages alone.
- * Everything under the seats is a paid campaign's: the campaign's log and sets, the Builder's tools on
- * the command wall and its freeze, each solve's deadline and root, the answer file and `submit`,
- * the verifier, the comparison and the report. Its flags and defaults are those of the command it
- * runs, except that it needs no `--cap`: a script is paid nothing. The three flags that name a model
- * are refused. The answers the script writes are the drafted exam's control answers and every
- * answer the seed's source campaign passed (`draftedSource`).
- *
- * The Builder's script edits the guide through its walled shell. In a campaign it compares its
- * edit itself; in an isolated session it finishes after the edit.
- * A solve's script ends one of three ways. For `pass` it writes an answer on record that the checks
- * accepted into the answer file, through the harness's own `write` or its `bash`, and submits it.
- * For `fail` it does the same with one a check rejected. For `none` it submits with no answer
- * written, as a solve that reached its limits has none: not valid, and nothing for anyone to rule on. `--held` says how a solve of a
- * held-out task ends under the two harnesses of the comparison, the reference harness and the new
- * one, as `old:new`. The reference harness is the starter unless `--reference` names another. The
- * defaults, `none:pass`, script a step. `--starter` says how a solve ends under the
- * starter where it is neither of the two.
+ *   bun run runs rehearse --name <seed> --id <comparison> <the flags of tools/campaign/checkpoint.ts> ...
+ *   bun run runs rehearse --name <seed> --no-comparison <the flags of tools/campaign/session.ts> ...
  */
 import {
   createModels,
@@ -62,58 +35,46 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { ANSWER_FILE } from "#src/tools/answer.ts";
 import { selectedCodingTools } from "#src/tools/coding.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { shellQuote } from "#src/wall/isolation.ts";
-import { campaignLog, starter } from "../d2/campaign.ts";
-import { stagedExamOf } from "../d2/exam.ts";
-import { checkpointCommand } from "../d2/checkpoint.ts";
-import { harnessBuilder } from "../d2/harness-builder.ts";
-import type { Seated } from "../d2/round.ts";
-import { sessionCommand } from "../d2/session.ts";
+import { shellQuote } from "#src/sandbox/isolation.ts";
+import { campaignLog, starter } from "../campaign/campaign.ts";
+import { stagedExamOf } from "../campaign/exam.ts";
+import { checkpointCommand } from "../campaign/checkpoint.ts";
+import { harnessBuilder } from "../campaign/harness-builder.ts";
+import type { Seated } from "../campaign/round.ts";
+import type { Reader } from "#src/audit/auditor.ts";
+import { sessionCommand } from "../campaign/session.ts";
 import { packControls } from "../m0/stored-sweep.ts";
 import { Misused, SEED_FILE } from "./registry.ts";
 import { codeLine } from "./seed.ts";
 
-/** How a scripted solve ends: a valid answer, one a check rejects, or none at all. */
 const ENDS = ["pass", "fail", "none"] as const;
 type End = (typeof ENDS)[number];
-/** How a scripted solve ends under the reference harness and under the new one. */
 interface Sides {
   readonly old: End;
   readonly fresh: End;
 }
-/** The script of a rehearsal's solves: under the reference harness and the new, and under the
- *  starter where it is neither. */
 interface Script {
   readonly held: Sides;
   readonly starter: End;
 }
 
-/** What a seed of a drafted exam gives the scripts: the answers, the source's later tasks, and
- *  the answered tasks a `--supply` copies. */
 interface DraftedSource {
   readonly graded: Control[];
   readonly later: Task[];
   readonly answered: Task[];
 }
 
-/** The key a copied instance carries in its public input: which task it copies, and its number. */
 const COPY = "rehearsal_copy";
 
 const OWN = new Set(["held", "starter", "supply", "no-comparison"]);
 
 const TOOL_USE = { stopReason: "toolUse" } as const;
-/** A list price for the scripted model, which the meter refuses to run without: what a rehearsal
- *  meters is the script's own words at this price, and is no cost. */
+/** The meter refuses to run without a list price; what a rehearsal meters at it is no cost. */
 const PRICE = { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 };
-/** The guide a scripted Builder writes on, from its home. */
 const GUIDE = "harness/agent/BUILT_AGENTS.md";
-/** The opening of the system message pi's compaction sends its summariser
- *  (`@earendil-works/pi-durable`, `harness/compaction.js`). */
 const SUMMARISER = "You are a context summarization assistant.";
 
-/** A task by what it asks, its id aside: a seed's sessions number their tasks afresh, so the
- *  source's x-2-002 is another task than the seed's, and the script would write the source's answer
- *  to it, which the checks reject. A copy is the task it copies. */
+/** A seed's sessions number their tasks afresh, so a task is matched by what it asks, its id aside. */
 const contentOf = ({ family, publicInput, hidden }: Task): string => {
   const record = asRecord(publicInput);
   const own =
@@ -123,8 +84,6 @@ const contentOf = ({ family, publicInput, hidden }: Task): string => {
   return hashJsonValue({ family, publicInput: own, hidden });
 };
 
-/** `args` without the options `own` names and their values, as `parseArgs` tokenised them: what
- *  this command hands on to the session, the standalone comparison or the campaign command it rehearses. */
 function passedOn(
   args: readonly string[],
   tokens: readonly { kind: string; index: number; name?: string; inlineValue?: boolean | undefined }[],
@@ -139,7 +98,6 @@ function passedOn(
   return args.filter((_, index) => !dropped.has(index));
 }
 
-/** `old:new` as a pair of endings. */
 export function sidesOf(flag: string): Sides {
   const [old, fresh, ...more] = flag.split(":").map(endOf);
   if (old === undefined || fresh === undefined || more.length > 0) {
@@ -150,21 +108,11 @@ export function sidesOf(flag: string): Sides {
   return { old, fresh };
 }
 
-/** An ending by its name, or undefined for a word that names none. */
 function endOf(word: string): End | undefined {
   return ENDS.find((end) => end === word);
 }
 
-/**
- * The answers on record for each task, by its id: the first the checks accepted and the first a
- * check rejected. `graded` are the pack's, the accepted ones first: a stored solve the sweep graded
- * a pass comes before the pack's own accept control answer, which can be stale. On the truss pack every
- * accept control answer of several tasks has been rejected by several checks. The log answers
- * for the tasks no pack holds: every answer a verdict of it accepted or rejected, with the files it
- * delivered from the campaign's store, so a task a session wrote can be scripted once some solve
- * has answered it.
- */
-export function answersOf(graded: readonly Control[], log: string | null) {
+function answersOf(graded: readonly Control[], log: string | null) {
   const verdicts = log === null ? [] : [...verdictsOf(read(log)).values()];
   const solved = verdicts.flatMap(({ task, answer, files, checker }) =>
     log === null || task === null || answer === undefined || checker === null || checker.kind === "faulty"
@@ -186,20 +134,14 @@ export function answersOf(graded: readonly Control[], log: string | null) {
   return known;
 }
 
-/** A model that makes `calls` in order, a turn each, then answers `asked` times with no call, and
- *  then fails as a provider would: a script that ran out is the provider's failure, and the solve is
- *  run again. A compaction's summary takes no turn of the script, since giving it the next call
- *  would end every scripted Examiner session that grew long enough `crashed`. `calls` is
- *  read as each turn comes, so a script its caller lengthens is made whole: an Examiner's
- *  conversation lays each later ask's calls there as the ask wakes it (`scriptedExaminer`). */
+/** A script that ran out fails as a provider would, so it is retried as a provider failure; a
+ *  compaction's summary takes no turn of the script. */
 function scripted(calls: readonly (readonly [string, JsonObject] | FauxResponseFactory)[], asked: number) {
   const faux = fauxProvider({
     models: [{ id: "script", contextWindow: 200_000, cost: PRICE }],
   });
   let next = 0;
   const answer: FauxResponseFactory = (context, ...rest) => {
-    // The provider's queue is the script's own: each answer queues the next, and the script alone
-    // says when it has run out.
     faux.appendResponses([answer]);
     const summarising = context.messages.some(
       ({ role, content }) => role === "system" && isString(content) && content.startsWith(SUMMARISER),
@@ -221,13 +163,10 @@ function scripted(calls: readonly (readonly [string, JsonObject] | FauxResponseF
   return { model: faux.getModel(), models: () => models };
 }
 
-/** One scripted Builder edits, compares what it edited and finishes: no count of sessions has the
- *  host compare a harness for it, and no result tells it the table's move. */
 function scriptedBuilder() {
   let [changed, compared, examined] = [false, false, false];
   const choose: FauxResponseFactory = (context) => {
     const last = JSON.stringify(context.messages.at(-1));
-    // An isolated session holds no `compare`, and finishes after its edit.
     const comparing = context.messages.some(
       (message) =>
         message.role === "system" &&
@@ -243,7 +182,6 @@ function scriptedBuilder() {
       last.includes("no Examiner") ||
       last.includes("call finish again");
     const name = finish ? "finish" : changed ? "compare" : "bash";
-    // An edit is compared next; the next conversation edits again.
     [changed, compared] = name === "bash" ? [true, false] : [false, name === "compare"];
     if (name === "finish") examined = false;
     const args =
@@ -258,7 +196,27 @@ function scriptedBuilder() {
   );
 }
 
-/** The seats of a rehearsal. `strayed` takes each solve that ended otherwise than scripted. */
+const VOTES_IN_FLIGHT = 16;
+
+function scriptedJudge(): Reader {
+  const faux = fauxProvider({ models: [{ id: "script-judge", contextWindow: 200_000, cost: PRICE }] });
+  const vote: FauxResponseFactory = (context) => {
+    faux.appendResponses([vote]);
+    const shown = JSON.stringify(context.messages);
+    const after = (label: string) => shown.indexOf(label) + label.length;
+    const [one, other] = [
+      hashJsonValue(shown.slice(after("Answer A:"), shown.indexOf("Answer B:"))).slice(-8),
+      hashJsonValue(shown.slice(after("Answer B:"), shown.indexOf("The criterion:"))).slice(-8),
+    ];
+    const better = one === other ? "neither" : one < other ? "A" : "B";
+    return fauxAssistantMessage(fauxToolCall("record_vote", { better, reason: "scripted" }), TOOL_USE);
+  };
+  faux.setResponses(Array.from({ length: VOTES_IN_FLIGHT }, () => vote));
+  const models = createModels();
+  models.setProvider(faux.provider);
+  return { model: faux.getModel(), effort: "medium", models: () => models };
+}
+
 export function scriptedSeats(script: Script, graded: readonly Control[], strayed: string[]): Seated {
   return (campaign, { reference }) => {
     const folder = dirname(campaign.log);
@@ -269,22 +227,17 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
     }
     const answers = answersOf(graded, campaign.log);
     const least = starter(campaign);
-    /** How a script puts a file in the solver's home under each harness, by the harness's folder:
-     *  through its shell where the harness selects one, so that each rehearsed solve runs a command
-     *  inside the wall, and with pi's `write` where it does not. */
     const writers = new Map<string, Promise<readonly string[]>>();
     const selectedOf = (dir: string) => {
       const known = writers.get(dir) ?? openHarness(dir).then(({ presets }) => selectedCodingTools(presets));
       writers.set(dir, known);
       return known;
     };
-    /** Which of the three a solve's harness is, as a strayed solve is named: a side of the
-     *  comparison first, so the starter is scripted as the reference harness where it is that. */
     const sideOf = async (dir: string) =>
       dir === reference ? "old" : dir === (await least).dir ? "starter" : "new";
     return {
       builder: scriptedBuilder(),
-      // Every scripted solver is the same model at the same price, so one names the setting of all.
+      judge: scriptedJudge(),
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill, comparison) => {
         const side = await sideOf(harness.dir);
@@ -292,14 +245,6 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         const wanted = admission
           ? script.held.old
           : { old: script.held.old, new: script.held.fresh, starter: script.starter }[side];
-        // A solve scripted to give no answer submits with none written, and needs none on record.
-        // One scripted to answer a task with no answer on record gives none and is named at the
-        // end as strayed, rather than ending the campaign, so that a rehearsal of the control after a
-        // promotion (`heldSince`, `decide.ts`) does not fall at the first task no solve ever answered.
-        // A copied instance (`--supply`) is answered as the task it copies: by its id where a pack
-        // or this log holds the answer, and by what it asks where a seed's source does, which wins:
-        // the source's id can name another task in the seed's log, whose answer a copy would
-        // otherwise take and be rejected.
         const copied = asRecord(asRecord(task.publicInput)?.[COPY])?.of;
         const known = {
           ...(isString(copied) ? answers.get(copied) : undefined),
@@ -316,11 +261,10 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         }
         const selected = await selectedOf(harness.dir);
         const put = (path: string, content: string): readonly [string, JsonObject] => {
-          // A delivered file goes by `write` where the harness selects it: a command is one argument
-          // of its shell, which holds 128 KiB on Linux, and a delivered file may be far larger.
+          // A delivered file goes by `write` where the harness selects it: a command is one argument of
+          // its shell, which holds 128 KiB on Linux.
           const shell = selected.includes("bash") && (path === ANSWER_FILE || !selected.includes("write"));
           if (!shell) return ["write", { path, content }];
-          // The answer file sits in the working directory; a delivered file needs its folder made.
           const made = path === ANSWER_FILE ? "" : `mkdir -p "$(dirname ${shellQuote(path)})" && `;
           const into = path === ANSWER_FILE ? path : shellQuote(path);
           return ["bash", { command: `${made}printf %s ${shellQuote(content)} > ${into}` }];
@@ -339,8 +283,6 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         );
         const done = await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill, comparison);
         const { ending } = done;
-        // A solve scripted to give none submits nothing and is asked again until its turns end:
-        // under a bound on the model's turns it ends `turns-ended`, and `no-answer` at its deadline.
         const failed: readonly string[] = {
           pass: [],
           fail: ["rejected"],
@@ -361,11 +303,6 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
   };
 }
 
-/**
- * The answers a seed of a campaign that drafted its exam gives the script: the draft's control answers,
- * from where the campaign staged them, and every answer the source campaign's checks passed, which
- * a seed cut before those solves no longer holds.
- */
 function draftedSource(name: string): DraftedSource {
   const log = campaignLog(name);
   const staged = stagedExamOf(log);
@@ -386,8 +323,6 @@ function draftedSource(name: string): DraftedSource {
       ? [{ taskId: content, answer, files: readAnswerFiles(sourceLog, files ?? []), refusedBy: null }]
       : [];
   });
-  // The tasks the source's Examiner sessions wrote after the cut, for the scripted Examiner to
-  // propose in their order: the seed's log holds the ones before it.
   const held = new Set(proposalsOf(read(log)).map(({ version }) => version));
   const later = proposalsOf(source).flatMap(({ version, task, session }) =>
     task !== null && session !== null && !held.has(version) ? [task] : [],
@@ -399,12 +334,6 @@ function draftedSource(name: string): DraftedSource {
   return { graded: [...packControls(staged.bundle), ...passes], later, answered };
 }
 
-/**
- * An Examiner conversation scripted from the source campaign's sessions: each ask proposes the next
- * tasks the source's sessions wrote after the cut, as many as the host asks for, and finishes; one
- * with none left proposes copies of the source's answered tasks while `--supply` lasts, and then
- * finishes with none, which the campaign reads as a session that held out no task.
- */
 function scriptedExaminer(
   later: Task[],
   answered: readonly Task[],
@@ -413,7 +342,6 @@ function scriptedExaminer(
 ): Session<"write"> {
   const answers = answersOf(graded, null);
   let copies = 0;
-  /** One ask's calls: try each task it has an answer for, put them all, and finish. */
   const callsFor = (wanted: number): (readonly [string, JsonObject])[] => {
     const own = later.splice(0, wanted);
     const copied: Task[] = [];
@@ -442,7 +370,7 @@ function scriptedExaminer(
           : [["try_answer", { ...instance, answer: answer.answer }]];
       }),
       ...(batch.length === 0 ? [] : [["propose_tasks", { tasks: batch }] as const]),
-      // Twice: a first finish while the host has not the tasks it needs is declined once.
+      // Twice, since a first finish before the host has the tasks it needs is declined once.
       ...Array.from(
         { length: 2 },
         () =>
@@ -454,8 +382,6 @@ function scriptedExaminer(
     ];
   };
   return (request, wall) => {
-    // The ask in force's calls, a turn each. A wake lays the next ask's in place of what the last
-    // left, such as a second finish the host did not need, and the script grows by as many turns.
     const queue = callsFor(request.wanted);
     const pull: FauxResponseFactory = () => {
       const call = queue.shift();
@@ -479,7 +405,6 @@ function scriptedExaminer(
   };
 }
 
-/** `bun run runs rehearse`. */
 export async function rehearse(args: readonly string[]): Promise<void> {
   const { values, tokens } = parseArgs({
     args: [...args],
@@ -501,13 +426,12 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   const least = isString(values.starter) ? endOf(values.starter) : undefined;
   const seated = (["builder", "solver", "reviewer"] as const).filter((seat) => values[seat] !== undefined);
   if (seated.length > 0) {
-    // A reviewer named here would be a live one, reading scripted fails for money.
+    // A reviewer named here would be a live one, paid to read scripted fails.
     throw new Error(`a rehearsal seats no model: drop --${seated.join(", --")}`);
   }
   if (!isString(held) || least === undefined || !isString(values.name)) throw new Misused();
   const drafted = draftedSource(values.name);
   const seeded = dirname(campaignLog(values.name));
-  // The code the seed's source ran at its cut, against this tree's: a line that refuses nothing.
   if (existsSync(join(seeded, SEED_FILE))) {
     console.log(codeLine(resolve(import.meta.dir, "..", ".."), seeded));
   }
@@ -515,8 +439,6 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   const strayed: string[] = [];
   const seats = scriptedSeats({ held: sidesOf(held), starter: least }, graded, strayed);
   const flags = passedOn(args, tokens, OWN);
-  // A standalone comparison is named by its `--id` and runs no session, so no Builder's script can stray, and
-  // a campaign's sessions are its own to count. A campaign seats an Examiner scripted from its source.
   try {
     if (values["no-comparison"] !== true && !isString(values.id)) {
       await harnessBuilder(flags, {

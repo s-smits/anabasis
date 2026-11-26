@@ -1,14 +1,14 @@
 /**
- * Runs each command as a seat's commands run (`runWalled`, in a claimed root) and prints what each
- * said, as JSON. A test starts this as a child to set the home the wall reads as a process starts.
+ * Runs each command as a seat's commands run (`runSandboxed`, in a claimed root) and prints what each
+ * said, as JSON. A test starts it as a child to set the home the wall reads as a process starts.
  *
  *   bun test/helpers/walled-commands.ts <repository root> <command>...
  */
 import { capturedJsonStringify } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
-import { makeSeatDirs, runWalled, solveDirs } from "../../src/tools/command.ts";
-import { solveIsolationPolicy } from "../../src/wall/base.ts";
-import { claimRoot } from "../../src/wall/seat-root.ts";
+import { makeSeatDirs, runSandboxed, solveDirs } from "../../src/tools/command.ts";
+import { solveIsolationPolicy } from "../../src/sandbox/base.ts";
+import { claimRoot } from "../../src/sandbox/sandbox-root.ts";
 
 const [repoRoot = "", ...commands] = runtimeProcess.argv.slice(2);
 const dirs = solveDirs(`walled-commands-${String(runtimeProcess.pid)}`);
@@ -17,10 +17,9 @@ makeSeatDirs(dirs);
 const base = solveIsolationPolicy({ repoRoot });
 if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
 const wall = { base, dirs, toolTree: null, limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 } };
-/** What `command` printed, once it has ended. */
 async function said(command: string): Promise<string> {
   let output = "";
-  await runWalled(wall, command, {
+  await runSandboxed(wall, command, {
     onData: (data) => {
       output += data.toString("utf8");
     },

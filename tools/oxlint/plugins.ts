@@ -1,6 +1,4 @@
-/**
- * The repository's lint plugins: the one record every other list of rules reads (HABITS 12.13).
- */
+/** The repository's lint plugins: the one record every other list of rules reads (HABITS 12.13). */
 import type { Plugin } from "@oxlint/plugins";
 import anaPlugin from "./ana/index.ts";
 import antiSlopPlugin from "./anti-slop/index.ts";

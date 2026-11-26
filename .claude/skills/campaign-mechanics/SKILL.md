@@ -1,6 +1,6 @@
 ---
 name: campaign-mechanics
-description: "Use before editing or answering questions about tools/d2/ (harness-builder, campaign-actions, campaign-terms, prepare, round, session, word), src/campaign/opening.ts, src/kernel/{log,condition,task}.ts, practice release, admission refusals, or campaign endings. Explains Builder choices, log events, experimental conditions and settings, defaults, and waits (AGENTS.md sections 4 to 6). ending.ts reports why a campaign stopped; conditions.ts compares solve settings; bills.ts analyses solve costs against turn counts and reserve. Use run-management to launch, pause, or stop runs."
+description: "Use before editing or answering questions about tools/campaign/ (harness-builder, campaign-actions, campaign-terms, prepare, round, session, signal), src/campaign/opening.ts, src/kernel/{log,condition,task}.ts, practice release, admission refusals, or campaign endings. Explains Builder choices, log events, experimental conditions and settings, defaults, and waits (AGENTS.md sections 4 to 6). ending.ts reports why a campaign stopped; conditions.ts compares solve settings; bills.ts analyses solve costs against turn counts and reserve. Use run-management to launch, pause, or stop runs."
 ---
 
 # Campaign mechanics

@@ -1,6 +1,4 @@
-/**
- * An earlier log's gate readings, for the readers that study them (`climb.ts`, `live-seat.ts`).
- */
+/** An earlier log's gate readings, for the reader that studies them (`live-seat.ts`). */
 import { conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { examinerSessions, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
@@ -10,7 +8,6 @@ import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-sh
 /** At most three room solves per draft, as an older gate ran them under `try_task`. */
 const TRIED = 3;
 
-/** One valid answer of the reference at a task admission. */
 interface RoomAnswer {
   readonly turns: number | null;
   readonly seconds: number | null;

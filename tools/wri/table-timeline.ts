@@ -1,36 +1,30 @@
 /**
  * The move table replayed over a campaign's log, one row a change point: each recorded
- * `campaign.move` beside what this tree's table names on the log just before it (`decidedOn`), each
- * point where the replayed move changes, with what comparison admission would refuse there and how
- * long the table named that move before it began, the Builder's `wait` calls, and the Examiner's
- * sessions. One `admissible` row marks where admission first refused no comparison, before the first
- * one started, and each `compare` move names the pool it began on, held out and released: the
- * Builder's calls between the two rows are what it chose while it could have compared.
+ * `campaign.move` beside what this tree's table names just before it (`decidedOn`), each point
+ * where the replayed move changes and how long it stood, the Builder's `wait` calls and the
+ * Examiner's sessions. An `admissible` row marks where admission first refused no comparison.
  *
  *   bun tools/wri/table-timeline.ts <log>
  */
-import { type Decided, short } from "#src/campaign/move.ts";
-import { decide } from "#src/campaign/decide.ts";
+import { type ScheduledAction, short } from "#src/campaign/move.ts";
+import { nextAction } from "#src/campaign/scheduler.ts";
 import { type EventKind, eventsOf, type LogEvent, TRACE_KINDS } from "#src/kernel/log.ts";
 import type { Call } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { resolve } from "#src/meta/path.ts";
-import { codeOf } from "#tools/d2/campaign.ts";
+import { codeOf } from "#tools/campaign/campaign.ts";
 import { logEvents } from "#tools/runs/registry.ts";
-import { builderWaits, heldOff, planOn, poolOn, waitedIn } from "#tools/runs/view.ts";
+import { builderWaits, firstComparisonDelay, planOn, poolOn, waitedIn } from "#tools/runs/view.ts";
 import { printRows } from "./folds.ts";
 import { openAt } from "./launches.ts";
 
-/** The table at one prefix of the log: what it names, and that as a short key. */
 interface Table {
-  readonly decided: Decided;
+  readonly decided: ScheduledAction;
   readonly key: string;
 }
 
-/** A point where the replayed move changed, and how long it stood. */
 interface Change {
-  /** The prefix the table was read on: the first `upTo` events. */
   readonly upTo: number;
   readonly table: Table;
   readonly hours: number;
@@ -38,7 +32,6 @@ interface Change {
   readonly until: string;
 }
 
-/** The events after which the table is asked again. */
 const POINTS: readonly EventKind[] = [
   "campaign.opened",
   "campaign.move",
@@ -63,8 +56,7 @@ const REPO = resolve(import.meta.dir, "../..");
 
 const named = (harness: string) => (harness.length > 16 ? short(harness) : harness);
 
-/** A decided move as a short key: its move and row, and the harnesses or ending it names. */
-function keyOf(decided: Decided): string {
+function keyOf(decided: ScheduledAction): string {
   const head = `${decided.move}/${decided.code}`;
   if (decided.move === "compare") {
     return `${head} ${named(decided.fresh)} against ${named(decided.reference)}`;
@@ -120,7 +112,7 @@ function compactReplay(events: readonly LogEvent[]) {
       const { cut, prefix } = prefixAt(upTo);
       const known = tables.get(cut);
       if (known !== undefined) return known;
-      const decided = decide(prefix, planOn(prefix));
+      const decided = nextAction(prefix, planOn(prefix));
       const table = { decided, key: keyOf(decided) };
       tables.set(cut, table);
       return table;
@@ -136,11 +128,7 @@ function compactReplay(events: readonly LogEvent[]) {
   };
 }
 
-/**
- * Each prefix where the replayed move changes. The table is read just before each point event, so a
- * move's own row and the point share one replay; where it changed since the point before, the first
- * prefix that reads as now is found by halving over that point's event and the task events after it.
- */
+/** The table is read just before each point event, so a move's own row and the point share one replay. */
 function changesOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table): number[] {
   const points = [...eventsOf(events, POINTS).map(({ index }) => index), events.length];
   const fine = eventsOf(events, FINE).map(({ index }) => index + 1);
@@ -167,9 +155,11 @@ function changesOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table
   return changes;
 }
 
-/** Each change with how long it stood: until the move it names begins, the table names another, or
- *  the log ends. */
-function stoodOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table, waits: readonly Call[]) {
+function tableDecisionsOf(
+  events: readonly LogEvent[],
+  tableAt: (upTo: number) => Table,
+  waits: readonly Call[],
+) {
   const changes = changesOf(events, tableAt);
   const moves = eventsOf(events, MOVED);
   const end = events.at(-1)?.at ?? "";
@@ -197,7 +187,6 @@ function stoodOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table, 
   });
 }
 
-/** What one Examiner event says of its session. */
 function examinerLine({ kind, data }: LogEvent): string {
   const session = isString(data.session) ? data.session : "?";
   if (kind === "exam.started") return `examiner ${session} started`;
@@ -206,7 +195,6 @@ function examinerLine({ kind, data }: LogEvent): string {
   return `examiner ${session} ${isString(data.ended) ? data.ended : "finished"} after ${seconds}, ${isNumber(held) ? String(held) : NOT_RECORDED} held`;
 }
 
-/** The timeline's lines, `here` being the host-code digest of the tree the table is replayed under. */
 function timelineLines(events: readonly LogEvent[], here: string): string[] {
   const { tableAt, poolAt } = compactReplay(events);
   const conditions = eventsOf(events, "condition.recorded").flatMap(({ index, event: { data } }) => {
@@ -225,18 +213,18 @@ function timelineLines(events: readonly LogEvent[], here: string): string[] {
     const row = `${String(index + 1).padStart(6)}  ${at}Z  ${ranAt(index).padEnd(12)}  ${what}`;
     rows.set(index, [...(rows.get(index) ?? []), row]);
   };
-  for (const change of stoodOf(events, tableAt, waits)) {
+  for (const change of tableDecisionsOf(events, tableAt, waits)) {
     const { upTo, table, hours, waited, until } = change;
     put(
       Math.max(0, upTo - 1),
       `table      replayed ${table.key} · ${poolAt(upTo).text} · named ${hours.toFixed(2)} h, ${waited.toFixed(2)} h of it inside Builder waits, until ${until}`,
     );
   }
-  const held = heldOff(events);
-  if (held !== null) {
+  const delay = firstComparisonDelay(events);
+  if (delay !== null) {
     put(
-      held.index,
-      `admissible a first comparison from ${(events[held.index]?.at ?? "").slice(11, 19)}: ${poolAt(held.index + 1).text} · ${held.said}`,
+      delay.index,
+      `admissible first comparison from ${(events[delay.index]?.at ?? "").slice(11, 19)}: ${poolAt(delay.index + 1).text} · ${delay.summary}`,
     );
   }
   const moves = eventsOf(events, MOVED);

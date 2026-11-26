@@ -1,10 +1,10 @@
 # Why no builtSolver has scored above the Starter outside
 
-Status (18 November 2026): six decisions wait for the operator, each below with its counts and a
-recommendation. Of them only item 1's second half is present in source. The counts are those of the
-investigation of the jobstat fork at #921's head, vetted on 18 November, and of the record's
-jobstat starter reads since 1 November, recounted on 18 November after two reviews of the first
-draft.
+Status (26 November 2026): items 1 (second half, deliverables capture), 2 (unchosen-task confirmation
+and mandatory revert), and 6 (native `pi-durable` runtime parity) are present in source; items 3 to 5
+still wait on operator decisions. The counts below are those of the investigation of the jobstat fork
+at #921's head, vetted on 18 November, and of the record's jobstat starter reads since 1 November,
+recounted on 18 November after two reviews of the first draft.
 
 ## The question
 
@@ -85,10 +85,9 @@ level and the size, and what an exam may ask for.
    measures its own spread, at about half as much again as the standing sitting. That the
    benchmark's rubrics are all-or-nothing and that its judge reads a cut text were reported from
    outside and not recounted here.
-6. **The runtime of the outside baseline.** A campaign's solver runs under pi and the outside read
-   under an export to another runtime (`known-bench.md` names this handicap). Recommendation: none
-   yet. An arm that rolls the Starter under the campaign's own runtime outside would part the export
-   from the harness, and it waits on item 5's spread.
+6. **The runtime of the outside baseline.** Settled: both arms now roll natively on `pi-durable`
+   (#1102), and the export cuts the guide cleanly at the host-only heading. Under equal runtimes
+   `551ec4df` still read 288 beside the Starter's 304, so the deficit is not the runtime's.
 
 ## What is left out on purpose
 

@@ -3,13 +3,12 @@
  * wins to spare, a reading without one's losses short of a step, and the tally on equal margins
  * that its losses would need.
  */
-import { readsStep } from "#src/kernel/compare.ts";
+import { isSignificant } from "#src/kernel/compare.ts";
 import { smallestSteps } from "#src/kernel/size.ts";
 
 /** A bound past which no equal-margin tally is looked for: far beyond any comparison on record. */
 const MOST_TASKS = 4096;
 
-/** The task scores' largest first among those of `sign`. */
 function largestOf(scores: readonly number[], sign: 1 | -1): number[] {
   return scores
     .filter((one) => Math.sign(one) === sign)
@@ -21,7 +20,7 @@ function largestOf(scores: readonly number[], sign: 1 | -1): number[] {
 export function spareOf(scores: readonly number[], level: number): number {
   const wins = largestOf(scores, 1);
   const rest = scores.filter((one) => one <= 0);
-  const lost = wins.findIndex((_, index) => !readsStep([...rest, ...wins.slice(index + 1)], level));
+  const lost = wins.findIndex((_, index) => !isSignificant([...rest, ...wins.slice(index + 1)], level));
   return lost === -1 ? wins.length : lost;
 }
 
@@ -33,7 +32,7 @@ export function shortOf(scores: readonly number[], level: number): number | null
   const rest = scores.filter((one) => one >= 0);
   for (let turned = 0; turned <= losses.length; turned += 1) {
     const flipped = losses.map((one, at) => (at < turned ? -one : one));
-    if (readsStep([...rest, ...flipped], level)) return turned;
+    if (isSignificant([...rest, ...flipped], level)) return turned;
   }
   return null;
 }

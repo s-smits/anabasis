@@ -27,7 +27,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { plural } from "#src/meta/text.ts";
-import { heldOff } from "./view.ts";
+import { firstComparisonDelay } from "./view.ts";
 import { type Life, lifeOf } from "./diagnosis.ts";
 import { asked, hosts } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
@@ -37,25 +37,25 @@ import {
   dollars,
   DRIVER,
   ENDED,
+  EVENT_FORMATTERS,
   minutes,
   openingCommand,
   progressOf,
   PROMOTED,
   promotionsOf,
   REPORTED,
-  SAID,
   short,
   TRIGGER_AT,
   triggerOf,
   word,
-} from "./said.ts";
+} from "./summary.ts";
 import { launchedIn, runReason, type RunState, stateOf } from "./state.ts";
 import {
   alarmsMoved,
+  formatReaderLines,
   type Moment,
   PER_LOOK,
   pruneObservers,
-  readersSaid,
   remember,
   startPass,
   storeOf,
@@ -77,34 +77,23 @@ import {
   writers,
 } from "./registry.ts";
 
-/** What the last look saw of one log. */
 interface Seen {
   readonly lines: number;
   readonly open: boolean;
   readonly quiet: boolean;
-  /** Whether the look said a first comparison stood admissible for long without beginning. */
   readonly heldOff?: boolean;
-  /** Each watched investigation trigger's detail at the last look that read them. */
   readonly triggers?: Readonly<Record<string, string>>;
-  /** The log's bytes the `rows` reader had read at the last look that read its triggers. */
   readonly rowsAt?: number;
-  /** The moments its readers have not read, which keep a closed run in the looks until they have. */
   readonly moments?: readonly Moment[];
-  /** The hashes of the readers' lines this observer has said. */
   readonly said?: readonly string[];
-  /** Last due trigger key (`false` when none, `"hours"` / `"tied"` / `"closed"` / `"<N> promotion(s)"`,
-   *  or legacy `true`), so each new promotion checkpoint (`1` through `5`) surfaces once without
-   *  re-firing on clock ticks. */
+  /** The last due trigger key, so each promotion checkpoint surfaces once without re-firing on
+   *  clock ticks. */
   readonly due?: boolean | string;
-  /** The run's state at the last look (`RunState`), whose reason is said when it changes. */
   readonly state?: string;
 }
 
-/** One of the investigation's triggers of a log. */
 type Alarm = NonNullable<ReturnType<typeof alarmsMoved>>["alarms"][number];
 
-/** One look at one run: its status line, what it says of the events since the last look, and what
- *  to remember of it. */
 interface Look {
   readonly state: RunState;
   readonly status: string;
@@ -112,14 +101,10 @@ interface Look {
   readonly seen: Seen;
 }
 
-/** Where the process that writes a log stands now. */
 type Standing = ReturnType<typeof standing>;
 
-/** The readers' lines of a look's new events, by each event's place among them. */
 type Under = ReadonlyMap<number, readonly string[]>;
 
-/** The state file: the free disk at the last look, what it saw of each log by its path, the token
- *  each host printed last, which the next look returns to it, and the hosts that gave no answer. */
 interface Memory {
   readonly freeGiB: number | null;
   readonly logs: Record<string, Seen>;
@@ -127,7 +112,6 @@ interface Memory {
   readonly down?: readonly string[];
 }
 
-/** A run a look reports, its events and its log's bytes once they were read. */
 interface Chosen {
   readonly run: Run;
   readonly life: Life;
@@ -136,24 +120,12 @@ interface Chosen {
   readonly size: number;
 }
 
-/** A closed run `status` shows without `--all`: one whose log changed this recently. */
 const RECENT_MS = DAY_MS;
-/** How many of the archive's newest campaigns `status` names under its rows. */
 const NEWEST = 3;
 const GIB = 2 ** 30;
-/** The events that start something a run then has to finish. */
 const BEGAN = "comparison.started";
 const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", BEGAN]);
 
-/**
- * The investigation's triggers a watch says, by the factor each bears on (`AGENTS.md`, section 1).
- * An alarm is read at every look where the `rows` reader moved and said where it fired or its key
- * moved (`keyOf`); a reading moves with each solve, so it is said only after a milestone. Without
- * it an unconfirmed promotion in a live campaign would be found only by running `wri.ts read` on it
- * by hand. A trigger the pulse reads itself is left out (a model served, an unfinished
- * session), and one left out is said once by the `rows` reader's own lines (`readersSaid`), unless
- * the look says it in its event's own line (`OWN`).
- */
 const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["SUPPLY THIN", ["supply", "alarm"]],
   ["NOTHING SCORED", ["supply", "alarm"]],
@@ -185,7 +157,6 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["STARTS OUT OF TURN", ["honesty", "alarm"]],
   ["LOG OUT OF ORDER", ["honesty", "alarm"]],
   ["ENDED AND WENT ON", ["honesty", "alarm"]],
-  // A reading: it names most promotions on record under this score.
   ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "reading"]],
   ["NO DELIVERABLES CAPTURED", ["verdicts", "alarm"]],
   ["PASSES LABELLED", ["verdicts", "reading"]],
@@ -203,58 +174,40 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["BILLING RESIDUAL", ["economy", "alarm"]],
   ["LONG SILENCES", ["economy", "reading"]],
 ]);
-/** Triggers whose detail numbers move continuously (dollars/counts) and should fire once per run. */
 const ONCE_TRIGGERS: ReadonlySet<string> = new Set([
   "SUPPLY THIN",
   "FAMILY CONCENTRATION",
   "BILLING RESIDUAL",
 ]);
-/** The triggers a look says in the line of the event that fires them (`said.ts`): a promotion until
- *  its starter comparison reads, a checker read with a fault and a freeze despite one. They came a
- *  reader pass after their event, and the first again at every milestone until that comparison. */
+/** The triggers a look says in the line of the event that fires them (`summary.ts`). */
 const OWN = ["PROMOTION UNCONFIRMED", "CHECKER READ WITH FAULTS", "FROZEN DESPITE FAULTS"];
-/** The comparisons and sessions a trigger's detail names (`g-2`, `b-3`, `x-1`), not a task (`x-1-3`). */
 const NAMED = /\b[bgx]-\d+(?![-\d])/g;
-/** A load wait a person moves a run for (`AGENTS.md`, section 10, condition 4). */
 const LOAD_WAIT_MS = 15 * 60_000;
-/** How long a look waits for its peers, from its start. The hook kills a look at 40 s, and a peer has
- *  `HOST_MS`, 30 s, once its controller is ready, which may take far longer when it is cold. */
+/** The hook kills a look at 40 s, and a peer has `HOST_MS` (30 s) once its controller is ready. */
 const PEERS_MS = 33_000;
-/** The last line a peer prints, with the token that the next look returns. */
 const ACK_LINE = /^ack ([0-9a-f]+)$/;
 
 const count = (log: readonly LogEvent[], kind: EventKind) =>
   log.filter((event) => event.kind === kind).length;
 
-/**
- * What a trigger's detail is about: the comparisons and sessions it names, else its first count,
- * so a detail is said again when it names another or its count moves, and not when only its
- * wording does. Comparing a whole detail would say `SUPPLY THIN`, whose detail moves with each
- * solve, again at nearly every look; it is said once.
- */
 function keyOf(name: string, detail: string): string {
   if (ONCE_TRIGGERS.has(name)) return "once";
   const ids = detail.match(NAMED);
   return ids === null ? (/\d+/.exec(detail)?.[0] ?? detail) : [...new Set(ids)].join(",");
 }
 
-/** The watched triggers as they read now, and a line for each detail whose key (`keyOf`) is new; the
- *  first reading of a run only remembers them, and `null` is no newer reading than the last, which a
- *  look passes unless the readers' rows moved. A trigger
- *  fires once for each comparison or session it names, so each name keeps every key, where keeping
- *  one would say the first of two comparisons with a task set aside again at every look. */
-function triggersSaid(
+function formatTriggeredAlarms(
   kept: Seen["triggers"],
   found: readonly Alarm[] | null,
-): { now: Seen["triggers"]; said: string[] } {
-  if (found === null) return { now: kept, said: [] };
+): { now: Seen["triggers"]; lines: string[] } {
+  if (found === null) return { now: kept, lines: [] };
   const first = kept === undefined;
   const read = new Map<string, { lane: number; details: string[] }>();
   for (const { name, lane, detail } of found) {
     if (!WATCHED.has(name)) continue;
     read.set(name, { lane, details: [...(read.get(name)?.details ?? []), detail] });
   }
-  const said = first
+  const lines = first
     ? []
     : [...read].flatMap(([name, { lane, details }]) => {
         const [factor, kind] = WATCHED.get(name) ?? ["", "alarm"];
@@ -273,12 +226,9 @@ function triggersSaid(
       [...read].map(([name, { details }]) => [name, details.map((detail) => keyOf(name, detail)).join("\n")]),
     ),
   };
-  return { now, said };
+  return { now, lines };
 }
 
-/**
- * Where the process that writes `log` stands now, read once for the status line and the look.
- */
 function standing(run: Run, log: readonly LogEvent[]) {
   const solves = solvesIn(log);
   const begun = launchedIn(run, log);
@@ -286,8 +236,6 @@ function standing(run: Run, log: readonly LogEvent[]) {
   const solved = log.findLastIndex(({ kind }) => kind === "solve.started");
   const start = Math.max(0, opened);
   const work = log.slice(Math.max(start, solved));
-  // A campaign the Builder leads ends only in its ending, so one whose process died after an
-  // Examiner session or a report is not taken as done.
   const led = log.some(({ kind }) => kind === "campaign.opened");
   const end: EventKind = led ? ENDED : log[start]?.kind === "exam.started" ? "exam.finished" : run.end;
   const running = solves.filter(({ finished, started }) => finished === null && started >= begun).length;
@@ -295,10 +243,6 @@ function standing(run: Run, log: readonly LogEvent[]) {
   return { solves, start, work, end, running, begun, ended };
 }
 
-/** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A report
- *  counts when it follows the last work: a standalone comparison solving after an earlier
- *  comparison's report has not reported. Closed is said first, so that a run whose process died
- *  after a report does not read as that report for hours, with its unfinished solves called running. */
 function stage(log: readonly LogEvent[], { start, work, running }: Standing, open: boolean): string {
   const report = work.findLast(({ kind }) => kind === REPORTED);
   if (report !== undefined) return `${open ? "" : "closed, "}reported ${word(report.data.reading)}`;
@@ -311,7 +255,6 @@ function stage(log: readonly LogEvent[], { start, work, running }: Standing, ope
   return running > 0 ? "solving" : "working";
 }
 
-/** The status line of `run`, whose log is `log`. */
 function status(run: Run, log: readonly LogEvent[], stand: Standing, open: boolean, now: number) {
   const { solves } = stand;
   const said = ["pass", "fail", "flagged", "non-result"].flatMap((outcome) => {
@@ -329,7 +272,6 @@ function status(run: Run, log: readonly LogEvent[], stand: Standing, open: boole
     said.push(`${String(promoted)} promoted, ${String(confirmed)} confirmed`);
   }
   return [
-    // A seed's counts and dollars are its source's up to the cut, and a script's or a run's after it.
     `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, stand, open)}`,
     `solves ${said.join(", ") || "none"}`,
     dollars(billedAll(log)),
@@ -337,23 +279,18 @@ function status(run: Run, log: readonly LogEvent[], stand: Standing, open: boole
   ].join(" · ");
 }
 
-/** The line of each event of `log` from `from` on, in the log's order, with what stands under it:
- *  a starter comparison and the pause it makes ready under their report (`climbAt`), and the readers'
- *  lines of that event (`under`, by its place among those events). A promotion's line is the climb's. */
-function eventsSaid(name: string, log: readonly LogEvent[], from: number, under: Under | undefined) {
+function formatEventLines(name: string, log: readonly LogEvent[], from: number, under: Under | undefined) {
   const climb = climbAt(name, log, from);
   return log.slice(from).map(({ kind, data }, nth) => {
     const climbed = climb.get(from + nth) ?? [];
     const promoted = kind === PROMOTED;
     return {
-      line: promoted ? (climbed[0] ?? null) : (SAID[kind]?.(data) ?? null),
+      line: promoted ? (climbed[0] ?? null) : (EVENT_FORMATTERS[kind]?.(data) ?? null),
       below: [...(promoted ? climbed.slice(1) : climbed), ...(under?.get(nth) ?? [])],
     };
   });
 }
 
-/** What to look at among the events of `log` from `from` on: solves that waited long for the load,
- *  failed turns, and turns another model served. */
 function troubles(log: readonly LogEvent[], from: number): string[] {
   const fresh = log.slice(from);
   const lines: string[] = [];
@@ -383,10 +320,7 @@ function troubles(log: readonly LogEvent[], from: number): string[] {
   return lines;
 }
 
-/** The look's lines, those of its events first. A comparison starts each task under two harnesses,
- *  so a line may come twice and is said once with its count. One with lines of its own below it
- *  stays where it is: two reports can read alike, and each starter comparison belongs under its own. */
-function folded(events: ReturnType<typeof eventsSaid>, lines: readonly string[]): string[] {
+function folded(events: ReturnType<typeof formatEventLines>, lines: readonly string[]): string[] {
   const heads = [
     ...events.flatMap(({ line, below }) => (line === null ? [] : [{ line, below }])),
     ...lines.map((line) => ({ line, below: [] })),
@@ -402,9 +336,7 @@ function folded(events: ReturnType<typeof eventsSaid>, lines: readonly string[])
   );
 }
 
-/** What changed of where the run stands since the last look: a quiet that began or ended, and a
- *  process gone before the work it started ended, said as the pause it was where a pause stopped it. */
-function standsSaid(
+function formatStateChanges(
   before: Seen | undefined,
   state: RunState,
   stand: Standing,
@@ -426,12 +358,6 @@ function standsSaid(
   return lines;
 }
 
-/**
- * One look at one run, whose process and keeper stand as `life`: where it stands, its status line,
- * what happened since `before`, and what to remember. A first look says only the status and a quiet
- * already under way. `alarms` are the investigation's triggers where the readers' rows moved since the
- * last look, which reads past a moment, and `under` the readers' lines by each new event's place.
- */
 export function pulse(
   run: Run,
   log: readonly LogEvent[],
@@ -447,11 +373,10 @@ export function pulse(
   const state = stateOf(log, life, now, stand.begun);
   const open = life.writing;
   const from = before?.lines ?? log.length;
-  const events = eventsSaid(run.name, log, from, under);
-  const lines = [...troubles(log, from), ...standsSaid(before, state, stand, open, now)];
-  const triggers = triggersSaid(before?.triggers, alarms);
-  lines.push(...triggers.said);
-  // The trigger is a campaign's: a round or a seed measures no climb an investigation could read.
+  const events = formatEventLines(run.name, log, from, under);
+  const lines = [...troubles(log, from), ...formatStateChanges(before, state, stand, open, now)];
+  const triggers = formatTriggeredAlarms(before?.triggers, alarms);
+  lines.push(...triggers.lines);
   const read = isCampaign(run) && run.seed !== true;
   const live = open || life.kept;
   const progress = read ? progressOf({ live }, log, now) : null;
@@ -469,8 +394,8 @@ export function pulse(
     before.due !== dueKey &&
     !(before.due === true && progress.promotions === 0)
   ) {
-    // A live run's step has one reader, the driver's `due`: it alone reads the deviation that keeps
-    // a run past its trigger, and a peer that says this line holds no investigation's folder.
+    // A live run's step has one reader, the driver's `due`, which alone reads the deviation that keeps
+    // a run past its trigger.
     const step = live ? `bun ${DRIVER} due` : openingCommand({ name: run.name, live });
     const label =
       live && progress.promotions > 0 && progress.promotions < TRIGGER_AT.ceilingPromotions
@@ -478,18 +403,16 @@ export function pulse(
         : "investigation due";
     lines.push(`⚠ ${label}, ${due}: ${step}`);
   }
-  // A first comparison admission would begin and none has, said once where a look finds it long:
-  // otherwise one can stand so for hours and no look says it.
+  // Said once where a look finds it long: otherwise a first comparison can stand admissible for hours
+  // and no look says it.
   const waits = read && open && before?.heldOff !== true && !log.some(({ kind }) => kind === BEGAN);
-  const held = waits ? heldOff(log) : null;
-  // A wait still open is not in the log yet, so the line leaves out the hours inside waits.
-  if (held?.long === true) {
-    lines.push(`⚠ a first comparison admissible for ${held.hours.toFixed(2)} h, none begun`);
+  const delay = waits ? firstComparisonDelay(log) : null;
+  if (delay?.long === true) {
+    lines.push(`⚠ first comparison admissible for ${delay.hours.toFixed(2)} h without starting`);
   }
   return {
     state,
     status: status(run, log, stand, open, now),
-    // What belongs to an event the look says nothing of comes after the rest.
     said: [...folded(events, lines), ...events.flatMap(({ line, below }) => (line === null ? below : []))],
     seen: {
       ...before,
@@ -498,15 +421,12 @@ export function pulse(
       quiet: state.kind === "quiet",
       state: state.kind,
       ...keyIfDefined("due", read ? dueKey : undefined),
-      ...keyIfDefined("heldOff", held?.long === true ? true : undefined),
+      ...keyIfDefined("heldOff", delay?.long === true ? true : undefined),
       ...keyIfDefined("triggers", triggers.now),
     },
   };
 }
 
-/** What the readers in `store` add to one run's look: the investigation's triggers where their rows
- *  moved, their lines under the new events and after them, how many of the look's lines they took,
- *  and what this observer keeps of them. Without a store they add nothing. */
 function readersOf(
   store: string | null,
   { run, before, events, size }: Chosen,
@@ -521,7 +441,7 @@ function readersOf(
 } {
   if (store === null) return { alarms: null, under: new Map(), lines: [], spent: 0, seen: {} };
   const moved = alarmsMoved(store, run.path, before?.rowsAt);
-  const read = readersSaid({
+  const read = formatReaderLines({
     store,
     log: run.path,
     size,
@@ -532,7 +452,6 @@ function readersOf(
     spare,
     watched: new Set([...WATCHED.keys(), ...OWN]),
   });
-  // The rows read again only past a moment, so a move of theirs is what the look reads.
   return {
     alarms: moved?.alarms ?? null,
     under: new Map(read.placed.map(({ at, lines }) => [at, lines])),
@@ -542,12 +461,6 @@ function readersOf(
   };
 }
 
-/**
- * One look over the chosen runs: the lines it says, none where nothing moved, and what to remember once
- * they are said. A run's row is said on its first look and with something new, and the host's line
- * above any row, so that a watch of several hosts does not print every row and each closed run's
- * reason again at every look.
- */
 async function look(
   state: string,
   names: readonly string[],
@@ -556,8 +469,7 @@ async function look(
 ): Promise<{ lines: string[]; memory: Memory }> {
   const running = processes();
   const all = runs().map((run) => ({ run, life: lifeOf(run, running), before: memory.logs[run.path] }));
-  // Only a log the look reports is read, since parsing every run's whole log, closed ones included,
-  // costs a fifth of a look.
+  // Only a log the look reports is read, since parsing every run's whole log costs a fifth of a look.
   const chosen: Chosen[] = all
     .filter(({ run, life, before }) =>
       names.length > 0
@@ -571,7 +483,6 @@ async function look(
             Date.now() - (fileStat(run.path)?.mtimeMs ?? 0) < RECENT_MS &&
             readEvents(run.path, (k) => k.endsWith(".call") || k === "verdict").at(-1)?.kind !== ENDED),
     )
-    // The bytes are read after the events, so a moment's size covers it.
     .flatMap((each) => {
       const read = readLog(each.run.path);
       return read === null ? [] : [{ ...each, ...read }];
@@ -593,7 +504,6 @@ async function look(
   const since =
     memory.freeGiB === null ? "" : ` (${gained >= 0 ? "+" : ""}${String(gained)} since the last look)`;
   const head = `${new Date(now).toISOString().slice(11, 16)}Z ${String(all.filter(({ life }) => life.writing).length)} open · load ${(loadavg()[0] ?? 0).toFixed(1)} of ${String(availableParallelism())} cores · ${String(free)} GiB free${since}`;
-  // A run this look left out keeps what the last look saw of it.
   const logs: Record<string, Seen> = { ...memory.logs };
   const said: string[] = [];
   let spare = PER_LOOK;
@@ -602,7 +512,6 @@ async function look(
     const readers = readersOf(store, each, join(`${state}.d`, run.name), spare);
     const one = pulse(run, events, life, before, { now, alarms: readers.alarms, under: readers.under });
     spare -= readers.spent;
-    // A state's reason is said when the run comes to stand so, and not again under each later line.
     const reasons = before?.state === one.state.kind ? [] : await runReason(run, one.state);
     const lines = [...one.said, ...readers.lines, ...reasons];
     if (before === undefined || lines.length > 0) said.push(one.status, ...lines.map((line) => `  ${line}`));
@@ -614,8 +523,6 @@ async function look(
   };
 }
 
-/** A peer's first step on its caller's word: what it said last is read if the caller returned its
- *  token, so it is remembered; otherwise it is dropped, and this look says it again. */
 function settle(state: string, ack: string): void {
   const pending = `${state}.pending`;
   if (!existsSync(pending)) return;
@@ -628,15 +535,9 @@ function settle(state: string, ack: string): void {
   rmSync(pending, { force: true });
 }
 
-/**
- * What a look says of each peer, in the order they are listed, the token each printed last, and
- * the hosts that gave no answer. A late answer's token is never returned, so its host says those
- * lines again at the next look. A host is said in one line when it stops answering and in one when
- * it answers again, and in none while it stays down; each line is a warning, the one mark the
- * anti-stall hook shows on its own, and neither fails the look, which would add the hook's line of a
- * failed look to it.
- */
-async function saidOfPeers(
+/** A late answer's token is never returned, so its host says those lines again at the next look. A host
+ *  going down or coming back is a warning, the one mark the anti-stall hook shows, never a failed look. */
+async function pollPeerHosts(
   away: readonly { name: string; ask: ReturnType<typeof asked> }[],
   started: number,
   { acks = {}, down = [] }: Pick<Memory, "acks" | "down">,
@@ -665,7 +566,6 @@ async function saidOfPeers(
   return { acks: tokens, down: silent, unanswered };
 }
 
-/** `bun run runs pulse`. */
 export async function watch(args: readonly string[]): Promise<void> {
   const { values, positionals: names } = parseArgs({
     args: [...args],
@@ -678,7 +578,7 @@ export async function watch(args: readonly string[]): Promise<void> {
       "no-readers": { type: "boolean", default: false },
     },
   });
-  // A wait that is not a number above 0 is none, and the loop would look as fast as it could.
+  // A wait that is not a number above 0 is none, or the loop would look as fast as it could.
   const every = values.every === undefined ? null : Number(values.every);
   if (every !== null && !(every > 0)) {
     throw new Misused(`--every takes a number of seconds above 0, not ${String(values.every)}`);
@@ -687,7 +587,7 @@ export async function watch(args: readonly string[]): Promise<void> {
   const readers = !values["no-readers"];
   const store = readers ? storeOf(cwd) : null;
   const state = values.here ? resolve(mainTree(cwd), values.state) : values.state;
-  // Each observer has its own cursor on each host. A local --state is never a remote path.
+  // Each observer has its own cursor on each host; a local `--state` is never a remote path.
   const cursor = sha256(`${cwd}\n${values.state}`).slice(0, 24);
   for (;;) {
     const started = performance.now();
@@ -714,7 +614,6 @@ export async function watch(args: readonly string[]): Promise<void> {
     }));
     const here = await look(state, names, memory, { store });
     if (values.ack !== undefined && here.lines.length > 0) {
-      // A peer's answer: what it would remember waits for its caller to return the last line.
       const token = sha256(`${String(Date.now())}\n${String(runtimeProcess.pid)}`).slice(0, 16);
       remember(`${state}.pending`, capturedJsonStringify({ token, memory: here.memory }));
       console.log([...here.lines, `ack ${token}`].join("\n"));
@@ -726,30 +625,23 @@ export async function watch(args: readonly string[]): Promise<void> {
       }
       remember(state, capturedJsonStringify(here.memory));
     }
-    const { unanswered, ...peers } = await saidOfPeers(away, started, memory);
+    const { unanswered, ...peers } = await pollPeerHosts(away, started, memory);
     if (away.length > 0) remember(state, capturedJsonStringify({ ...here.memory, ...peers }));
-    // A host still preparing holds this process for up to five minutes, and the hook's limit is 40 s,
-    // so a look a peer left unanswered ends here, as one that read every peer does.
+    // A host still preparing holds this process for up to five minutes and the hook's limit is 40 s, so
+    // a look a peer left unanswered ends here.
     if (every === null && unanswered) runtimeProcess.exit(0);
     if (every === null) break;
     await Bun.sleep(every * 1000);
   }
 }
 
-/** Whether `status` shows a run without `--all`, whose log last changed `age` ago. */
 export const onStatus = (run: Run, writing: "open" | "closed", age: number): boolean =>
   writing === "open" || (!unlaunchedSeed(run) && age <= RECENT_MS);
 
-/**
- * `bun run runs status`: one row a run, open or written in the last day, or every one with `--all`;
- * a closed row says when it leaves, and the lines under the rows what they leave out (`leftOut`);
- * then the same on each host `ANA_HOSTS` lists (`hosts.ts`), so one command shows every machine's.
- */
 export async function runsStatus(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: { all: { type: "boolean", default: false } } });
   const running = processes();
   const now = Date.now();
-  // Every host is asked first, and its rows print once this machine's have.
   const away = hostsOf().length > 0 ? hosts(args) : undefined;
   let [promoted, compared, quiet] = [0, 0, 0];
   for (const run of runs()) {
@@ -782,7 +674,6 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     console.log(`${status(run, log, standing(run, log), open, now)}\n  ${where.filter(Boolean).join(" · ")}`);
   }
   console.log(`${plural(promoted, "promotion")} in ${plural(compared, "comparison")} over the runs shown`);
-  // This machine's own: a host's copy is said by that host's `status`, as its rows are.
   const archive = archived().filter((run) => run.archived === HERE && !unlaunchedSeed(run));
   const newest = archive
     .map((run) => ({ run, at: fileStat(run.path)?.mtimeMs }))
@@ -798,14 +689,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   await away;
 }
 
-/**
- * What `status` leaves out, said under its rows, so that a reader who sees only the rows still knows
- * what ran: the closed runs quiet for over a day, still in their worktrees and continued from there,
- * and the archive `runs retire` moves them to after a day, with its newest campaigns, since a run
- * that fell off the rows without a word would read as gone to an agent reading `status` alone (the
- * operator's choice).
- */
-export function leftOut(
+function leftOut(
   quiet: number,
   archive: number,
   newest: readonly { readonly name: string; readonly days: number; readonly promoted: number }[],

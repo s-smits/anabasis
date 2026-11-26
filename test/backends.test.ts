@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { claudeExecutable } from "../src/agent/backends/claude.ts";
+import { codexAuthStatus } from "../src/agent/backends/codex-auth.ts";
 import { type BackendOptions, backends, compactionMode, retryPolicy } from "../src/agent/backends/models.ts";
-import { sit } from "../src/agent/session.ts";
+import { runAgent } from "../src/agent/session.ts";
 import { read } from "../src/kernel/log.ts";
 import { traceOf } from "../src/kernel/trace.ts";
 import { asRecord, type JsonValue } from "../src/meta/json-shape.ts";
@@ -30,7 +32,6 @@ describe("the three backends", () => {
   const catalog = backends(options);
   it("serve Codex, OpenRouter and Claude Code from pi's catalogs", () => {
     expect(catalog.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
-    // pi-ai lists GPT-6.1 Terra from 1.5.0, as the entry served here before it did.
     expect(catalog.getModel("openai-codex", "gpt-6.1-terra")).toMatchObject({
       contextWindow: 500_000,
       maxTokens: 128_000,
@@ -38,8 +39,8 @@ describe("the three backends", () => {
     });
     expect(catalog.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
     expect(catalog.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
-    // The same backend on an API key is a provider of its own, with the same catalog and prices,
-    // and it compacts as the login does.
+    // On an API key the same backend is a provider of its own, with the same prices, and compacts as
+    // the login does.
     const [login_, key] = ["claude", "claude-api"].map((id) => catalog.getModel(id, "claude-sonnet-5-5"));
     expect(key).toMatchObject({ provider: "claude-api", api: "claude-agent-sdk", cost: login_?.cost });
     if (login_ === undefined || key === undefined) throw new Error("the catalog has no claude-sonnet-5-5");
@@ -58,12 +59,21 @@ describe("the three backends", () => {
       baseUrl: "https://openrouter.ai/api/v1",
       reasoning: true,
       contextWindow: 1_048_576,
-      maxTokens: 131_072,
+      maxTokens: 65_536,
     });
-    // A model nobody pinned keeps pi's own entry, routed as OpenRouter chooses.
-    // Every listing pi's collection offers holds it, as `getModel` does.
-    const chat = catalog.getModelsOfType("chat", "openrouter").map(({ id }) => id);
-    expect(chat).toContain("deepseek/deepseek-v4.1-flash-1017");
+    expect(
+      Math.max(...catalog.getModels("openrouter").map(({ maxTokens }) => maxTokens)),
+    ).toBeLessThanOrEqual(65_536);
+    const under = openrouterProvider()
+      .getModels()
+      .find(({ maxTokens }) => maxTokens < 65_536);
+    if (under === undefined) throw new Error("the OpenRouter catalog has no model below 65,536 maxTokens");
+    expect(catalog.getModel("openrouter", under.id)?.maxTokens).toBe(under.maxTokens);
+    // A model nobody pinned keeps pi's own entry, routed as OpenRouter chooses; the chat listing holds
+    // the pinned one too.
+    const chat = catalog.getModelsOfType("chat", "openrouter");
+    expect(chat.map(({ id }) => id)).toContain("deepseek/deepseek-v4.1-flash-1017");
+    expect(Math.max(...chat.map(({ maxTokens }) => maxTokens))).toBeLessThanOrEqual(65_536);
     const base = catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
     expect(base?.compat ?? {}).not.toHaveProperty("openRouterRouting");
     expect(catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
@@ -182,7 +192,7 @@ describe("the three backends", () => {
     });
     const log = join(home, "codex.jsonl");
     for (const id of ["served", "absent"]) {
-      const sat = await sit({
+      const sat = await runAgent({
         models: () => models,
         id,
         model,
@@ -208,4 +218,35 @@ it("lets durable retry Codex, OpenRouter and the endpoints at the previous attem
     expect(retryPolicy(provider)).toEqual({ enabled: true, maxRetries: 3, baseDelayMs: 2000 });
   }
   for (const provider of ["claude", "claude-api", "faux"]) expect(retryPolicy(provider).enabled).toBe(false);
+});
+
+it("classifies Codex auth state without exposing tokens", () => {
+  const fresh = join(tmpdir(), `ana-codex-status-${String(Date.now())}`);
+  const prev = Bun.env.CODEX_HOME;
+  try {
+    Bun.env.CODEX_HOME = fresh;
+    expect(codexAuthStatus(1000)).toBe("missing");
+    const secret = "fake-refresh-secret-value";
+    const jwt = (exp: number) => `h.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.s`;
+    writeFileSync(
+      join(home, "auth.json"),
+      JSON.stringify({ tokens: { access_token: jwt(1000), refresh_token: secret } }),
+    );
+    Bun.env.CODEX_HOME = home;
+    for (const [now, expected] of [
+      [100_000, "ready"],
+      [699_999, "ready"],
+      [700_000, "expired"],
+      [1_100_000, "expired"],
+    ] as const) {
+      const state = codexAuthStatus(now);
+      expect(state).toBe(expected);
+      expect(state).not.toContain(secret);
+    }
+    writeFileSync(join(home, "auth.json"), "{not-json");
+    expect(codexAuthStatus(100_000)).toBe("invalid");
+  } finally {
+    if (prev === undefined) delete Bun.env.CODEX_HOME;
+    else Bun.env.CODEX_HOME = prev;
+  }
 });

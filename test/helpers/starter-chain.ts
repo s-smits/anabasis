@@ -7,9 +7,8 @@ import { asRecord, isNumber, isString, type JsonObject } from "../../src/meta/js
 import { keyIfDefined } from "../../src/meta/optional-key.ts";
 import { roundSolves } from "./logged-round.ts";
 
-/** What the reference measured on its first and second valid answer of each task, or of the tasks
- *  `tasks` names, and the new side on every valid answer, or on its first and second, lower being
- *  better. */
+/** The reference's measures on its first and second valid answer of each task (or of `tasks`), and
+ *  the new side's, lower being better. */
 interface Measures {
   readonly old: readonly [number, number];
   readonly fresh: number | readonly [number, number];
@@ -29,7 +28,6 @@ const named = (prefix: string, count: number) =>
 const spelled = (tasks: readonly string[], outcome: string) =>
   Object.fromEntries(tasks.map((task) => [task, outcome]));
 
-/** Tasks proposed by `session`, or with the opening where none is named, each passing its gate. */
 function gated(tasks: readonly string[], session?: string): LogEvent[] {
   return tasks.flatMap((version) => [
     at("task.proposed", {
@@ -42,7 +40,6 @@ function gated(tasks: readonly string[], session?: string): LogEvent[] {
   ]);
 }
 
-/** A tested set as a report records it. */
 function tested(differences: readonly number[]): JsonObject {
   const count = (sign: number) => differences.filter((one) => Math.sign(one) === sign).length;
   return {
@@ -55,8 +52,8 @@ function tested(differences: readonly number[]): JsonObject {
 }
 
 /** Comparison `session` of `sides` on `outcomes` ("FF PP": the new side valid on both solves, the
- *  reference on neither), read `reading`, and, where `measures` is given, the objective each valid
- *  answer measured. */
+ *  reference on neither), read `reading`, with each valid answer's objective where `measures` is
+ *  given. */
 function compared(
   session: string,
   sides: readonly [string, string],
@@ -104,9 +101,9 @@ function compared(
 }
 
 /**
- * Two promotions, each chosen on seven tasks it won, then read against the starter: it wins those
- * seven again, and on the three tasks written since the starter's promotion it loses all three in
- * the first read and, as `later` says, all three or none in the second.
+ * Two promotions, each chosen on seven tasks it won and read against the starter: it wins those
+ * seven again, and of the three tasks written since the starter's promotion loses all three in the
+ * first read and, as `later` says, all or none in the second.
  */
 export function chainLog(later: "lost" | "won"): LogEvent[] {
   const [opening, before, after, since] = [named("c", 7), named("e", 7), named("a", 3), named("b", 3)];
@@ -135,14 +132,11 @@ export function chainLog(later: "lost" | "won"): LogEvent[] {
 }
 
 /**
- * A step on six tasks every solve of both sides answered validly, the new side measuring `1 - margin`
- * against the reference's 1 and 0.93, so that its A/A, the reference's first solve of each task
- * against its second, differs by 21 points a task: a margin of 0.05 scores 4 points a task, and 0.5
- * scores 144. With `validity` "split", the reference misses one solve of the first task, which splits
- * its validity in the comparison; with "flip", both sides miss their second solve of the last task,
- * which ties it on validity in the comparison and splits it, at 600 points, in the A/A. `byTask` gives
- * the reference other measures on the tasks it names, and so its A/A another difference there. A
- * pair as `margin` gives the new side's first and second solve a margin each.
+ * A step on six tasks every solve answered validly, the new side measuring `1 - margin` against the
+ * reference's 1 and 0.93, so its A/A differs by 21 points a task (a margin of 0.05 scores 4, and
+ * 0.5 scores 144). "split" has the reference miss one solve of the first task; "flip" has both
+ * sides miss their second solve of the last task, tying it in the comparison and splitting it at
+ * 600 points in the A/A. `byTask` gives the reference other measures on the tasks it names.
  */
 export function objectiveLog(
   margin: number | readonly [number, number],

@@ -1,6 +1,5 @@
-// A comparison's solves as a round logs them, for the readers that take each task's outcomes from
-// the solves and not from its report's counts: the supply of the next comparison (`supplyOf`,
-// through `pairsReported`). Shared by the admission and decision-table tests.
+// A comparison's solves as a round logs them, for readers that take each task's outcomes from the
+// solves and not the report's counts (`supplyOf`, through `pairsReported`).
 import { type Condition, conditionId, settingId } from "../../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../../src/kernel/log.ts";
 import type { JsonObject } from "../../src/meta/json-shape.ts";
@@ -20,7 +19,6 @@ const event = (kind: EventKind, data: JsonObject): LogEvent => ({
   data,
 });
 
-/** A test-side condition of `task` under `harness`, at the limits `more` changes. */
 export const conditionOf = (task: string, harness: string, more: Partial<Limits> = {}): Condition => ({
   contract: "c1",
   harness,
@@ -40,9 +38,8 @@ export const conditionOf = (task: string, harness: string, more: Partial<Limits>
 
 let solveCount = 0;
 /**
- * The solves of comparison `session`, the old harness's and the new's on each task as `outcomes`
- * spells them ("PF FF": the old valid in its first solve of two, the new in neither), and the terms
- * its report carries beside them: the setting, the solves a side, the tasks and each side's census.
+ * The solves of comparison `session` as `outcomes` spells them ("PF FF": the old valid in its first
+ * solve of two, the new in neither), with its report's terms.
  */
 export function roundSolves(
   session: string,
@@ -77,7 +74,6 @@ export function roundSolves(
     setting: settingId(conditionOf("any", "any", more)),
     solves: 2,
     versions: Object.keys(outcomes),
-    // The tasks valid on one solve of two are the informative ones (`informative`).
     valid: { ...valid, informative: { old: valid.old[1] ?? 0, fresh: valid.fresh[1] ?? 0 } },
   };
   return { events, terms };

@@ -1,28 +1,21 @@
 /**
- * Move a campaign to another machine, and go on with it there on the login named.
+ * Moves a campaign to another machine and goes on with it there on the login named.
  *
  *   bun --env-file=<credentials> --env-file=.env.runs run runs move <name> --to <host>
  *     [--from <host>] [--login N] [--after <word>[|<word>...]] [--hold]
  *     [--yes] [-- <flags>]
  *
- * Each end is a host `ANA_HOSTS` lists or this machine, named by its own short host name or `here`
- * and the default source (the operator names every machine by its name); between two
- * hosts the folder passes through this machine, since rsync takes one remote side. The verb pauses
- * the campaign where it runs, at the next `--after` event with nothing but the Builder's
- * conversation open (`runs pause`; one no process writes is taken as it is, and without
- * `--after` the pause waits for the next `finished`), makes a worktree beside the destination's
- * repository at the commit the source's worktree stands at, takes the campaign's folder there whole
- * with rsync and checks that the log arrived as long as it left, sets the source's folder aside under
- * `.ana/moved/`, as `runs copy` does, and runs `runs continue` there on the flags its last run kept.
- * A kept flag that names a path under the folder that holds the source's worktrees names the same
- * path under the destination's (`rehomed`), so a prompt file beside the repository is found on a
- * machine whose home is elsewhere; flags after `--` stand for the kept ones. `--hold` stops before
- * the continue, and prints it. A held seed needs no launch receipt; going on without one needs
- * explicit campaign flags. Flags are read before the pause or copy. An occupied destination is
- * left untouched, with instructions to preserve its campaign before removing the worktree and
- * retrying, or to continue there if the source was already set aside. Without `--yes` the verb
- * reads where each end stands and moves nothing.
- * Remote receipts are read here, since the source worktree may predate the receipt reader.
+ * Each end is an `ANA_HOSTS` host or `here` (the default source); between two hosts the folder
+ * passes through this machine, since rsync takes one remote side. The verb pauses the campaign at
+ * the next `--after` event (default `finished`; one no process writes is taken as it is), makes a
+ * worktree at the source's commit beside the destination's repository, copies the folder whole and
+ * checks the log arrived as long as it left, sets the source aside under `.ana/moved/`, and runs
+ * `runs continue` there on the kept flags, paths under the source's worktree folder renamed under
+ * the destination's (`rehomed`); flags after `--` replace them. `--hold` stops before the continue
+ * and prints it; a held seed needs no launch receipt, and going on without one needs explicit
+ * campaign flags. Remote receipts are read here, since the source worktree may predate the receipt
+ * reader. Flags and the destination are read before the pause, and an occupied destination is left
+ * untouched. Without `--yes` the verb moves nothing.
  *
  *   bun run runs copy <name> --to <worktree> [--yes]
  *
@@ -63,11 +56,9 @@ import { loginPresent } from "./placement.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 import { lastLaunch } from "./receipt.ts";
 
-/** One end of a move: this machine or a host, with the folder its worktrees sit in. */
 interface End {
   readonly name: string;
   readonly host: Host | undefined;
-  /** A worktree of the repository there, absolute: the folder it sits in holds the others. */
   readonly repo: string;
 }
 
@@ -83,12 +74,10 @@ function rehomed(flags: readonly string[], from: string, to: string): string[] {
   });
 }
 
-/** The shell text `script` run at `end`, its output trimmed. */
 function at(end: End, script: string): string {
   return runTextSyncOrThrow(shellOn(end.host, script)).trim();
 }
 
-/** The end `name` names: this machine, or a host `ANA_HOSTS` lists. */
 function endOf(name: string): End {
   const host = name === HERE ? undefined : hostNamed(name);
   const end = { name, host, repo: "" };
@@ -136,8 +125,8 @@ const launchAt = async (end: End, dir: string) =>
     lastLaunch(join(here, LOG_FILE)),
   );
 
-/** The table's Python and tools at `to`, brought in step as `runs sync --yes` would before the pause
- *  where `mode` applies, and refused where a seat would still find one out of step. */
+/** Brings the table's Python and tools at `to` in step, as `runs sync --yes` would, where `mode`
+ *  applies, and refuses where a seat would still find one out of step. */
 async function inStepAt(to: End, mode: "read" | "apply"): Promise<void> {
   const behind = await outOfStep(to.name, to.host, mode);
   if (behind.length === 0) return;
@@ -146,9 +135,9 @@ async function inStepAt(to: End, mode: "read" | "apply"): Promise<void> {
   console.log(`${why}; --yes brings it in step first`);
 }
 
-/** Refuses a move to another system or processor where a kept harness's tool tree holds a program the
- *  destination cannot run, by the outside read's own test (`foreignFiles`): a kept harness is its
- *  digest, so it is never rebuilt there, as the outside read rebuilds its copy. */
+/** Refuses a move to another system or processor where a kept harness's tools hold a program the
+ *  destination cannot run (`foreignFiles`): a kept harness is its digest, so it is never rebuilt
+ *  there. */
 async function runnableAt(from: End, to: End, dir: string): Promise<void> {
   const [source, destination] = [from, to].map((end) => UNAME_PLACES.get(at(end, "uname -sm")));
   if (source === destination) return;
@@ -185,9 +174,6 @@ async function runnableAt(from: End, to: End, dir: string): Promise<void> {
   }
 }
 
-/** The rsync side of `path` at `end`. */
-
-/** `bun run runs move`. */
 export async function move(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
@@ -228,8 +214,8 @@ export async function move(args: readonly string[]): Promise<void> {
     );
   }
   const commit = at(from, `git -C ${quoted(source)} rev-parse HEAD`);
-  // A move cut between its worktree and setting the source aside left the destination at the same
-  // commit holding no more of the log than the source: the next one goes on from there.
+  // A move cut between making its worktree and setting the source aside leaves the destination at the
+  // same commit with no more of the log than the source, so the next move goes on from there.
   const resumed =
     taken === commit &&
     at(to, `git -C ${quoted(tree)} status --porcelain`) === "" &&
@@ -256,7 +242,6 @@ export async function move(args: readonly string[]): Promise<void> {
     console.log("nothing is done without --yes");
     return;
   }
-  // Counted before the pause, on the login `continue` goes on with, less the run itself.
   const numbered = values.login ?? launch?.login;
   await roomToStart(payerOf(numbered, flags), to.host?.name ?? "here", name);
   // Asked before the pause too: `continue` refuses a login its host lacks, by then of a stopped run.
@@ -264,7 +249,7 @@ export async function move(args: readonly string[]): Promise<void> {
   if (asks && !(await loginPresent(to.host, numbered))) {
     throw new Error(`login ${numbered} must be carried to ${to.name} first: nothing was stopped or moved`);
   }
-  // Prepare before the pause: a missing commit or failed install must leave the source running.
+  // Prepared before the pause, so a missing commit or failed install leaves the source running.
   const controller = to.host === undefined ? undefined : await preparedHost(to.host, commit);
   if (to.host === undefined) publishedAt(to.repo, commit);
   const paused = ["pause", name, "--after", values.after, "--yes"];
@@ -283,7 +268,7 @@ export async function move(args: readonly string[]): Promise<void> {
   if (size(from, source) !== size(to, tree)) {
     throw new Error(`the log did not arrive whole in ${folder(tree)}: ${folder(source)} is left as it was`);
   }
-  const aside = asideOf(source, name);
+  const aside = backupPathFor(source, name);
   if (from.host === undefined) setAside(folder(source), aside);
   else at(from, `mkdir -p ${quoted(dirname(aside))} && mv ${quoted(folder(source))} ${quoted(aside)}`);
   console.log(
@@ -303,7 +288,6 @@ export async function move(args: readonly string[]): Promise<void> {
   }
 }
 
-/** `bun run runs fetch`. */
 export async function fetch(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
@@ -319,8 +303,8 @@ export async function fetch(args: readonly string[]): Promise<void> {
   if (name !== undefined && hostsOf().length === 0) {
     throw new Error(`ANA_HOSTS lists no host, so there is nowhere to fetch ${name} from`);
   }
-  // With no name, the records of every campaign the other hosts hold: the gather a timer runs.
-  // `--whole` brings their folders too, as the nightly pass does; a named campaign always comes whole.
+  // With no name, the records of every campaign the other hosts hold (the timed gather); `--whole`
+  // brings their folders too, and a named campaign always comes whole.
   const copies = await syncRuns(name === undefined ? [] : [name], {
     ...from,
     ...(name === undefined ? { depth: values.whole ? "whole" : "record" } : { match: "exact" }),
@@ -331,11 +315,9 @@ export async function fetch(args: readonly string[]): Promise<void> {
   for (const log of copies) console.log(log);
   if (name !== undefined) return;
   for (const line of recordDegradations(copies, runtimeProcess.cwd())) console.log(line);
-  // The gather keeps the benchmark scores here beside the campaigns whose references they read.
   for (const folder of await fetchBenches()) console.log(folder);
 }
 
-/** `bun run runs copy`. */
 export function copy(args: readonly string[]): void {
   const { values, positionals } = parseArgs({
     args: [...args],
@@ -365,18 +347,17 @@ export function copy(args: readonly string[]): void {
   if (statSync(join(into, LOG_FILE)).size !== statSync(run.path).size) {
     throw new Error(`the copy of ${run.path} is not whole: ${from} is left as it was`);
   }
-  const aside = asideOf(run.tree, name);
+  const aside = backupPathFor(run.tree, name);
   setAside(from, aside);
   console.log(`${name} is in ${to} now, and its folder was set aside as ${aside}; go on with runs continue`);
 }
 
-/** Where a run's folder is set aside in `tree` once a copy of it went elsewhere: one copy a name,
- *  which `runNamed` asks, so the folder left is no run any registry reads (`runs copy`, `runs move`). */
-function asideOf(tree: string, name: string): string {
+/** Where a run's folder is set aside once a copy went elsewhere, so the folder left is no run any
+ *  registry reads (`runNamed` asks one copy a name). */
+function backupPathFor(tree: string, name: string): string {
   return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replaceAll(/[:.]/g, "")}`);
 }
 
-/** Moves `folder` to `aside`, making `.ana/moved/` where the tree has none yet. */
 function setAside(folder: string, aside: string): void {
   mkdirSync(dirname(aside), { recursive: true });
   renameSync(folder, aside);

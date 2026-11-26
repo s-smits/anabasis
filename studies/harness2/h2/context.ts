@@ -1,11 +1,9 @@
 /**
  * The evidence tree an improver session reads, and the only way evidence reaches it
- * (`harness2/core/context.py`, Apache-2.0, Google LLC, at 1cfe254). Evidence is served as files
- * and the mission is a short pointer to them, so nothing is cut to fit a prompt; two tripwires
- * refuse a tree that holds an answer-key path or a grader's verdict before any session sees it.
- *
- * Only what JobBench on Claude Code reaches is here: deliverables are served as contents (never the
- * names-only mode), JobBench declares no raw assets, and the leak globs are JobBench's own.
+ * (`harness2/core/context.py`, Apache-2.0, Google LLC, at 1cfe254). Evidence is served as files and
+ * the mission is a short pointer to them, so nothing is cut to fit a prompt; two tripwires refuse a
+ * tree that holds an answer-key path or a grader's verdict. Only what JobBench on Claude Code
+ * reaches is ported: deliverables served as contents, no raw assets, JobBench's own leak globs.
  */
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import {
@@ -22,7 +20,6 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { fnmatch, pyLen, pyRepr, pySlice, pyStrip, splitLines, unifiedDiff, walkFiles } from "./py.ts";
 import { readTree, type Tree } from "./tree.ts";
 
-/** One rollout as the recursion sees it (`RunView`). */
 export interface RunView {
   readonly label: string;
   readonly runId: string;
@@ -32,7 +29,6 @@ export interface RunView {
   readonly error: string;
 }
 
-/** What the benchmark supplies to an evidence tree: JobBench's adapter methods. */
 export interface Evidence {
   taskPrompt: (task: string) => string;
   taskFiles: (task: string) => string | null;
@@ -42,10 +38,8 @@ export interface Evidence {
   text: (runDir: string) => string;
 }
 
-/** A pool candidate: its label, its harness directory and its rollout. */
 export type Candidate = readonly [label: string, harnessDir: string, rollout: RunView | null];
 
-/** What landed in a built tree, so the mission names only that (`ContextTree`). */
 export interface Built {
   readonly root: string;
   readonly layout: string;
@@ -78,7 +72,6 @@ const READ_FIRST = [
   "Read `task.md` and the current harness first. Inventory every available rollout or candidate and inspect each at least once before deciding. For a candidate, compare what changed from its editing baseline, what behavior changed in its rollout, what improved, and what regressed or remained unresolved. Then deep-read the evidence relevant to any edit. Cite the specific trajectory moment behind every change; one you cannot trace to a moment is speculation.",
 ];
 
-/** `type(exc).__name__: exc`, with an error's own name standing in for Python's class name. */
 export function described(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : `Error: ${String(error)}`;
 }
@@ -107,7 +100,6 @@ export function noLeakPaths(root: string): void {
   }
 }
 
-/** The marker's offset and Python's repr of the 180 code points around it. */
 function around(body: string, marker: string): [number, string] {
   const where = pyLen(body.slice(0, body.indexOf(marker)));
   return [where, pyRepr(pySlice(body, Math.max(0, where - 60), where + 120))];
@@ -170,7 +162,6 @@ function copyFiles(src: string, dst: string, files: readonly string[]): number {
   return files.length;
 }
 
-/** `_copy_tree`: a component tree without byte-compiled files; the count copied. */
 function copyTree(src: string, dst: string): number {
   return copyFiles(
     src,
@@ -179,7 +170,6 @@ function copyTree(src: string, dst: string): number {
   );
 }
 
-/** `copy_source`: the task's source material under `source/`, answer-key paths left out. */
 function copySource(src: string | null, root: string): number {
   if (src === null || !existsSync(src)) return 0;
   const copied = copyFiles(
@@ -270,7 +260,6 @@ function writePool(dest: string, pool: readonly Candidate[], evidence: Evidence)
   }
 }
 
-/** `ContextTree.layout`: the evidence listing in the mission, naming only what exists. */
 function layoutOf(facts: {
   sources: number;
   decisions: number;
@@ -314,7 +303,6 @@ function layoutOf(facts: {
   return lines.join("\n");
 }
 
-/** `build`: write the evidence tree and return what landed in it. */
 export function build(
   dest: string,
   evidence: Evidence,
@@ -374,7 +362,6 @@ export function build(
   };
 }
 
-/** `mission`: the job, where the evidence is, and the instruction to open it. */
 export function mission(built: Built, job: string): string {
   return [
     pyStrip(job),

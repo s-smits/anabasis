@@ -145,7 +145,7 @@ one reading. They are listed by how much of jobstat's ceiling each can explain.
    operator's (`AGENTS.md`, section 3).
 7. **The ladder's worked examples come from other fields** (plausible). The reach scale shows where
    a solver with a shell fails in truss, firmware and buffer terms; whether a jobstat Examiner reads
-   them as reachable is unmeasured. Owner: `src/examiner/ladder.ts`, the examiner-complexity skill.
+   them as reachable is unmeasured. Owner: `src/examiner/difficulty.ts`, the examiner-complexity skill.
 
 ## Intended changes
 
@@ -342,7 +342,7 @@ In order: each rests on the one before, except item 7, which comes before item 3
     owed. #625 moves the guard into `practiceDue` and bounds it instead of removing it: a reading
     with nothing held out since the last release is owed one task, a promotion with nothing held
     none, and the admission floor and the release's cap still bound it. The cap is half of what is
-    held (`tools/d2/prepare.ts`), as the campaign-mechanics reference and the `--practice` help
+    held (`tools/campaign/prepare.ts`), as the campaign-mechanics reference and the `--practice` help
     say; `AGENTS.md` sections 1 and 6 said half the tasks with room, and #625 (`c40f92b73`) corrects
     them to the three bounds the code holds: half of what is held, half of the tasks a reading left
     room on (`releaseOrder`), and after the first release the comparison floor of frontier tasks.
@@ -394,7 +394,7 @@ In order: each rests on the one before, except item 7, which comes before item 3
       the data were generated from leaves a better method room. The validity cliff has no case on
       record, so it stays opposed;
     - carrying a harness's `agent/tools.ts` into the JobBench export
-      (`studies/shared/claude-export.ts`): none of the 33 kept jobstat harnesses declares a tool
+      (`488884bb2:studies/shared/claude-export.ts`): none of the 33 kept jobstat harnesses declares a tool
       (`tools-spec.json` lists none), and their programs already travel in `scripts/toolchain/`,
       so a per-tool wrapper is machinery with no case behind it (rule 13);
     - putting the versions of packages a solve installs from the network into the condition. Both
@@ -424,7 +424,7 @@ In order: each rests on the one before, except item 7, which comes before item 3
       while it rested lost every ask's files. Confirmed and fixed on #626: each ask's rest keeps
       the home, with a test that fails without it;
     - the wait for a writing ask before a promotion (`context.examining?.done`,
-      `tools/d2/campaign-actions.ts`) is load-bearing: it stays;
+      `tools/campaign/campaign-actions.ts`) is load-bearing: it stays;
     - #628's worker count in `tools/runtime/gate.ts`: #628 is another session's, and the stack's
       top still spreads the caller's environment first, so the claim is that session's to read.
 

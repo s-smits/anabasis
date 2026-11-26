@@ -1,27 +1,12 @@
 /**
- * How alike an exam's tasks read, for an investigator asking whether an exam kept moving:
+ * How alike an exam's tasks read, by Examiner session and by comparison, for an investigator asking
+ * whether an exam kept moving:
  *
  *   bun tools/wri/nearness.ts <log> [--store <dir>]
  *
- * A writing session refuses a task identical to an earlier one (`contentOf`), and nothing reads how near
- * the rest stand. Merged from two scripts that did: v1's `noveltyOf` (`5bc9988`, `scripts/climb-velocity.ts`,
- * with `RESTATED_COSINE` 0.98), one number an edge of the climb, and `taskSetFacts` of the fourth repository
- * (`final-harness-audit/scripts/harness-task-facts.mjs`), by word counts. Changed from both: by Examiner
- * session and by comparison, on the local model, with groups in place of a number.
- *
- * What the record says, over the logs with a comparison. It reads differently from run to
- * run: a task stood at 0.98 or above to an earlier one in 2,303 of 5,931, a session's median ran from
- * 0.85 to 1.00 (p10 to p90 of 354), and the groups a comparison's scored tasks fell in, per task, from
- * 0.15 to 1.00 (of 237). It says how alike an exam's words are, and little else. Within a log, steps were
- * read on more groups a task than other readings in 12 logs and on fewer in 4, of 27, which could be
- * chance. Logs that promoted held no lower share of near tasks than logs that did not (0.41 of 74, 0.39
- * of 25). Two tasks of one comparison at 0.98 or above split the same way in 1,741 of 1,957 pairs, and two
- * under 0.90 in 10,746 of 11,670, so a near task is no dependent one. A task at 0.995 or above was answered
- * less often by the reference in 10 logs of 24 and more in 11. And 30 of 152 steps held over half their
- * wins in one group, yet counting each group once at 0.98 kept 103 of the 105 steps that clear. Hence no
- * second reading here: rule 1 gives that to the comparison. Near means alike in words, up to the model's
- * 512 tokens, and a task can move only in its values and be another problem. Whole texts' word counts
- * agree at the top (median cosine 0.996 at 0.995 or above).
+ * A writing session refuses only a task identical to an earlier one (`contentOf`). Near means alike
+ * in words, up to the model's 512 tokens, and a task can move only in its values and be another
+ * problem, so this is a lead and gives no second reading: rule 1 gives that to the comparison.
  */
 import { differenceOf } from "#src/kernel/compare.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
@@ -31,14 +16,12 @@ import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dot, type EmbedWays, groupsOf, runVectorReader, vectorLines } from "./embed.ts";
 
-/** v1's line for a restated task. */
 const NEAR = 0.98;
 
 interface Written {
   readonly version: string;
   readonly session: string | null;
   readonly vector: Float32Array;
-  /** Its closeness to the nearest task before it, null for the log's first. */
   readonly nearest: number | null;
 }
 
@@ -81,7 +64,6 @@ function comparisonRows(events: readonly LogEvent[], written: readonly Written[]
   });
 }
 
-/** One read of `log`: a head line, a row a session and a comparison, or one line where there is nothing. */
 async function nearnessOf(log: string, ways: EmbedWays): Promise<string[]> {
   const events = read(log, TRACE_KINDS);
   const tasks = proposalsOf(events).flatMap(({ version, session, task }) => {

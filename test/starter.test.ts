@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
-import type { SeatTool } from "../src/agent/session.ts";
+import type { AgentTool } from "../src/agent/session.ts";
 import {
   existsSync,
   mkdirSync,
@@ -18,12 +18,12 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
-import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
+import { type CommandSandbox, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { EXAMPLE, HARNESS_ACCOUNT, HOST_ONLY, portableGuide, writeStarter } from "../src/harness/starter.ts";
-import { solveIsolationPolicy } from "../src/wall/base.ts";
-import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { solveIsolationPolicy } from "../src/sandbox/base.ts";
+import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
 const TASK = {
@@ -62,8 +62,8 @@ describe("the Starter and its worked harness", () => {
     expect(starter.presets).toEqual([...CODING_TOOLS]);
     expect(selectedCodingTools(starter.presets)).toEqual(["read", "bash", "edit", "write"]);
     expect(starter.toolTree).toBeNull();
-    // Its guide keeps the outline the account asks of every guide, and the account prints it whole
-    // as the starter instructions, so a Builder reads what it starts from.
+    // The account prints the guide whole as the starter instructions, so a Builder reads what it starts
+    // from.
     const headings = (guide: string | null) => guide?.split("\n").filter((line) => line.startsWith("#"));
     expect(headings(starter.guide)).toEqual(headings(EXAMPLE.guide));
     expect(HARNESS_ACCOUNT).toContain(`\`\`\`markdown\n${starter.guide?.trimEnd()}\n\`\`\``);
@@ -71,8 +71,8 @@ describe("the Starter and its worked harness", () => {
     const again = join(dir, "again");
     writeStarter(again);
     expect((await openHarness(again)).digest).toBe(starter.digest);
-    // It is the harness it was while a harness held a tool module, which the Starter's only
-    // commented on: the baseline of every campaign on record keeps its name.
+    // It is the harness it was while a harness held a tool module, so the baseline of every campaign on
+    // record keeps its name.
     expect(starter.digest).toBe("26cefa2d376237cb521a8a312989495ed972ebc1fba098bc906a8a13ff14fc7f");
     expect(existsSync(join(dir, "agent", "tools.ts"))).toBe(false);
     // The worked example models the portable boundary: no campaign-specific path above HOST_ONLY.
@@ -110,18 +110,17 @@ describe("the Starter and its worked harness", () => {
         }
         const base = solveIsolationPolicy({ repoRoot: example });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall: CommandWall = {
+        const wall: CommandSandbox = {
           base,
           dirs,
           toolTree: join(example, ".toolchain"),
           limits: { shellDefaultSeconds: 60, shellMaxSeconds: 60 },
         };
-        const said = (result: Awaited<ReturnType<SeatTool["execute"]>>) =>
+        const said = (result: Awaited<ReturnType<AgentTool["execute"]>>) =>
           [
             (result.output ?? []).map((part) => (part.type === "text" ? part.text : "")).join(""),
             ...(result.diagnostics ?? []).map(({ message }) => message),
           ].join("\n\n");
-        // The program by its name, from the solver's working directory, on the solver's own file.
         const [shell] = codingTools(wall, ["bash"]);
         if (shell === undefined) throw new Error("the coding tools serve bash");
         const run = async (command: string) => {
@@ -149,7 +148,6 @@ describe("the Starter and its worked harness", () => {
         expect(said(await run("check-rota rota.json limits.json"))).toContain(within);
         // It opens no file it was not named: without the limits it does not run.
         expect(said(await run("check-rota rota.json"))).toEndWith("Command exited with code 2");
-        // What it printed and its exit both reach the solver, as the shell reports any command.
         const over = await run("check-rota over.json public/task.json");
         expect(said(over)).toContain("ann: 14 of 12 hours, over by 2\nbo: 6 of 8 hours, ok");
         expect(over.isError).toBe(true);

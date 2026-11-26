@@ -3,41 +3,30 @@ import { short } from "../../../../src/campaign/move.ts";
 import type { ComparisonBar, Outcome, Outcomes } from "../models.ts";
 import { OUTCOMES } from "./outcome.ts";
 
-/*
- * What the Campaign pane reads off its `CampaignReading` before it draws: the comparisons chart's
- * slots, its axis and the outcome totals of the legend. Each is a reading of the reading the server
- * sent, never of a log event, so the page and `bun run runs view` agree as far as the contract does.
- * The totals over all comparisons are the page's own, a derived reading: they count a task once a
- * comparison.
- */
+// What the Campaign pane reads off its `CampaignReading` before it draws: the chart's slots, its axis
+// and the legend's outcome totals. Each reads only what the server sent, so the page and `bun run runs
+// view` agree as far as the contract does; the totals count a task once a comparison.
 
 /** The Starter's letter, which it holds by role (`namesOf`), and its name on the page. */
 const STARTER_LETTER = "A";
 export const STARTER_NAME = "Starter A";
 
-/** One column of the comparisons chart: a comparison, or the break where the setting changes. */
 export type Slot =
   | {
       readonly kind: "bar";
       readonly key: string;
       readonly bar: ComparisonBar;
-      /** What Recharts stacks: each outcome's count, absent at zero, and the scored tasks of a
-       *  comparison with no report yet as one open column. */
+      /** What Recharts stacks: each outcome's count, absent at zero, and a comparison with no
+       *  report yet as one open column of its scored tasks. */
       readonly values: Partial<Record<Outcome | "open", number>>;
-      /** The column's height in tasks. */
       readonly height: number;
     }
   | { readonly kind: "break"; readonly key: string; readonly setting: string | null };
 
-/** The steps an axis of whole tasks may take, so that its ticks are even and at most about five. */
 const STEPS = [1, 2, 5, 10, 20, 25, 50, 100] as const;
 
-/** The two measures in the order the tally weighs them (`WEIGHTS`, `src/kernel/compare.ts`). */
 export const MEASURES = ["validity", "objective"] as const satisfies readonly (keyof Measures)[];
 
-/** The chart's columns, in the order of `bars`, with a break column before a comparison whose
- *  setting differs from the one before it. A comparison with no report stands at its scored tasks
- *  as one open column, never at zero. */
 export function comparisonSlots(bars: readonly ComparisonBar[]): Slot[] {
   return bars.flatMap((bar, at): Slot[] => {
     const before = bars[at - 1];
@@ -55,8 +44,8 @@ export function comparisonSlots(bars: readonly ComparisonBar[]): Slot[] {
   });
 }
 
-/** A count axis up to `top`: whole numbers from nought at one even step, its last tick at or above
- *  `top`, and at most about five ticks. Recharts left to itself prints 7, 6, 4, 2, 0 on a column of
+/** A count axis up to `top`: whole numbers from nought at one even step, the last at or above
+ *  `top`, about five ticks at most. Recharts left to itself prints 7, 6, 4, 2, 0 on a column of
  *  seven. */
 export function countTicks(top: number): number[] {
   const step = STEPS.find((each) => top / each <= 5) ?? Math.ceil(top / 5);
@@ -64,7 +53,6 @@ export function countTicks(top: number): number[] {
   return Array.from({ length: last / step + 1 }, (_, at) => at * step);
 }
 
-/** Each outcome summed over the comparisons that reported. */
 export function outcomeTotals(bars: readonly ComparisonBar[]): Outcomes {
   const totals = { won: 0, lost: 0, tiedEvery: 0, tiedSome: 0, tiedNone: 0, aside: 0 };
   for (const { outcomes } of bars) {
@@ -74,7 +62,6 @@ export function outcomeTotals(bars: readonly ComparisonBar[]): Outcomes {
   return totals;
 }
 
-/** The tasks a comparison's report left out of its split, each kind named, or "" for none. */
 export function leftOutText({ leftOut }: Pick<ComparisonBar, "leftOut">): string {
   if (leftOut === null) return "";
   const parts = [
@@ -85,7 +72,6 @@ export function leftOutText({ leftOut }: Pick<ComparisonBar, "leftOut">): string
   return parts.filter((part) => part !== "").join(", ");
 }
 
-/** A tally as wins, losses and ties: "4–0–3". */
 export function tallyText(tally: Tally | null): string {
   if (tally === null) return "no tally";
   return `${String(tally.wins)}–${String(tally.losses)}–${String(tally.ties)}`;
@@ -96,8 +82,6 @@ export function pText(p: number | null): string {
   return p === null ? "no test" : `p ${p.toFixed(3)}`;
 }
 
-/** Tasks by the measure that carried each, the measures that carried none left out: "validity 4,
- *  objective 22", or "none". */
 export function carriedText(counts: Measures): string {
   const said = MEASURES.flatMap((measure) =>
     counts[measure] === 0 ? [] : [`${measure} ${String(counts[measure])}`],
@@ -105,10 +89,9 @@ export function carriedText(counts: Measures): string {
   return said.length === 0 ? "none" : said.join(", ");
 }
 
-/** A harness as the view, the closing report and promote.ts name it (`calledBy`,
- *  `src/campaign/names.ts`): the Starter "Starter A", any other its letter with its digest's head,
- *  "B (f94de8ab)", and a digest the log has not named its head alone. Null is the Starter before
- *  any event names its digest. */
+/** A harness as the view, the closing report and promote.ts name it (`calledBy`): the Starter
+ *  "Starter A", another its letter and digest's head, "B (f94de8ab)", an unnamed digest its head
+ *  alone. Null is the Starter before any event names its digest. */
 export function digestText(digest: string | null, names: Readonly<Record<string, string>>): string {
   if (digest === null) return STARTER_NAME;
   const letter = names[digest];

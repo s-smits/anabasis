@@ -1,8 +1,6 @@
-// A seed is a campaign's folder under another name with its log cut where a question starts. A
-// rehearsal's script takes each task's answers from what is on record, writes the one its side was
-// scripted to into the answer file with what the harness selects, and names a solve that ended
-// otherwise. Its scripted Examiner proves each task it can through try_answer and puts its tasks to
-// the gate, which reads their packages alone.
+// A seed is a campaign's folder under another name, its log cut where a question starts. A rehearsal's
+// script takes each task's answers from the record and writes the one its side was scripted to; its
+// scripted Examiner proves each task it can through try_answer and puts its tasks to the gate.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
 import { LOG_FILE } from "../src/kernel/log.ts";
@@ -20,7 +18,7 @@ import {
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
-import type { Campaign } from "../tools/d2/round.ts";
+import type { Campaign } from "../tools/campaign/round.ts";
 import { scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
 import { sweep } from "./helpers/examiner-seat.ts";
 import { seedCampaign, snapshotCampaign } from "../tools/runs/seed.ts";
@@ -101,11 +99,9 @@ const graded = [other, held].flatMap(({ taskId }) => [
 ]);
 const SCRIPT = { held: sidesOf("fail:pass"), starter: "fail" } as const;
 
-/** A campaign over `folder` whose solves end as `ending`, and each solve's first scripted call. */
 function campaignOver(folder: string, ending?: Ending) {
   const log = join(folder, LOG_FILE);
   const calls: unknown[] = [];
-  /** The comparison each solve was made for, as the seat handed it on. */
   const named: unknown[] = [];
   // SAFETY: a rehearsal's seats read a campaign's log, its test solver and `solveOnce`, and no more.
   const campaign = {

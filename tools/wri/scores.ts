@@ -1,29 +1,13 @@
 /**
- * What each comparison's reading rests on, a block a comparison, for lanes 3 and 9:
+ * What each comparison's reading rests on, a block a comparison:
  *
  *   bun tools/wri/wri.ts reader scores --log <log>
  *
- * The block recounts the report's task scores with this tree's `differenceOf` over the pairs the
- * report made (`pairsReported`), matched to the recorded scores by task (`testedOf().of`), and says
- * how many differ. It then gives three tallies: as scored, on validity alone and on the objective
- * alone, each beside the same three of the reference's A/A halves. It counts the tasks on which every
- * new solve beat every reference solve: valid against invalid, or by the objective by at least the
- * gap floor (`gainOver`, `GAP_FLOOR`). Two last tallies split the scores by whether a task of the same
- * family was practice before the comparison began, over every tested task and over those no
- * earlier comparison tested (`practisedLines`).
- *
- * For a step it adds:
- * - p with each win removed;
- * - the wins to spare and the fewest whose removal loses the step (`spareOf`, `clearance.ts`).
- *
- * A comparison cut short or left open has no recorded scores. Its block counts the solves it began
- * and says the report is absent. The task by task table, with every tally by writing session and by
- * family, is `pairs.ts`'s; a step read on one task a family is the replay's (`promotion-tuner`,
- * `unit=first`).
- *
- * Without it lane sessions recompute a step's p by hand without one win and then without two, and
- * split a tally by measure in their own scripts, which can disagree on one comparison: one counting
- * the objective where both answers were valid, the other everywhere.
+ * The block recounts the report's task scores with this tree's `differenceOf` over the reported pairs
+ * and says how many differ, then tallies as scored, on validity alone and on the objective alone,
+ * each beside the reference's A/A halves, and counts tasks where every new solve beat every reference
+ * solve by at least the floor (`gainOver`, `GAP_FLOOR`). For a step it adds p with each win removed
+ * and the wins to spare (`spareOf`). A comparison cut short has no recorded scores and says so.
  */
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import {
@@ -34,7 +18,7 @@ import {
   type Paired,
   pointsOf,
   GAP_FLOOR,
-  readsStep,
+  isSignificant,
   testOf,
   wholePoints,
 } from "#src/kernel/compare.ts";
@@ -45,7 +29,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { spareOf } from "./clearance.ts";
-import { pSaid, testedOf, testSaid } from "./promotion.ts";
+import { formatPValue, formatTestSummary, testedOf } from "./promotion.ts";
 
 const LEVEL = 0.02;
 const STARTED = "comparison.started";
@@ -66,14 +50,11 @@ const MEASURES: readonly (readonly [string, Measure])[] = [
   ["objective alone", (pair) => wholePoints(pointsOf(pair).objective)],
 ];
 
-/** `w-l-t p` of `scores`. */
 function tallied(scores: readonly number[]): string {
   const { wins, losses, ties, p } = testOf(scores);
-  return `${String(wins)}-${String(losses)}-${String(ties)} p ${pSaid(p)}`;
+  return `${String(wins)}-${String(losses)}-${String(ties)} p ${formatPValue(p)}`;
 }
 
-/** Whether every new solve of `pair` beat every reference solve: valid against invalid, or both
- *  valid and the new answer better by the objective by the gap floor at least. */
 function beatsAll(pair: Paired): boolean {
   const rule = pair.objective;
   return pair.fresh.every((freshValid, f) =>
@@ -84,7 +65,6 @@ function beatsAll(pair: Paired): boolean {
   );
 }
 
-/** The recount against the record: the pairs on the tested tasks, and how many scores differ. */
 function recountOf(
   report: JsonObject,
   pairs: readonly Paired[],
@@ -106,16 +86,14 @@ function recountOf(
   return { tested, recorded, unmatched, differing };
 }
 
-/** p with each win removed in turn, as its least and most, and how many removals lose the step. */
 function withoutEach(scores: readonly number[], level: number): string {
   const wins = scores.flatMap((score, at) => (score > 0 ? [at] : []));
   if (wins.length === 0) return "no win to remove";
   const ps = wins.map((at) => flipP(scores.filter((_, other) => other !== at)));
   const losing = ps.filter((p) => p > level).length;
-  return `p from ${pSaid(Math.min(...ps))} to ${pSaid(Math.max(...ps))}; ${String(losing)} of ${String(wins.length)} single removals lose the step`;
+  return `p from ${formatPValue(Math.min(...ps))} to ${formatPValue(Math.max(...ps))}; ${String(losing)} of ${String(wins.length)} single removals lose the step`;
 }
 
-/** A step's extra lines: removals and spare wins. */
 function stepLines(scores: readonly number[], level: number): string[] {
   const spare = spareOf(scores, level);
   const wins = scores.filter((score) => score > 0).length;
@@ -160,7 +138,7 @@ function practisedLines(
   ];
 }
 
-/** Byte-identical answer and objective-measure repetition summary over `pairs` (replacing `answers.ts`). */
+/** A summary of byte-identical answers and repeated objective measures over `pairs`. */
 function repeatLine(pairs: readonly Paired[], verdicts: ReadonlyMap<string, Judged>): string | null {
   const tally = () => ({ same: 0, of: 0, exact: 0, near: 0, measured: 0 });
   const [fresh, old] = [tally(), tally()];
@@ -202,7 +180,6 @@ function repeatLine(pairs: readonly Paired[], verdicts: ReadonlyMap<string, Judg
   return `repeat: identical answer new ${String(fresh.same)}/${String(fresh.of)}, ref ${String(old.same)}/${String(old.of)}, across ${String(acrossSame)}/${String(acrossOf)}${obj}`;
 }
 
-/** The block of one reported comparison. */
 function reportedLines(events: readonly LogEvent[], report: Reported, ctx: ScoreContext): string[] {
   const { data, session } = report;
   const level = isNumber(data.level) ? data.level : LEVEL;
@@ -210,7 +187,7 @@ function reportedLines(events: readonly LogEvent[], report: Reported, ctx: Score
   const head = `${session}: ${reading}, level ${String(level)}${isNumber(data.level) ? "" : " (not recorded; the default)"}`;
   const { differences } = testedOf(data);
   if (data.scored === null || differences.length === 0) {
-    return [head, `  recorded: ${testSaid(data.scored)}; no task scores recorded, so no recount`];
+    return [head, `  recorded: ${formatTestSummary(data.scored)}; no task scores recorded, so no recount`];
   }
   const pairs = pairsReported(events, report);
   const { tested, recorded, unmatched, differing } = recountOf(data, pairs);
@@ -225,12 +202,12 @@ function reportedLines(events: readonly LogEvent[], report: Reported, ctx: Score
   const [validityMeasure, objectiveMeasure] = [MEASURES[1]?.[1], MEASURES[2]?.[1]];
   const valTally = validityMeasure === undefined ? "none" : tallied(tested.map(validityMeasure));
   const objTally = objectiveMeasure === undefined ? "none" : tallied(tested.map(objectiveMeasure));
-  const step = readsStep(recorded, level);
+  const step = isSignificant(recorded, level);
   const sparePart = step ? `; spare ${String(spareOf(recorded, level))} wins` : "";
   const repeat = repeatLine(pairs, ctx.verdicts);
   const lines = [
-    `${head} · validity ${valTally} · objective ${objTally} · A/A ${testSaid(data.noise)}${sparePart}`,
-    `  recorded: ${tallied(differences)} over ${String(differences.length)} tested tasks; the report's A/A ${testSaid(data.noise)}`,
+    `${head} · validity ${valTally} · objective ${objTally} · A/A ${formatTestSummary(data.noise)}${sparePart}`,
+    `  recorded: ${tallied(differences)} over ${String(differences.length)} tested tasks; the report's A/A ${formatTestSummary(data.noise)}`,
     `  recount: ${String(differing)} of ${String(tested.length)} tasks matched by task (${String(unmatched)} unmatched) score otherwise in this tree than the report recorded; the recorded tally and the step lines read the record, the tallies by measure read the recount`,
     `  ${aaDiffering}`,
     ...MEASURES.map(
@@ -243,7 +220,6 @@ function reportedLines(events: readonly LogEvent[], report: Reported, ctx: Score
   return step ? [...lines, ...stepLines(recorded, level)] : lines;
 }
 
-/** The block of a comparison begun with no report: the solves it began, by harness, and how many ended. */
 function absentLines(solves: ReturnType<typeof solvesIn>, session: string): string[] {
   const begun = solves.filter(({ start }) => start.comparison === session);
   const ended = begun.filter(({ finished }) => finished !== null).length;
@@ -253,7 +229,6 @@ function absentLines(solves: ReturnType<typeof solvesIn>, session: string): stri
   ];
 }
 
-/** Each comparison's block, in the order the log began them. */
 export function scoreRows(events: readonly LogEvent[]): string[] {
   const allReports = lastReports(events);
   const reports = new Map(allReports.map((report) => [report.session, report]));

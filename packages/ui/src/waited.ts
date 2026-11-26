@@ -1,19 +1,16 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 
 /*
- * How long a read may run before the page says it is reading, and the one clock that says when it
- * has. Every read keeps what it replaces on screen until its answer comes (DESIGN.md), and says
- * that it is reading only past `PATIENCE_MS`, so a quick answer replaces the last with no frame
- * between, and a slow one is still said. This is the one clock for it, in place of a timer of each
- * pane's own in an effect: a store React reads (`useSyncExternalStore`), whose subscription is the
- * wait, begun and ended with what is waited on.
+ * How long a read may run before the page says it is reading, as one clock: every read keeps what it
+ * replaces on screen until its answer comes (DESIGN.md) and says so only past `PATIENCE_MS`. It is a
+ * store React reads (`useSyncExternalStore`), whose subscription is the wait, in place of a timer in
+ * each pane's effect.
  */
 
-/** How long a read runs before the page says so. */
 const PATIENCE_MS = 400;
 
-/** True once the wait named `on` has run `PATIENCE_MS` unbroken; null waits on nothing, and a wait
- *  under a new name, or one that broke, begins afresh. */
+/** True once the wait named `on` has run `PATIENCE_MS` unbroken; null waits on nothing, and a new
+ *  name or a broken wait begins afresh. */
 export function useWaited(on: string | null): boolean {
   const [clock] = useState<{ due: string | null }>(() => ({ due: null }));
   const subscribe = useCallback(

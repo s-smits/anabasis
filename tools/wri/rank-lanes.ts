@@ -9,9 +9,8 @@
 import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { type Lane, lanesOf, REFERENCES } from "./catalogue.ts";
+import { type Lane, LANES_FILE as LANES_NAME, lanesOf, REFERENCES } from "./catalogue.ts";
 
-/** Result of ranking `lanes.md` and `tools/wri/folds.ts` by importance. */
 interface RankedCatalogue {
   readonly ranked: readonly (Lane & { readonly oldNumber: number })[];
   readonly remap: ReadonlyMap<number, number>;
@@ -21,7 +20,7 @@ interface RankedCatalogue {
 }
 
 const REPO = resolve(import.meta.dir, "..", "..");
-const LANES_FILE = join(REFERENCES, "lanes.md");
+const LANES_FILE = join(REFERENCES, LANES_NAME);
 const FOLDS_FILE = join(REPO, "tools", "wri", "folds.ts");
 const TIERS: readonly (readonly [number, string])[] = [
   [0.9, "### Tier 1: Core pillars (0.90–1.00)"],
@@ -33,13 +32,12 @@ const TRIGGERS_BLOCK = /export const TRIGGERS = \{[\s\S]*?\} as const;/u;
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/u;
 const CONJUNCTION = new Intl.ListFormat("en", { type: "conjunction" });
 
-/** Formats a sorted list of numbers as plain English (`1, 2, and 3` or `4`). */
 function listNumbers(numbers: readonly number[]): string {
   const sorted = numbers.toSorted((one, other) => one - other).map(String);
   return sorted.length === 0 ? "none" : CONJUNCTION.format(sorted);
 }
 
-/** Remaps inline `lane N`, `lanes N and M`, and `(lane N)` tokens in a single non-colliding pass. */
+/** Remaps `lane N`, `lanes N and M` and `(lane N)` in one pass, so no remapped number is remapped again. */
 function remapProse(text: string, remap: ReadonlyMap<number, number>): string {
   const lookup = (token: string) => String(remap.get(Number(token)) ?? token);
   return text.replaceAll(
@@ -52,7 +50,6 @@ function remapProse(text: string, remap: ReadonlyMap<number, number>): string {
   );
 }
 
-/** Remaps backticked comma-separated lane-number lists in the component table. */
 function remapComponentTable(section: string, remap: ReadonlyMap<number, number>): string {
   return section
     .split("\n")
@@ -69,7 +66,6 @@ function remapComponentTable(section: string, remap: ReadonlyMap<number, number>
     .join("\n");
 }
 
-/** Rebuilds the `lanes` column of the `## Labels` table directly from each ranked lane's `label`. */
 function remapLabelsTable(section: string, ranked: readonly Lane[]): string {
   const byLabel = new Map<string, number[]>();
   for (const lane of ranked) {
@@ -90,7 +86,6 @@ function remapLabelsTable(section: string, ranked: readonly Lane[]): string {
     .join("\n");
 }
 
-/** Rebuilds the standing / alone / blind / side-by-side summary sentence in `How the catalogue is read`. */
 function remapMarksLine(text: string, ranked: readonly Lane[]): string {
   const standing = ranked.filter((lane) => lane.standing).map((lane) => lane.number);
   const isolated = ranked.filter((lane) => lane.isolated).map((lane) => lane.number);
@@ -105,7 +100,6 @@ function remapMarksLine(text: string, ranked: readonly Lane[]): string {
   return text.replace(/Lanes [^\n]+ are `standing`;[^\n]+across campaigns\./u, sentence);
 }
 
-/** Formats a lane's `Marks:` line canonically from its boolean flags. */
 function marksLine(lane: Lane): string {
   const marks = [
     ...(lane.standing ? ["`standing`"] : []),
@@ -116,7 +110,6 @@ function marksLine(lane: Lane): string {
   return `Marks: ${marks.length === 0 ? "none" : marks.join(", ")}.`;
 }
 
-/** Renders the `## Lanes 1 to N` section sorted by descending importance under tier headings. */
 function renderLanesBody(
   ranked: readonly (Lane & { readonly oldNumber: number })[],
   remap: ReadonlyMap<number, number>,
@@ -144,7 +137,6 @@ function renderLanesBody(
   return `${blocks.join("\n")}\n`;
 }
 
-/** Rebuilds the `TRIGGERS` constant in `tools/wri/folds.ts` directly from ranked lanes. */
 function renderTriggers(ranked: readonly Lane[]): string {
   const lines = ["export const TRIGGERS = {"];
   for (const lane of ranked) {
@@ -160,8 +152,6 @@ function renderTriggers(ranked: readonly Lane[]): string {
   return lines.join("\n");
 }
 
-/** Pure ranker: sorts lanes by descending importance (`standing` breaks ties, then current number),
- *  rewrites `lanes.md` and `tools/wri/folds.ts`, and reports whether either file changed. */
 export function rankCatalogue(lanesMarkdown: string, foldsSource: string): RankedCatalogue {
   const parsed = lanesOf(lanesMarkdown);
   const sorted = parsed.toSorted(

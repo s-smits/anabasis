@@ -1,19 +1,12 @@
 /**
- * What each side's solves ran on the tasks a comparison's new harness won, for lane 16:
+ * What each side's solves ran on the tasks a comparison's new harness won (lane 15):
  *
  *   bun tools/wri/parts.ts --log <log> --comparison g-3 [--no-diff] [--all]
  *
- * One row a solve: its task, side, how the comparison read it (valid or not, and its objective where
- * one is fixed), how it ended, its calls, and the programs its calls ran (`callPrograms`, `src/kernel/call-programs.ts`, the
- * one reader of which program a call ran). Then, unless `--no-diff`, what the new harness wrote that the
- * reference did not (`writtenIn`, `trajectory.ts`: the guide and its own programs, added or changed
- * against the reference's kept state, by content), and for each solve the first call that ran one of
- * those programs and the first whose arguments name one. It assigns no kind to a win: where the two
- * sides part is the lane's reading, and the catalogue asks for the traces before the diff, so
- * `--no-diff` prints the rows alone.
- *
- * Without it lane 16 sessions tabulate each won task's programs per solve by hand, and type the
- * changed files of a harness from diffs of its kept states.
+ * One row a solve: its task, side, reading, ending, calls and the programs they ran
+ * (`callPrograms`). Then, unless `--no-diff`, what the new harness wrote that the reference did not
+ * (`writtenIn`, `trajectory.ts`), and each solve's first call that ran or named one of those
+ * programs. It assigns no kind to a win: where the two sides part is the lane's reading.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { read } from "#src/kernel/log.ts";
@@ -30,18 +23,15 @@ import { callPrograms } from "#src/kernel/call-programs.ts";
 import { sharedPrefix, wonPairs } from "./provenance.ts";
 import { writtenIn } from "./trajectory.ts";
 
-/** What the new harness wrote against the reference, by path (`guide` for its guide); a path added with
- *  the bytes of one removed is a rename, `old -> new`, and neither added nor removed. */
-export interface Written {
+/** A path added with the bytes of one removed is a rename, `old -> new`. */
+interface Written {
   readonly added: readonly string[];
   readonly changed: readonly string[];
   readonly removed: readonly string[];
   readonly renamed: readonly { readonly from: string; readonly to: string }[];
-  /** What the reference's kept state lacks: its tool tree, its guide, or the state itself. */
   readonly unkept: readonly string[];
 }
 
-/** One solve of a won task, as read. */
 interface SolveRow {
   readonly task: string;
   readonly side: "new" | "reference";
@@ -58,7 +48,6 @@ const NONE = "-";
 
 const contentOf = (path: string) => (existsSync(path) ? readFileSync(path) : null);
 
-/** What `fresh`'s state wrote that `old`'s did not, or wrote otherwise, both kept beside the log. */
 function writtenAgainst(old: string, fresh: string): Written {
   const before = existsSync(old) ? writtenIn(old) : new Map<string, string>();
   const after = writtenIn(fresh);
@@ -96,8 +85,6 @@ const escaped = (text: string) => text.replaceAll(/[$()*+.?[\\\]^{|}]/gu, String
  *  (a module run with `-m`). */
 const namesOf = (path: string) => [fileOf(path), fileOf(path).replace(/\.[^.]+$/u, "")];
 
-/** The first call that ran one of `programs`, and the first whose arguments name one by its whole
- *  file name. */
 function firstUses(calls: readonly Call[], programs: readonly string[]): { ran: string; named: string } {
   const files = programs.map(fileOf);
   const names = new Set(programs.flatMap(namesOf));
@@ -109,8 +96,7 @@ function firstUses(calls: readonly Call[], programs: readonly string[]): { ran: 
   return { ran: at(ran), named: at(named) };
 }
 
-/** Each solve of each won task, both sides, with its calls in the order logged. */
-export function solveRows(events: readonly LogEvent[], session: string): SolveRow[] | null {
+function solveRows(events: readonly LogEvent[], session: string): SolveRow[] | null {
   const found = wonPairs(events, session);
   if (found === null) return null;
   const endings = new Map(
@@ -135,7 +121,6 @@ export function solveRows(events: readonly LogEvent[], session: string): SolveRo
   );
 }
 
-/** A solve's programs, each once in the order first run, with how many calls ran it. */
 function programsLine(calls: readonly Call[]): string {
   const counts = new Map<string, number>();
   for (const call of calls) {
@@ -146,7 +131,6 @@ function programsLine(calls: readonly Call[]): string {
   return [...counts].map(([program, n]) => `${program}x${String(n)}`).join(" ") || NONE;
 }
 
-/** The printed rows: a header, the diff unless asked not to, a row a solve and a count a side. */
 function partsLines(
   rows: readonly SolveRow[],
   { session, old, fresh, paired }: { session: string; old: string; fresh: string; paired: number },
@@ -195,8 +179,6 @@ function partsLines(
   return [...head, ...lines, ...ranTable(rows, touched, table)];
 }
 
-/** For each program any won solve ran (and each added or changed one), how many solves a side ran it:
- *  with `parted`, only the added or changed ones and those run by more solves of one side. */
 function ranTable(rows: readonly SolveRow[], touched: readonly string[], table: "all" | "parted"): string[] {
   const sides = ["new", "reference"] as const;
   const ranBy = new Map(

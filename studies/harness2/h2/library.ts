@@ -1,13 +1,10 @@
 /**
  * One profession's experience library: the harness each earlier task of that profession adopted,
- * whole, with why it was adopted and the lesson its experience session wrote
- * (`harness2/core/library.py`, Apache-2.0, Google LLC, at 1cfe254). A profession's directory only
- * ever holds that profession's entries, so retrieval is by construction, and a task reads only the
- * entries of tasks before it in the stream.
- *
- * Local change: the verdict tripwire on an entry reads the experience's values and the reason as
- * they are, instead of Python's `str(dict)` of them, so an escaped quote in a repr cannot hide a
- * marker.
+ * with why it was adopted and the lesson its experience session wrote (`harness2/core/library.py`,
+ * Apache-2.0, Google LLC, at 1cfe254). Retrieval is by construction: a profession's directory holds
+ * only its entries, and a task reads only those of tasks before it. Local change: the verdict
+ * tripwire reads the experience's values as they are, not Python's `str(dict)`, so an escaped quote
+ * in a repr cannot hide a marker.
  */
 import {
   existsSync,
@@ -26,7 +23,6 @@ import { alwaysOn, readTree, writeTree, type Tree } from "./tree.ts";
 /** The file an entry's lesson lives in, and the improver's sign that a library holds one. */
 const LESSON_FILE = "EXPERIENCE.md";
 
-/** The lesson an experience session wrote, with `edits` when it wrote edit rows. */
 export type Experience = Readonly<
   Partial<Record<"cue" | "lesson" | "evidence" | "confidence" | "edits", string>>
 >;
@@ -38,7 +34,6 @@ export function hasExperience(experience: Experience): boolean {
   );
 }
 
-/** `_inventory`: a one-line census of the components in a harness. */
 function inventory(tree: Tree): string {
   const counts = { skills: 0, sub_agents: 0, scripts: 0, hooks: 0 };
   for (const rel of tree.keys()) {
@@ -52,14 +47,12 @@ function inventory(tree: Tree): string {
   return `${(bits.length > 0 ? bits : ["always-on edits only"]).join(", ")}; ${chars} always-on chars`;
 }
 
-/** `_field`: the value of one `- **name**:` line of an EXPERIENCE.md. */
 function field(path: string, name: string): string {
   if (!existsSync(path)) return "";
   const line = splitLines(readFileSync(path, "utf8")).find((row) => row.startsWith(`- **${name}**:`));
   return line === undefined ? "" : pyStrip(line.slice(line.indexOf(":") + 1));
 }
 
-/** `Library`: one (run, profession) library, read before each task and added to after it. */
 export class Library {
   readonly dir: string;
   readonly domain: string;
@@ -92,7 +85,6 @@ export class Library {
     if (drop.length > 0) this.rebuildIndex();
   }
 
-  /** `add`: keep one adopted harness with why it was adopted, then rebuild the index. */
   add(
     task: string,
     harness: Tree,
@@ -130,7 +122,6 @@ export class Library {
     this.rebuildIndex();
   }
 
-  /** `rebuild_index`: INDEX.md from what is on disk. */
   rebuildIndex(): void {
     const rows = [
       `# Library — ${this.domain}`,

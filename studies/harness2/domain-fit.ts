@@ -1,17 +1,12 @@
 #!/usr/bin/env bun
 /**
  * Whether an Anabasis verifier cell can hold a WorkBuddy Code task, without the dataset or a model:
- * a synthetic task whose public input carries a small repository, an answer that is a unified diff,
- * and a check program that applies the diff and runs the repository's hidden tests, all through
- * the real `openVerifier` path with the network closed. Run it as `bun studies/harness2/domain-fit.ts`
- * on the host whose wall is in question; it exits 1 when a verdict is not the one expected.
- *
- * The check writes the repository into its cell, applies the answer with `git apply` from the tool
- * tree, then writes the hidden tests over whatever the answer put at their paths, so an answer that
- * ships tests of its own is still judged by the hidden ones. Python runs from a virtual environment
- * in the tool tree with pytest installed, because the cell cannot install anything: that is the
- * part a real Code exam would need a field engine for, and nothing installs one for a drafted exam
- * yet (`src/examiner/draft.ts`).
+ * a synthetic repository, a unified-diff answer and a check that applies it and runs hidden tests,
+ * all through the real `openVerifier` path with the network closed. Run `bun
+ * studies/harness2/domain-fit.ts` on the host whose wall is in question; it exits 1 when a verdict
+ * is not the one expected. The hidden tests are written over whatever the answer put at their
+ * paths, so tests an answer ships are not the ones judged; pytest comes from a virtual environment
+ * in the tool tree, because the cell cannot install anything.
  */
 import { type Task, openVerifier } from "#src/kernel/verify.ts";
 import {
@@ -115,7 +110,6 @@ const TASK: Task = {
   },
 };
 
-/** Each answer with the checks it should leave blocking; an empty list is a pass. */
 const ANSWERS: readonly { name: string; patch: string; blocking: readonly string[] }[] = [
   {
     name: "fix",
@@ -157,7 +151,7 @@ function toolTree(root: string): string {
     join(tools, "bin", "git"),
   );
   // A virtual environment's `bin` is on the tool tree's search path (`toolTreeSearchDirs`), so its
-  // `python3` is the one a check runs, with pytest beside it; the install happens here, outside the cell.
+  // `python3` is the one a check runs; the install happens here, outside the cell.
   runTextSyncOrThrow(["python3", "-m", "venv", join(tools, "venv")]);
   runTextSyncOrThrow([join(tools, "venv", "bin", "python3"), "-m", "pip", "install", "-q", "pytest==8.4.2"]);
   return tools;

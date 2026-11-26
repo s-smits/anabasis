@@ -2,8 +2,7 @@ import type { ESTree, SourceCode } from "@oxlint/plugins";
 
 type FunctionParameter = ESTree.ParamPattern;
 
-/** Whether a type is `unknown`, or a union holding it: the one place `unknown` absorbs its
- *  neighbours. Containers and intersections are not followed. */
+/** The one place `unknown` absorbs its neighbours; containers and intersections are not followed. */
 export function containsUnknownType(type: ESTree.TSType): boolean {
   if (type.type === "TSUnknownKeyword") return true;
   if (type.type === "TSParenthesizedType") return containsUnknownType(type.typeAnnotation);
@@ -11,8 +10,8 @@ export function containsUnknownType(type: ESTree.TSType): boolean {
 }
 
 /**
- * The type a parameter declares, found past the three things a parameter can be wrapped in: a
- * constructor's `private`/`public` parameter property, a rest element, and a default value.
+ * Past the three things a parameter can be wrapped in: a constructor's parameter property, a rest
+ * element, and a default value.
  */
 export function functionParameterTypeAnnotation(
   parameter: FunctionParameter,
@@ -29,10 +28,8 @@ export function functionParameterTypeAnnotation(
   return parameter.typeAnnotation;
 }
 
-/**
- * What to call a parameter: its name where it has one, and otherwise the source text of the
- * pattern it was written as, with the annotation cut off.
- */
+/** A parameter's name where it has one, and otherwise the source text of the pattern, with the
+ *  annotation cut off. */
 export function functionParameterBindingName(parameter: FunctionParameter, sourceCode: SourceCode): string {
   if (parameter.type === "TSParameterProperty") {
     return functionParameterBindingName(parameter.parameter, sourceCode);

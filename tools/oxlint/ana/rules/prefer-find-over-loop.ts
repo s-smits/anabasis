@@ -4,12 +4,11 @@ import { holdsProse } from "../shared/masked.ts";
 import { asSubject, identifierName, onlyStatement, statementBelow } from "../shared/statements.ts";
 
 /**
- * Rung 4 of the simplify ladder: flags a `for...of` loop over an array (excluding `string`, `Set`,
- * `Map`, and `Iterable` bindings) whose sole body statement is `if (test) return <element | true | false | void>`
- * when the fallthrough statement returns the matching default (`undefined`, `false`, or `true`).
- * Auto-fixes into `.find()`, `.some()`, `.every()`, or `if (xs.some(...)) return;`.
+ * Rung 4 of the simplify ladder: flags a `for...of` loop over an array (not a `string`, `Set`,
+ * `Map` or `Iterable` binding) whose sole body statement is `if (test) return <element | true |
+ * false | void>` when the fallthrough returns the matching default (`undefined`, `false` or
+ * `true`). Auto-fixes into `.find()`, `.some()`, `.every()` or `if (xs.some(...)) return;`.
  */
-/** What a loop that is a search hands back, and everything the rewrite needs to replace it. */
 interface Search {
   readonly node: ESTree.ForOfStatement;
   readonly subject: string;
@@ -22,7 +21,6 @@ interface Search {
 /** Node types whose body falling through to its end yields `undefined`, as `find` does. */
 const FUNCTION_BODIES = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
 
-/** What a binding may be annotated as and still be walked by `for…of` with no `find` to call. */
 const UNSEARCHABLE = new Set([
   "string",
   "Set",
@@ -33,7 +31,6 @@ const UNSEARCHABLE = new Set([
   "IterableIterator",
 ]);
 
-/** Whether the statement the loop falls through to already says what the method returns there. */
 function agrees(method: string, next: ESTree.Statement): boolean {
   if (next.type !== "ReturnStatement") return false;
   const { argument } = next;
@@ -45,10 +42,6 @@ function agrees(method: string, next: ESTree.Statement): boolean {
   return identifierName(argument) === "undefined";
 }
 
-/**
- * What a binding's own annotation says it holds, read without types: `string`, or the name of the
- * type reference it is annotated with (`ReadonlySet`, `MapIterator`), or null for anything else.
- */
 function annotatedKind(node: ESTree.BindingIdentifier): string | null {
   const type = node.typeAnnotation?.typeAnnotation;
   if (type === undefined) return null;
@@ -86,12 +79,9 @@ export const preferFindOverLoopRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Names this file shows to be a keyed collection, which has no `find`. */
     let keyed = new Set<string>();
-    /** Loops that are a search, held until the whole file has been read for keyed names. */
     let found: Search[] = [];
 
-    /** Which array method the returned value names, read off the return alone. */
     function method(argument: ESTree.Expression | null): string {
       if (argument === null) return "some";
       if (argument.type === "Literal" && argument.value === true) return "some";
@@ -100,8 +90,8 @@ export const preferFindOverLoopRule = defineRule({
     }
 
     /**
-     * Whether the loop hands back the element itself or a plain yes or no, which is the whole of
-     * what `find`, `some` and `every` return. Anything else needs the method and a statement.
+     * `find`, `some` and `every` return the element itself or a plain yes or no; anything else
+     * needs the method and a statement.
      */
     function handsBack(argument: ESTree.Expression | null, element: string): boolean {
       if (argument === null) return true;
@@ -109,12 +99,9 @@ export const preferFindOverLoopRule = defineRule({
       return argument.type === "Identifier" && argument.name === element;
     }
 
-    /**
-     * The edits that put the method where the loop stands, or null where the two would differ.
-     */
     function rewrite(fixer: Fixer, search: Search): Fix[] | null {
-      // The loop's own body becomes an arrow, and a sentence written inside it would have to be
-      // placed in that expression. That is a layout decision, so the rule reports and stops.
+      // A sentence written inside the loop body would have to be placed in the arrow, a layout
+      // decision, so the rule reports and stops.
       if (holdsProse(context.sourceCode.getAllComments(), search.node.start, search.node.end)) return null;
       const test = context.sourceCode.getText(search.test);
       const reversed =
@@ -162,8 +149,8 @@ export const preferFindOverLoopRule = defineRule({
       },
 
       ForOfStatement(node) {
-        // The predicate takes the element, so a loop that destructures an entry pair or walks an
-        // index has already done work `find` would have to undo.
+        // The predicate takes the element, so a loop that destructures an entry pair or walks an index
+        // has already done work `find` would have to undo.
         if (node.left.type !== "VariableDeclaration") return;
         const [binding] = node.left.declarations;
         if (binding?.id.type !== "Identifier") return;

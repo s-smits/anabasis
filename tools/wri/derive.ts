@@ -9,7 +9,7 @@ import { campaignEnding, endingLines } from "#skills/campaign-mechanics/scripts/
 import { drawLines } from "#skills/comparison-reading/scripts/draw.ts";
 import { readingLines, ZONE_HEADER, zoneRows } from "#skills/comparison-reading/scripts/reading.ts";
 import { starterLines } from "#skills/comparison-reading/scripts/starter-reads.ts";
-import { builderTold } from "#skills/design-and-seats/scripts/builder-view.ts";
+import { formatBuilderView } from "#skills/design-and-seats/scripts/builder-view.ts";
 import { examinerCounts, examinerEach } from "#skills/design-and-seats/scripts/examiner-view.ts";
 import { ambitionLines } from "#skills/examiner-complexity/scripts/ambition.ts";
 import { csvLines, draftRows as examRows, EXAMS_HEADER } from "#skills/examiner-complexity/scripts/exams.ts";
@@ -63,11 +63,9 @@ import { scoreRows } from "./scores.ts";
 import { tasksLines } from "./tasks.ts";
 import { transferRows } from "./transfer.ts";
 
-/** One parse of a log, which every reader of this process is handed. */
 interface Parsed {
   readonly log: string;
   readonly repo: string;
-  /** Its whole lines, as `logEvents` reads them. */
   readonly events: readonly LogEvent[];
   /** The same without the seats' turns and calls (`TRACE_KINDS`), which most readers never read. */
   readonly quiet: readonly LogEvent[];
@@ -75,7 +73,6 @@ interface Parsed {
   readonly size: number;
 }
 
-/** A log and the parse of it, made at the first reader that asks. */
 export interface Source {
   readonly log: string;
   readonly repo: string;
@@ -86,26 +83,22 @@ interface About {
   readonly name: string;
   /** What its file holds, in a line a lane's prompt prints beside the file's name (`derivedMap`). */
   readonly answers: string;
-  /** Whether it reads through the local embedding model, which `derive --no-embed` leaves out. */
   readonly embeds?: boolean;
-  /** Whether it finds its campaign by name, so that it reads whichever log the registry gives that
-   *  name (`readerOutput`). */
+  /** Whether it finds its campaign by name, reading whichever log the registry gives that name
+   *  (`readerOutput`). */
   readonly named?: boolean;
   /** The events whose arrival makes its answer worth a look's lines; a reader without them runs in
    *  `derive` only. */
   readonly at?: readonly EventKind[];
-  /** The lines that answer a moment where its text names neither the moment's session nor its
-   *  harness. */
+  /** The lines that answer a moment where its text names neither the moment's session nor its harness. */
   readonly gist?: RegExp;
 }
 
-/** A reader called in this process on the parsed log. */
 interface InProcess extends About {
   readonly read: (parsed: Parsed) => readonly string[];
 }
 
-/** A reader that needs more than the log: its script and arguments, from the repository's root, for
- *  a log's absolute path and the repository's. */
+/** A reader that needs more than the log: its script and arguments from the repository's root. */
 interface OwnProcess extends About {
   readonly args: (log: string, repo: string) => readonly string[];
 }
@@ -115,9 +108,7 @@ export type Reader = InProcess | OwnProcess;
 export interface Derived {
   readonly name: string;
   readonly dir: string;
-  /** Whether the readers ran this time, rather than a folder for the same log being kept. */
   readonly ran: boolean;
-  /** The readers that failed. */
   readonly failed: readonly string[];
 }
 
@@ -134,21 +125,17 @@ const EXAMINED = "exam.finished";
 const STARTED = "comparison.started";
 const BUILT = "build.finished";
 const FROZEN = "contract.frozen";
-/** No call left out, as `calls.ts` reads without a flag. */
 const EVERY_CALL = { harness: null, program: null, command: null, output: null };
 
-/** `reader`, run for the pulse too, once an event of `kinds` lies past what it last read; `gist`
- *  as `About.gist` has it. */
+/** `reader`, run for the pulse too once an event of `kinds` lies past what it last read. */
 const at = <Each extends Reader>(reader: Each, kinds: readonly EventKind[], gist?: RegExp): Each => ({
   ...reader,
   at: kinds,
   ...keyIfDefined("gist", gist),
 });
 
-/** The campaign's name, which its log's folder carries. */
 const campaignOf = (log: string) => basename(dirname(log));
 
-/** A reader of its own process that names its campaign instead of its log. */
 const namedReader = (
   name: string,
   answers: string,
@@ -198,7 +185,6 @@ function hostLine(log: string, events: readonly LogEvent[], repo: string): strin
       );
 }
 
-/** The six rows and every trigger with the lane it starts, then the host line (`wri.ts read`). */
 export function overviewText(log: string, events: readonly LogEvent[], repo: string): string {
   return `${rendered(overview(events, receipts(log)))}\n\n${hostLine(log, events, repo)}\n`;
 }
@@ -218,10 +204,10 @@ export const READERS: readonly Reader[] = [
     {
       name: "diagnostics",
       answers:
-        "cross-cutting structural warnings: dead harness bins, compaction amnesia, patience burn, validity saturation, step SNR and fragility, Examiner efficiency",
+        "cross-cutting structural warnings: dead harness bins, compaction amnesia, patience burn, validity saturation, step SNR and fragility, Examiner efficiency, seat serving, draft freeze, judged lane, and write refusals",
       read: ({ log, events }) => diagnosticRows(events, join(dirname(log), "states")),
     },
-    [REPORTED, PROMOTED, EXAMINED, BUILT, ENDED],
+    [REPORTED, PROMOTED, EXAMINED, BUILT, "draft.finished", ENDED],
     /^\[WARN\]/,
   ),
   at(
@@ -377,7 +363,7 @@ export const READERS: readonly Reader[] = [
   {
     name: "builder-view",
     answers: "what the Builder's next opening would be told",
-    read: ({ events }) => builderTold(events),
+    read: ({ events }) => formatBuilderView(events),
   },
   {
     name: "examiner-view",
@@ -611,7 +597,6 @@ export const READERS: readonly Reader[] = [
   },
 ];
 
-/** The list `derive` runs: `--no-embed` takes out the readers that load the model. */
 export const readersOf = (flags: { readonly "no-embed"?: boolean | undefined }): readonly Reader[] =>
   flags["no-embed"] === true ? READERS.filter(({ embeds }) => embeds !== true) : READERS;
 
@@ -626,7 +611,6 @@ export function sourceOf(log: string, repo: string): Source {
   return { log, repo, parsed: () => (once ??= parse()) };
 }
 
-/** The log the registry gives the campaign `name`, or null where it names none or several. */
 function namedLog(name: string, repo: string): string | null {
   try {
     return readNamed(name, repo).path;
@@ -635,7 +619,6 @@ function namedLog(name: string, repo: string): string | null {
   }
 }
 
-/** What a reader of its own process says of `log`, with its ending and stderr added where it failed. */
 async function ownProcess(reader: OwnProcess, { log, repo }: Source, timeout: number) {
   const { PATH, HOME } = runtimeProcess.env;
   const { size } = Bun.file(log);
@@ -679,7 +662,6 @@ export async function readerOutput(
   }
 }
 
-/** Where the folders go, under the main worktree of the repository `repo` lies in. */
 export const derivedOf = (repo: string) => join(mainTree(repo), "data", "derived");
 
 function kept(dir: string): { stamp: string; failed: string[] } | null {
@@ -706,8 +688,8 @@ export async function derive(
 ): Promise<Derived> {
   const name = campaignOf(log);
   const dir = folderOf(root, log);
-  // What the folder is derived from: the log by its path, size and time, the commit reading it, and
-  // which readers, so a folder written under `--no-embed` does not stand in for a whole one.
+  // What the folder is derived from: the log by path, size and time, the reading commit, and which
+  // readers, so a folder written under `--no-embed` does not stand in for a whole one.
   const { size, lastModified } = Bun.file(log);
   const stamp = JSON.stringify([
     log,
@@ -728,9 +710,9 @@ export async function derive(
     writeFileSync(join(work, `${reader.name}.txt`), text);
     if (!ok) ended.add(reader.name);
   };
-  // The readers of their own process start first and run while this one reads the rest: on the
-  // largest log the two that open every kept harness take minutes, and the others take seconds
-  // together. A pause before each reader here lets a spawned one's ending start the next.
+  // Readers of their own process start first and run while this one reads the rest, since on the
+  // largest log the two that open every kept harness take minutes. A pause before each reader here lets
+  // a spawned one's ending start the next.
   const here = async () => {
     for (const reader of readers.filter((each) => !("args" in each))) {
       await Bun.sleep(0);
@@ -757,11 +739,9 @@ export async function derive(
   return { name, dir, ran: true, failed };
 }
 
-/** The folder `derive` keeps for the log at `log`, under `root`. */
 export const folderOf = (root: string, log: string) =>
   join(root, `${campaignOf(log)}@${hashJsonValue(log).slice(0, 12)}`);
 
-/** How many lines a derived file holds, or that it was not derived. */
 function linesOf(file: string): string {
   if (!existsSync(file)) return "none";
   const text = readFileSync(file, "utf8").trimEnd();
@@ -801,7 +781,6 @@ export function derivedLine(done: readonly Derived[], root: string): string {
   return `derived ${String(ran)} of ${String(done.length)} campaigns into ${root}, ${String(done.length - ran)} unchanged${faults}`;
 }
 
-/** Every reader's file of each folder, under a heading naming the campaign and the reader. */
 export function derivedText(done: readonly Derived[], readers: readonly Reader[] = READERS): string {
   return done
     .flatMap(({ name, dir }) =>

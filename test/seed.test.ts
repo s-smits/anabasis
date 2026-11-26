@@ -1,6 +1,6 @@
-// A seed placed under the code its run ran, and the points a seed can be cut at. A run launched at
-// one commit and continued at another stands at the second, so a seed cut inside the first stretch
-// goes to a tree at the first commit, and one cut inside the second to the run's own tree.
+// A seed placed under the code its run ran: a run launched at one commit and continued at another
+// stands at the second, so a seed cut inside the first stretch goes to a tree at the first commit, and
+// one cut inside the second to the run's own tree.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   mkdirSync,
@@ -16,7 +16,7 @@ import { capturedExecPath } from "../src/meta/process.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
-import { codeOf } from "../tools/d2/campaign.ts";
+import { codeOf } from "../tools/campaign/campaign.ts";
 import { atCommit } from "../tools/runs/code.ts";
 import { codeLine, treeAsRan } from "../tools/runs/seed.ts";
 
@@ -30,7 +30,6 @@ for (const part of ["node_modules", "vendor"]) mkdirSync(join(main, part));
 git(main, "init", "-q", "-b", "trunk");
 writeFileSync(join(main, "package.json"), '{"dependencies":{}}\n');
 for (const part of ["node_modules", "vendor"]) writeFileSync(join(main, part, ".keep"), "");
-/** Commit the fixture's one source file holding `text`, and give the commit and its host code. */
 function commitCode(text: string): { commit: string; host: string } {
   writeFileSync(join(main, "src", "code.ts"), text);
   git(main, "add", "-A");
@@ -110,7 +109,6 @@ describe("the points a seed can be cut at", () => {
     }),
   ];
 
-  /** What `seed --points` prints of the campaign in `folder`. */
   const points = (folder: string) =>
     runTextSyncOrThrow([capturedExecPath, "tools/runs/cli.ts", "seed", "--from", folder, "--points"], {
       cwd: resolve(import.meta.dir, ".."),
@@ -125,6 +123,7 @@ describe("the points a seed can be cut at", () => {
     expect(points(folder)).toEqual([
       "0 build.started b-1",
       "2 build.finished b-1",
+      "3 comparison.started g-1",
       "4 referee.turn solve v-1",
       "7 referee.turn solve with no finding",
       "8 comparison.reported g-1 step",

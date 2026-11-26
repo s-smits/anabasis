@@ -18,7 +18,6 @@ const OPENED: JsonObject = {
   led: true,
 };
 
-/** A log under construction, one event a call, each `minutes` after the start. */
 function logOf() {
   const events: LogEvent[] = [];
   const api = {
@@ -33,7 +32,6 @@ function logOf() {
 
 describe("a first comparison held off", () => {
   it("calls a first comparison held off at 75 minutes admissible: a trigger of the time lane, and one line of a live run's look", () => {
-    // Eight tasks held at minute 10, and the log's last event at `end`.
     const waiting = (end: number, compared = false) => {
       const log = logOf().add(2, "exam.started", { session: "x-1" });
       for (const [place, version] of ["a", "b", "c", "d", "e", "f", "g", "h"].entries()) {
@@ -52,11 +50,11 @@ describe("a first comparison held off", () => {
     };
     const heldTrigger = (events: readonly LogEvent[]) =>
       costTriggers(indexOf(events)).find(({ name }) => name === "FIRST COMPARISON HELD OFF")?.detail;
-    const tail = "none begun, 0.00 h of it inside Builder waits";
+    const tail = "(no comparison started), 0.00 h inside Builder waits";
     // The hostile case: a minute under the threshold is no finding.
     expect(heldTrigger(waiting(84))).toBeUndefined();
-    expect(heldTrigger(waiting(85))).toBe(`admissible 1.25 h to the log's end, ${tail}`);
-    expect(heldTrigger(waiting(95, true))).toStartWith("admissible 1.42 h before one began");
+    expect(heldTrigger(waiting(85))).toBe(`admissible 1.25 h to log end ${tail}`);
+    expect(heldTrigger(waiting(95, true))).toStartWith("admissible 1.42 h until first comparison started");
 
     const run: Run = {
       name: "r1",
@@ -75,7 +73,7 @@ describe("a first comparison held off", () => {
     const looked = { lines: 0, open: true, quiet: false };
     expect(said(waiting(84), looked).lines).toEqual([]);
     const late = said(waiting(85), looked);
-    expect(late.lines).toEqual(["⚠ a first comparison admissible for 1.25 h, none begun"]);
+    expect(late.lines).toEqual(["⚠ first comparison admissible for 1.25 h without starting"]);
     // Said once, never of a campaign that began comparing, and never of one no process writes.
     expect(said(waiting(120), late.seen).lines).toEqual([]);
     expect(said(waiting(95, true), looked).lines).toEqual([]);

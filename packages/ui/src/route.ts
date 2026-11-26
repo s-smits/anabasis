@@ -1,48 +1,32 @@
 /**
- * Where the page is, as its URL says: the project, the campaign, the pane, the selected move,
- * solve, task and harness, what the inspector shows, and the token.
- *
- * v1 kept the pane in component state, so the back button left the page and no view could be
- * linked. Here the URL is the one record of the selection:
- * a change is pushed onto the history or replaces its entry, and `popstate` restores it. Every
- * reader of the route shares one store, so a change one component makes is the route every other
- * component renders next.
- *
- * A campaign names its project, so the URL carries the project only while no campaign is chosen: a
- * project is the opening's prompt, and written beside the campaign it made every link several
- * hundred characters long. A move, a solve and a task belong to the pane they were opened in, and
- * a change of pane clears them and closes the inspector unless it names them itself: kept, a solve
- * opened in Moves would come back as the Tasks pane's open detail with its grid hidden.
- *
- * The browser keeps the token and the campaign a URL last named. A URL without the token reads
- * with the kept one, so the bare address opens the page, as a second tab opened bare does. A URL
- * that names neither a project nor a campaign opens the kept campaign, read at once beside the
- * list rather than after it: a cold list takes seconds, and the newest campaign is known only once
- * the list is read.
+ * Where the page is, as its URL says: project, campaign, pane, selected move, solve, task and
+ * harness, the inspector and the token. The URL is the one record of the selection: a change is
+ * pushed onto the history or replaces its entry, `popstate` restores it, and every reader shares
+ * one store. The URL carries the project only while no campaign is chosen, since a campaign names
+ * its project. A move, solve and task belong to the pane they were opened in, and a change of pane
+ * clears them and closes the inspector unless it names them itself. The browser keeps the token and
+ * the campaign a URL last named: a bare URL reads with the kept token and opens the kept campaign
+ * at once, beside the list rather than after it.
  */
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type { CampaignReading } from "./models.ts";
 import { TOKEN_PARAMETER } from "./models.ts";
 import { keysIf } from "../../../src/meta/optional-key.ts";
 
-/** The four panes, in the sidebar's order. */
 export type Pane = "campaign" | "moves" | "tasks" | "log";
 
 export interface Route {
   readonly project: string | null;
-  /** A campaign's key (`CampaignRow.key`). */
   readonly campaign: string | null;
   readonly pane: Pane;
   /** A move's place in the log (`Move.index`): a round's Builder session and comparison share an
    *  id, and the place names one of them. */
   readonly move: number | null;
   readonly solve: string | null;
-  /** A task version. */
   readonly task: string | null;
-  /** A harness digest: the card selected in the lineage strip. */
   readonly harness: string | null;
-  /** The inspector shows one of three: a file of `harness`, the diff of `harness`
-   *  against `diff`, or the raw event at `event`. None set, it is closed. */
+  /** The inspector shows a file of `harness`, the diff of `harness` against `diff`, or the raw
+   *  event at `event`; none set, it is closed. */
   readonly file: string | null;
   readonly diff: string | null;
   readonly event: number | null;
@@ -52,7 +36,6 @@ export interface Route {
 /** A change to the route: each key given replaces its value, and `null` clears it. */
 export type RouteChange = Partial<Route>;
 
-/** What a pane is handed besides its campaign: the route and the two ways to move it. */
 export interface Navigation {
   readonly route: Route;
   /** A new history entry, for a selection the back button should undo. */
@@ -61,7 +44,6 @@ export interface Navigation {
   readonly replace: (change: RouteChange) => void;
 }
 
-/** The props of every pane. */
 export interface PaneProps {
   readonly reading: CampaignReading;
   readonly navigation: Navigation;
@@ -84,7 +66,6 @@ const KEYS = [
   TOKEN_PARAMETER,
 ] as const;
 
-/** What a change of pane clears: the selections the pane held, and the inspector. */
 const INSIDE_PANE = {
   move: null,
   solve: null,
@@ -94,7 +75,6 @@ const INSIDE_PANE = {
   event: null,
 } as const satisfies RouteChange;
 
-/** What a change of the campaign clears: every selection inside it, and the inspector. */
 const INSIDE_CAMPAIGN = {
   move: null,
   solve: null,
@@ -106,8 +86,8 @@ const INSIDE_CAMPAIGN = {
 } as const satisfies RouteChange;
 
 /** What a view's own state is kept under: the campaign and the pane, without the token, the
- *  selection or the inspector. Keyed by the move as well, a reload of an open detail mounted the
- *  hidden list under the detail's key, and the way back would show it unfiltered. */
+ *  selection or the inspector. Keyed by the move as well, the way back from a reloaded detail would
+ *  show its list unfiltered. */
 const OVER_VIEW: readonly string[] = [
   TOKEN_PARAMETER,
   "move",
@@ -121,8 +101,8 @@ const OVER_VIEW: readonly string[] = [
 
 const listeners = new Set<() => void>();
 
-/** `value` where the URL names it, kept in this browser's storage under `key`; where it names
- *  none, the value kept there. Closed storage keeps nothing and gives null. */
+/** `value` where the URL names it, kept in this browser's storage under `key`; where it names none,
+ *  the kept value. Closed storage keeps nothing. */
 export function kept(key: string, value: string | null): string | null {
   try {
     if (value === null) return window.localStorage.getItem(key);
@@ -133,11 +113,9 @@ export function kept(key: string, value: string | null): string | null {
   return value;
 }
 
-/** `useState` that a reload keeps, so that a refresh, a hot reload or the way back to a view does
- *  not put every sort, search and choice back to its default. The value is kept in this
- *  tab's session storage under `key` and the campaign and pane the URL named as the component
- *  mounted, so another pane or campaign starts afresh; `"every-view"` keeps one value for every view.
- *  Closed storage keeps nothing. */
+/** `useState` that a reload keeps, in this tab's session storage under `key` and the campaign and
+ *  pane named as the component mounted, so another pane or campaign starts afresh; `"every-view"`
+ *  keeps one value for every view. */
 export function useKept<T>(key: string, initial: T, scope: "view" | "every-view" = "view") {
   const [stored] = useState(() => {
     try {
@@ -157,7 +135,6 @@ export function useKept<T>(key: string, initial: T, scope: "view" | "every-view"
       return initial;
     }
   });
-  // Written as it renders, so the stored value is always the one drawn; writing it again is harmless.
   try {
     if (stored !== null) window.sessionStorage.setItem(stored, JSON.stringify(value));
   } catch {
@@ -194,8 +171,8 @@ export function routeOf(search: string): Route {
   };
 }
 
-/** The query string of a route, `?` included, or "" for the bare page. The Campaign pane is the
- *  default and is not written, and the project is written only where no campaign names it. */
+/** The query string of a route, `?` included, or "" for the bare page; the Campaign pane is not
+ *  written, nor the project where a campaign names it. */
 export function searchOf(route: Route): string {
   const query = new URLSearchParams();
   const shown: Route = { ...route, project: route.campaign === null ? route.project : null };
@@ -209,9 +186,9 @@ export function searchOf(route: Route): string {
 }
 
 /** The route after `change`: a new project clears the campaign, a new campaign every selection
- *  inside it, and a new pane the selections of the pane it leaves, unless the change names them
- *  itself. A change that names the project and keeps the route's campaign moves nothing inside it:
- *  that is the shell writing back the project of a link that named a campaign alone. */
+ *  inside it, and a new pane the selections of the pane it leaves, unless the change names them. A
+ *  change naming the project that keeps the campaign moves nothing: that is the shell writing back
+ *  a link's project. */
 export function changedRoute(route: Route, change: RouteChange): Route {
   const projectMoved = change.project !== undefined && change.project !== route.project;
   const campaignMoved = change.campaign === undefined ? projectMoved : change.campaign !== route.campaign;
@@ -243,8 +220,6 @@ function navigate(change: RouteChange, entry: "push" | "replace"): void {
   for (const listener of listeners) listener();
 }
 
-/** The route, and the two ways to change it. A page rendered without a window reads the bare
- *  route. */
 export function useRoute(): Navigation {
   const search = useSyncExternalStore(
     subscribe,

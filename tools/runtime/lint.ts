@@ -1,47 +1,41 @@
 /**
- * `bun run lint`, without a Node binary underneath it, and with the not-slop ledger applied.
- *
- * oxlint has no store for an answered finding but the inline `oxlint-disable` comment, so this
- * reads its JSON report and applies `tools/oxlint/not-slop.tsv` (`not-slop-ledger.ts` says why a
- * ledger). A finding the ledger answers is dropped; the rest print in oxlint's own one-line
- * spelling, which the pre-push hook reads, each heuristic one with the id that answers it. A row
- * that no longer names a finding fails the run, as an unused disable comment does: an answer that
- * outlives its site is debt, and a later site with the same text would inherit it unread.
+ * `bun run lint`, without a Node binary underneath it, and with the not-slop ledger applied. oxlint
+ * keeps no answered finding but an inline `oxlint-disable` comment, so this reads its JSON report
+ * and applies `tools/oxlint/not-slop.tsv` (`not-slop-ledger.ts` says why a ledger): an answered
+ * finding is dropped, the rest print in oxlint's one-line spelling, each heuristic one with the id
+ * that answers it. A row that no longer names a finding fails the run, as an unused disable comment
+ * does.
  */
 import { existsSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { runSync, zeroExitText } from "../../src/meta/subprocess.ts";
 import {
-  type Ledger,
   ledgerOnDisk,
   NOT_SLOP_LEDGER,
   siteExcerpt,
   siteId,
+  staleLedgerProblems,
   TREE_RULE_PREFIX,
   unanswerable,
 } from "../oxlint/not-slop-ledger.ts";
 import { PLUGINS } from "../oxlint/plugins.ts";
 import { renderedExamples, ruleExamples } from "../oxlint/rule-examples.ts";
-import { TREE_REGISTER_KINDS, treeSites } from "../oxlint/tree-findings.ts";
 
 const ROOTS = ["src", "tools", "vendor", "test", "packages", ".claude", "studies"];
 
-/** The repository root, which oxlint runs from and every path it reports is relative to. */
+/** The repository root, which oxlint runs from and every reported path is relative to. */
 const ROOT = new URL("../..", import.meta.url).pathname;
 
-/** The linter itself, relative to the repository root every caller spawns it from. */
 export const OXLINT_BINARY = "node_modules/oxlint/bin/oxlint";
 
-/** The plugins whose findings fail only a strict run: every repository plugin. */
 const OPTIONAL_PLUGINS = new Set(PLUGINS.keys());
 /** The rule list of a disable comment, up to its `--` description or the end of the comment. */
 const DISABLE_RULES = /(?:oxlint|eslint)-disable(?:-next-line|-line)?\b(.*?)(?:--|\*\/|$)/su;
 
-/** Where the last run's answerable sites are kept for `bun run not-slop -- answer`, per worktree. */
+/** Per worktree, for `bun run not-slop -- answer`. */
 const SITES_CACHE = "ana/lint-sites.json";
 
-/** What oxlint's `-f json` emits for one finding, as much of it as the readers here use. */
 export interface Diagnostic {
   message: string;
   /** `ana(no-deep-nesting)`; absent on an unused disable comment. */
@@ -49,11 +43,9 @@ export interface Diagnostic {
   severity: string;
   help?: string;
   filename: string;
-  /** The span in UTF-8 bytes, and its 1-based line and column. */
   labels?: { span: { offset: number; length: number; line: number; column: number } }[];
 }
 
-/** A finding the ledger can answer, as the ledger and `bun run not-slop` name it. */
 export interface LintSite {
   id: string;
   rule: string;
@@ -76,9 +68,6 @@ export function tsgolintPath(): string {
   }
 }
 
-/**
- * oxlint's whole JSON report for `args`, read from the root to the end of its output.
- */
 export async function oxlintDiagnostics(
   args: readonly string[],
 ): Promise<{ diagnostics: Diagnostic[]; exitCode: number }> {
@@ -95,7 +84,6 @@ export async function oxlintDiagnostics(
   return { diagnostics: parseJsonAs<{ diagnostics: Diagnostic[] }>(text).diagnostics, exitCode };
 }
 
-/** `ana(no-deep-nesting)` as oxlint spells it becomes `ana/no-deep-nesting`. */
 function ruleOf(diagnostic: Diagnostic): string {
   const match = /^([\w-]+)\(([\w-]+)\)$/u.exec(diagnostic.code ?? "");
   return match === null ? (diagnostic.code ?? "") : `${match[1]}/${match[2]}`;
@@ -124,8 +112,6 @@ export function lintSite(diagnostic: Diagnostic, bytes: Uint8Array): LintSite | 
   };
 }
 
-/** Every finding in `diagnostics` with the site it reports and whether an optional plugin owns it,
- *  each file read once. */
 export async function withSites(
   diagnostics: readonly Diagnostic[],
 ): Promise<{ diagnostic: Diagnostic; site: LintSite | null; optional: boolean }[]> {
@@ -140,9 +126,7 @@ export async function withSites(
   );
 }
 
-/**
- * True for a finding of an optional plugin.
- */
+/** True for a finding of an optional plugin, or an unused disable comment that names only their rules. */
 export function optionalFinding(diagnostic: Diagnostic, bytes: Uint8Array): boolean {
   const plugin = /^([\w-]+)\(/u.exec(diagnostic.code ?? "")?.[1];
   if (plugin !== undefined) return OPTIONAL_PLUGINS.has(plugin);
@@ -153,7 +137,6 @@ export function optionalFinding(diagnostic: Diagnostic, bytes: Uint8Array): bool
   return rules.length > 0 && rules.every((rule) => OPTIONAL_PLUGINS.has(rule.split("/")[0] ?? ""));
 }
 
-/** One finding in oxlint's own one-line spelling, which `.githooks/pre-push` reads. */
 function rendered(diagnostic: Diagnostic, site: LintSite | null): string {
   const span = diagnostic.labels?.[0]?.span;
   const at = `${diagnostic.filename}:${span?.line ?? 0}:${span?.column ?? 0}`;
@@ -164,9 +147,9 @@ function rendered(diagnostic: Diagnostic, site: LintSite | null): string {
 }
 
 /**
- * Each rule that reported among `diagnostics`, once, in the order its first finding printed, with
- * the before-and-after pairs it keeps (`tools/oxlint/rule-examples.ts`). A rule with none, which
- * is every core rule, prints nothing here.
+ * Each rule that reported, once, in the order its first finding printed, with the before-and-after
+ * pairs it keeps (`tools/oxlint/rule-examples.ts`). A rule with none, which is every core rule,
+ * prints nothing here.
  */
 export function examplesFor(diagnostics: readonly Diagnostic[]): string[] {
   const examples = ruleExamples();
@@ -187,7 +170,6 @@ export function strictByConfig(cwd: string): boolean {
   );
 }
 
-/** Where this worktree keeps the last run's sites, or null outside a git checkout. */
 export function sitesCachePath(): string | null {
   return zeroExitText(
     runSync(["git", "rev-parse", "--path-format=absolute", "--git-path", SITES_CACHE], { cwd: ROOT }),
@@ -195,41 +177,10 @@ export function sitesCachePath(): string | null {
 }
 
 /**
- * The ledger's own failures: rows it could not read, rows no finding in this run bears out, and
- * rows naming a register.
- */
-function ledgerProblems(
-  ledger: Ledger,
-  seen: ReadonlySet<string>,
-  linted: (path: string) => boolean,
-  wholeTree: boolean,
-): string[] {
-  const trees = wholeTree ? new Set(treeSites().map((site) => site.id)) : null;
-  const registers = new Set(TREE_REGISTER_KINDS.map((kind) => `${TREE_RULE_PREFIX}${kind}`));
-  const unread = ledger.unread.map((problem) => `${NOT_SLOP_LEDGER}: ${problem}`);
-  return [
-    ...unread,
-    ...ledger.answers.flatMap((answer) => {
-      const where = `${NOT_SLOP_LEDGER}: ${answer.id} ${answer.rule} ${answer.path}`;
-      if (registers.has(answer.rule)) {
-        return [`${where}: a register row is a current count, with nothing to answer`];
-      }
-      const tree = answer.rule.startsWith(TREE_RULE_PREFIX);
-      const judged = tree ? trees !== null : linted(answer.path);
-      const present = tree ? trees?.has(answer.id) === true : seen.has(answer.id);
-      return judged && !present
-        ? [`${where}: no finding has this id any more; bun run not-slop -- prune`]
-        : [];
-    }),
-  ];
-}
-
-/**
  * The roots a whole-tree run lints. `packages/ui` keeps its own lock and `node_modules`; without
- * its React types the type-aware rules read every component as an error type and report findings
- * that are not there, so it waits for `bun run ui:deps` and says so (v1's rule). Its own
- * `tsconfig.json`, with `jsx` and `DOM`, is the one the type-aware rules
- * read for its files: without it they fall back to the compiler's defaults, not to the root's.
+ * its React types the type-aware rules report findings that are not there, so it waits for `bun run
+ * ui:deps` and says so. Its own `tsconfig.json`, with `jsx` and `DOM`, is the one the type-aware
+ * rules read for its files.
  */
 function lintRoots(): readonly string[] {
   if (existsSync(`${ROOT}/packages/ui/node_modules`)) return ROOTS;
@@ -238,9 +189,8 @@ function lintRoots(): readonly string[] {
 }
 
 async function main(): Promise<number> {
-  // `ANA_LINT_PATHS` replaces the roots with an explicit list, one path per line. The pre-commit
-  // hook sets it to the staged files so a commit is linted while it is still cheap to fix; every
-  // other caller leaves it unset and lints the whole tree.
+  // `ANA_LINT_PATHS` replaces the roots with one path per line: the pre-commit hook sets it to the
+  // staged files.
   const explicit = Bun.env.ANA_LINT_PATHS?.split("\n").filter((line) => line !== "") ?? [];
   const roots = explicit.length > 0 ? ROOTS : lintRoots();
   const args = Bun.argv.slice(2);
@@ -248,16 +198,14 @@ async function main(): Promise<number> {
   const strict = args.includes("--strict") || Bun.env.ANA_LINT_STRICT === "1" || strictByConfig(ROOT);
   const extra = args.filter((argument) => argument !== "--strict");
   const flags = [
-    // `.oxlintrc.json` sets this too, so for the ordinary run the flag changes nothing. It is
-    // here for `bun run lint -c <one-rule-config>`, the recipe HABITS.md 12.13 gives for
-    // measuring a single rule: a scratch config that omits the option reports zero for
-    // every type-aware rule and says nothing about why. A silent zero is worse than a flag
-    // repeated once.
+    // `.oxlintrc.json` sets this too. It is here for `bun run lint -c <one-rule-config>` (HABITS.md
+    // 12.13), where a scratch config without the option reports zero for every type-aware rule and says
+    // nothing about why.
     "--type-aware",
     "--deny-warnings",
     "--report-unused-disable-directives",
-    // A commit may stage only files .oxlintrc.json ignores, such as the copied pi sources; without
-    // the flag oxlint refuses the empty set with no report, which reads as a failed lint.
+    // A commit may stage only files .oxlintrc.json ignores, such as the copied pi sources; without the
+    // flag oxlint refuses the empty set with no report, which reads as a failed lint.
     ...(explicit.length > 0 ? ["--no-error-on-unmatched-pattern", ...explicit] : roots),
   ];
   // A caller naming its own format reads oxlint's output directly, ledger unapplied.
@@ -278,9 +226,14 @@ async function main(): Promise<number> {
     extra.length === 0 &&
     (explicit.length > 0 ? explicit.includes(path) : roots.some((root) => path.startsWith(`${root}/`)));
   const seen = new Set(found.flatMap(({ site }) => (site === null ? [] : [site.id])));
-  const wholeTree = extra.length === 0 && explicit.length === 0;
   // The ledger answers the optional plugins alone, so only a run held to their rules reads it.
-  const problems = strict ? ledgerProblems(ledger, seen, linted, wholeTree) : [];
+  const problems = strict
+    ? staleLedgerProblems(
+        ledger,
+        seen,
+        (answer) => !answer.rule.startsWith(TREE_RULE_PREFIX) && linted(answer.path),
+      )
+    : [];
 
   const cache = sitesCachePath();
   const sites = unanswered.flatMap(({ site }) => (site === null ? [] : [site]));

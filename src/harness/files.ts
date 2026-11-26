@@ -1,11 +1,3 @@
-/**
- * Shared reader of a harness's own files: separates what the Builder wrote from installed
- * interpreters, packages, and binaries, counts guide and program lines, checks for host-specific
- * paths or campaign details before `HOST_ONLY`, and matches verbatim public-input spans.
- *
- * Used by Builder's `check_harness` (`src/builder/tools.ts`, wall-safe against released practice
- * tasks and the public contract) and WRI readers (`tools/wri/`).
- */
 import { AGENT_DIR, GUIDE_FILE, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "../meta/filesystem.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -13,35 +5,26 @@ import { join } from "../meta/path.ts";
 import { hasWholeToken } from "../meta/text.ts";
 import { portableGuide } from "./starter.ts";
 
-/** Path segments installed by package managers rather than written by the Builder. */
 const INSTALLED = /(^|\/)(site-packages|dist-packages|node_modules|\.?venv|vendor|include|__pycache__)(\/|$)/;
 const SKIP_DIR = /^(?:node_modules|\.?venv|vendor|include|__pycache__)$/;
 const SITE_DIR = /^(?:site|dist)-packages$/;
-/** A bundled interpreter's home, known by its Python library folder. */
 const INTERPRETER_HOME = /\/lib\/python\d[\d.]*\//;
 const PYTHON_LIB = /^python\d[\d.]*$/;
 const METADATA = /\.(?:dist-info|egg-info)$/;
 const PAST_NAME = /(?:-[^/]*)?\.(?:dist-info|egg-info)$/;
 const WHEEL_LIBS = /(^|\/)[^/]+\.libs\//;
-/** A Builder-written program is smaller than this; bundled binaries are larger. */
 const MAX_WRITTEN_BYTES = 256 * 1024;
 const GUIDE_PATH = `${AGENT_DIR}${GUIDE_FILE}`;
-/** Machine-local or Anabasis-internal path prefixes that break when exported. */
 const HOST_PATH_RE = /(?:\/Users\/|\/home\/|\/opt\/homebrew\/|\/private\/tmp\/|\/var\/folders\/|\.ana\/)/gu;
-/** Absolute shebangs tied to one machine (portable ones use `#!/usr/bin/env` or `/bin/sh`). */
 const HOST_SHEBANG_RE = /^#!\s*\/(?:Users|home|opt\/homebrew|Library)\//u;
-/** Campaign-only paths and tools that belong under `HOST_ONLY` (`## Validity and score`). */
-const HOST_REF_RE = /(?:public\/task\.json|public\/files\/|public\/resources\/|answer\.json|\bsubmit\b)/gu;
+const CAMPAIGN_FILE_RE = /public\/(?:task\.json|files\/|resources\/)|answer\.json/gu;
+const HOST_REF_RE = new RegExp(`${CAMPAIGN_FILE_RE.source}|\\bsubmit\\b`, "gu");
 const MIN_KEY_LEN = 4;
 const WORD_RE = /[\p{L}\p{N}]+/gu;
 const TOKEN_RE = /[\p{L}\p{N}_](?:[\p{L}\p{N}_.:-]*[\p{L}\p{N}_])?/gu;
-/** Record or entity code shape (e.g. `S01-007`, `P-00123`, `C-01`): 0 false positives across 444 archived harnesses. */
 const TASK_CODE_RE = /^[A-Za-z][A-Za-z0-9_-]*[-_]\d{2,}$/;
-/** Word span length used by WRI to spot copied public-input text. */
 export const QUOTE_WORDS = 6;
-/** Longer span length for Builder `check_harness` (6-word spans mostly hit generic domain prose). */
 const BUILDER_QUOTE_WORDS = 8;
-/** Spans or codes shared by more than this many practice tasks are domain boilerplate, not task copying. */
 const RARE_TASKS = 2;
 
 interface WrittenFile {
@@ -70,7 +53,6 @@ interface TaskStrings {
 
 type MetadataMarks = ReadonlyMap<string, { readonly site: string; readonly name: string }>;
 
-/** Nonblank line count of `body`. */
 export const nonblank = (body: string): number =>
   body.split("\n").filter((line) => line.trim() !== "").length;
 
@@ -186,12 +168,9 @@ function walkTree(state: string, scope: "full" | "own") {
   return { root, paths: filterOwn(files, marks, recordOf).toSorted(), brokenLinks, treeFiles };
 }
 
-/** Files a harness wrote under `.toolchain/`, excluding installed packages and binaries. */
-export function ownFiles(state: string): { readonly root: string; readonly paths: readonly string[] } {
-  return walkTree(state, "own");
-}
+export const ownFiles = (state: string): { readonly root: string; readonly paths: readonly string[] } =>
+  walkTree(state, "own");
 
-/** Written files (programs + guide), broken link count, tree entry count, and line size of one harness. */
 export function writtenFiles(state: string, scope: "full" | "own" = "full") {
   const { root, paths, brokenLinks, treeFiles } = walkTree(state, scope);
   const guideFile = join(state, GUIDE_PATH);
@@ -211,7 +190,6 @@ export function writtenFiles(state: string, scope: "full" | "own" = "full") {
   return { written, brokenLinks, treeFiles, size };
 }
 
-/** Property names in `answerFormat` (top-level and nested) of length >= `MIN_KEY_LEN`. */
 export function formatKeys(node: JsonValue | undefined): string[] {
   const held = asRecord(node);
   if (held === null) return [];
@@ -222,25 +200,34 @@ export function formatKeys(node: JsonValue | undefined): string[] {
   return [...own, ...formatKeys(held.items)];
 }
 
-/** Reads one harness directory for size, host-specific paths, and campaign details before `HOST_ONLY`. */
 export function readHarnessFiles(
   stateDir: string,
   answerKeys: readonly string[],
   ruleIds: readonly string[],
 ) {
   const { written, brokenLinks, treeFiles, size } = writtenFiles(stateDir);
-  let [hostPaths, hostShebangs, plainBins, filesWithKeys] = [0, 0, 0, 0];
+  let [hostPaths, hostShebangs, plainBins, filesWithKeys, campaignRefs] = [0, 0, 0, 0, 0];
   const matchedKeys = new Set<string>();
+  const campaignRefFiles: string[] = [];
   for (const { path, text, executable } of written) {
     hostPaths += (text.match(HOST_PATH_RE) ?? []).length;
     hostShebangs += Number(HOST_SHEBANG_RE.test(text));
     plainBins += Number(path.startsWith("bin/") && !executable);
+    if (path !== "guide") {
+      const refs = (text.match(CAMPAIGN_FILE_RE) ?? []).length;
+      campaignRefs += refs;
+      if (refs > 0) campaignRefFiles.push(path);
+    }
     const matched = answerKeys.filter((key) => text.includes(key));
     for (const key of matched) matchedKeys.add(key);
     filesWithKeys += Number(matched.length > 0);
   }
   const guideEntry = written.find(({ path }) => path === "guide");
   const kept = guideEntry === undefined ? "" : portableGuide(guideEntry.text);
+  const keptHostRefMatches = kept.match(HOST_REF_RE) ?? [];
+  const keptHostRefNames = [...new Set(keptHostRefMatches)].toSorted();
+  const keptFormatKeyNames = answerKeys.filter((key) => hasWholeToken(kept, key)).toSorted();
+  const keptRuleIdNames = ruleIds.filter((id) => hasWholeToken(kept, id)).toSorted();
   return {
     written,
     brokenLinks,
@@ -248,18 +235,22 @@ export function readHarnessFiles(
     size,
     hasSplit: guideEntry !== undefined && kept.length < guideEntry.text.length,
     keptLines: nonblank(kept),
-    keptHostRefs: (kept.match(HOST_REF_RE) ?? []).length,
-    keptFormatKeys: answerKeys.filter((key) => hasWholeToken(kept, key)).length,
-    keptRuleIds: ruleIds.filter((id) => hasWholeToken(kept, id)).length,
+    keptHostRefs: keptHostRefMatches.length,
+    keptHostRefNames,
+    keptFormatKeys: keptFormatKeyNames.length,
+    keptFormatKeyNames,
+    keptRuleIds: keptRuleIdNames.length,
+    keptRuleIdNames,
     hostPaths,
     hostShebangs,
     plainBins,
+    campaignRefs,
+    campaignRefFiles: campaignRefFiles.toSorted(),
     matchedKeys,
     filesWithKeys,
   };
 }
 
-/** Every string in a JSON public input, keys and values, at any depth. */
 export function stringsIn(value: JsonValue | undefined): string[] {
   if (isString(value)) return [value];
   if (Array.isArray(value)) return value.flatMap(stringsIn);
@@ -267,9 +258,7 @@ export function stringsIn(value: JsonValue | undefined): string[] {
   return record === null ? [] : Object.entries(record).flatMap(([key, each]) => [key, ...stringsIn(each)]);
 }
 
-function wordsOf(text: string): string[] {
-  return text.toLowerCase().match(WORD_RE) ?? [];
-}
+const wordsOf = (text: string): string[] => text.toLowerCase().match(WORD_RE) ?? [];
 
 function bigramIndex(wanted: ReadonlySet<string> | null, length: number) {
   if (wanted === null || length < 2) return null;
@@ -281,7 +270,6 @@ function bigramIndex(wanted: ReadonlySet<string> | null, length: number) {
   return pairs;
 }
 
-/** Word spans of public inputs mapped to their tasks, dropping spans shared by every task. */
 export function spansOf(
   tasks: readonly TaskStrings[],
   length = QUOTE_WORDS,
@@ -304,7 +292,6 @@ export function spansOf(
   return { spans, common: common.length };
 }
 
-/** Verbatim public-input spans found in one written file, merged across overlapping windows. */
 export function quotedSpans(
   path: string,
   text: string,
@@ -340,7 +327,6 @@ export function quotedSpans(
   return hits;
 }
 
-/** Rare record/entity codes from public inputs (`S01-007`, `P-00123`, `C-01`), mapped to their tasks. */
 function rareCodes(tasks: readonly TaskStrings[], wanted: ReadonlySet<string> | null = null) {
   const codes = new Map<string, Set<string>>();
   if (wanted?.size === 0) return codes;
@@ -354,7 +340,6 @@ function rareCodes(tasks: readonly TaskStrings[], wanted: ReadonlySet<string> | 
   return new Map([...codes].filter(([, holders]) => holders.size <= RARE_TASKS));
 }
 
-/** First-occurrence rare task codes found in one written file. */
 function codeHitsIn(path: string, text: string, codes: ReadonlyMap<string, ReadonlySet<string>>): string[] {
   if (codes.size === 0) return [];
   const seen = new Set<string>();
@@ -371,9 +356,6 @@ function codeHitsIn(path: string, text: string, codes: ReadonlyMap<string, Reado
   return hits;
 }
 
-/** Plain descriptions of harness files that name a practice task id, copy a rare record code, or
- *  quote a rare 8-word span from one, giving exact line numbers and text so the Builder never
- *  searches blindly. */
 export function namedTasks(
   written: readonly WrittenFile[],
   tasks: readonly { readonly taskId: string; readonly publicInput: JsonValue }[],

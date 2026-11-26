@@ -7,10 +7,9 @@ import { AnswerIssues, enter, Pending } from "./drill.tsx";
 import { duration, time } from "./format.ts";
 
 /*
- * The Log pane: the campaign as a timeline, one line a thing that happened, newest first, with a
- * session's and a solve's turns and calls counted into its own line (`server/log.ts`), rather than
- * every raw event, most of them a model's turn or call. A line opens where its detail lives: its
- * move, its solve or its task. The exam tier also opens a line's first event raw in the inspector.
+ * The Log pane: the campaign as a timeline, newest first, a session's or solve's turns and calls
+ * counted into its own line (`server/log.ts`) rather than every raw event. A line opens its move, solve
+ * or task; the exam tier also opens its first event raw in the inspector.
  */
 
 const GROUPS: ReadonlyMap<string, string> = new Map<TimelineGroup, string>([
@@ -22,8 +21,8 @@ const GROUPS: ReadonlyMap<string, string> = new Map<TimelineGroup, string>([
   ["wait", "Waits"],
 ]);
 
-/** Where a line's detail lives: the move it starts, or the last move of its session that a
- *  campaign line such as "Move: build" follows; else its solve or its task. */
+/** Where a line's detail lives: the move it starts, or the last move of its session that a campaign
+ *  line such as "Move: build" follows; else its solve or its task. */
 function opener(row: TimelineRow, reading: CampaignReading, navigation: Navigation): (() => void) | null {
   const move = reading.moves.findLast(
     ({ index, id }) =>

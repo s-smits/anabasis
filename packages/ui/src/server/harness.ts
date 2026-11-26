@@ -1,37 +1,17 @@
 /**
- * `GET /api/harness`, `/api/harness-file` and `/api/harness-diff`: a kept harness's folder,
- * `states/<digest>/` beside the campaign's log, whole, one file of it, and two of them compared,
- * one unified diff a file (the root package's `diff`).
- *
- * The listing is whatever the folder holds, so that a part the page has no name for is shown all
- * the same. It reads `.toolchain/`, a link into the host's store, beside `agent/`, since a
- * Builder's programs are there, beside `states/` in a `tree-*` folder, and the guide only names
- * them. A harness puts its computation in `.toolchain/bin/` rather than in `agent/tools.ts`, so
- * reading `agent/` alone would show a template with an empty list as the harness's tools, and a
- * harness that differs from its parent in one program would compare as unchanged.
- *
- * One name is closed wherever it stands: `correctness-model`, the exam side's copy that a harness
- * imported from v1 carries beside `agent/` and in each `.bundle-snapshots/` entry. Every other
- * path is open where, resolved through every link, it lies under the campaign's own `states/`
- * and passes through no closed name: a `.toolchain` link to the `tree-*` beside it is followed,
- * and one to the host's own toolchains, or into the exam side's copy by another name, is not and
- * is said. A digest is one the log names as a harness and a path segment with no separator, and
- * `states/<digest>` must resolve to itself: a link there would serve whatever it points at in the
- * default tier, `correctness-model/` beside it for one. A listing
- * enters no folder twice, so a link back up ends there. A file is read up to `FILE_BYTES`, and
- * one whose head holds a NUL byte, an engine's binary, is listed and sent with no value. A
- * refused or missing path is an issue the answer carries.
- *
- * A diff is bounded in time as well as in bytes (`FILE_DIFF_MS`, `DIFF_MS`): its work grows with
- * how far apart two texts are and not with their size alone, and it runs on the thread that
- * answers every request. Two files of 8,000 one-character lines that share none take about 11
- * seconds in one call, well inside `FILE_BYTES`. A file
- * the bound cuts is listed with no diff, and an issue names it. A path both harnesses reach as the
- * same file is not read.
- *
- * A program under `.toolchain/bin/` is listed with its own account of itself, the comment at its
- * head (`src/harness/programs.ts`): the page shows the solver's toolset by those, since the guide only
- * names them.
+ * `GET /api/harness`, `/api/harness-file` and `/api/harness-diff`: a kept harness's folder
+ * (`states/<digest>/` beside the log) whole, one file of it, and two compared, one unified diff a
+ * file. The listing is whatever the folder holds, `.toolchain/` included: a harness's programs live
+ * in `.toolchain/bin/`, so `agent/` alone would hide its tools and its diffs. `correctness-model`,
+ * the exam side's copy a v1 harness carries, is closed wherever it stands; every other path is open
+ * where, resolved through every link, it lies under the campaign's `states/` and passes through no
+ * closed name. A digest must be one the log names, a single path segment, and `states/<digest>`
+ * must resolve to itself. A listing enters no folder twice; a file is read up to `FILE_BYTES`, and
+ * one with a NUL byte in its head is listed with no value. A diff is bounded in time too
+ * (`FILE_DIFF_MS`, `DIFF_MS`), since its work grows with how far apart two texts are and it runs on
+ * the thread that answers every request; a file the bound cuts is listed with no diff and an issue.
+ * A program is listed with its head comment (`src/harness/programs.ts`), since the guide only names
+ * them.
  */
 import { createTwoFilesPatch } from "diff";
 import {
@@ -57,26 +37,22 @@ import type { Log } from "./folds.ts";
 import { harnessesIn } from "./lineage.ts";
 import { campaignAt, type Found } from "./logs.ts";
 
-/** One file of a harness: its path as the page names it, where it is, and its size. */
 interface HarnessPart {
   readonly path: string;
   readonly at: string;
   readonly bytes: number;
 }
 
-/** A harness's folder and the campaign's `states/`, as resolved: null where it is refused. */
 interface Kept {
   readonly root: string;
   readonly states: string;
 }
 
-/** A harness's folder as resolved, null where it is refused, and what was said. */
 interface Rooted {
   readonly kept: Kept | null;
   readonly issues: Issue[];
 }
 
-/** A file path resolved in a harness, or why it was refused. */
 interface Resolved {
   readonly at: string | null;
   readonly why: string;
@@ -84,13 +60,12 @@ interface Resolved {
 
 /** The exam side's copy a harness imported from v1 carries, closed at any depth. */
 const CLOSED = "correctness-model";
-/** The most of a file an answer carries: a guide or a program is a few kilobytes. */
 const FILE_BYTES = 512 * 1024;
 /** How deep and how many files a listing walks, so that a harness folder cannot hold the server. */
 const DEPTH = 12;
 const MOST_FILES = 400;
-/** The most one file's diff may take, and the most one answer's diffs may take together: the
- *  library gives up past its `timeout` (`createTwoFilesPatch`). */
+/** The most one file's diff may take, and the most one answer's diffs may take together; the
+ *  library gives up past its `timeout`. */
 const FILE_DIFF_MS = 500;
 const DIFF_MS = 2000;
 const SEGMENT = /^[A-Za-z0-9._-]+$/u;
@@ -105,22 +80,18 @@ function contentOf(path: string): FileContent {
   return TEXT.has(extname(path)) ? "text" : "other";
 }
 
-/** `path` with every link in it resolved, or null where nothing is there. */
 function resolved(path: string): string | null {
   try {
     return realpathSync(path);
   } catch {
-    // A missing path, or a link whose target is missing: either is nothing to read.
     return null;
   }
 }
 
-/** Whether `at`, a resolved path, may be read: under `states` and through no closed name. */
 function isOpen(at: string, states: string): boolean {
   return containsPath(at, states) && !at.slice(states.length).split("/").includes(CLOSED);
 }
 
-/** The folder of harness `digest` as resolved, or why it is refused. */
 function harnessRoot(
   found: Found,
   log: Log,
@@ -140,15 +111,15 @@ function harnessRoot(
   if (states === null || root === null) {
     return refused("no such folder beside the log: the harness is not kept on this disk");
   }
-  // A link at `states/<digest>` resolves somewhere else than itself, so the one comparison
-  // refuses it with every other way out.
+  // A link at `states/<digest>` resolves elsewhere, so this one comparison refuses it with every other
+  // way out.
   return root === join(states, digest)
     ? { kept: { root, states }, issue: null }
     : refused("the folder is a link or resolves outside states/, so it is not read");
 }
 
-/** Every file of a harness, walked through no link that leaves the campaign's `states/` or enters
- *  a closed name, and into no folder twice. */
+/** Every file of a harness, through no link that leaves `states/` or enters a closed name, and into
+ *  no folder twice. */
 function walk({ root, states }: Kept, issues: Issue[]): HarnessPart[] {
   const files: HarnessPart[] = [];
   const entered = new Set<string>([root]);
@@ -188,7 +159,6 @@ function walk({ root, states }: Kept, issues: Issue[]): HarnessPart[] {
   return files;
 }
 
-/** The file `path` names in a harness, or why it is refused. */
 function fileAt({ root, states }: Kept, path: string): Resolved {
   const segments = path.split("/");
   if (segments.some((each) => each === "." || each === ".." || !SEGMENT.test(each))) {
@@ -208,7 +178,6 @@ function fileAt({ root, states }: Kept, path: string): Resolved {
   return { at, why: "" };
 }
 
-/** The head of a file, `FILE_BYTES` at most, as text. */
 function headOf(at: string, bytes: number): string {
   const fd = openSync(at, "r");
   try {
@@ -220,8 +189,8 @@ function headOf(at: string, bytes: number): string {
   }
 }
 
-/** The value of the file at `path`, of `bytes` bytes, as the inspector takes it: a whole JSON file
- *  parsed, a binary nothing, and any other, or one cut at `FILE_BYTES`, as text. */
+/** The file's value as the inspector takes it: a whole JSON file parsed, a binary nothing, anything
+ *  else (or a file cut at `FILE_BYTES`) as text. */
 function valueOf(text: string, path: string, bytes: number): JsonValue {
   if (text.includes(String.fromCodePoint(NUL))) return null;
   if (contentOf(path) !== "json" || bytes > FILE_BYTES) return text;
@@ -233,7 +202,6 @@ function valueOf(text: string, path: string, bytes: number): JsonValue {
   }
 }
 
-/** The text a diff compares of one file: its JSON pretty-printed, so a diff reads by lines. */
 function diffText(file: HarnessPart | undefined): string {
   if (file === undefined) return "";
   const text = headOf(file.at, file.bytes);
@@ -242,8 +210,6 @@ function diffText(file: HarnessPart | undefined): string {
   return isString(value) ? text : `${capturedJsonStringify(value, null, 2)}\n`;
 }
 
-/** The campaign `key` names and the folder of harness `digest` in it, with what was said of
- *  either. */
 function rooted(reading: Reading, key: string, digest: string): Rooted {
   const { found, log, issues: read } = campaignAt(reading, key);
   const { kept, issue } = harnessRoot(found, log, digest);
@@ -253,7 +219,6 @@ function rooted(reading: Reading, key: string, digest: string): Rooted {
 export function harnessAnswer(reading: Reading, query: Query<"harness">): HarnessFiles {
   const { kept, issues } = rooted(reading, query.key, query.digest);
   if (kept === null) return { tier: reading.tier, issues, files: [] };
-  // Each program's account, by the path the panel lists it at.
   const programs = programsOf(join(kept.root, TOOL_TREE_DIR));
   const about = new Map(programs.map(({ at, account }) => [relative(kept.root, at), account]));
   const files = walk(kept, issues).map(({ path, bytes }) => ({

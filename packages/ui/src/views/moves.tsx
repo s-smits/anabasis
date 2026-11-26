@@ -11,21 +11,13 @@ import { SessionDetailView } from "./moves-session.tsx";
 import { SolveAnswerView } from "./solve.tsx";
 
 /*
- * The Moves pane: every Examiner session, Builder session and
- * comparison in order, one row each (`moves-list.tsx`); a row opens its detail in place through the
- * route's `move`, its place in the log (`moves-session.tsx`, `moves-comparison.tsx`), and a solve in
- * that detail opens
- * through the route's `solve` (`solve.tsx`). Each level hides the one above it rather than pushing
- * it down, and stays mounted while hidden, so that going back finds its filters and its focus where
- * they were.
- *
- * The pane reads the move and the solve itself, so that the level shown changes only once the
- * level asked for has its answer: until then the one before stays on screen, and only past the
- * patience (`late.ts`) does the asked level say that it is read, so the list does not hide itself
- * on a click nor each opening paint "Reading move" before its detail.
+ * The Moves pane: every Examiner session, Builder session and comparison in order (`moves-list.tsx`); a
+ * row opens its detail in place through the route's `move`, and a solve in it through `solve`. Each
+ * level hides the one above rather than pushing it down and stays mounted, so going back finds its
+ * filters and focus. The pane reads the move and solve itself, so the level shown changes only once the
+ * asked one has its answer, and only past the patience (`late.ts`) does it say it is read.
  */
 
-/** The list, a move, or a solve. */
 type Level = 0 | 1 | 2;
 
 function levelOf(move: number | null, solve: string | null): Level {
@@ -33,8 +25,6 @@ function levelOf(move: number | null, solve: string | null): Level {
   return move === null ? 0 : 1;
 }
 
-/** The move the route names, as its answer stands: the previous move's while the next is read and
- *  not yet `late`. */
 function MoveView({
   live,
   late,
@@ -70,7 +60,6 @@ export function MovesPane({ reading, navigation }: PaneProps) {
   // A solve opened by its link alone has no move to keep on screen.
   const shown = arrived || late || (kept === 1 && move === null) ? asked : kept;
   if (shown !== before) setBefore(shown);
-  // A row is keyed by its move's place, as a solve opened from no move is by its own id.
   const solveKey = solve === null ? null : `solve:${solve}`;
   const outer = useDrill(shown === 0 ? null : move === null ? solveKey : String(move));
   const inner = useDrill(shown === 2 ? solve : null);

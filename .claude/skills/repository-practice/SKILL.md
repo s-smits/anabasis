@@ -1,6 +1,6 @@
 ---
 name: repository-practice
-description: "Use before preparing commits or PRs, writing PR descriptions, comments, or prompts, choosing tests or checks, citing evidence rungs, or working near .ana/, .env, vendor/, or src/wall/. Explains evidence levels (present in source, proved without a model, exercised live), repository terminology, and directory ownership (AGENTS.md sections 9 to 14). preflight.ts reports required checks and labels; direction.ts detects forbidden production-to-helper imports. Procedures belong to stack-pr, run-management, and attribution-and-proof; coding habits live in tools/oxlint/HABITS.md."
+description: "Use before preparing commits or PRs, writing PR descriptions, comments, or prompts, choosing tests or checks, citing evidence rungs, or working near .ana/, .env, vendor/, or src/sandbox/. Explains evidence levels (present in source, proved without a model, exercised live), repository terminology, and directory ownership (AGENTS.md sections 9 to 14). preflight.ts reports required checks and labels; direction.ts detects forbidden production-to-helper imports. Procedures belong to stack-pr, run-management, and attribution-and-proof; coding habits live in tools/oxlint/HABITS.md."
 ---
 
 # Repository practice
@@ -36,8 +36,8 @@ determine what the diff requires:
 - each area of `tools/runtime/moments.ts` touched by the diff and its associated obligation (rule 3
   wall tests for `seats`, historical replay for `measurement`, rehearsal for `campaign`, and
   cross-platform verification for `wall`);
-- source files exceeding 800 nonblank lines, functions exceeding 115 lines, or unused exports across
-  authored roots (`tools/loc/source-policy.ts`);
+- source files exceeding 800 nonblank lines or functions exceeding 115 lines
+  (`tools/loc/source-policy.ts`);
 - `AGENTS.md` section 13 prose findings in changed Markdown (`PROSE` in `scripts/preflight.ts`);
 - whether Git hooks are enabled, whether a paid run may launch from the current worktree
   (`treeFault`), and with `--stack`, where the branch sits on the open stack

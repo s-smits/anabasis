@@ -15,39 +15,30 @@ import { containsUnknownType } from "../shared/unknown-type.ts";
 
 type Parameter = ESTree.ParamPattern;
 
-/** Recognised validation names: `asRecord`, `isString`, `parseJsonAs`, `requireJsonValue`. */
 const PROVING_NAME = /^(is|as|has|assert|ensure|require|validate|parse)[A-Z0-9]/u;
 
-/** Repository owners whose names do not match the pattern above. Two properties admit a name
- *  here, and nothing else does. `trustedJson` throws on a value it cannot admit, so reaching the
- *  next line is the proof. `errorMessage` and `errorCode` in `src/meta/runtime-values.ts` are
- *  total on `unknown`: they are the one place a caught value is turned into text or a code, and
- *  handing the parameter to that owner is the whole treatment it needs. A call that merely
- *  consumes the value without either property, `String(value)`, `JSON.stringify(value)`, is
- *  the slop this rule exists to report and must not be added. */
-const PROVING_CALLS = new Set(["trustedJson", "errorMessage", "errorCode"]);
+/** Owners whose names miss the pattern above: `errorMessage` and `errorCode`
+ *  (`src/meta/runtime-values.ts`) are total on `unknown`, the one place a caught value becomes text
+ *  or a code. A call that only consumes the value, `String(value)` or `JSON.stringify(value)`, is
+ *  what this rule reports and must not be added. */
+const PROVING_CALLS = new Set(["errorMessage", "errorCode"]);
 
 const FUNCTION_TYPES = new Set(["ArrowFunctionExpression", "FunctionDeclaration", "FunctionExpression"]);
 
-/** What one function body says about the names in it. */
 interface BodyEvidence {
-  /** Names a guard in this body narrowed outright. */
   proved: Set<string>;
   /** `const to = f(from)`: proving `to` proves `from`. */
   aliases: { from: string; to: string }[];
-  /** `f(x)` at argument `index`: proving `f`'s parameter there proves `x`. */
   calls: { argument: string; callee: string; index: number }[];
 }
 
-/** An `unknown` parameter, keeping the position it holds in the real parameter list: a call edge
- *  arrives by argument position, and a filtered list would answer for the wrong parameter. */
+/** Keeps its position in the real parameter list: a call edge arrives by argument position. */
 interface UnknownParameter {
   index: number;
   name: string | null;
   annotation: ESTree.TSTypeAnnotation;
 }
 
-/** One function with a body, plus the name its callers use. */
 interface Analysed {
   callableAs: string | null;
   parameters: UnknownParameter[];
@@ -55,15 +46,13 @@ interface Analysed {
   evidence: BodyEvidence;
 }
 
-/** Whether a node's property holds a string. The rule reads `name`, `value` and `operator` this
- *  way, and this is the only place that has to ask what a value is. */
 function stringProperty(node: AnyNode, key: string): string | null {
   const value = node[key];
   return isString(value) ? value : null;
 }
 
-/** Every node under `root`, stopping at a nested function: that function is analysed on its own,
- *  and descending would let a guard on its shadowed parameter name read as a proof out here. */
+/** Every node under `root`, stopping at a nested function: that one is analysed on its own, so a guard
+ *  on its shadowed parameter name proves nothing out here. */
 function walkOwnBody(root: AnyNode, visit: (node: AnyNode) => void): void {
   visit(root);
   for (const [key, child] of Object.entries(root)) {
@@ -94,7 +83,6 @@ function parameterName(parameter: Parameter): string | null {
   return identifierName(parameter);
 }
 
-/** The called function's name, whether `isString(x)` or `Array.isArray(x)`. */
 function calleeName(node: AnyNode): string | null {
   const callee = node.callee;
   if (!isNode(callee)) return null;
@@ -114,7 +102,6 @@ function isNullish(value: unknown): boolean {
   return identifierName(value) === "undefined";
 }
 
-/** `instanceof`, `in` and a comparison against null or undefined each prove one operand. */
 function readBinary(node: AnyNode, evidence: BodyEvidence): void {
   const operator = node.operator;
   const left = identifierName(node.left);
@@ -126,7 +113,6 @@ function readBinary(node: AnyNode, evidence: BodyEvidence): void {
   if (comparison && right !== null && isNullish(node.left)) evidence.proved.add(right);
 }
 
-/** A proving callee proves every identifier argument; any other call records a call edge. */
 function readCall(node: AnyNode, evidence: BodyEvidence): void {
   const callee = calleeName(node);
   if (callee === null) return;
@@ -205,9 +191,7 @@ export const noUnprovenUnknownParameterRule = defineRule({
   createOnce(context) {
     const analysed: Analysed[] = [];
     const byName = new Map<string, Analysed>();
-    /** Signatures with no body: nothing can prove them, so they report as upstream reports them. */
     const bodiless: UnknownParameter[] = [];
-    /** Source offset of a function expression -> the const or let it is assigned to. */
     const named = new Map<number, string>();
 
     const nameOf = (node: ESTree.Function | ESTree.ArrowFunctionExpression): string | null =>
@@ -247,7 +231,6 @@ export const noUnprovenUnknownParameterRule = defineRule({
       if (callableAs !== null) byName.set(callableAs, entry);
     };
 
-    /** A signature with no body, minus any parameter its own return type narrows. */
     const pushBodiless = (node: AnyNode, parameters: UnknownParameter[]): void => {
       const predicateOn = typePredicateName(node);
       for (const parameter of parameters) {
@@ -258,34 +241,26 @@ export const noUnprovenUnknownParameterRule = defineRule({
 
     const provedIndex = (entry: Analysed, index: number): boolean => {
       const parameter = entry.parameters.find((candidate) => candidate.index === index);
-      // The callee declared a type at this position, so handing it an `unknown` is already the
-      // proof: the compiler refuses the call unless the value has been narrowed first.
+      // The callee declared a type at this position, so the compiler already refuses an unnarrowed
+      // `unknown`.
       if (parameter === undefined) return true;
       return parameter.name !== null && entry.evidence.proved.has(parameter.name);
     };
 
     return {
-      // `createOnce` builds this state once for the whole run, so each file has to clear it. Left
-      // shared, one file's proofs admit another file's parameters and reports land on nodes the
-      // reporting file does not contain.
+      // `createOnce` builds this state once a run; uncleared, one file's proofs admit another's parameters.
       Program: () => {
         analysed.length = 0;
         bodiless.length = 0;
         byName.clear();
         named.clear();
       },
-      // Every callable with a body arrives at exactly one of these three, and each collects it
-      // once. A visitor for the node that *holds* a callable beside one for the callable itself
-      // reaches the same function twice and reports each unproven parameter twice: a
-      // MethodDefinition visitor did that to every class method, and collecting from
-      // VariableDeclarator did it to every `const f = (value: unknown) => …`. So the declarator
-      // contributes the binding name the sink fixpoint travels along, and nothing else.
+      // Every callable with a body arrives at exactly one of these three. The declarator, visited before
+      // its initialiser, only supplies the binding name: collecting there too reports each parameter twice.
       VariableDeclarator: (node: ESTree.VariableDeclarator) => {
         const { init } = node;
         if (node.id.type !== "Identifier" || init === null) return;
         if (init.type !== "ArrowFunctionExpression" && init.type !== "FunctionExpression") return;
-        // The declarator is visited before its own initialiser, so the name is waiting when the
-        // function below asks for it.
         named.set(init.start, node.id.name);
       },
       ArrowFunctionExpression: (node: ESTree.ArrowFunctionExpression) =>
@@ -310,9 +285,8 @@ export const noUnprovenUnknownParameterRule = defineRule({
         pushBodiless(nodeFields(node), unknownParameters(node.params)),
 
       "Program:exit": () => {
-        // A proof travels: through a local alias, and into a function this file declares. Repeat
-        // until nothing moves, so `hashJsonValue -> stableJson -> isPlainFiniteJson` resolves in
-        // whichever order the three appear in the file.
+        // A proof travels through a local alias and into a function this file declares; repeat
+        // until nothing moves, so the order in the file does not matter.
         for (let pass = 0; pass < analysed.length + 1; pass += 1) {
           let moved = false;
           for (const entry of analysed) {

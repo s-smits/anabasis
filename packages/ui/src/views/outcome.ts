@@ -1,11 +1,9 @@
 import type { Outcome } from "../models.ts";
 
 /**
- * The six things a scored task of a comparison comes to, in the one order and under the one label
- * and colour every chart, grid and legend uses, so that the Campaign pane's bars and the Tasks
- * pane's cells cannot come to name or tint an outcome differently. The colours are the
- * `--ana-out-*` tokens of `styles.css`, and a reader is never left to the colour alone: wherever an
- * outcome is drawn its label or its count stands beside it.
+ * The six things a scored task comes to, in the one order, label and colour every chart, grid and
+ * legend uses (the `--ana-out-*` tokens of `styles.css`); wherever an outcome is drawn, its label
+ * or count stands beside the colour.
  */
 export const OUTCOMES: readonly {
   readonly outcome: Outcome;

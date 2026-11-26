@@ -1,28 +1,13 @@
 #!/usr/bin/env bun
 /**
  * Summarises recorded solve and session expenditure against turn counts and the per-solve budget
- * reserve.
- *
- *   bun .claude/skills/campaign-mechanics/scripts/bills.ts <log.jsonl | campaign name>...
- *   bun .claude/skills/campaign-mechanics/scripts/bills.ts --runs <dir> [--since <date>]
- *
- * A campaign is capped in dollars (`--budget`), priced turn by turn from token usage (`billOf`,
- * `src/kernel/meter.ts`). A turn limit bounds each solve as a comparison condition rather than a
- * direct cost limit; the budget reserve (`--reserve`) is the single mechanism linking spend
- * protection to in-flight solves. A new solve starts only when remaining budget covers its reserve
- * alongside active solves (`affords`, `src/campaign/opening.ts`), and running solves are not
- * preempted, so the cap holds provided no solve under the active limits exceeds its reserve. This
- * script reports, grouped by seat and model, whether that condition holds empirically and how
- * closely turn counts track dollar expenditure:
- *
- * - finished seat counts, median turn counts, and spend at the median, 99th percentile, and
- *   maximum;
- * - cost per turn across seats (10th, 50th, and 90th percentiles) and the Spearman rank
- *   correlation between turns and total bill (a value near 1 indicates monotonic ordering rather
- *   than a fixed unit price);
- * - seats containing at least one turn priced at ten times their own median turn or higher;
- * - for solves, the number that exceeded their campaign's reserve, indicating whether `--reserve`
- *   is adequate before raising limits or lowering the reserve.
+ * reserve: `bills.ts <log.jsonl | campaign name>...` or `bills.ts --runs <dir> [--since <date>]`. A
+ * campaign is capped in dollars (`--budget`), priced turn by turn (`billOf`); a new solve starts
+ * only when the remaining budget covers its reserve (`--reserve`) beside active solves (`affords`),
+ * and running solves are not preempted, so the cap holds provided no solve exceeds its reserve.
+ * Grouped by seat and model, it reports median turns and spend, cost per turn and the Spearman
+ * correlation of turns with bill, seats with a turn at `DEAR` times their median, and solves over
+ * their campaign's reserve.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { campaignLogs } from "#skills/main/logs.ts";
@@ -61,7 +46,6 @@ const HEAD = [
   "past reserve",
 ];
 
-/** Completed seat record: total turns and expenditure, per-turn costs, and the solve reserve when applicable. */
 export interface Billed {
   readonly seat: Seat;
   readonly model: string;
@@ -71,7 +55,7 @@ export interface Billed {
   readonly reserve: number | null;
 }
 
-/** Extracts every completed solve and session with a recorded bill; Referee findings carry no separate bill and are omitted. */
+/** Referee findings carry no separate bill and are omitted. */
 function billedSeats(events: readonly LogEvent[]): Billed[] {
   const reserve = openingOf(events)?.budget?.reserve ?? null;
   const open = new Map<string, { model: string; each: number[] }>();
@@ -104,7 +88,7 @@ function billedSeats(events: readonly LogEvent[]): Billed[] {
 const centile = (sorted: readonly number[], share: number): number =>
   sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))] ?? Number.NaN;
 
-/** Computes zero-based average ranks, assigning tied values the mean of the rank positions they span. */
+/** Zero-based average ranks: tied values take the mean of the rank positions they span. */
 function ranks(values: readonly number[]): number[] {
   const order = values.map((value, at) => ({ value, at })).toSorted((a, b) => a.value - b.value);
   const out = values.map(() => 0);
@@ -117,7 +101,7 @@ function ranks(values: readonly number[]): number[] {
   return out;
 }
 
-/** Computes Spearman's rank correlation between `one` and `other`, returning null if either series is constant. */
+/** Spearman's rank correlation of `one` and `other`, or null if either series is constant. */
 function rankCorrelation(one: readonly number[], other: readonly number[]): number | null {
   const [a, b] = [ranks(one), ranks(other)];
   const mid = (a.length - 1) / 2;
@@ -131,13 +115,11 @@ function rankCorrelation(one: readonly number[], other: readonly number[]): numb
   return left === 0 || right === 0 ? null : both / Math.sqrt(left * right);
 }
 
-/** Returns whether any single turn in the seat cost at least `DEAR` times its median turn. */
 const hasDearTurn = ({ each }: Billed): boolean => {
   const middle = median(each);
   return middle !== null && middle > 0 && each.some((turn) => turn >= DEAR * middle);
 };
 
-/** Formats one summary row per `(seat, model)` group, ordered from largest to smallest group. */
 function billRows(seats: readonly Billed[]): string[][] {
   const groups = Map.groupBy(seats, ({ seat, model }) => `${seat}\t${model}`);
   return [...groups.values()]

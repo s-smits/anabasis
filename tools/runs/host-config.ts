@@ -11,51 +11,36 @@ import { isAbsolute, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 
-/** The live campaigns a machine carries where nothing configures its capacity. */
 export const RUN_CAP = 2;
 
-/** Where in a host's home the check runner keeps its slots, one clone with its packages a sending
- *  machine and slot (`onHost`, tools/runtime/router/run.ts), which `runs retire` clears once idle. */
 export const RUNNER_SLOTS = ".cache/ana-runner";
 
 export interface Host {
   readonly name: string;
   readonly ssh: string;
-  /** Absolute, or ~/path. Its leading home marker expands; the remainder stays literal. */
   readonly tree: string;
   readonly bun: string;
-  /** The env files there, credentials and this list among them. */
   readonly envFiles?: readonly string[];
-  /** Live campaigns or simulation seats this machine may carry. */
   readonly capacity?: number;
-  /** The check tasks this machine runs at once for the runner; unset, two. */
   readonly checks?: number;
   /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
   readonly packs?: readonly string[];
-  /** This host's own values of what a verb carries, over the shared ones; an empty one sends none. */
   readonly settings?: Readonly<Record<string, string>>;
-  /** The `ANA_TOOLS` rows this machine keeps outside the table: reported, and never changed. */
   readonly exclude?: readonly string[];
-  /** A controller already prepared by code.ts, never accepted from configuration. */
   readonly prepared?: true;
 }
 
-/** One outside benchmark: the machine that rolls it (undefined for this one), its score store and
- *  sitting command there, absolute or under `~/` where it was given relative, and the packs whose
- *  runs it reads. */
 export interface Bench {
   readonly name: string;
   readonly host: Host | undefined;
   readonly store: string;
   readonly sitting: string;
   readonly packs: readonly string[];
+  readonly minPromo?: number;
 }
 
-/** What every remote verb carries from this machine's environment, and all an entry's `settings` may
- *  name: `ANA_HOSTS` stays here, since a peer holding it would gather every host's records. */
 export const CARRIED: readonly string[] = ["ANA_KEEP", "ANA_LOGINS", "ANA_LOGIN_RUNS", "ANA_LOGIN_SUBS"];
 
-/** An entry's `settings`: an object of strings, and only of what is carried. */
 function settingsOf(name: string, value: unknown): Readonly<Record<string, string>> | undefined {
   if (value === undefined) return undefined;
   const entries = Object.entries(asRecord(value) ?? { "": null });
@@ -68,9 +53,6 @@ function settingsOf(name: string, value: unknown): Readonly<Record<string, strin
   return Object.fromEntries(entries.flatMap(([key, one]) => (isString(one) ? [[key, one] as const] : [])));
 }
 
-/** What the list setting `name` lists (`.env.runs.example`), refused as a plain error, which the CLI
- *  reads as a refusal. Set and empty, as a copied example leaves it, is unset: nothing listed, and
- *  for `ANA_HOSTS` this machine alone. */
 function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
   if (text.trim() === "") return [];
   try {
@@ -82,24 +64,133 @@ function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
   throw new Error(`${name} takes a JSON list (.env.runs.example)`);
 }
 
-/** Whether this verb is kept to this machine: one another host sent here (`ANA_HOP`, set by
- *  `scriptCommand` in hosts.ts), or one asked for here alone (`cli.ts`). It reaches no further
- *  host, so two machines that list each other do not ask each other in a loop, rather than the
- *  sender emptying `ANA_HOSTS`, which a keeper would inherit and so count no other machine's runs
- *  against a login's cap. */
-export const keptHere = (env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): boolean =>
-  env.ANA_HOP === "1";
+/** Whether this verb is kept to this machine: sent here by another host (`ANA_HOP`, set by
+ *  `scriptCommand` in `hosts.ts`) or asked for here alone (`cli.ts`). It reaches no further host,
+ *  so two machines that list each other never loop; the sender does not empty `ANA_HOSTS`, since a
+ *  keeper would inherit that and count no other machine's runs against a login's cap. */
+export const isLocalOnly = (
+  env: Readonly<Record<string, string | undefined>> = runtimeProcess.env,
+): boolean => env.ANA_HOP === "1";
 
-/** Where a check runs (`auto`, `here` or a host's name), as `ANA_CHECK_HOST` says; undefined where it
- *  is unset. */
 export const checkHost = (): string | undefined => runtimeProcess.env.ANA_CHECK_HOST;
 
-/** The check tasks `host` takes at once from the check runner and a landing: its `checks`, or two. */
 export const checkSlots = (host: Host): number => host.checks ?? 2;
 
-/** The hosts `text` lists, by default the environment's `ANA_HOSTS`: none for a verb kept here. */
+export interface Place {
+  readonly remote?: string;
+  readonly slots: number;
+}
+
+export const NO_VERDICT: ReadonlySet<number> = new Set([255, 75, 69]);
+
+export function checkPlaces(root: string, jobs: number | undefined): readonly Place[] {
+  return (checkHost()?.trim() ?? "") === "" ? fleetPlaces(root, jobs) : [{ slots: jobs ?? 1 }];
+}
+
+export function fleetPlaces(root: string, jobs: number | undefined): readonly Place[] {
+  const hosts = hostsFor(root).map((host) => ({ name: host.name, checks: checkSlots(host) }));
+  if (hosts.length === 0) return [{ slots: jobs ?? 1 }];
+  const dealt = new Map(hosts.map((host) => [host, 0]));
+  for (let left = jobs ?? Infinity; left > 0 && [...dealt].some(([host, slots]) => slots < host.checks); ) {
+    for (const [host, slots] of dealt) {
+      if (left > 0 && slots < host.checks) {
+        dealt.set(host, slots + 1);
+        left -= 1;
+      }
+    }
+  }
+  return [...dealt].flatMap(([host, slots]) => (slots === 0 ? [] : [{ remote: host.name, slots }]));
+}
+
+export const namedPlaces = (places: readonly Place[]): string =>
+  places.map(({ remote, slots }) => `${remote ?? "here"} (${String(slots)})`).join(", ");
+
+export const placeEnv = ({ remote }: Place): Readonly<Record<string, string>> =>
+  remote === undefined ? {} : { ANA_CHECK_HOST: remote, ANA_RUNNER_SPARE_HELD: "1" };
+
+export interface Seat {
+  readonly place: Place;
+  readonly index: number;
+  readonly leave: () => boolean;
+}
+
+export interface Spreading<T> {
+  readonly run: (task: T, seat: Seat) => Promise<"done" | "elsewhere">;
+  readonly qualify?: (seat: Seat) => Promise<string | null>;
+  readonly halt?: () => boolean;
+  readonly startsAlone?: (task: T) => boolean;
+}
+
+export async function spread<T>(
+  places: readonly Place[],
+  tasks: readonly T[],
+  { run, qualify, halt = () => false, startsAlone = () => false }: Spreading<T>,
+): Promise<{ unrun: T[]; refused: string[] }> {
+  const live = new Set(places);
+  const leave = (place: Place) => () => {
+    const others = [...live].some((other) => other !== place);
+    if (others) live.delete(place);
+    return others;
+  };
+  const seats = places.flatMap((place) => Array.from({ length: place.slots }, () => place));
+  const firsts = places.map((place) => ({
+    place,
+    index: seats.indexOf(place),
+    leave: leave(place),
+  }));
+  const refusals = qualify === undefined ? [] : await Promise.all(firsts.map(qualify));
+  const refused = refusals.filter((why) => why !== null);
+  for (const [at, why] of refusals.entries()) if (why !== null) live.delete(places[at] ?? { slots: 0 });
+  const busy = new Set<number>();
+  const queue = tasks.map((task, order) => ({ task, order }));
+  const running = new Set<Promise<void>>();
+  const room = (place: Place) => seats.filter((one, index) => one === place && !busy.has(index)).length;
+  const free = () =>
+    seats.flatMap((place, index) => (live.has(place) && !busy.has(index) ? [{ place, index }] : []));
+  const take = (task: T) => {
+    if (!startsAlone(task)) return free().toSorted((one, other) => room(other.place) - room(one.place))[0];
+    return running.size === 0 ? free()[0] : undefined;
+  };
+  try {
+    await dispatch();
+  } catch (error) {
+    await Promise.allSettled(running);
+    throw error;
+  }
+  return { unrun: queue.map(({ task }) => task), refused };
+
+  async function dispatch(): Promise<void> {
+    for (;;) {
+      const head = queue[0];
+      if (head === undefined || halt() || live.size === 0) {
+        if (running.size === 0) break;
+        await Promise.race(running);
+        continue;
+      }
+      const open = take(head.task);
+      if (open === undefined) {
+        if (running.size === 0) break;
+        await Promise.race(running);
+        continue;
+      }
+      queue.shift();
+      busy.add(open.index);
+      const seat = { ...open, leave: leave(open.place) };
+      const task: Promise<void> = run(head.task, seat).then((said) => {
+        busy.delete(open.index);
+        running.delete(task);
+        if (said === "done") return;
+        live.delete(open.place);
+        const above = queue.findIndex((other) => other.order > head.order);
+        queue.splice(above === -1 ? queue.length : above, 0, head);
+      });
+      running.add(task);
+    }
+  }
+}
+
 export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {
-  if (keptHere()) return [];
+  if (isLocalOnly()) return [];
   const value = listed(text);
   const names = new Set<string>();
   return value.map((entry) => {
@@ -157,22 +248,38 @@ export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Hos
   });
 }
 
-/** The machine settings' file, `.env.runs`, which lies in the main worktree and in no other. */
 export const envRunsFile = (root: string): string => join(mainTree(root), ".env.runs");
 
-/**
- * The hosts for a command run in `root` that loaded no env file: the environment's `ANA_HOSTS` where
- * it holds a list, else the one in the main worktree's `.env.runs`, where the bun router finds it for
- * a check task (`tools/runtime/router/bun`). Bun's own `--env-file` reads that file, as for every
- * verb that names it, in a child that hands this one value back through a pipe.
- */
+/** Reads selected keys from the main worktree's `.env.runs` with Bun's own `--env-file` parser, so
+ *  standalone commands (`bun run wri`, the check router) share fleet and bench config without
+ *  loading `.env`. */
+function readEnvRuns(root: string, keys: readonly string[]): Record<string, string | undefined> {
+  const file = envRunsFile(root);
+  if (!existsSync(file)) return {};
+  const env = Object.fromEntries(Object.entries(runtimeProcess.env).filter(([name]) => !keys.includes(name)));
+  const expr = `process.stdout.write(JSON.stringify(Object.fromEntries(${JSON.stringify(keys)}.map((k) => [k, process.env[k] ?? ""]))))`;
+  const raw = runTextSyncOrThrow([capturedExecPath, `--env-file=${file}`, "-e", expr], { cwd: root, env });
+  const parsed = asRecord(capturedJsonParse(raw)) ?? {};
+  return Object.fromEntries(
+    keys.map((key) => [key, isString(parsed[key]) && parsed[key] !== "" ? parsed[key] : undefined]),
+  );
+}
+
 export function hostsFor(root: string): readonly Host[] {
   if ((runtimeProcess.env.ANA_HOSTS ?? "") !== "") return hostsOf();
-  const file = envRunsFile(root);
-  if (!existsSync(file)) return [];
-  const env = Object.fromEntries(Object.entries(runtimeProcess.env).filter(([name]) => name !== "ANA_HOSTS"));
-  const read = ["-e", "process.stdout.write(process.env.ANA_HOSTS ?? '')"];
-  return hostsOf(runTextSyncOrThrow([capturedExecPath, `--env-file=${file}`, ...read], { cwd: root, env }));
+  return hostsOf(readEnvRuns(root, ["ANA_HOSTS"]).ANA_HOSTS ?? "");
+}
+
+export function benchesForRoot(root: string): readonly Bench[] {
+  if ((runtimeProcess.env.EVAL_RUNNER ?? "") !== "") return benchesOf();
+  const fromFile = readEnvRuns(root, ["ANA_HOSTS", "EVAL_RUNNER"]);
+  if (fromFile.EVAL_RUNNER === undefined) return [];
+  return benchesOf({
+    ...runtimeProcess.env,
+    ANA_HOSTS:
+      (runtimeProcess.env.ANA_HOSTS ?? "") === "" ? fromFile.ANA_HOSTS : runtimeProcess.env.ANA_HOSTS,
+    EVAL_RUNNER: fromFile.EVAL_RUNNER,
+  });
 }
 
 export function configuredRuntime(host: Host) {
@@ -180,24 +287,17 @@ export function configuredRuntime(host: Host) {
     isAbsolute(path) || path.startsWith("~/") ? path : `${host.tree}/${path}`;
   return {
     bun: host.bun.includes("/") ? rooted(host.bun) : host.bun,
-    // Bun implicitly loaded the configured checkout's .env before controllers moved elsewhere.
     envFiles: [...new Set([".env", ...(host.envFiles ?? [".env.runs"])].map(rooted))],
   };
 }
-/** This machine's own name, its short hostname: what `fresh` ends a run's name with when it runs
- *  here, and what `move` reads as `here`. */
 export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
-/** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. An older value that
- *  names one machine alone, as `ABLATION_HOST` did, is refused as not JSON. A verb kept to this
- *  machine (`keptHere`) reads the benchmarks rolled here alone, rather than finding no host for one
- *  rolled elsewhere and refusing the whole verb. */
 export function benchesOf(env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): Bench[] {
   const value = listed(env.EVAL_RUNNER ?? "", "EVAL_RUNNER");
   const known = hostsOf(env.ANA_HOSTS ?? "");
   const names = new Set<string>();
   return value.flatMap((entry): Bench[] => {
-    const { name, host = "here", store, sitting, packs } = asRecord(entry) ?? {};
+    const { name, host = "here", store, sitting, packs, minPromo } = asRecord(entry) ?? {};
     const given = (word: unknown): word is string => isString(word) && word !== "";
     if (!given(name) || !isSafePathSegment(name) || !given(host) || !given(store) || !given(sitting)) {
       throw new Error("each EVAL_RUNNER entry needs a safe name, a store and a sitting command");
@@ -207,11 +307,23 @@ export function benchesOf(env: Readonly<Record<string, string | undefined>> = ru
     if (!Array.isArray(packs) || packs.length === 0 || !packs.every(isString)) {
       throw new Error(`${name}: packs takes a list of the packs whose runs it reads`);
     }
-    if (host !== "here" && keptHere(env)) return [];
+    if (minPromo !== undefined && (!isNumber(minPromo) || !Number.isSafeInteger(minPromo) || minPromo < 0)) {
+      throw new Error(`${name}: minPromo takes a non-negative integer`);
+    }
+    if (host !== "here" && isLocalOnly(env)) return [];
     // A relative store or sitting is read from the home folder of its machine.
     const home = (path: string) => (isAbsolute(path) || path.startsWith("~/") ? path : `~/${path}`);
     const on = host === "here" ? undefined : hostNamed(host, known);
-    return [{ name, host: on, store: home(store), sitting: home(sitting), packs }];
+    return [
+      {
+        name,
+        host: on,
+        store: home(store),
+        sitting: home(sitting),
+        packs,
+        ...keyIfDefined("minPromo", minPromo),
+      },
+    ];
   });
 }
 

@@ -1,9 +1,9 @@
 /**
  * Which arguments of a call are each named for another position's parameter, read the same way by
- * the per-file rule `ana/no-transposed-argument` and the whole-tree scan `tree/no-transposed-argument`.
+ * the per-file rule `ana/no-transposed-argument` and the whole-tree scan
+ * (`tools/oxlint/tree-crossed-argument.ts`).
  */
 
-/** The lower-case words of a camel-case or snake-case name. */
 function wordsOf(name: string): string[] {
   return name
     .replaceAll(/([a-z0-9])([A-Z])/gu, "$1 $2")
@@ -13,7 +13,7 @@ function wordsOf(name: string): string[] {
     .filter((word) => word !== "");
 }
 
-/** Whether a name's words begin or end with a parameter's words: `sourcePath` fits `source`. */
+/** `sourcePath` fits `source`: a name's words begin or end with the parameter's. */
 function fits(name: string, parameter: string): boolean {
   const have = wordsOf(name);
   const want = wordsOf(parameter);
@@ -22,7 +22,6 @@ function fits(name: string, parameter: string): boolean {
   return want.every((word, k) => have[k] === word) || want.every((word, k) => have[offset + k] === word);
 }
 
-/** The one other position whose parameter an argument names, or null. */
 function pointerOf(name: string | null, own: string | null, params: readonly (string | null)[]) {
   if (name === null || own === null || fits(name, own)) return null;
   const named = params.flatMap((param, j) => (param !== null && fits(name, param) ? [j] : []));
@@ -30,8 +29,8 @@ function pointerOf(name: string | null, own: string | null, params: readonly (st
 }
 
 /**
- * The crossings of a call: each a list of argument positions in order, where the argument at each
- * position names the parameter of the next and the last names the first's.
+ * Each crossing is a list of argument positions in order, where the argument at each position names
+ * the parameter of the next and the last names the first's.
  */
 export function crossings(names: readonly (string | null)[], params: readonly (string | null)[]): number[][] {
   const pointers = names.map((name, i) => pointerOf(name, params[i] ?? null, params));

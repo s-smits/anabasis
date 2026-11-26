@@ -38,7 +38,6 @@ describe("the turn a keeper takes", () => {
       [[waited(1)], "open", "watch"],
       [[waited(5, "load")], "open", "watch"],
       [[waited(5), event("build.started", { session: "b-1" })], "open", "watch"],
-      // A seat that ran on after the wait writes its call and its failed turn; the wait stands.
       [
         [waited(2), event("exam.call", { session: "x-1" }), event("exam.turn", { stopReason: "error" })],
         "open",
@@ -54,8 +53,8 @@ describe("the turn a keeper takes", () => {
     for (const ending of ["budget", "stop", "operator", "finished", "no-room"]) {
       expect(turn([event("campaign.ended", { ending })], false)).toBe("done");
     }
-    // A wait the launch before this one recorded is not this launch's to move: the keeper that just
-    // moved the run would move it again while its new process makes its first calls.
+    // A wait the launch before this one recorded is not this launch's to move, or the keeper that just
+    // moved the run would move it again during its first calls.
     expect(turn([waited(2), event("exam.call", { session: "x-1" })], true, 1)).toBe("watch");
   });
 
@@ -66,7 +65,6 @@ describe("the turn a keeper takes", () => {
       expect(state).toEqual({ kind: "ended", ending });
       expect(turnOf(state, NOW, HOUR)).toBe("done");
     }
-    // A login's limit is waited out, so its process dies on the wait or ends on its environment.
     for (const events of [[waited(2)], [waited(2), event("campaign.ended", { ending: "environment" })]]) {
       expect(kept(events).kind).toBe("kept");
       expect(turnOf(kept(events), NOW, HOUR)).toBe("continue");
@@ -132,8 +130,7 @@ describe("a keeper's looks, scripted", () => {
   const MINUTE = 60_000;
   const WAIT_MS = Number(WAIT_HOURS) * HOUR;
 
-  /** A keeper of a run on login 2 over logins 2 to 4, over a log and readings a test sets. */
-  function scripted(flags: readonly string[] = [`--builder=${OPUS}`], login: string | undefined = "2") {
+  function scripted(flags: readonly string[] = [`--builder=${OPUS}`], login: string | null = "2") {
     const none: string[] = [];
     const nobody: { name: string; login: string; host: string }[] = [];
     const log: LogEvent[] = [waited(40)];
@@ -153,7 +150,7 @@ describe("a keeper's looks, scripted", () => {
     const look = keeperOf("sample", async () => state.pool, WAIT_MS, {
       events: () => state.events,
       stands: (events, now) => stateOf(events, { writing: state.open, kept: state.otherKeeper }, now),
-      last: () => ({ login, flags }),
+      last: () => ({ login: login ?? undefined, flags }),
       fleet: () => Promise.resolve({ live: state.live, unasked: state.unasked }),
       read: (wanted) => {
         state.asked += wanted.length > 0 ? 1 : 0;
@@ -256,11 +253,18 @@ describe("a keeper's looks, scripted", () => {
       ];
       await dead.look(NOW);
       expect(dead.state.acted).toEqual(["start 3"]);
-      // Even a week later, the permanently dead login is not taken again.
+      // A transiently closed login still waits; once every pool login is permanently refused, exit.
       dead.state.acted = [];
-      dead.state.pool = ["2"];
-      await dead.look(NOW + 168 * HOUR);
+      dead.state.pool = ["2", "3"];
+      dead.state.readings = [read("3", 100)];
+      expect(await dead.look(NOW + HOUR)).toBe(false);
       expect(dead.state.acted).toEqual([]);
+      dead.state.pool = ["2"];
+      expect(await dead.look(NOW + 168 * HOUR)).toBe(true);
+      expect(dead.state.acted).toEqual([]);
+      expect(dead.state.said.at(-1)).toContain(
+        "non-retryable provider refusal on every login: kept no longer",
+      );
     }
     const transient = scripted();
     transient.state.open = false;
@@ -274,24 +278,103 @@ describe("a keeper's looks, scripted", () => {
     await transient.look(NOW);
     expect(transient.state.acted).toEqual(["start 2"]);
   });
+
+  it("exits immediately instead of rotating Claude logins when a non-Claude seat permanently refuses", async () => {
+    const opening = (reviewer: string) =>
+      event("campaign.opened", {
+        seats: {
+          builder: { model: OPUS, effort: "high" },
+          examiner: { model: OPUS, effort: "high" },
+          reviewer: { model: reviewer, effort: "medium" },
+        },
+        solver: { model: OPUS, effort: "medium" },
+      });
+    const refTurn = event("referee.turn", {
+      reader: "draft-d-1-1",
+      turn: 1,
+      stopReason: "error",
+      error: "requires more credits",
+    });
+    const claudeTurn = event("build.turn", {
+      session: "b-1",
+      turn: 1,
+      stopReason: "error",
+      error: "disabled Claude subscription access",
+    });
+    const ended = (why: string) => event("campaign.ended", { ending: "environment", why });
+    const run = async (events: LogEvent[], flags?: readonly string[], login: string | null = "2") => {
+      const k = scripted(flags, login);
+      k.state.open = false;
+      k.state.events = events;
+      return { done: await k.look(NOW), acted: k.state.acted, said: k.state.said.at(-1) ?? "" };
+    };
+
+    const apiReviewer = await run([
+      opening("openai/gpt-5"),
+      refTurn,
+      ended("the judge recorded no vote (requires more credits)"),
+    ]);
+    expect(apiReviewer).toMatchObject({ done: true, acted: [] });
+    expect(apiReviewer.said).toContain("outside the Claude login: kept no longer");
+
+    expect(
+      await run([
+        opening(OPUS),
+        event("solve.started", { solve: "s-1", model: "openai/gpt-5" }),
+        event("solve.turn", { solve: "s-1", turn: 1, stopReason: "error", error: "requires more credits" }),
+        ended("3 sessions in a row crashed (requires more credits)"),
+      ]),
+    ).toMatchObject({ done: true, acted: [] });
+
+    expect(
+      await run(
+        [opening(OPUS), refTurn, ended("the judge recorded no vote (requires more credits)")],
+        [`--builder=${OPUS}`, "--reviewer=openai/gpt-5"],
+      ),
+    ).toMatchObject({ done: true, acted: [] });
+
+    expect(
+      await run(
+        [opening("openai/gpt-5"), refTurn, ended("the judge recorded no vote (requires more credits)")],
+        [`--builder=${OPUS}`, `--reviewer=${OPUS}`],
+      ),
+    ).toMatchObject({ done: false, acted: ["start 3"] });
+
+    expect(await run([ended("Provider is not configured")])).toMatchObject({ done: true, acted: [] });
+    expect(
+      await run([ended("disabled Claude subscription access")], [`--builder=${OPUS}`], null),
+    ).toMatchObject({
+      done: true,
+      acted: [],
+    });
+
+    const both = [opening("openai/gpt-5"), refTurn, claudeTurn];
+    expect(await run([...both, ended("the judge recorded no vote (requires more credits)")])).toMatchObject({
+      done: true,
+      acted: [],
+    });
+    expect(await run([...both, ended("disabled Claude subscription access")])).toMatchObject({
+      done: false,
+      acted: ["start 3"],
+    });
+  });
 });
 
-describe("going on with a live run after a pause", () => {
-  /** `continue --after next` of a live campaign whose comparisons began at 0.02, on `level`. The
-   *  campaign command here takes its dry run's refusal from the real opening (`opened`), and its
-   *  live run, once it reads the pause word, finishes a solve. Each case takes 60 s: under a whole
-   *  suite, the word, the run's end and `continue`'s polls outlast 20 s. */
+describe.concurrent("going on with a live run after a pause", () => {
+  /** `continue --after next` of a live campaign whose comparisons began at 0.02, on `level`; the
+   *  dry run's refusal comes from the real opening (`opened`). Each case takes 60 s, as a whole
+   *  suite's word, run end and polls outlast 20 s. */
   async function goOnLive(level: string) {
     const made = fakeHosts();
     fixtures.push(made.root);
     const folder = join(made.main, ".ana", "d2", "sample");
     mkdirSync(folder, { recursive: true });
-    mkdirSync(join(made.main, "tools", "d2"), { recursive: true });
+    mkdirSync(join(made.main, "tools", "campaign"), { recursive: true });
     writeFileSync(join(made.main, "package.json"), '{ "name": "fixture" }\n');
     const log = join(folder, "log.jsonl");
-    const terms = join(import.meta.dir, "..", "tools", "d2", "campaign-terms.ts");
+    const terms = join(import.meta.dir, "..", "tools", "campaign", "campaign-terms.ts");
     writeFileSync(
-      join(made.main, "tools", "d2", "harness-builder.ts"),
+      join(made.main, "tools", "campaign", "harness-builder.ts"),
       `import { appendFileSync, readFileSync } from "node:fs";
 import { flagsOf, opened } from ${JSON.stringify(terms)};
 const log = ${JSON.stringify(log)};
@@ -308,16 +391,14 @@ else {
       log,
       `${JSON.stringify(event("comparison.started", { comparison: "c-1", level: 0.02 }))}\n`,
     );
-    const live = capturedSpawn([capturedExecPath, "tools/d2/harness-builder.ts", "--name", "sample"], {
+    const live = capturedSpawn([capturedExecPath, "tools/campaign/harness-builder.ts", "--name", "sample"], {
       cwd: made.main,
       detached: true,
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",
     });
-    // The fixture's `ps` lists the live run while it lives, and not once it is a zombie, as
-    // `writers` reads it.
-    const row = `${String(live.pid)} ${capturedExecPath} tools/d2/harness-builder.ts --name sample`;
+    const row = `${String(live.pid)} ${capturedExecPath} tools/campaign/harness-builder.ts --name sample`;
     writeFileSync(
       join(made.root, "bin", "ps"),
       `#!${capturedExecPath}
@@ -328,7 +409,7 @@ if (stat !== "" && !stat.startsWith("Z")) console.log(${JSON.stringify(row)});
     const before = readFileSync(log, "utf8");
     const flags = ["--project", "p", "--prompt", "a domain", "--solver", OPUS, "--level", level];
     const words = JSON.stringify(["sample", "--after", "next", "--yes", "--", ...flags]);
-    const result = made.run(
+    const result = await made.runAsync(
       `import { continueRun } from "REPOSITORY/tools/runs/manage.ts"; await continueRun(${words});`,
       { FAKE_CWDS: `p${String(live.pid)}\nn${made.main}` },
     );
@@ -411,8 +492,8 @@ describe("the login a run goes on with", () => {
   });
 
   it("bills only the effective seats after the campaign's overrides", () => {
-    const preset = seats(OPUS, "hhhh");
-    const overrides = seats("openai-codex/gpt-6.1-sol", "hhhh");
+    const preset = seats(OPUS, "hhhh").seated;
+    const overrides = seats("openai-codex/gpt-6.1-sol", "hhhh").seated;
     expect(billsLogin([], [...preset, ...overrides])).toBe(false);
     expect(billsLogin([], [...overrides, "--prompt", "claude/a domain"])).toBe(false);
     const opening = event("campaign.opened", {
@@ -422,5 +503,41 @@ describe("the login a run goes on with", () => {
       solver: { model: OPUS, effort: "high" },
     });
     expect(billsLogin([opening], overrides)).toBe(false);
+  });
+});
+
+describe("the seats a fresh run names", () => {
+  const NAMES = ["opus", "sonnet", "gpt", "claude/claude-haiku-5-5"];
+  const seatOf = (flags: readonly string[], seat: number) => flags.slice(seat * 4, seat * 4 + 4);
+
+  it("gives each of four models its own seat at its own letter, and one model every seat", () => {
+    const four = NAMES.flatMap((a) =>
+      NAMES.flatMap((b) => NAMES.flatMap((c) => NAMES.map((d) => [a, b, c, d]))),
+    );
+    for (const names of four) {
+      const { label, seated } = seats(names.join(","), undefined);
+      for (const [seat, name] of names.entries()) {
+        expect(seatOf(seated, seat)).toEqual(seatOf(seats(name, undefined).seated, seat));
+      }
+      expect(label).toBe(seats(names.at(-1) ?? "", undefined).label);
+      expect(seats(names.join(","), "lmhx").seated.filter((_, at) => at % 4 === 3)).toEqual([
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+      ]);
+    }
+    for (const name of NAMES) {
+      expect(seats(name, "hmxl")).toEqual(seats([name, name, name, name].join(","), "hmxl"));
+    }
+  });
+
+  it("refuses two, three or five models, and an effort of other than four letters", () => {
+    for (const count of [2, 3, 5]) {
+      expect(() => seats(Array.from({ length: count }, () => "opus").join(","), undefined)).toThrow(
+        "--model takes",
+      );
+    }
+    expect(() => seats("opus", "hhm")).toThrow("--effort takes");
   });
 });

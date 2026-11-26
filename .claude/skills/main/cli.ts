@@ -1,6 +1,6 @@
 /**
- * Shared command-line front end for repository skill scripts: strict option parsing via
- * production's `parseArgs` (`src/meta/process.ts`) and uniform one-line diagnostic exits.
+ * Shared command-line front end for skill scripts: strict option parsing via production's
+ * `parseArgs` (`src/meta/process.ts`) and uniform one-line diagnostic exits.
  */
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
@@ -15,17 +15,16 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 type ExitWith = (message: string, code?: number) => never;
 
 /**
- * Option value kind: `abs` requires an absolute path, `int` an integer, `list` collects repeated
- * occurrences, `text` takes a single string, and `flag` a boolean switch.
+ * `abs` requires an absolute path, `int` an integer, `list` collects repeated occurrences, `text`
+ * takes one string, and `flag` is a boolean switch.
  */
 type OptionKind = "text" | "abs" | "int" | "flag" | "list";
 
-/** Return value of a command's `run` callback: an explicit exit code, or `undefined`/`void` for 0. */
+/** An explicit exit code, or nothing for 0. */
 type CommandResult = number | undefined | void;
 
 interface CommandSpec {
   name: string;
-  /** Usage text printed for `--help` and referenced on argument errors. */
   usage: string;
   options?: Readonly<Record<string, OptionKind>>;
   positionals?: number | readonly [number, number];
@@ -34,23 +33,21 @@ interface CommandSpec {
 export interface CommandArgs {
   readonly die: ExitWith;
   readonly positionals: readonly string[];
-  /** Returns the option's string value (resolved when `abs`), or `null` if omitted. */
+  /** Resolved when `abs`; `null` if omitted. */
   value: (name: string) => string | null;
-  /** Returns the option's non-empty value, or exits via `die` when missing or empty. */
+  /** Exits via `die` when missing or empty. */
   required: (name: string) => string;
   int: (name: string) => number | null;
   flag: (name: string) => boolean;
   list: (name: string) => readonly string[];
 }
-/** Raw parsed arguments from `parseArgs`: option values and positional tokens. */
 interface Parsed {
   readonly values: Readonly<Record<string, string | boolean | readonly (string | boolean)[] | undefined>>;
   readonly positionals: readonly string[];
 }
 
-/** Parses `argv` against `spec` using production's `parseArgs`, rejecting unknown options, missing
- *  values, duplicate non-list options, and out-of-range positional counts (`-h`/`--help` bypasses
- *  positional count validation). */
+/** Rejects unknown options, missing values, duplicate non-list options and out-of-range positional
+ *  counts; `-h`/`--help` bypasses the positional count. */
 export function parseCliArgs(
   argv: readonly string[],
   spec: Pick<CommandSpec, "options" | "positionals">,
@@ -85,8 +82,8 @@ export function parseCliArgs(
 }
 
 /**
- * Structured command exit carrying a specific exit code and one-line message (such as a negative
- * validation verdict). Uncaught errors of other types exit with code 1.
+ * A command exit with its own code and one-line message, such as a negative validation verdict;
+ * other uncaught errors exit 1.
  */
 export class CommandFailure extends Error {
   readonly code: number;
@@ -147,8 +144,8 @@ function commandArgs(spec: CommandSpec, parsed: Parsed, die: ExitWith): CommandA
   };
 }
 
-/** Rewrites leading `from/` prefixes in `arg` (at the start, after `--option=`, or after commas)
- *  to `to/` so home-relative paths translate cleanly across hosts. */
+/** Rewrites leading `from/` prefixes (at the start, after `--option=`, or after commas) to `to/`,
+ *  so home-relative paths translate across hosts. */
 function rehome(arg: string, from: string, to: string): string {
   return arg
     .split(",")
@@ -161,8 +158,8 @@ function rehome(arg: string, from: string, to: string): string {
     .join(",");
 }
 
-/** Extracts `--host` before any `--` separator and rewrites local home paths to `~/`, or returns
- *  `null` when `--host` is absent. */
+/** Extracts `--host` before any `--` and rewrites local home paths to `~/`, or returns `null` when
+ *  `--host` is absent. */
 export function hostRoute(argv: readonly string[], home: string): { host: string; args: string[] } | null {
   const end = argv.includes("--") ? argv.indexOf("--") : argv.length;
   const at = argv.slice(0, end).findIndex((token) => token === "--host" || token.startsWith("--host="));
@@ -178,9 +175,8 @@ export function hostRoute(argv: readonly string[], home: string): { host: string
 }
 
 /**
- * Entry wrapper for skill CLI scripts: parses arguments against `spec`, prints usage on `--help`,
- * exits 2 on invalid arguments, exits 1 (or `CommandFailure.code`) on runtime failures, and
- * forwards execution via `scriptOn` when `--host` is specified.
+ * Parses arguments against `spec`, prints usage on `--help`, exits 2 on invalid arguments and 1 (or
+ * `CommandFailure.code`) on runtime failures, and forwards to `scriptOn` when `--host` is given.
  */
 export async function runCommand(
   spec: CommandSpec,

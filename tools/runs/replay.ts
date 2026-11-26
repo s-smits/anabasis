@@ -14,7 +14,7 @@ import { isCampaign } from "./registry.ts";
 import { readableAcross } from "./snapshots.ts";
 
 /** What this tree's readers make of the log at `path`, in a line. */
-export function replayed(path: string): string {
+function replayed(path: string): string {
   const events: LogEvent[] = [];
   let total = 0;
   eachEvent(path, (event) => {
@@ -32,7 +32,6 @@ export function replayed(path: string): string {
   ].join(" · ");
 }
 
-/** `bun run runs replay`. */
 export async function replay(args: readonly string[]): Promise<void> {
   const { asked, names } = askedIn(args);
   const asks = asked.holds.length + asked.has.length > 0;

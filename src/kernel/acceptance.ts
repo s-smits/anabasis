@@ -1,25 +1,10 @@
-/**
- * A checker's acceptance: what an imported check program has been seen to do, before any task
- * counts on it.
- *
- * Two readings ask what no control answer of the pack's does. The do-nothing answer, the smallest
- * the answer format allows, must be rejected on every
- * task: Anchor tests its generated verifiers so, and cites a benchmark on which an agent that did
- * nothing passed 38% of the tasks, because the verifier accepted an empty response. And a check whose
- * author's own computation decides it, with no installed instrument, is a fault until the operator
- * admits it by name: all 32 verified firmware fails in v1 ran on task sets whose instrument a Builder
- * had written, and 24 of them were that stand-in rejecting valid code. A check's instrument is named
- * by the tool it runs, never by a label its author writes, since an author's label can call a
- * check `authored` that runs the pack's engine. An exam with no engine behind any check stands only
- * once the operator admits each check by name.
- */
 import { Pointer } from "typebox/value";
-import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isBoolean, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import type { AnswerFile } from "./answer-files.ts";
-import { gainOver, GAP_FLOOR } from "./compare.ts";
-import { answerFormatFault, type Contract } from "./contract.ts";
+import { gainOver, GAP_FLOOR, objectiveRuleOf } from "./compare.ts";
+import { answerFormatFault, codeObjective, type Contract, hasJudge } from "./contract.ts";
 import { eventsOf, type LogEvent } from "./log.ts";
 import {
   applicableTruthChecks,
@@ -30,78 +15,49 @@ import {
   OBJECTIVE,
   objectiveOf,
   requiredToolsOf,
+  scoresOf,
   spelled,
   type Task,
   type Verdict,
   type Verifier,
 } from "./verify.ts";
 
-/** What a check that runs no engine is decided by. */
 export const AUTHOR = "author";
+export const JUDGE = "judge";
 
-/** A control answer as v1's `controls.json` labels it: an answer the checks must accept, or an edit of
- *  one that a named check must refuse. */
 export interface Control {
   readonly taskId: string;
   readonly answer: JsonValue;
-  /** The check that must refuse it; null for an answer that must pass. */
   readonly refusedBy: string | null;
-  /** The files beside the answer, as a solver leaves them under its deliverables folder. */
   readonly files?: readonly AnswerFile[];
 }
 
-/** A control answer with the checks run on it twice. */
 interface ControlAnswerRun extends Control {
   readonly verdicts: readonly [Verdict, Verdict];
 }
 
-/** An answer whose verdict is on record: a control answer's first run. */
-interface Graded {
-  readonly task: Task;
-  readonly verdict: Verdict;
-}
-
-/** The do-nothing answer's verdict on one task. */
 interface Idle {
   readonly taskId: string;
   readonly verdict: Verdict;
 }
 
-/** Whether a declared verifier tool is installed inside the pack (`"pack"` or legacy `true`),
- *  forwarded from the ambient host toolchain (`"host"`), or absent (`false`). Only pack-installed
- *  engines qualify as independent instruments under Rule 10. */
 export type ToolAvailability = boolean | "pack" | "host";
 
-/** What one check has been seen to do. */
 interface CheckReading {
   readonly id: string;
-  /** What decides it, named by its pack-installed engines (`"pack"`), or `author` where it runs
-   *  none or only host-forwarded tools and its author's own code decides it. */
   readonly instrument: string;
-  /** Declared tools the verifier's tool path does not hold. */
   readonly missing: readonly string[];
-  /** Control answers it applied to and let pass, and those it refused. */
   readonly passed: number;
   readonly refused: number;
-  /** Reject control answers that name it, and how many of those it refused. */
   readonly named: number;
   readonly caught: number;
 }
 
-interface Acceptance {
-  readonly checks: readonly CheckReading[];
-  /** What stands between the checker and its acceptance, one sentence each. */
-  readonly faults: readonly string[];
-}
-
-/** A checker by what it is: its contract's hash, and the digest of its program's files. */
 export interface Checker {
   readonly contract: string;
   readonly checks: string;
 }
 
-/** What a checker is read on: its verifier and brief, the tasks and control answers put to it, and
- *  whether the verifier's tool path holds a tool. */
 export interface Read {
   readonly verify: Verifier;
   readonly brief: Brief;
@@ -109,10 +65,7 @@ export interface Read {
   readonly tasks: readonly Task[];
   readonly controls: readonly Control[];
   readonly found: (toolId: string) => ToolAvailability;
-  /** Verifier runs in flight at once. */
   readonly width: number;
-  /** False where the reading runs no probe of its tasks (`probeFaults`): the acceptance command's,
-   *  over an exam whose draft was probed when it stood. */
   readonly probes?: false;
 }
 
@@ -120,52 +73,78 @@ interface Probe {
   readonly run: ControlAnswerRun;
   readonly task: Task;
   readonly files: readonly AnswerFile[] | undefined;
+  readonly field?: Field;
 }
+
+interface Field {
+  readonly path: string;
+  readonly answer: JsonValue;
+}
+
+type Strings = "emptied" | "filled";
+
+function otherLeaf(value: JsonValue, strings: Strings): JsonValue | undefined {
+  if (isBoolean(value)) return !value;
+  if (isString(value) && value !== "" && strings === "emptied") return "";
+  if (isString(value)) return value === "x" ? "y" : "x";
+  if (!isNumber(value)) return undefined;
+  if (value === 0) return 1;
+  return Number.isInteger(value) ? Math.trunc(value / 2) : value / 2;
+}
+
+function fieldsOf(answer: JsonValue, path: string, strings: Strings): Field[] {
+  if (Array.isArray(answer)) {
+    const each = answer.map(
+      (item) => new Map(fieldsOf(item, `${path}[]`, strings).map((field) => [field.path, field.answer])),
+    );
+    return [...new Set(each.flatMap((fields) => [...fields.keys()]))].map((at) => ({
+      path: at,
+      answer: answer.map((item, index) => each[index]?.get(at) ?? item),
+    }));
+  }
+  if (isRecord(answer)) {
+    return Object.entries(answer).flatMap(([key, value]) =>
+      fieldsOf(value, `${path}.${key}`, strings).map((field) => ({
+        ...field,
+        answer: { ...answer, [key]: field.answer },
+      })),
+    );
+  }
+  const other = otherLeaf(answer, strings);
+  return other === undefined ? [] : [{ path, answer: other }];
+}
+
+type SchemaHandler = (
+  held: Record<string, JsonValue | undefined>,
+  smallest: (inner: JsonValue | undefined) => JsonValue,
+) => JsonValue;
 
 const NO_FILES: readonly AnswerFile[] = [];
 const when = (holds: boolean, text: string) => (holds ? [text] : []);
 
-/** Every control answer through the checks, twice, `width` at once. A control answer of a task the pack does not
- *  hold is the caller's error, not the checker's, and a verifier that cannot decide stops the run,
- *  as it stops task admission (`decided`): a wall that is not there is no fault of a check's. */
-function runControls(
-  verify: Verifier,
-  byId: ReadonlyMap<string, Task>,
-  controls: readonly Control[],
-  width: number,
-): Promise<ControlAnswerRun[]> {
-  return pooled(controls, width, async (control) => {
-    const task = byId.get(control.taskId);
-    if (task === undefined) {
-      throw new Error(`a control names ${control.taskId}, which the pack holds no task for`);
-    }
-    const first = await decided(verify, task, control.answer, control.files);
-    return { ...control, verdicts: [first, await decided(verify, task, control.answer, control.files)] };
-  });
-}
+const BY_TYPE = new Map<string, SchemaHandler>([
+  [
+    "object",
+    (held, smallest) => {
+      const properties = asRecord(held.properties) ?? {};
+      const required = Array.isArray(held.required) ? held.required.filter(isString) : [];
+      return Object.fromEntries(required.map((name) => [name, smallest(properties[name])]));
+    },
+  ],
+  [
+    "array",
+    (held, smallest) =>
+      Array.from({ length: isNumber(held.minItems) ? held.minItems : 0 }, () => smallest(held.items)),
+  ],
+  ["string", (held) => "x".repeat(isNumber(held.minLength) ? held.minLength : 0)],
+  [
+    "number",
+    (held) =>
+      isNumber(held.minimum) ? held.minimum : isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0,
+  ],
+  ["boolean", () => false],
+]);
 
-/**
- * The do-nothing answer: the smallest value a JSON Schema allows, built from the schema alone. An
- * object holds its required properties and no other, an array its fewest items, a string its
- * fewest characters, a number its minimum or zero; an enumeration gives its first value, a choice
- * of schemas its first, and a local reference the schema it points to, or null where it is already
- * being followed. A keyword outside these is not read, so the value may miss the format, which the
- * caller asks (`answerFormatFault`) before it puts the answer to a check. References are followed
- * so that a draft citing `#/$defs/...` is not refused on it.
- */
-function minimalPrimitive(
-  held: Record<string, JsonValue | undefined>,
-  type: JsonValue | undefined,
-): JsonValue {
-  if (type === "string") return "x".repeat(isNumber(held.minLength) ? held.minLength : 0);
-  if (type === "number" || type === "integer") {
-    if (isNumber(held.minimum)) return held.minimum;
-    return isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0;
-  }
-  return type === "boolean" ? false : null;
-}
-
-/** Smallest value a JSON Schema allows, following local `#` references. */
 function doNothingAnswer(
   schema: JsonValue | undefined,
   root: JsonValue | undefined = schema,
@@ -183,189 +162,137 @@ function doNothingAnswer(
   if (Array.isArray(held.enum)) return held.enum[0] ?? null;
   const choice = [held.anyOf, held.oneOf].find((options) => Array.isArray(options));
   if (Array.isArray(choice)) return smallest(choice[0]);
-  const type = Array.isArray(held.type) ? held.type[0] : held.type;
-  if (type === "object") {
-    const properties = asRecord(held.properties) ?? {};
-    const required = Array.isArray(held.required) ? held.required.filter(isString) : [];
-    return Object.fromEntries(required.map((name) => [name, smallest(properties[name])]));
-  }
-  if (type === "array") {
-    return Array.from({ length: isNumber(held.minItems) ? held.minItems : 0 }, () => smallest(held.items));
-  }
-  return minimalPrimitive(held, type);
+  const rawType = Array.isArray(held.type) ? held.type[0] : held.type;
+  const handler = BY_TYPE.get(rawType === "integer" ? "number" : isString(rawType) ? rawType : "");
+  return handler === undefined ? null : handler(held, smallest);
 }
 
-/** Run `probes` through `verify` (dropping non-results) and classify validity/objective sensitivity. */
-async function probeSensitivity(given: Read, probes: readonly Probe[]) {
-  const { verify, brief, width } = given;
-  const results = (
-    await pooled(probes, width, async ({ run, task, files }) => ({
-      run,
-      verdict: await verify(task, run.answer, undefined, files),
-    }))
-  ).filter(({ verdict }) => verdict.kind !== "non-result");
-  const rule = { direction: brief.objective?.direction ?? "higher" } as const;
-  // `objective` runs only after every truth check passed (`verify.ts`), so an objective-only
-  // fault still proves every validity check passed without reading the perturbed input.
-  const allValid =
-    results.length > 0 &&
-    results.every(
-      ({ verdict }) =>
-        verdict.kind === "pass" || (verdict.kind === "faulty" && verdict.check === OBJECTIVE.id),
+function flatRubricNotes(brief: Brief, verdicts: readonly Verdict[]): string[] {
+  return (codeObjective(brief.objective)?.items ?? []).flatMap(({ id }) => {
+    const seen = verdicts.flatMap((verdict) => {
+      const value = scoresOf(verdict)?.[id];
+      return value === undefined ? [] : [value];
+    });
+    if (seen.length < 2) return [];
+    const span = Math.max(...seen) - Math.min(...seen);
+    return when(
+      span < GAP_FLOOR,
+      `rubric item ${id} stayed within ${String(GAP_FLOOR * 100)}% (near ${String(seen[0])}) across all ${String(seen.length)} passing control and sensitivity probes`,
     );
-  const blind =
-    results.length > 0 &&
-    results.every(
-      ({ run, verdict }) =>
-        verdict.kind === "pass" &&
-        Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
-    );
-  return { results, allValid, blind };
+  });
 }
 
-/**
- * Probe deliverable-carrying accept controls with all deliverable files removed: faults when no
- * check or objective reads deliverables, and surfaces factual notes when only the objective reads
- * them or when some accept controls still pass without files.
- */
-async function deliverableReading(
-  given: Read,
-  byId: ReadonlyMap<string, Task>,
-  accepted: readonly ControlAnswerRun[],
-): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
-  const withFiles = accepted.flatMap((run) => {
-    const task = run.files && run.files.length > 0 ? byId.get(run.taskId) : undefined;
-    return task === undefined ? [] : [{ run, task, files: NO_FILES }];
-  });
-  if (withFiles.length === 0) return { faults: [], notes: [] };
-  const { results: stripped, allValid, blind } = await probeSensitivity(given, withFiles);
-  if (stripped.length === 0) return { faults: [], notes: [] };
-  const faultyStrips = stripped.flatMap(({ run, verdict }) => {
-    const fault = faultyOf(verdict);
-    return fault === null || fault.check === OBJECTIVE.id
-      ? []
-      : [`removing deliverable files caused check ${fault.check} to fault on ${run.taskId}: ${fault.reason}`];
-  });
-  const partial = allValid
-    ? []
-    : stripped.flatMap(({ run, verdict }) =>
-        when(
-          verdict.kind === "pass",
-          `the accept control of ${run.taskId} still passed with all deliverable files removed`,
-        ),
-      );
-  return {
-    faults: when(
-      blind,
-      "deliverable files had no effect on any accept control: with all deliverables removed, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective reads them",
-    ),
-    notes: [
-      ...faultyStrips,
-      ...partial,
-      ...when(
-        allValid && !blind,
-        "every validity check passed when each example's deliverable files were removed: only the objective read deliverables, so validity checks ignore submitted files",
-      ),
-    ],
-  };
-}
-
-/**
- * Three probes of a drafted exam's examples, run without a model beside its controls: faults where
- * checks are completely blind to the task, hidden values or deliverable files, and factual notes
- * (never refusal gates) when validity checks alone pass every hidden-value swap or deliverable
- * removal, or when an accept control passes some other examples.
- */
 async function probeReading(
   given: Read,
   byId: ReadonlyMap<string, Task>,
   runs: readonly ControlAnswerRun[],
 ): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
   const { tasks } = given;
+  const rule = objectiveRuleOf(given.brief.objective) ?? { direction: "higher" };
   const accepted = runs.filter(
     ({ refusedBy, verdicts: [first] }) => refusedBy === null && first.kind === "pass",
   );
-  const others = (run: ControlAnswerRun, as: (other: Task) => Task | null) =>
+  const probed = async (probes: readonly Probe[]) =>
+    (
+      await pooled(probes, given.width, async ({ run, task, files, field }) => ({
+        run,
+        field,
+        verdict: await given.verify(task, field?.answer ?? run.answer, undefined, files),
+      }))
+    ).filter(({ verdict }) => verdict.kind !== "non-result");
+  const blind = (results: Awaited<ReturnType<typeof probed>>) =>
+    results.length > 0 &&
+    results.every(
+      ({ run, verdict }) =>
+        verdict.kind === "pass" &&
+        Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
+    );
+  const others = (run: ControlAnswerRun, as: (other: Task) => Task | null): Probe[] =>
     tasks.flatMap((other) => {
       const task = other.taskId === run.taskId ? null : as(other);
       return task === null ? [] : [{ run, task, files: run.files }];
     });
-  const { results: swaps } = await probeSensitivity(
-    given,
-    accepted.flatMap((run) => others(run, (other) => other)),
+  const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
+  const carried =
+    tasks.length > 1 && !hasJudge(given.brief.objective) && tasks.every(({ hidden }) => hidden !== null);
+
+  const [swaps, hidden, stripped, changed] = await Promise.all([
+    probed(accepted.flatMap((run) => others(run, (other) => other))),
+    probed(
+      carried
+        ? accepted.flatMap((run) => {
+            const own = byId.get(run.taskId);
+            return own === undefined
+              ? []
+              : others(run, (other) =>
+                  hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
+                );
+          })
+        : [],
+    ),
+    probed(
+      accepted.flatMap((run) => {
+        const task = run.files && run.files.length > 0 ? byId.get(run.taskId) : undefined;
+        return task === undefined ? [] : [{ run, task, files: NO_FILES }];
+      }),
+    ),
+    probed(
+      hasJudge(given.brief.objective)
+        ? []
+        : accepted.flatMap((run) => {
+            const task = byId.get(run.taskId);
+            if (task === undefined) return [];
+            const formed = (field: Field | undefined): field is Field =>
+              field !== undefined && answerFormatFault(given.contract.answerFormat, field.answer) === null;
+            const filled = fieldsOf(run.answer, "$", "filled");
+            return fieldsOf(run.answer, "$", "emptied")
+              .map((field, at) => (formed(field) ? field : filled[at]))
+              .filter(formed)
+              .map((field) => ({ run, task, files: run.files, field }));
+          }),
+    ),
+  ]);
+  const unread = [...Map.groupBy(changed, ({ field }) => field?.path ?? "")].flatMap(([path, results]) =>
+    results.every(({ run, verdict }) => spelled(verdict) === spelled(run.verdicts[0])) ? [path] : [],
   );
   const byRun = Map.groupBy(swaps, ({ run }) => run);
-  const [swapped, partialSwaps, faultySwaps]: [string[], string[], string[]] = [[], [], []];
-  for (const run of accepted) {
-    const own = byRun.get(run) ?? [];
-    const passed = own.filter(({ verdict }) => verdict.kind === "pass").length;
-    if (own.length > 0 && passed === own.length) {
-      swapped.push(
-        `the accept control of ${run.taskId} passed every other example: its checks do not bind to the task`,
-      );
-    } else if (passed > 0) {
-      partialSwaps.push(
-        `the accept control of ${run.taskId} also passed ${String(passed)} of ${String(own.length)} other examples`,
-      );
-    }
-    const fault = own.map(({ verdict }) => faultyOf(verdict)).find((one) => one !== null);
-    if (fault !== undefined) {
-      faultySwaps.push(
-        `the accept control of ${run.taskId} faulted ${fault.check} on another example: ${fault.reason}`,
-      );
-    }
-  }
-  const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
-  const carried = tasks.length > 1 && tasks.every(({ hidden }) => hidden !== null);
-  const identicalHidden = carried && accepted.length > 0 && new Set(tasks.map(hiddenOf)).size === 1;
-  const hiddenProbes =
-    carried && !identicalHidden
-      ? accepted.flatMap((run) => {
-          const own = byId.get(run.taskId);
-          return own === undefined
-            ? []
-            : others(run, (other) =>
-                hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
-              );
-        })
-      : [];
-  const { allValid: allValidOnHiddenSwap, blind } =
-    hiddenProbes.length > 0 ? await probeSensitivity(given, hiddenProbes) : { allValid: false, blind: false };
-  const deliverables = await deliverableReading(given, byId, accepted);
+  const probes = [...swaps, ...hidden, ...stripped].map(({ verdict }) => verdict);
   return {
     faults: [
-      ...swapped,
+      ...accepted.flatMap((run) => {
+        const own = byRun.get(run) ?? [];
+        return when(
+          own.length > 0 && own.every(({ verdict }) => verdict.kind === "pass"),
+          `the accept control of ${run.taskId} passed every other example: its checks do not bind to the task`,
+        );
+      }),
       ...when(
-        blind,
+        blind(hidden),
         "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
       ),
-      ...deliverables.faults,
+      ...when(
+        blind(stripped),
+        "deliverable files had no effect on any accept control: with all deliverables removed, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective reads them",
+      ),
     ],
     notes: [
-      ...partialSwaps,
-      ...faultySwaps,
+      ...(probes.some(({ kind }) => kind === "pass")
+        ? flatRubricNotes(given.brief, [...accepted.map(({ verdicts: [first] }) => first), ...probes])
+        : []),
       ...when(
-        identicalHidden,
-        "every example carries identical hidden values, so hidden-value sensitivity could not be probed",
+        unread.length > 0,
+        `answer fields ${unread.join(", ")} had no effect on any accept control that carries them: with each changed on its own once (a number halved or set to 1 from 0, a string emptied, or set to one letter where empty or where the format needs text, a boolean flipped), in every element of a list, every such control kept its verdict, objective and scores; a check reading only a bound the change stays within looks the same`,
       ),
-      ...when(
-        allValidOnHiddenSwap && !blind,
-        "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
-      ),
-      ...deliverables.notes,
     ],
   };
 }
 
-/** The tasks on which the do-nothing answer was not rejected, a sentence each: it passed, or a
- *  check could not run on it, which is no rejection either. */
 export function doNothingFaults(idle: readonly Idle[]): string[] {
   return idle.flatMap(({ taskId, verdict }) =>
     when(verdict.kind !== "fail", `the do-nothing answer was not rejected on ${taskId}: ${spelled(verdict)}`),
   );
 }
 
-/** Why a control answer's run is not what its label says, or null when it is. */
 function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlAnswerRun): string | null {
   const named = refusedBy === null ? `the accept control of ${taskId}` : `a reject control of ${taskId}`;
   if (spelled(first) !== spelled(second)) {
@@ -377,18 +304,13 @@ function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlA
     : `${named} names ${refusedBy}, which did not refuse it: ${spelled(first)}`;
 }
 
-/**
- * The reading: each check's tallies over the control answers, and the faults. `found` says whether
- * the verifier's tool path holds a tool. A verdict that decided nothing, a faulty check's or a
- * non-result, tallies for no check.
- */
 function acceptance(
   brief: Brief,
   byId: ReadonlyMap<string, Task>,
   runs: readonly ControlAnswerRun[],
   found: (toolId: string) => ToolAvailability,
-): Acceptance {
-  const graded: Graded[] = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
+): { readonly checks: readonly CheckReading[]; readonly faults: readonly string[] } {
+  const graded = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
     const task = byId.get(taskId);
     return task === undefined ? [] : [{ task, verdict }];
   });
@@ -396,10 +318,30 @@ function acceptance(
     instrument: tools.filter((tool) => found(tool) === true || found(tool) === "pack").join(", ") || AUTHOR,
     missing: tools.filter((tool) => found(tool) === false),
   });
-  // The objective is read as a check is: its author's own computation, which the operator admits
-  // by name, and seen to measure every valid answer or none.
-  const measured: CheckReading[] =
-    brief.objective === undefined
+  const applicable = new Map(
+    [...byId.values()].map((task) => [
+      task.taskId,
+      new Set(applicableTruthChecks(brief, task).map(({ id }) => id)),
+    ]),
+  );
+  const checks: CheckReading[] = [
+    ...brief.truthChecks.map(({ id, execution }) => {
+      const seen = graded.filter(
+        ({ task, verdict }) => decides(verdict) && applicable.get(task.taskId)?.has(id) === true,
+      );
+      const refused = seen.filter(({ verdict }) => verdict.kind === "fail" && verdict.blocking.includes(id));
+      const naming = runs.filter((run) => run.refusedBy === id);
+      return {
+        id,
+        ...toolInfo(requiredToolsOf(execution)),
+        passed: seen.length - refused.length,
+        refused: refused.length,
+        named: naming.length,
+        caught: naming.filter(({ verdicts: [first] }) => first.kind === "fail" && first.blocking.includes(id))
+          .length,
+      };
+    }),
+    ...(codeObjective(brief.objective) === undefined
       ? []
       : [
           {
@@ -410,41 +352,16 @@ function acceptance(
             named: 0,
             caught: 0,
           },
-        ];
-  const applicable = new Map(
-    [...byId.values()].map((task) => [
-      task.taskId,
-      new Set(applicableTruthChecks(brief, task).map(({ id }) => id)),
-    ]),
-  );
-  const checks = brief.truthChecks.map(({ id, execution }): CheckReading => {
-    const seen = graded.filter(
-      ({ task, verdict }) => decides(verdict) && applicable.get(task.taskId)?.has(id) === true,
-    );
-    const refused = seen.filter(({ verdict }) => verdict.kind === "fail" && verdict.blocking.includes(id));
-    const naming = runs.filter((run) => run.refusedBy === id);
-    return {
-      id,
-      ...toolInfo(requiredToolsOf(execution)),
-      passed: seen.length - refused.length,
-      refused: refused.length,
-      named: naming.length,
-      caught: naming.filter(({ verdicts: [first] }) => first.kind === "fail" && first.blocking.includes(id))
-        .length,
-    };
-  });
-  const unrun = new Map(
-    graded
-      .flatMap(({ verdict }) => {
-        const fault = faultyOf(verdict);
-        return fault === null ? [] : [[fault.check, fault.reason] as const];
-      })
-      .toReversed(),
-  );
-  const all = [...checks, ...measured];
+        ]),
+  ];
+  const unrun = new Map<string, string>();
+  for (const { verdict } of graded) {
+    const fault = faultyOf(verdict);
+    if (fault !== null && !unrun.has(fault.check)) unrun.set(fault.check, fault.reason);
+  }
   const faults = [
     ...runs.flatMap((run) => controlFault(run) ?? []),
-    ...all.flatMap(({ id, missing, passed, refused, caught }) => {
+    ...checks.flatMap(({ id, missing, passed, refused, caught }) => {
       const missingFaults = missing.map(
         (tool) => `${id} names ${tool}, which is not on the verifier's tool path`,
       );
@@ -468,20 +385,25 @@ function acceptance(
       return [...missingFaults, ...detail];
     }),
   ];
-  return { checks: all, faults };
+  const judged = (brief.objective?.items ?? []).flatMap(({ id, kind }) =>
+    kind === "judge"
+      ? [{ id, instrument: JUDGE, missing: [], passed: 0, refused: 0, named: 0, caught: 0 }]
+      : [],
+  );
+  return { checks: [...checks, ...judged], faults };
 }
 
-/**
- * One reading of a checker without a model: every control answer through the checks twice, what each
- * check was then seen to do, and the do-nothing answer on every task, where the format's own
- * schema yields one that follows the format (`unformed` says why it does not). The acceptance
- * command records it (`tools/c/accept.ts`), and an Examiner's draft is held to the same reading
- * before it stands (`tools/d2/exam.ts`), so an exam is drafted against what it will be read by.
- */
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
-  const runs = await runControls(verify, byId, given.controls, width);
+  const runs: ControlAnswerRun[] = await pooled(given.controls, width, async (control) => {
+    const task = byId.get(control.taskId);
+    if (task === undefined) {
+      throw new Error(`a control names ${control.taskId}, which the pack holds no task for`);
+    }
+    const first = await decided(verify, task, control.answer, control.files);
+    return { ...control, verdicts: [first, await decided(verify, task, control.answer, control.files)] };
+  });
   const idle = doNothingAnswer(given.contract.answerFormat);
   const unformed = answerFormatFault(given.contract.answerFormat, idle);
   const rejected: Idle[] =
@@ -510,30 +432,33 @@ export async function readChecker(given: Read) {
   };
 }
 
-/** The checks their author's own computation decides that the operator has not admitted by name,
- *  a sentence each. An installed instrument needs no word, and a word for it is none. */
 export function authoredFaults(checks: readonly CheckReading[], admitted: ReadonlySet<string>): string[] {
-  return checks.flatMap(({ id, instrument }) =>
-    when(
+  return checks.flatMap(({ id, instrument }) => [
+    ...when(
       instrument === AUTHOR && !admitted.has(id),
       `${id} is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit ${id})`,
     ),
-  );
+    ...when(
+      instrument === JUDGE && !admitted.has(id),
+      `${id} is scored by a judging model and not by code: a campaign scores it only on the operator's word (--admit-judge)`,
+    ),
+  ]);
 }
 
-/** The checks the log's last reading found no engine behind and `admitted` does not name, by id:
- *  what an exam that stands on the operator's word waits for. `admitted` is the operator's word on
- *  record unless given, so `[]` names every check its author decides (the closing report). */
-export function unadmitted(events: readonly LogEvent[], admitted?: readonly unknown[]): string[] {
+export function unadmitted(
+  events: readonly LogEvent[],
+  admitted?: readonly unknown[],
+  scope: "author" | "judge" = "author",
+): string[] {
   const reading = eventsOf(events, "checker.read").at(-1)?.event.data;
   const kept = new Set(admitted ?? (Array.isArray(reading?.admitted) ? reading.admitted : []));
+  const want = scope === "judge" ? JUDGE : AUTHOR;
   return (Array.isArray(reading?.rows) ? reading.rows : []).flatMap((row) => {
     const { id, instrument } = asRecord(row) ?? {};
-    return isString(id) && instrument === AUTHOR && !kept.has(id) ? [id] : [];
+    return isString(id) && instrument === want && !kept.has(id) ? [id] : [];
   });
 }
 
-/** The checker the log holds as frozen, by its last `contract.frozen`; null when none is. */
 export function frozenChecker(events: readonly LogEvent[]): Checker | null {
   const data = eventsOf(events, "contract.frozen").at(-1)?.event.data;
   return isString(data?.contract) && isString(data.checks)
@@ -541,9 +466,6 @@ export function frozenChecker(events: readonly LogEvent[]): Checker | null {
     : null;
 }
 
-/** Why `own` is not the checker the log froze, or null when it is, or when none is frozen. A frozen
- *  contract changes only through the operator (`contract.ts`), and a repaired check program is
- *  another checker: its campaign is another campaign, with nothing of this one's counted under it. */
 export function departure(events: readonly LogEvent[], own: Checker): string | null {
   const frozen = frozenChecker(events);
   if (frozen === null) return null;

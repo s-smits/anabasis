@@ -1,6 +1,6 @@
 /**
- * The system audit's inventory reads each campaign as a snapshot a report can cite, and orders the
- * campaigns by their last event, read from a log's tail. These tests read temporary logs only.
+ * The system audit's inventory reads each campaign as a snapshot a report can cite, ordered by its
+ * last event as read from a log's tail.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { lastAt } from "#skills/main/logs.ts";

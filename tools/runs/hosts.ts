@@ -1,22 +1,15 @@
 /**
- * Other machines that hold worktrees of this repository, reached over ssh: `on <host> <verb ...>`
- * runs any verb of `bun run runs` there, and `hosts` says each one's runs' status, which `status`
- * adds below this machine's own wherever a host is listed.
+ * Other machines that hold worktrees of this repository, reached over ssh: `on` runs any verb
+ * there, `hosts` gives each host's `status`, and `holds` says which names a worktree here holds.
+ * The hosts are `ANA_HOSTS`, a JSON list loaded by Bun's `--env-file` from a file git ignores, so
+ * no machine is named in the repository. The remote command runs under a login shell with
+ * `ANA_HOP=1`, under which `hostsOf` lists no host, so two machines that list each other never ask
+ * each other in a loop. Every host is asked at once under a time limit, so a slow one holds up no
+ * other.
  *
  *   bun run runs on <host> <verb> [args ...]
  *   bun run runs hosts [--all] [--health [--here]]
  *   bun run runs holds <name ...>
- *
- * The hosts are `ANA_HOSTS` in the environment, a JSON list, loaded as the credentials are by Bun's
- * `--env-file` from a file git ignores, so no machine is named in the repository. Each names the
- * host, its ssh destination, the worktree the verb runs in, the Bun there, and the env files there
- * that Bun loads (a path on that machine, never copied). The remote command runs under a login
- * shell, so a campaign it starts finds the tools a login there has, and with `ANA_HOP=1`, under
- * which `hostsOf` lists no host: a verb run on another host reaches no further one, so two
- * machines that list each other do not ask each other's status in a loop. `hosts` asks every host at
- * once and prints each one's rows as they come, under a time limit a host, so a host that is slow or
- * does not answer holds up no other, where asking one after another would let a loaded runner hold
- * the rows of every host after it.
  */
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -34,12 +27,10 @@ import { scanText } from "../secrets/rules.ts";
 const HOST_MS = 30_000;
 /** The verbs that act on the runs they name: every name `stop` is given, and the first word of the rest. */
 export const NAMING = new Set(["stop", "continue", "pause", "keep", "copy"]);
-/** The options of the verbs in `NAMING` that take no value. Any other option not joined to its value
- *  by `=` takes the next argument as its value. */
+/** The options of the verbs in `NAMING` that take no value; any other option not joined by `=`
+ *  takes the next argument. */
 const SWITCHES = new Set(["--yes", "--all", "--json", "--hold", "--here"]);
 
-/** Where a verb runs: here with `here` (none where every name it was given is elsewhere), and on
- *  each host with the words it is sent. */
 interface Routes {
   readonly here: readonly string[] | null;
   readonly away: readonly (readonly [Host, readonly string[]])[];
@@ -67,7 +58,6 @@ export function carriedTo(host: Host): Readonly<Record<string, string>> {
   return Object.fromEntries(sent);
 }
 
-/** The ssh command that runs the verb `args` on `host`. */
 function scriptCommand(host: Host, script: string, args: readonly string[]): string[] {
   if (
     !/^(tools|\.claude\/skills)\//.test(script) ||
@@ -84,12 +74,10 @@ function scriptCommand(host: Host, script: string, args: readonly string[]): str
   );
 }
 
-/** The verb `args` run on `host`, its output this process's, and its exit code. */
 export async function verbOn(host: Host, args: readonly string[]): Promise<number> {
   return await scriptOn(host, CLI, args);
 }
 
-/** Run a repository script through the same login shell and recursion boundary as a runs verb. */
 export async function scriptOn(host: Host, script: string, args: readonly string[]): Promise<number> {
   const io = { stdin: "inherit", stdout: "inherit", stderr: "inherit" } as const;
   const ready = host.prepared === true ? host : (await readControllers([host]))[0];
@@ -97,13 +85,11 @@ export async function scriptOn(host: Host, script: string, args: readonly string
   return await capturedSpawn(scriptCommand(ready, script, args), io).exited;
 }
 
-/** `bun run runs on`. */
 export async function on(args: readonly string[]): Promise<void> {
   const [name, ...verb] = args;
   runtimeProcess.exitCode = await verbOn(hostNamed(name), verb);
 }
 
-/** `bun run runs hosts`: `status`, with its `args`, on every host at once, each printed as it answers. */
 export async function hosts(args: readonly string[]): Promise<void> {
   const all = hostsOf();
   if (all.length === 0) console.log("no host: ANA_HOSTS names none in this environment");
@@ -133,9 +119,8 @@ export async function hosts(args: readonly string[]): Promise<void> {
 }
 
 /** Where in `args` the runs `verb` acts on are named: every word a stop is given, the first word of
- *  another verb that acts on a run, and none for the rest. A word is an argument that is neither an
- *  option nor an option's value, before any `--`: `view --level 0.02 r3` names `r3`, and
- *  `continue finished --after finished` names its first `finished` and keeps the second. */
+ *  another verb in `NAMING`, and none for the rest. A word is an argument that is neither an option
+ *  nor an option's value, before any `--`. */
 function namedAt(verb: string, args: readonly string[]): number[] {
   const words: number[] = [];
   for (let at = 0; at < args.length && args[at] !== "--"; at += 1) {
@@ -151,8 +136,8 @@ export function namedIn(verb: string, args: readonly string[]): string[] {
   return namedAt(verb, args).map((at) => args[at] ?? "");
 }
 
-/** The routes of `verb args`, given the hosts that claim names among those no worktree here holds.
- *  A name nobody claims stays here, where the verb refuses it in its own words. */
+/** The routes of `verb args`, given the hosts that claim names no worktree here holds. A name
+ *  nobody claims stays here, where the verb refuses it in its own words. */
 function routesOf(verb: string, args: readonly string[], held: ReadonlyMap<string, Host>): Routes {
   const at = namedAt(verb, args);
   const names = at.map((index) => args[index] ?? "");
@@ -164,14 +149,13 @@ function routesOf(verb: string, args: readonly string[], held: ReadonlyMap<strin
   return { here: names.length === 0 || here.length > 0 ? [...here, ...rest] : null, away };
 }
 
-/** `bun run runs holds <name ...>`: the names among these a worktree here holds, one a line. */
 export function holds(names: readonly string[]): void {
   const here = new Set(runs().map(({ name }) => name));
   for (const name of names.filter((one) => here.has(one))) console.log(name);
 }
 
-/** The lines the verb `args` prints on each host `ANA_HOSTS` lists, every host asked at once, and
- *  null from a host that fails or does not answer in time, which is said on stderr. */
+/** The lines the verb `args` prints on each host `ANA_HOSTS` lists, all asked at once, and null
+ *  from a host that fails or does not answer in time, which is said on stderr. */
 export async function asked(
   args: readonly string[],
   targets = hostsOf(),
@@ -180,9 +164,8 @@ export async function asked(
   return await askedScript(CLI, args, targets, mode);
 }
 
-/** What a peer's lines answer where they are JSON that `schema` holds, and null otherwise: no answer,
- *  no JSON, or an older tree's answer that lacks a part. Extra keys pass, so a newer tree's answer
- *  stays readable. A file's lines read the same way. */
+/** What a peer's lines answer where they are JSON that `schema` holds, else null. Extra keys pass,
+ *  so a newer tree's answer stays readable; an older tree's that lacks a part reads as null. */
 export function answerOf<S extends TSchema>(schema: S, lines: readonly string[] | null): Static<S> | null;
 export function answerOf(schema: TSchema, lines: readonly string[] | null): JsonValue | null {
   if (lines === null) return null;
@@ -194,7 +177,6 @@ export function answerOf(schema: TSchema, lines: readonly string[] | null): Json
   }
 }
 
-/** Ask all hosts a script, concurrently and within the same deadline as the runs CLI. */
 export async function askedScript(
   script: string,
   args: readonly string[],
@@ -227,7 +209,6 @@ export async function askedScript(
   );
 }
 
-/** The host that holds each of `names`, every host `ANA_HOSTS` lists asked at once. */
 export async function holders(
   names: readonly string[],
   here: ReadonlySet<string>,
@@ -252,7 +233,7 @@ export async function holders(
   return held;
 }
 
-/** Find every original before a mutation: a local match cannot hide a remote duplicate. */
+/** Asks every host before a mutation, since a local match cannot hide a remote duplicate. */
 export async function routed(verb: string, args: readonly string[]): Promise<Routes> {
   const here = new Set(runs().map(({ name }) => name));
   // `--here` names this machine, as the keeper `keep` starts does, so that a peer that does not

@@ -38,7 +38,6 @@ const COMPARISON = new Set(["===", "!==", "==", "!=", "<", "<=", ">", ">=", "in"
 
 type Member = ESTree.MethodDefinition | ESTree.PropertyDefinition;
 
-/** The boolean fields a class body declares, by name. */
 function booleanFields(body: ESTree.ClassBody): Set<string> {
   return new Set(
     body.body.flatMap((member) => {

@@ -1,24 +1,3 @@
-/**
- * One solve, start to ending: a home seeded with the public task, pi's coding tools on the
- * command wall and `submit` beside them, pi-durable under the host's
- * deadline and prompt limit, then the ending typed and logged with the trace and the meter. A non-result from the solve's side is run
- * again, up to three times with backoff; named provider resets are waited out here without using a
- * rerun, since a reset otherwise refuses drafts that have nothing wrong with them.
- * A task's check non-result returns to its caller; a verifier non-result stops the run.
- * Killed endings retain the first typed host cancellation source, or caller for an unlabelled
- * external abort. The solve's own deadline remains a `wall-ended` fail unless the model left no
- * completed turn for `SILENT_SECONDS`, with none of its tools running.
- * `waiting` ends sleeps at cancellation, including injected host sleeps before a solve starts.
- *
- * The loop is v1's: tools run one at a time, a
- * model that stops without submitting is nudged, and the prompt limit counts the opening prompt
- * and each nudge. Departures, beside those named in the tools and the prompt:
- * - No submit at the deadline: a solve the deadline ends is a `wall-ended` fail, except for that silence.
- * - A limit on the model's own turns, where the condition names one (`Limits.modelTurns`): the
- *   solver is told it and how many it has used, and the loop ends after the last one.
- * - A failed model turn ends the attempt as the provider's non-result, which `solve` runs again whole;
- *   v1 nudged once more into the same session unless the failure repeated.
- */
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { resetOf } from "../agent/backends/claude.ts";
 import type { Limits } from "../kernel/condition.ts";
@@ -40,106 +19,74 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { type Sat, type SeatTool, sit } from "../agent/session.ts";
-import { claimRoot, type ReleaseRoot } from "../wall/seat-root.ts";
+import { type AgentRun, type AgentTool, runAgent } from "../agent/session.ts";
+import { claimRoot, type ReleaseRoot } from "../sandbox/sandbox-root.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "../tools/answer.ts";
 import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
 import { walledEnv } from "../tools/env.ts";
 import {
-  type CommandWall,
+  type CommandSandbox,
   type NetworkReach,
   networkReach,
   type SolveClock,
   solveDirs,
   usedSeconds,
-  walledBase,
+  sandboxBase,
 } from "../tools/command.ts";
 import { type Harness, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { firstTurn, NUDGE, seedHome, systemPrompt } from "./prompt.ts";
 
 export interface SolveRequest {
-  /** Names the solve in the log; each attempt is `<id>-<attempt>`. */
   readonly id: string;
-  /** The condition's id (`conditionId`), which every attempt's log names. */
   readonly condition: string;
   readonly task: Task;
   readonly contract: Contract;
-  /** The harness state's directory, v1's format (`src/harness/open.ts`). */
   readonly harness: string;
   readonly resources: readonly PublicResource[];
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: Limits;
-  /** The backends, built for one solve on the home its model process keeps its state in. */
-  readonly models: (home: string, shutdown: AbortSignal) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
   readonly verify: Verifier;
   readonly log: string;
-  /** The repository, closed to every command, and its other worktrees and the stored pack, closed
-   *  with it (`Walled`). */
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
   readonly packRoots?: readonly string[] | undefined;
-  /** The comparison the solve is made for, by its id, which every attempt's start then names. A
-   *  comparison counts the solves that name it and no other (`src/kernel/compare.ts`); a practice
-   *  solve names none. */
   readonly comparison?: string;
-  /** Cancels the solve; a typed host reason retains its parent cancellation source. */
   readonly kill?: AbortSignal;
 }
 
-/**
- * A solve's deadline observes completed turns and tool starts and endings through `sit`'s hooks,
- * including unavailable tools and argument refusals. When it falls it keeps the seconds since
- * that activity, or zero while a tool runs, which `unanswered` reads (`SILENT_SECONDS`). It observes
- * no partial stream content. `timed` sees calls that durable refused, too.
- */
 export interface Wall {
   readonly signal: AbortSignal;
   readonly onTurn: () => void;
   readonly onTool: (phase: "start" | "end") => void;
-  /** Seconds the model had been silent when the deadline expired; 0 until it falls or while a tool ran. */
   readonly silentSeconds: number;
-  /** Disarms the deadline once the solve is over. */
   readonly lower: () => void;
 }
 
-/** What a wall reads the time from and arms its deadline on: the process's own, unless a test
- *  stands in a clock it moves itself. `after` returns what disarms the deadline. */
 export interface WallClock {
   readonly now: () => number;
   readonly after: (ms: number, fall: () => void) => () => void;
 }
 
-/** What a solve has used of its limits, as its tools are told to say it. */
-export interface Used {
+interface Used {
   readonly clock: SolveClock;
-  /** The model's turns already recorded, including the one whose tools are running. */
   readonly turns: () => number;
-  /** The model turn limit; undefined where they are not limited. */
   readonly modelTurns: number | undefined;
 }
 
-/** What one attempt left behind for its ending to be read from. */
 export interface Played {
   readonly crash: string | null;
-  /** Why the harness did not open or selects a tool no solve serves; null when it did. */
   readonly broken: string | null;
-  /** The harness's digest, null when it did not open. */
   readonly harness: string | null;
   readonly turns: readonly AssistantMessage[];
-  /** The prompts the solver was given: the opening one and each nudge. It is what the prompt limit
-   *  counts (`Limits.turns`), where `turns` holds the model's own turns, of which one prompt may
-   *  take many. */
   readonly prompts: number;
   readonly submitted: JsonValue | undefined;
   readonly files?: readonly AnswerFile[];
   readonly flagged: string | undefined;
   readonly wallEnded: boolean;
-  /** How long the model had been silent, with no tool of its running, when the deadline expired
-   *  (`Wall`). */
   readonly silentSeconds: number;
-  /** Whether the model used every turn it was given, where it was given a number of them. */
   readonly turnsEnded: boolean;
   readonly moved: boolean;
   readonly homeBytes: number | null;
@@ -147,7 +94,6 @@ export interface Played {
 }
 
 const RERUNS = 3;
-/** Sleep, including an injected host sleep, ends at the kill and releases its abort listener. */
 export async function waiting(ms: number, kill?: AbortSignal, wait?: (ms: number) => Promise<void>) {
   if (kill?.aborted === true) return;
   const stopped = Promise.withResolvers<void>();
@@ -162,13 +108,6 @@ export async function waiting(ms: number, kill?: AbortSignal, wait?: (ms: number
   }
 }
 
-/**
- * Whether the campaign waited out the provider limit `said` names, an ending's reason, a throw or a
- * crash's words: where its reset is still ahead, the wait is on record (`for: "provider"`) and slept
- * to a minute past it, however far on, or until `kill`, rather than ending the campaign
- * `environment` with nothing to rerun it; a long wait is the operator's, or a keeper's
- * (`tools/runs/keep.ts`), to move to another login.
- */
 export async function waitOut(
   log: string,
   said: unknown,
@@ -187,11 +126,6 @@ export async function waitOut(
   return true;
 }
 
-/**
- * Solve until an ending that is not the solve side's non-result, or until the reruns run out. A
- * provider's named reset waits without spending a rerun. Every attempt keeps its own id, and a
- * kill during either wait returns the ending and starts nothing.
- */
 export async function solve(request: SolveRequest, wait?: (ms: number) => Promise<void>): Promise<Ending> {
   for (let attempt = 1, reruns = 0; ; attempt++) {
     const ending = await attemptSolve(request, `${request.id}-${String(attempt)}`);
@@ -222,14 +156,11 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     model: priceKey(model),
     effort: request.effort,
     limits: request.limits,
-    // The load with the cores it is a load on: a deadline counts the clock, and 30 runnable processes
-    // are another host on 12 cores than on 64.
     load: loadavg(),
     cores: availableParallelism(),
     ...keyIfDefined("comparison", request.comparison),
   });
   const played = await play(request, id);
-  // The root goes while the verdict is read: neither needs the other.
   const [ending] = await Promise.all([judge(request, id, played), played.released]);
   append(log, "solve.finished", {
     solve: id,
@@ -251,25 +182,22 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
   return ending;
 }
 
-/** A harness that does not open, or selects a coding tool no solve serves. */
 class BrokenHarness extends Error {}
 const brokenHarness = (error: unknown): never => {
   throw new BrokenHarness(errorMessage(error));
 };
 
-/** Mount, seed, run the loop, tear down. Anything that throws on the way is the sandbox's crash,
- *  except the harness's opening and its selection of tools, which are its own. */
 async function play(
   request: SolveRequest,
   id: string,
-): Promise<Played & { readonly spent: Sat["spent"]; readonly released: Promise<void> }> {
+): Promise<Played & { readonly spent: AgentRun["spent"]; readonly released: Promise<void> }> {
   const { limits } = request;
   const dirs = solveDirs(id);
   let deadline: Wall | null = null;
   const desk = openDesk();
   const before = treeStamp(request.harness);
   const turns: AssistantMessage[] = [];
-  let spentOn: Sat["spent"] | null = null;
+  let spentOn: AgentRun["spent"] | null = null;
   let release: ReleaseRoot | null = null;
   let homeBytes: number | null;
   let released: Promise<void> = Promise.resolve();
@@ -280,7 +208,7 @@ async function play(
   let prompts = 0;
   try {
     release = await claimRoot(dirs.root);
-    const base = await walledBase(
+    const base = await sandboxBase(
       dirs,
       { repoRoot: request.repoRoot, otherTrees: request.otherTrees, packRoots: request.packRoots },
       "a solve",
@@ -289,7 +217,7 @@ async function play(
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;
     const clock: SolveClock = { started: null, seconds: limits.wallSeconds };
-    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, clock };
+    const commandWall: CommandSandbox = { base, dirs, toolTree: harness.toolTree, limits, clock };
     const defined = await Promise.resolve()
       .then(() => solverTools(request, harness, commandWall, desk))
       .catch(brokenHarness);
@@ -307,15 +235,15 @@ async function play(
       network,
     });
     prompts = 1;
-    // The deadline counts the solver's time, so it starts with the first turn rather than the setup.
     clock.started = performance.now();
     const raised = raiseWall(limits.wallSeconds);
     deadline = raised;
     const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
     const tools = defined.map((tool) => timed(tool, used));
-    const sat = await sit({
+    const sat = await runAgent({
       models: request.models,
       home: join(dirs.host, "model"),
+      cwd: dirs.home,
       id,
       model: request.model,
       effort: request.effort,
@@ -328,10 +256,6 @@ async function play(
       most: limits.modelTurns,
       onTurn: raised.onTurn,
       onTool: raised.onTool,
-      // After a turn's tool calls have run, so an answer submitted in the last turn is held. An
-      // accepted submit ends the solve here as its description says, and not only through its
-      // `terminate`, which pi heeds when every call of the turn returns it: a turn that sends a
-      // submit beside a shell call would otherwise ask the model on.
       over: () => desk.submitted !== undefined || desk.flagged !== undefined,
       next: async () => {
         if (desk.submitted !== undefined || desk.flagged !== undefined || prompts >= limits.turns) {
@@ -349,7 +273,6 @@ async function play(
     else crash = errorMessage(error);
   } finally {
     deadline?.lower();
-    // Read apart from the loop, before the root goes: a walk that fails voids no solve.
     homeBytes = bytesUnder(dirs.home);
     if (release !== null) released = release();
   }
@@ -381,11 +304,6 @@ const PROCESS_CLOCK: WallClock = {
   },
 };
 
-/** A deadline armed now, that expires once `seconds` have passed by `clock.now`, the clock a solve's
- *  time is recorded and told on. A timer that fires sooner by that clock is armed again for the
- *  rest: the process's two clocks part while a host sleeps, where `performance.now` stands still
- *  (one solve recorded 74 s over 788 s of a host's day), so a deadline that only the
- *  timer had reached would end a solve as its harness's fail for time the host slept. */
 export function raiseWall(seconds: number, clock: WallClock = PROCESS_CLOCK): Wall {
   const fall = new AbortController();
   const raised = clock.now();
@@ -419,21 +337,12 @@ export function raiseWall(seconds: number, clock: WallClock = PROCESS_CLOCK): Wa
   };
 }
 
-/** `m:ss`, as the solve's clock is told. */
 export function clockText(seconds: number): string {
   const whole = Math.max(0, Math.floor(seconds));
   return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}`;
 }
 
-/**
- * A solver's tool with the solve time used as the last line of whatever it returns, a result or an
- * error, and the turn it is in where its turns are limited. When a solver had no clock, most of
- * the practice solves that failed had submitted an answer the solver's own check had refused,
- * stopping early or out of time, by the operator's account of them (`docs/transfer.md`). What a
- * solver does with its time is its own to decide; this says what the
- * time is.
- */
-export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatTool {
+export function timed(tool: AgentTool, { clock, turns, modelTurns }: Used): AgentTool {
   const line = () =>
     `[Solve time used: ${clockText(usedSeconds(clock) ?? 0)} of ${clockText(clock.seconds)}${
       modelTurns === undefined ? "" : `. Turn ${String(turns())} of ${String(modelTurns)}`
@@ -449,8 +358,6 @@ export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatT
         }
         return { ...result, output: [...result.output, { type: "text", text: line() }] };
       } catch (error) {
-        // Durable gives the model a throw's reason as a diagnostic after the output, so the
-        // output carries only the clock.
         api.output(`\n${line()}`);
         throw error;
       }
@@ -458,26 +365,18 @@ export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatT
   };
 }
 
-/** What a solver is given: pi's own coding tools, as many as the harness's presets select, then
- *  `submit`. What a harness adds is its programs, which run by name in the solver's shell. */
-export function solverTools(
+function solverTools(
   request: { readonly contract: Contract },
   harness: Harness,
-  wall: CommandWall,
+  wall: CommandSandbox,
   desk: Desk,
-): SeatTool[] {
+): AgentTool[] {
   return [
     ...codingTools(wall, selectedCodingTools(harness.presets)),
     submitTool(desk, request.contract, wall.dirs.home, wallExec(wall)),
   ];
 }
 
-/** The ending of what was played. A kill or a harness that moved voids it; otherwise an answer the
- *  host holds is judged whatever failed after it was submitted, as v1's close rule had it, a flag
- *  the host holds ends it flagged, and a last turn the provider failed is a non-result. The
- *  answer is checked against the contract's format by the host before any check reads it, then
- *  judged; a verdict is logged either way, with the answer, so that a fail can be read and regraded
- *  from the log alone. */
 export async function judge(request: SolveRequest, id: string, played: Played): Promise<Ending> {
   if (request.kill?.aborted === true) {
     const reason: unknown = request.kill.reason;
@@ -519,7 +418,6 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
     }
     return verdict?.kind === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" };
   }
-  // A flag the host holds stands as an answer does, whatever failed after it.
   if (played.flagged !== undefined) return { outcome: "flagged", reason: played.flagged };
   if (played.crash !== null) return { outcome: "non-result", kind: "sandbox-crash", reason: played.crash };
   if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
@@ -531,8 +429,6 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   });
 }
 
-/** The bytes under `dir`, links unfollowed, or null when the walk fails, as it does when a file
- *  goes during it. */
 function bytesUnder(dir: string): number | null {
   try {
     return pathsUnder(dir).reduce((total, path) => total + lstatSync(join(dir, path)).size, 0);

@@ -1,12 +1,3 @@
-/**
- * The text members of a zip archive, as a workbook, a document or a deck is one, read with the
- * runtime's own inflate. A check imports nothing, so without them it holds such a file as base64
- * alone and would have to inflate it by hand. Only stored and deflated members are read, and every
- * member counts its inflated bytes against `most`, an image too, since only its bytes tell that it
- * holds no text; a member whose bytes are not UTF-8 is then left out. An archive this reader cannot
- * walk, one past `most`, or one that names a member twice, gives no members at all, so a check never
- * reads part of a file as the whole and the file's bytes stay the whole of what it has.
- */
 import { crc32, inflateRawSync } from "node:zlib";
 
 const LOCAL = 0x04_03_4b_50;
@@ -14,14 +5,12 @@ const CENTRAL = 0x02_01_4b_50;
 const END = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
 const NONE = { members: [], used: 0 };
 
-/** The archive's text members within `most` inflated bytes, and the bytes they took. */
 export function zipTexts(
   bytes: Buffer,
   most: number,
 ): { members: { readonly path: string; readonly text: string }[]; used: number } {
   try {
     if (bytes.readUInt32LE(0) !== LOCAL) return NONE;
-    // The end record sits in the last 22 bytes and the at most 0xffff of its comment.
     const end = bytes.lastIndexOf(END, bytes.length - 22);
     if (end === -1 || end < bytes.length - 22 - 0xff_ff) return NONE;
     const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
@@ -39,14 +28,12 @@ export function zipTexts(
       const local = bytes.readUInt32LE(at + 42);
       at += 46 + named + bytes.readUInt16LE(at + 30) + bytes.readUInt16LE(at + 32);
       if ((method !== 0 && method !== 8) || path.endsWith("/")) continue;
-      // Two members of one name: which of them a reader takes is the reader's choice, so none is given.
       if (seen.has(path)) return NONE;
       seen.add(path);
       used += size;
       if (used > most || bytes.readUInt32LE(local) !== LOCAL) return NONE;
       const start = local + 30 + bytes.readUInt16LE(local + 26) + bytes.readUInt16LE(local + 28);
       const raw = bytes.subarray(start, start + packed);
-      // `maxOutputLength` refuses 0, and an empty member may still be stored deflated.
       const data = method === 0 ? raw : inflateRawSync(raw, { maxOutputLength: Math.max(size, 1) });
       if (data.length !== size) return NONE;
       try {
@@ -61,10 +48,6 @@ export function zipTexts(
   }
 }
 
-/** An archive of `members` as stored text, each with its checksum, so that any zip reader opens it.
- *  A control's archive is given as its members alone, since a seat writes no archive
- *  (`textFiles`), and these are the bytes it then has; without them the accepted answer kept
- *  beside `task.feasible` would read back as an empty file with no member. */
 export function storedZip(members: readonly { readonly path: string; readonly text: string }[]): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
@@ -72,8 +55,6 @@ export function storedZip(members: readonly { readonly path: string; readonly te
   for (const { path, text } of members) {
     const name = Buffer.from(path);
     const data = Buffer.from(text);
-    // What the local header and the central record both say of a member, from its flags to its
-    // name's length: a UTF-8 name, stored, its checksum and its size twice.
     const fields = Buffer.alloc(24);
     fields.writeUInt16LE(0x08_00, 0);
     fields.writeUInt32LE(crc32(data), 8);

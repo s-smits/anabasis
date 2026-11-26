@@ -1,18 +1,13 @@
 import { isOneOf } from "../../ana/shared/file-role.ts";
 
 /**
- * The one module every other file reads a runtime representation through: `isString`,
- * `isObject`, `isFunction`, `OpenRecord` and their neighbours.
- *
- * A decoder has to test `typeof` somewhere, and a namespace or an AST node has to be viewed as an
- * open record somewhere. `no-runtime-typeof` and `no-unsafe-dictionary-type` keep reporting that
- * everywhere else and admit it here in one written shape each, so a second copy of `isString` in
- * another file is still reported, and so is any other `typeof` in this one, where a file-scope
- * `off` in `.oxlintrc.json` would admit every line of the file.
+ * The one module every other file reads a runtime representation through: `isString`, `isObject`,
+ * `OpenRecord` and their neighbours. `no-runtime-typeof` and `no-unsafe-dictionary-type` admit it
+ * here in one written shape each, so a second `isString` elsewhere, or any other `typeof` here, is
+ * still reported, where a file-scope `off` would admit every line.
  */
 export const REPRESENTATION_OWNER = "src/meta/json-shape.ts";
 
-/** Whether the file being linted is the representation owner. */
 export function isRepresentationOwner(filename: string): boolean {
   return isOneOf(filename, [REPRESENTATION_OWNER]);
 }

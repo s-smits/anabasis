@@ -1,26 +1,16 @@
 /**
  * The deterministic read of one campaign's log for a whole-run investigation: six rows of
- * identities the primary reviewer settles, and the triggers that say which of the twenty-four
- * lanes of `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
- *
- * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 4 and 7 to
- * 11) are `folds.ts`, which keeps this file within the size policy's ceiling. This file
- * keeps the lanes of the review, the harness, the comparison and the solve (5, 12 to 21 and 24),
- * the rows and the overview. The climb's lane (22) is `promotion.ts`, and the lanes of how a run
- * was conducted are `run.ts`. The lanes that read the clock (24 and 25) and
- * row A's hours are `time.ts`, split from here on the same day for the same ceiling.
- * Practice gaps retain whether a state was frozen at session end or entered a comparison, with
- * that comparison's start boundary and report status. Score readers still use reports alone.
- * Campaign accounting reads calculated spend and backend coverage from `costLine`, with a
- * residual on matching closed work and unknown backend cost for open or unreported work.
- * A one-program answer lead requires a logged judged answer, including JSON null; flags and
- * blocked submits remain in the finished-solve denominator without supplying an answer.
+ * identities the primary reviewer settles, and the triggers that say which lanes of
+ * `.claude/skills/whole-run-investigation/references/lanes.md` have something to read. The folds and
+ * the exam side's triggers live in `folds.ts`, the promotion's in `promotion.ts`, the conduct's in
+ * `run.ts` and the clock's in `time.ts`; this file keeps the review, harness, comparison and solve
+ * triggers, the rows and the overview.
  */
 import { resetOf } from "#src/agent/backends/claude.ts";
-import { comparisonsOf } from "#src/campaign/ground.ts";
+import { comparisonsOf } from "#src/campaign/state.ts";
 import { short } from "#src/campaign/move.ts";
-import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
-import { differenceOf, readsStepEitherWay, scoresIn, testOf } from "#src/kernel/compare.ts";
+import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/summary.ts";
+import { differenceOf, isSignificant, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { billedAll, costLine, spendOf } from "#src/kernel/meter.ts";
@@ -35,7 +25,7 @@ import {
   EXAM_END,
   EXAM_START,
   fired,
-  firedIf,
+  emitIf,
   type Index,
   indexOf,
   instrumentTriggers,
@@ -65,7 +55,7 @@ import { degradationLines } from "../runs/degradations.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { costTriggers, hoursLine, deadlineTriggers } from "./time.ts";
 
-export interface Row {
+interface Row {
   readonly id: string;
   readonly title: string;
   readonly lines: readonly string[];
@@ -82,29 +72,20 @@ type PracticeCandidate = { readonly harness: string; readonly began: number } & 
 );
 
 const FEW_CALLS = 3;
-/** The Builder tools that write one named file: pi's two, and the one tool sessions had before them. */
 export const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
 
-/** A Builder session as the lanes of its practice read it: the log's record of it, whether it changed
- *  the harness and to what, the harness its comparison was made against, and the solves of its round. */
 interface PractisedSession {
   readonly build: Build;
   readonly changed: boolean;
-  /** The digest of the harness the session left, or "" where it finished with none. */
   readonly child: string;
-  /** Frozen and compared states, with the boundary before which practice must have run. */
   readonly read: readonly PracticeCandidate[];
   readonly round: {
     readonly practice: readonly Solve[];
-    /** The new side's solves in each comparison of a harness the session froze, finished or not. */
     readonly scoring: readonly Solve[];
-    /** The scored tasks a practice solve of the session ran before the comparison that scored
-     *  them began: a task released after a comparison scored it was not exposed to it. */
     readonly exposed: ReadonlySet<string>;
   };
 }
 
-/** Lanes 13 and 16: one session's practice, and what its comparison then showed of it. */
 function practiceTriggers(
   log: Index,
   { build, changed, read, round }: PractisedSession,
@@ -153,24 +134,24 @@ function practiceTriggers(
       solve.calls.length <= FEW_CALLS,
   ).length;
   return [
-    ...firedIf(
+    ...emitIf(
       changed && lastPractice === undefined,
       "NO PRACTICE",
       `${session}: the harness changed and no practice solve ran`,
     ),
     ...(changed && lastPractice !== undefined ? unpractised : []),
-    ...firedIf(ended !== "finished", "SESSION ENDED", `${session}: ${ended}`),
-    ...firedIf(
+    ...emitIf(ended !== "finished", "SESSION ENDED", `${session}: ${ended}`),
+    ...emitIf(
       fails.length > 0,
       "PRACTICE FAILS",
       `${session}: ${plural(failed.length, "fail")} under its own states, ${String(earned)} ruled earned; the same task passed later under changed bytes ${String(answered)}, under the same bytes ${String(flipped)}; ${plural(fails.length - failed.length, "fail")} under a harness older than the session`,
     ),
-    ...firedIf(
+    ...emitIf(
       exposed > 0,
       "PRACTISED TASK MEASURED",
       `${session}: ${plural(exposed, "task")} both practised and measured`,
     ),
-    ...firedIf(
+    ...emitIf(
       quickWins > 0,
       "WIN AT A SMALL WALL SHARE",
       `${session}: ${String(quickWins)} passed solves of tasks the new harness won, in few calls`,
@@ -178,7 +159,6 @@ function practiceTriggers(
   ];
 }
 
-/** Lane 16's wins, by solve: each comparison's tasks the new harness won. */
 export function wonOf(log: Index) {
   return log.compared.map(({ session, last, pairs: settled }) => {
     const pairs = settled();
@@ -198,7 +178,7 @@ function winTriggers(wonList: ReturnType<typeof wonOf>): Trigger[] {
       (pair) =>
         `${short(pair.task)} new ${pair.solves?.fresh.join(" ") ?? "-"}, reference ${pair.solves?.old.join(" ") ?? "-"}`,
     );
-    return firedIf(
+    return emitIf(
       won.length > 0,
       "WINS",
       `${session}: ${share(won.length, pairs.length)} tasks won: ${solves.join("; ")}`,
@@ -206,21 +186,6 @@ function winTriggers(wonList: ReturnType<typeof wonOf>): Trigger[] {
   });
 }
 
-/**
- * Lane 16's reading of whether a harness answered for its solver, which `src/builder/prompt.ts`
- * permits so long as nothing in the harness names a task, copies its text or holds
- * its answer, so the lead is whether the program computes from public input or reaches a check, its
- * instrument or a verdict: a solve whose one shell call was followed by its submit, with no write of
- * its own, and a logged judged answer, submitted what one program made. Read per Builder session's
- * practice and per comparison, with the comparison's reference side beside its new one as the
- * control, because a solver can do the whole task in one command of its own.
- *
- * The shape is that strict because these solvers do everything through the shell, the answer file
- * included: `bash` calls outnumber `write` by hundreds to one, and `read` is rare. A looser shape, a
- * shell call last before `submit`, reads most solves under the reference Starter, which carries no
- * engine to answer with. This one reads no reference solve on record, and most measured and
- * practice solves under built harnesses that did answer for their solver.
- */
 function programTriggers(log: Index): Trigger[] {
   const oneProgram = (solve: Solve) =>
     solve.outcome !== null &&
@@ -244,14 +209,13 @@ function programTriggers(log: Index): Trigger[] {
       : [];
   });
   const lines = [...practised, ...compared];
-  return firedIf(
+  return emitIf(
     lines.length > 0,
     "ANSWER FROM A PROGRAM",
     `one shell call, then submit, in ${lines.join("; ")}`,
   );
 }
 
-/** Lanes 13, 15 and 16: the harness, which is the Builder's. */
 function harnessTriggers(log: Index, wonList: ReturnType<typeof wonOf>): Trigger[] {
   const comparisons = comparisonsOf(log.events);
   const checkpoints = eventsOf(log.events, "build.checkpoint");
@@ -304,22 +268,22 @@ function harnessTriggers(log: Index, wonList: ReturnType<typeof wonOf>): Trigger
       read.push({ harness: child, began: end, origin: "frozen" });
     }
     return [
-      ...firedIf(
+      ...emitIf(
         edited,
         "HARNESS CHANGED",
         `${session}: ${short(parent)} to ${left === "" ? "what a stop left unsaved" : short(left)}; written by its file tools and shell: ${written.join(", ") || "nothing"}`,
       ),
-      ...firedIf(
+      ...emitIf(
         isString(finished?.broken),
         child === "" ? "BROKEN AT END" : "MEASURED AN EARLIER STATE",
         `${session}: what the session left does not open`,
       ),
-      ...firedIf(
+      ...emitIf(
         edited && !calls.some(({ tool }) => tool === "check_harness"),
         "NEVER CHECKED",
         `${session}: no check_harness call`,
       ),
-      ...firedIf(
+      ...emitIf(
         fresh.length > 0,
         "TOOLS CALLED",
         `${[...new Set(fresh.map((solve) => short(solve.harness)))].join(", ")}, left by ${session}, over ${plural(fresh.length, "test-side solve")}: ${tally(
@@ -334,46 +298,42 @@ function harnessTriggers(log: Index, wonList: ReturnType<typeof wonOf>): Trigger
           ),
         )}`,
       ),
-      ...firedIf(
+      ...emitIf(
         erring * 4 > fresh.length,
         "TOOL CALLS ERRED",
         `${session}: in ${share(erring, fresh.length)} solves under the new harness, a call marked an error, as every non-zero exit is, which a test reporting what is unmet may give by design`,
       ),
-      ...firedIf(toolFiles.length > 0, "TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`),
+      ...emitIf(toolFiles.length > 0, "TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`),
       ...practiceTriggers(log, { build, changed: edited, child, read, round }, wonTasks),
     ];
   });
 }
 
-/** Lane 8, from a comparison's last report alone: whether it scored a task, what its cap
- *  cut, and what it is short of. */
 function testTriggers(session: string, last: JsonObject): Trigger[] {
   const scored = asRecord(last.scored);
   const tasks = count(scored?.wins) + count(scored?.losses) + count(scored?.ties);
   const asked = last.tasks;
   const lacking = items(last.short).length;
   return [
-    ...firedIf(
+    ...emitIf(
       scored !== null && tasks === 0,
       "NOTHING SCORED",
       `${session}: no task was scored${isNumber(asked) ? `, of ${String(asked)} asked for` : ""}; the report reads ${text(last.reading)}`,
     ),
-    ...firedIf(
+    ...emitIf(
       last.capped === true,
       "CUT BY ITS CAP",
       scored === null
         ? `${session}: the dollar cap ended it before it was read`
         : `${session}: the dollar cap ended the starter's solves; its test stands, unread against the starter`,
     ),
-    ...firedIf(lacking > 0, "SET SHORT", `${session}: ${String(lacking)} short of solves`),
+    ...emitIf(lacking > 0, "SET SHORT", `${session}: ${String(lacking)} short of solves`),
   ];
 }
 
-/** Lanes 8 to 10, 13 and 17: the comparison, which is the host's. */
 function comparisonTriggers(log: Index): Trigger[] {
   const hosts = new Set([...log.conditions.values()].map((condition) => condition.host)).size;
   const perComparison = log.compared.flatMap(({ session, own, began: start, last, scoring }) => {
-    // The rejections that set a task aside: not ruled a true fail, on a task the report names.
     const aside = new Set(strings(own.aside));
     const open = scoring.filter(
       (solve) =>
@@ -381,8 +341,6 @@ function comparisonTriggers(log: Index): Trigger[] {
     );
     const underOld = open.filter((solve) => solve.harness === own.old).length;
     const level = count(last.level);
-    // The tasks a comparison scores are fixed at its start, before any solve. One that reported
-    // other tasks than it began with lost them on the way: to a dispute, or short of their solves.
     const began = log.events[start]?.data;
     const fixed = strings(began?.tasks);
     const moved = fixed.filter((version) => !strings(last.versions).includes(version)).length;
@@ -396,18 +354,18 @@ function comparisonTriggers(log: Index): Trigger[] {
       .map(([key]) => key.endsWith(` ${text(own.old)}`));
     const noise = tallyOf(last.noise);
     return [
-      ...firedIf(
+      ...emitIf(
         moved > 0,
         "SCORED SET MOVED",
         `${session}: ${share(moved, fixed.length)} tasks it began with are not in its tally`,
       ),
-      ...firedIf(
+      ...emitIf(
         open.length > 0,
         "SET ASIDE BY SIDE",
         `${session}: ${plural(open.length, "rejection")} set ${plural(aside.size, "task")} aside, ${String(underOld)} under the reference harness and ${String(open.length - underOld)} under the others`,
       ),
       ...testTriggers(session, last),
-      ...firedIf(
+      ...emitIf(
         flips.length > 0,
         "FLIPS",
         `${session}: ${share(flips.length, seen.size)} task and harness pairs both passed and failed, ${String(flips.filter(Boolean).length)} under the reference harness and ${String(flips.filter((old) => !old).length)} under the other`,
@@ -417,7 +375,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(noise.wins)} won, ${String(noise.losses)} lost and ${String(noise.ties)} tied between two samples of the reference harness${readsStepEitherWay(scoresIn(last.noise), level) ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(noise.wins)} won, ${String(noise.losses)} lost and ${String(noise.ties)} tied between two samples of the reference harness${isSignificant(scoresIn(last.noise), level) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];
@@ -428,10 +386,10 @@ function comparisonTriggers(log: Index): Trigger[] {
     return `${session} ${short(text(own.old) || (build?.parent ?? ""))}>${fresh} ${text(last.reading)}`;
   });
   return [
-    ...firedIf(hosts > 1, "HOST CODE MOVED", `${String(hosts)} versions of the host's code in one log`),
+    ...emitIf(hosts > 1, "HOST CODE MOVED", `${String(hosts)} versions of the host's code in one log`),
     ...perComparison,
-    ...firedIf(chain.length > 0, "CHAIN", chain.join("; ")),
-    ...firedIf(
+    ...emitIf(chain.length > 0, "CHAIN", chain.join("; ")),
+    ...emitIf(
       log.states.size > 0 && log.held.length === 0,
       "NO TASK HELD OUT",
       "no task is held out, so a comparison has nothing to score",
@@ -439,31 +397,23 @@ function comparisonTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** The solves with no end: those the campaign went past (`nextBound`), and those open at the log's
- *  end. */
 function unendedSolves(log: Index) {
   const unended = log.solves.filter((solve) => solve.outcome === null);
   const cut = unended.filter((solve) => nextBound(log.events, solve.index) !== -1).length;
   return { cut, open: unended.length - cut };
 }
 
-/** A lane 22 trigger's detail: what the campaign went past, then what is open at the log's end. */
 const apart = (cut: string, open: string) =>
   [cut, open === "" ? "" : `${open} open at the log's end`].filter((part) => part !== "").join("; ");
 
-/** Lanes 22 and 23: the solve, how it ended and the cost, of which `time.ts` reads both. */
 function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   const done = log.solves.filter((solve) => solve.outcome !== null);
   const missed = done.filter((solve) => solve.outcome === "fail");
-  // A session or a solve with no end that the campaign went past was cut. One open at the log's end
-  // is running, or was stopped by `bun run runs stop`, which writes no ending, and the trigger says
-  // it apart, so that a running session and the solves in flight are not read as killed.
   const unended = steps.flatMap((step) => (step.step === "examiner" && step.ended === null ? [step] : []));
   const ids = (end: "cut" | "open") =>
     unended.flatMap((step) => (step.cut === (end === "cut") ? [step.id] : [])).join(", ");
   const { cut, open } = unendedSolves(log);
   const solves = (many: number) => (many > 0 ? plural(many, "solve") : "");
-  // An older gate's cut of the room solves it no longer needed is its design, not a kill.
   const non = done.filter((solve) => solve.outcome === "non-result" && solve.cancelledBy !== "admission");
   const unjudged = countBy(
     missed.filter((solve) => solve.kind !== "rejected"),
@@ -473,7 +423,7 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   const crashed = [...log.of(BUILD_END), ...log.of(EXAM_END)]
     .filter((data) => isString(data.crash) || data.ended === "crashed")
     .flatMap((data) => (resetOf(text(data.crash), new Date(0)) === null ? [text(data.session)] : []));
-  // Non-results by harness in each comparison: a side whose bad solves are run again is favoured.
+  // A side whose bad solves are run again is favoured, so non-results are counted by harness.
   const rerun = log.compared.flatMap(({ session, own, scoring }) => {
     const mine = scoring.filter((solve) => solve.outcome === "non-result");
     const under = mine.filter((solve) => solve.harness === own.old).length;
@@ -485,7 +435,7 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   });
   return [
     ...deadlineTriggers(log),
-    ...firedIf(
+    ...emitIf(
       non.length > 0,
       "NON-RESULTS",
       [
@@ -493,19 +443,18 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
         ...rerun,
       ].join("; "),
     ),
-    ...firedIf(cut + open > 0, "SOLVE NEVER FINISHED", apart(solves(cut), solves(open))),
-    ...firedIf(
+    ...emitIf(cut + open > 0, "SOLVE NEVER FINISHED", apart(solves(cut), solves(open))),
+    ...emitIf(
       ids("cut") !== "" || (log.of("campaign.ended").length > 0 && ids("open") !== ""),
       "EXAMINER NEVER FINISHED",
       apart(ids("cut"), ids("open")),
     ),
-    ...firedIf(Object.keys(unjudged).length > 0, "MISSES WITHOUT A VERDICT", tally(unjudged)),
-    ...firedIf(crashed.length > 0, "SESSION CRASHED", crashed.join(", ")),
+    ...emitIf(Object.keys(unjudged).length > 0, "MISSES WITHOUT A VERDICT", tally(unjudged)),
+    ...emitIf(crashed.length > 0, "SESSION CRASHED", crashed.join(", ")),
     ...costTriggers(log),
   ];
 }
 
-/** Lane 5: the review loop. */
 function reviewTriggers(log: Index): Trigger[] {
   const moved = [...log.rulings].filter(([solve, data]) => {
     const replay = asRecord(data.replay);
@@ -514,7 +463,6 @@ function reviewTriggers(log: Index): Trigger[] {
   const disputed = new Set(
     [...log.states].flatMap(([version, state]) => (state === "disputed" ? [version] : [])),
   );
-  // The tasks a comparison set aside that no settling has decided since.
   const waiting = new Set(
     log.compared.flatMap(({ last }) => (asRecord(last.settled) === null ? strings(last.aside) : [])),
   );
@@ -523,18 +471,13 @@ function reviewTriggers(log: Index): Trigger[] {
   const faults = ends.reduce((sum, data) => sum + items(data.reviewFaults).length, 0);
   const unprobed = [...log.rulings.values()].filter(unprobedEarned).length;
   return [
-    ...firedIf(moved > 0, "REPLAY MOVED THE VERDICT", plural(moved, "ruling")),
-    ...firedIf(
+    ...emitIf(moved > 0, "REPLAY MOVED THE VERDICT", plural(moved, "ruling")),
+    ...emitIf(
       standing > 0,
       "SET ASIDE AND UNSETTLED",
       `${plural(standing, "task")} left out of a comparison on a rejection no person has labelled`,
     ),
     ...log.compared.flatMap(({ session, own, last }) => {
-      // The tally were every rejection that set a task aside to stand, beside the one without them,
-      // both read without the bill as the step is (`tallyOf`), not as the billed p.
-      // A starter comparison is also read from the reference's side, which is what confirms a
-      // promotion, so that a reference that clears the level only with its set-aside task counted
-      // is not left silent.
       const level = count(own.level);
       const clears = (tested: { readonly p: number }) => tested.p <= level;
       const flipped = (tested: JsonValue | undefined) => {
@@ -569,19 +512,11 @@ function reviewTriggers(log: Index): Trigger[] {
             ]),
       ];
     }),
-    ...firedIf(faults > 0, "REVIEW FAULTS", plural(faults, "reviewer failure")),
-    ...firedIf(unprobed > 0, "EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size)),
+    ...emitIf(faults > 0, "REVIEW FAULTS", plural(faults, "reviewer failure")),
+    ...emitIf(unprobed > 0, "EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size)),
   ];
 }
 
-/**
- * The campaign command's own record, for lane 13's "what runs next": its moves, how it ended, and
- * its calculated dollars against the budget it opened with, beside the backend's own totals. Lane
- * 25 read the stop rule from the command's output, which the log outlives. An ending before the
- * last event is one the campaign went on from, as a campaign can end `exam` early and run on under
- * the same opening.
- * None for a log no campaign command wrote.
- */
 function campaignOf(log: Index): string[] {
   const endings = eventsOf(log.events, "campaign.ended").map(
     ({ index, event }) => `${text(event.data.ending)} at event ${String(index)}`,
@@ -596,8 +531,6 @@ function campaignOf(log: Index): string[] {
   ];
 }
 
-/** The steps open at the log's end, each with what it has done so far. A move the campaign command
- *  is making writes its `campaign.move` as it begins, so the moves above count it. */
 function openLine(steps: readonly Handover[]): string[] {
   const open = new Set(openSteps(steps));
   const said = steps.flatMap((step) => {
@@ -618,7 +551,6 @@ function openLine(steps: readonly Handover[]): string[] {
   return said.length === 0 ? [] : [`open at the log's end: ${said.join("; ")}`];
 }
 
-/** Rows A to F: the identities every finding binds to. */
 function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
   const { cut, open } = unendedSolves(log);
   const conditions = [...log.conditions.values()];
@@ -643,8 +575,6 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
     const readings = log.compared
       .filter((each) => each.build === build)
       .map((each) => `${each.session} ${text(each.last.reading)}`);
-    // The end record counts a session's practice. One still running has none, and neither has one
-    // killed, whose practice may have passed: their solves are read from the log.
     const recorded = build.finished?.practiceSolves;
     const practised = isNumber(recorded) ? recorded : practiceOf(log, build).length;
     return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${plural(practised, "practice solve")}, reading ${readings.join(", ") || "none"}`;
@@ -683,8 +613,8 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
         `${plural(conditions.length, "condition")}: ${tally(countBy(conditions, (condition) => `${condition.side} ${condition.model}`))}`,
         `host code ${distinct((condition) => condition.host)}, sandbox ${distinct((condition) => condition.sandbox)}, verifier tools ${distinct((condition) => condition.verifierTools)}, harnesses ${distinct((condition) => condition.harness)}`,
         `${share(done.filter((solve) => solve.served.length === 0).length, done.length)} finished solves name no response model`,
-        // Every seat's turns, not only a comparison's scored solves, since a campaign whose readings
-        // score nothing would otherwise fire no trigger when another model answers its seats.
+        // Every seat's turns, since a campaign whose readings score nothing would otherwise fire no
+        // trigger.
         ...degradationLines(log.events).slice(0, 1),
       ],
     },
@@ -702,7 +632,6 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
       title: "case partition",
       lines: [
         `test side: ${partition(TEST)}`,
-        // An older log holds solves of a stronger condition, which no comparison counts.
         ...(done.some((solve) => solve.side === "strong") ? [`strong side: ${partition("strong")}`] : []),
         `${plural(cut, "solve")} never finished${open > 0 ? `, ${String(open)} open at the log's end` : ""}`,
       ],
@@ -715,7 +644,6 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
   ];
 }
 
-/** The rows and the triggers of one log, with the launches its receipts record beside it. */
 export function overview(events: readonly LogEvent[], launches: readonly Receipt[] = []): Overview {
   const log = indexOf(events);
   const { steps } = handoverOf(events);
@@ -741,7 +669,6 @@ export function overview(events: readonly LogEvent[], launches: readonly Receipt
   };
 }
 
-/** The overview as the brief prints it: each row, then each trigger on a line of its own. */
 export function rendered({ rows, triggers }: Overview): string {
   return [
     ...rows.flatMap((row) => [`${row.id}. ${row.title}`, ...row.lines.map((line) => `   ${line}`)]),

@@ -1,13 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Deterministic overlap, churn, ordering, and proof-cache pre-pass for `consolidate-stack`:
- *
- *   bun .claude/skills/consolidate-stack/scripts/analyze.ts [--top <n>] [--limit <n>]
- *
- * Uses one lightweight `gh pr list` (`openPulls`, avoiding GraphQL's 500k node overflow on deep
- * stacks) plus local `git diff --numstat` spans to surface Mode B churn hotspots (`gross/net >=
- * 1.3x` or `>= 3` PR touches), Mode A zero-rewrite adjacent fold blocks, `gate.ts` `checkerDigest`
- * and `linux-bwrap.ts` flags, `not-slop.tsv` ordering edges, and tier inversions.
+ * Deterministic overlap, churn, ordering and proof-cache pre-pass for `consolidate-stack`:
+ * `analyze.ts [--top <n>] [--limit <n>]`. One lightweight `gh pr list` (`openPulls`, avoiding
+ * GraphQL's node overflow on deep stacks) plus local `git diff --numstat` spans surface Mode B
+ * churn hotspots (`gross/net >= 1.3x` or `>= 3` PR touches), Mode A zero-rewrite adjacent fold
+ * blocks, `gate.ts` `checkerDigest` and `src/sandbox/linux-bwrap.ts` flags, `not-slop.tsv` ordering
+ * edges and tier inversions.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitOutput } from "#src/meta/git.ts";
@@ -20,7 +18,7 @@ const CHURN_RATIO = 1.3;
 const HOT_TOUCHES = 3;
 const DEFAULT_LIMIT = 15;
 const GATE_OWNERS = new Set(["tools/runtime/gate.ts", "tools/runtime/pulls.ts"]);
-const LINUX_WALL = "src/wall/linux-bwrap.ts";
+const LINUX_WALL = "src/sandbox/linux-bwrap.ts";
 const OXLINT_PREFIX = "tools/oxlint/";
 const TIER_ORDER = new Map<string, number>([
   ["I0", 0],
@@ -68,7 +66,8 @@ interface StackAnalysis {
   readonly warnings: readonly string[];
 }
 
-/** Parses `git diff --numstat` lines into per-path addition/deletion totals (`-` binaries -> 0). */
+/** Per-path addition and deletion totals from `git diff --numstat`, binaries (`-`) counting as 0.
+ */
 export function parseNumstat(raw: string): Map<string, FileStat> {
   const found = new Map<string, FileStat>();
   for (const line of raw.split("\n")) {
@@ -136,7 +135,6 @@ function collectWarnings(spans: readonly PullSpan[], sides: readonly Pull[]): st
   return warnings;
 }
 
-/** Computes overlap, gross/net churn, Mode A blocks, and cache/ordering warnings for one stack. */
 export function analyzeStack(
   pulls: readonly Pull[],
   trunk: string,
@@ -235,7 +233,6 @@ export function analyzeStack(
   };
 }
 
-/** Formats `StackAnalysis` as compact plain text for consolidation triage. */
 export function formatAnalysis(report: StackAnalysis, limit = DEFAULT_LIMIT): string {
   if (report.spans.length === 0) return "consolidate-stack analyze: no open stack found";
   const macroRatio = (report.grossLines / Math.max(1, report.netLines)).toFixed(2);

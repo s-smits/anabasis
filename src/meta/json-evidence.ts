@@ -1,15 +1,10 @@
 import { isRecord, type JsonValue } from "./json-shape.ts";
 
-/** Resolve the closed JSON-path grammar shared by authoring checks and truth predicates. */
 interface ResolveJsonPathResult {
   found: boolean;
   value: JsonValue | undefined;
 }
 
-/** Split the rooted path once; a partial match is never a different valid path. A quoted key,
- *  `['main.cpp']` or `["main.cpp"]`, is the plain step it names, returned as `.main.cpp`: a file
- *  map's keys hold dots, so without it no declared path could name one file, and a check had to
- *  declare the whole map. Tokens are compared whole, so the dot inside that step splits nothing. */
 const JSON_PATH_TOKEN = /^\$|\.[A-Za-z_][A-Za-z0-9_-]*|\[(?:0|[1-9]\d*)\]|\[(?:'[^'\\]+'|"[^"\\]+")\]/g;
 const QUOTED_STEP = /^\[['"]/;
 

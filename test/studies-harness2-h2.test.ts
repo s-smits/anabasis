@@ -39,8 +39,8 @@ describe("a rollout's result", () => {
   });
 
   it("reaches the store with its files and folders, on another filesystem where one is at hand", async () => {
-    // A Linux machine keeps /dev/shm on a filesystem of its own, where a rename out of the
-    // workspace is refused; elsewhere the store is beside the workspace.
+    // Linux keeps /dev/shm on a filesystem of its own, where a rename out of the workspace is refused;
+    // elsewhere the store is beside the workspace.
     const apart = existsSync("/dev/shm") && statSync("/dev/shm").dev !== statSync(tmpdir()).dev;
     const store = mkdtempSync(join(apart ? "/dev/shm" : root, "delivery-"));
     try {
@@ -67,7 +67,6 @@ describe("a rollout's result", () => {
       });
       const delivered = join(store, task, "model_output", label);
       expect(billed).toBe(0.5);
-      // The session ran with Claude Code's own memory switched off.
       expect(readFileSync(join(delivered, "report.md"), "utf8")).toBe("report 1\n");
       expect(readFileSync(join(delivered, "tables", "a.csv"), "utf8")).toBe("rows\n");
     } finally {

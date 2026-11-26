@@ -1,7 +1,6 @@
 // Darwin's process table as libproc reads it (`src/meta/process-table.ts`): a process's working
-// directory and its program, by their real paths, as `lsof -d cwd,txt` named them for a seat's
-// release, with its parent and process group; and a program whose file was removed after it started, which `proc_pidpath` no longer
-// names, still named by its first mapped region.
+// directory and program by their real paths, its parent and group, and a program removed after it
+// started, which `proc_pidpath` no longer names, still named by its first mapped region.
 import { describe, expect, it } from "bun:test";
 import {
   chmodSync,
@@ -19,7 +18,6 @@ import { anyOf } from "./helpers/matchers.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
 
-/** A copy of `sleep` under a fresh folder, run from another folder beside it. */
 function sleeper() {
   const folder = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-process-table-")));
   const works = join(folder, "works");
@@ -41,7 +39,6 @@ describe("the process table", () => {
   it.skipIf(!onDarwin)("reads a process's working directory and program by their real paths", async () => {
     const { works, program, row, end } = sleeper();
     try {
-      // The child stays in this process's group, as `ps` reads it.
       const group = Number(
         Bun.spawnSync(["/bin/ps", "-o", "pgid=", "-p", String(runtimeProcess.pid)]).stdout.toString(),
       );
@@ -59,6 +56,26 @@ describe("the process table", () => {
       await end();
     }
   });
+
+  it.skipIf(!onDarwin)(
+    "lists a setuid program this user started, whose effective uid is root's",
+    async () => {
+      const child = Bun.spawn(["/usr/bin/top", "-l", "0"], { stdio: ["ignore", "ignore", "ignore"] });
+      const row = () => processTable().find(({ pid }) => pid === child.pid);
+      try {
+        for (const until = performance.now() + 5000; performance.now() < until; await Bun.sleep(20)) {
+          if (row()?.program === "/usr/bin/top") break;
+        }
+        expect(row()).toMatchObject({
+          ppid: runtimeProcess.pid,
+          program: "/usr/bin/top",
+        });
+      } finally {
+        child.kill("SIGKILL");
+        await child.exited;
+      }
+    },
+  );
 
   it.skipIf(!onDarwin)("still names a program whose file was removed after it started", async () => {
     const { program, row, end } = sleeper();

@@ -1,4 +1,3 @@
-// Moving a campaign or a seed whole between hosts, with recovery paths after interrupted copies.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   existsSync,
@@ -35,17 +34,17 @@ function seedMove() {
     extra: Record<string, string> = {},
     end = ["--to", made.host.name],
   ) =>
-    made.run(
+    made.runAsync(
       `import { move } from "REPOSITORY/tools/runs/move.ts"; await move(${JSON.stringify(["seed", ...end, "--yes", ...flags])});`,
       { FAKE_EXECUTE: "1", FAKE_RUN_CLI: "1", ...extra },
     );
   return { ...made, folder, into, move: run };
 }
 
-describe("moving a campaign to another machine", () => {
-  it("refuses an unheld seed with no continuation flags before copying or pausing", () => {
+describe.concurrent("moving a campaign to another machine", () => {
+  it("refuses an unheld seed with no continuation flags before copying or pausing", async () => {
     const made = seedMove();
-    const result = made.move([]);
+    const result = await made.move([]);
     expect(result.code).toBe(1);
     expect(existsSync(made.folder)).toBe(true);
     expect(existsSync(made.into)).toBe(false);
@@ -53,7 +52,7 @@ describe("moving a campaign to another machine", () => {
     expect(made.recorded().some(({ tool }) => tool === "ps")).toBe(false);
   });
 
-  it("counts room against the receipt's login unless --login names another", () => {
+  it("counts room against the receipt's login unless --login names another", async () => {
     const made = seedMove();
     writeReceipt(join(made.folder, "log.jsonl"), "run-1", {
       at: new Date().toISOString(),
@@ -67,15 +66,15 @@ describe("moving a campaign to another machine", () => {
       login: "3",
     });
     const capped = { ANA_LOGIN_RUNS: "3:0" };
-    const kept = made.move(["--hold"], capped);
+    const kept = await made.move(["--hold"], capped);
     expect(kept.code).toBe(1);
     expect(kept.err).toContain("login 3");
     expect(existsSync(made.folder)).toBe(true);
-    expect(made.move(["--hold", "--login", "2"], capped).code).toBe(0);
+    expect((await made.move(["--hold", "--login", "2"], capped)).code).toBe(0);
     expect(existsSync(made.folder)).toBe(false);
   });
 
-  it("refuses a destination that lacks the run's login before anything is paused or copied", () => {
+  it("refuses a destination that lacks the run's login before anything is paused or copied", async () => {
     const made = seedMove();
     writeReceipt(join(made.folder, "log.jsonl"), "run-1", {
       at: new Date().toISOString(),
@@ -88,12 +87,11 @@ describe("moving a campaign to another machine", () => {
       cores: 2,
       login: "3",
     });
-    // The fake host's environment holds no login, and its own `active --here --login` says so.
-    const refused = made.move([]);
+    const refused = await made.move([]);
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("login 3 must be carried");
     // A login the destination holds is still refused at its live-run cap.
-    const capped = made.move(["--hold", "--login", "2"], { ANA_LOGIN_RUNS: "2:0" });
+    const capped = await made.move(["--hold", "--login", "2"], { ANA_LOGIN_RUNS: "2:0" });
     expect(capped.code).toBe(1);
     expect(capped.err).toContain("login 2 is at its live-run cap");
     expect(existsSync(made.folder)).toBe(true);
@@ -101,7 +99,7 @@ describe("moving a campaign to another machine", () => {
     expect(made.recorded().some(({ tool }) => tool === "rsync")).toBe(false);
   });
 
-  it("refuses a destination of another system whose kept harness holds a program it cannot run", () => {
+  it("refuses a destination of another system whose kept harness holds a program it cannot run", async () => {
     const made = seedMove();
     const tree = join(made.folder, "states", "a".repeat(64), ".toolchain");
     mkdirSync(tree, { recursive: true });
@@ -111,25 +109,26 @@ describe("moving a campaign to another machine", () => {
       mode: 0o755,
     });
     const fleet = { [made.host.ssh]: { env: { FAKE_UNAME: "Linux x86_64" } } };
-    const refused = made.move(["--hold"], { FAKE_FLEET: JSON.stringify(fleet) });
+    const refused = await made.move(["--hold"], { FAKE_FLEET: JSON.stringify(fleet) });
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("cannot run");
     expect(refused.err).toContain("tool (a Mach-O binary)");
     expect(existsSync(made.folder)).toBe(true);
     expect(existsSync(made.into)).toBe(false);
-    // The same harness moves to a machine of its own system.
     const same = { [made.host.ssh]: { env: { FAKE_UNAME: "Darwin arm64" } } };
-    expect(made.move(["--hold"], { FAKE_FLEET: JSON.stringify(same) }).err).not.toContain("cannot run");
+    expect((await made.move(["--hold"], { FAKE_FLEET: JSON.stringify(same) })).err).not.toContain(
+      "cannot run",
+    );
   });
 });
 
-describe("recovering interrupted moves", () => {
-  it("refuses a destination holding more of the log than the source, giving recovery paths", () => {
+describe.concurrent("recovering interrupted moves", () => {
+  it("refuses a destination holding more of the log than the source, giving recovery paths", async () => {
     const made = seedMove();
-    const failed = made.move(["--hold"], { FAKE_TRANSFER_FAIL: "1" });
+    const failed = await made.move(["--hold"], { FAKE_TRANSFER_FAIL: "1" });
     expect(failed.code).toBe(1);
     expect(readFileSync(join(made.into, "log.jsonl"), "utf8")).toBe("partial");
-    const retry = made.move(["--hold"]);
+    const retry = await made.move(["--hold"]);
     expect(retry.code).toBe(1);
     for (const fact of [made.folder, made.into, "runner", "git -C", "worktree remove"]) {
       expect(retry.err).toContain(fact);
@@ -139,17 +138,17 @@ describe("recovering interrupted moves", () => {
     expect(made.recorded().filter(({ tool }) => tool === "rsync")).toHaveLength(1);
   });
 
-  it("goes on with a move whose copy failed, from the worktree it left at the same commit", () => {
+  it("goes on with a move whose copy failed, from the worktree it left at the same commit", async () => {
     const made = seedMove();
     const log = '{"kind":"campaign.word","at":"2026-11-09T00:00:00.000Z","data":{}}\n';
     writeFileSync(join(made.folder, "log.jsonl"), log);
-    expect(made.move(["--hold"], { FAKE_TRANSFER_FAIL: "1" }).code).toBe(1);
+    expect((await made.move(["--hold"], { FAKE_TRANSFER_FAIL: "1" })).code).toBe(1);
     expect(existsSync(made.folder)).toBe(true);
-    const dirty = made.move(["--hold"], { FAKE_DIRTY: " M tracked.ts" });
+    const dirty = await made.move(["--hold"], { FAKE_DIRTY: " M tracked.ts" });
     expect(dirty.code).toBe(1);
     expect(existsSync(made.folder)).toBe(true);
     expect(made.recorded().filter(({ tool }) => tool === "rsync")).toHaveLength(1);
-    const retry = made.move(["--hold"]);
+    const retry = await made.move(["--hold"]);
     expect(retry.err).toBe("");
     expect(retry.code).toBe(0);
     expect(readFileSync(join(made.into, "log.jsonl"), "utf8")).toBe(log);
@@ -165,12 +164,12 @@ describe("recovering interrupted moves", () => {
     ).toHaveLength(1);
   });
 
-  it("leaves no relay stage behind when a copy between two hosts fails", () => {
+  it("leaves no relay stage behind when a copy between two hosts fails", async () => {
     const made = seedMove();
     const other = { ...made.host, name: "other", ssh: "fake-other" };
     const temporary = join(made.root, "tmp");
     mkdirSync(temporary);
-    const failed = made.move(
+    const failed = await made.move(
       ["--hold", "--", "--project", "fixture"],
       { ANA_HOSTS: JSON.stringify([made.host, other]), FAKE_TRANSFER_FAIL: "1", TMPDIR: temporary },
       ["--from", made.host.name, "--to", other.name],
@@ -181,7 +180,7 @@ describe("recovering interrupted moves", () => {
     const stale = join(temporary, "ana-move-seed");
     mkdirSync(stale);
     writeFileSync(join(stale, "superseded"), "from an interrupted relay");
-    const retry = made.move(
+    const retry = await made.move(
       ["--hold"],
       { ANA_HOSTS: JSON.stringify([made.host, other]), TMPDIR: temporary },
       ["--from", made.host.name, "--to", other.name],
@@ -190,10 +189,10 @@ describe("recovering interrupted moves", () => {
     expect(existsSync(join(made.into, "superseded"))).toBe(false);
   });
 
-  it("points a retry to the destination after the source has been set aside", () => {
+  it("points a retry to the destination after the source has been set aside", async () => {
     const made = seedMove();
-    expect(made.move(["--hold"]).code).toBe(0);
-    const retry = made.move(["--hold"]);
+    expect((await made.move(["--hold"])).code).toBe(0);
+    const retry = await made.move(["--hold"]);
     expect(retry.code).toBe(1);
     for (const fact of [made.into, "runner", "runs continue seed", ".ana/moved/"]) {
       expect(retry.err).toContain(fact);

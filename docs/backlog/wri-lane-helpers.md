@@ -133,7 +133,7 @@ and 21 of the 23 lane prompts are 2,400 to 6,800, the other two 14,000 and 23,00
 
 ## Found on the way, not changed here
 
-- **`openSteps` (`src/campaign/handover.ts`) reads a resumed comparison as cut** (confirmed by a
+- **`openSteps` (`src/campaign/summary.ts`) reads a resumed comparison as cut** (confirmed by a
   scratch test and on one log). A comparison counts as cut once any bound event follows its first
   start, and the bounds include `comparison.started` itself, so a comparison resumed after a stop
   drops out of the list while it runs. Three printed lines read it (`runs view`, `wri.ts read`, the

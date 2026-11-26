@@ -6,6 +6,7 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { hashJsonValue, sameJsonValue, stableJson } from "../src/meta/stable-json.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { hasText, textOr } from "../src/meta/text.ts";
+import { runCaptured } from "../src/meta/subprocess.ts";
 import { isObject } from "../src/meta/json-shape.ts";
 
 describe("path containment", () => {
@@ -34,10 +35,8 @@ describe("owned runtime value types", () => {
 });
 
 describe("isObject", () => {
-  // `typeof null` is "object", so the predicate this replaced returned true for null and asked
-  // each caller to add `value !== null`. Twelve of its twenty-nine callers did not, and one of
-  // those reached `part.type` on a null and threw a TypeError where its function declares
-  // `Error("generated tool result must contain text content")`. The exclusion belongs here.
+  // `typeof null` is "object", so a predicate without this exclusion asks each caller to add `value !==
+  // null`, and callers that forget throw a TypeError on null.
   it("excludes null while admitting every other object", () => {
     for (const value of [null, undefined, "", 0]) expect(isObject(value)).toBe(false);
     for (const value of [{}, [], new Date(0)]) expect(isObject(value)).toBe(true);
@@ -106,7 +105,6 @@ describe("hasText", () => {
 });
 
 describe("warn", () => {
-  /** What a child process writes to stderr for one warning, with its stderr said to be a terminal or not. */
   const written = (terminal: boolean, env: Record<string, string> = {}) =>
     Bun.spawnSync(
       [
@@ -119,8 +117,32 @@ describe("warn", () => {
 
   it("is yellow on a terminal, and plain in a pipe or where NO_COLOR is set", () => {
     expect(written(true)).toBe("\u001B[33mone host is silent\u001B[39m\n");
-    // A log or a test that reads the line gets its text alone.
     expect(written(false)).toBe("one host is silent\n");
     expect(written(true, { NO_COLOR: "1" })).toBe("one host is silent\n");
+  });
+});
+
+describe("runCaptured", () => {
+  it("returns soon after its child exits while a grandchild still holds both pipes", async () => {
+    const started = performance.now();
+    const result = await runCaptured(["/bin/sh", "-c", "echo out; echo err >&2; sleep 30 & exit 3"]);
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(result).toEqual({ exitCode: 3, signal: null, stdout: "out\n", stderr: "err\n" });
+  });
+
+  it("drains a short post-exit burst, returns immediately on normal exit, and cuts a chatty grandchild", async () => {
+    const fast = await runCaptured(["/bin/echo", "fast"]);
+    expect(fast).toEqual({ exitCode: 0, signal: null, stdout: "fast\n", stderr: "" });
+    const flushed = await runCaptured(["/bin/sh", "-c", "(sleep 0.05; echo a; sleep 0.05; echo b) & exit 0"]);
+    expect(flushed).toEqual({ exitCode: 0, signal: null, stdout: "a\nb\n", stderr: "" });
+    const started = performance.now();
+    const chatty = await runCaptured([
+      "/bin/sh",
+      "-c",
+      "(i=0; while [ $i -lt 40 ]; do echo x; sleep 0.25; i=$((i+1)); done) & exit 0",
+    ]);
+    expect(performance.now() - started).toBeLessThan(4000);
+    expect(chatty.exitCode).toBe(0);
+    expect(chatty.stdout.split("\n").filter((line) => line === "x").length).toBeLessThan(20);
   });
 });

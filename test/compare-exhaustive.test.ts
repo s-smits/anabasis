@@ -13,21 +13,24 @@ import {
   gainOver,
   gapAgainst,
   informative,
+  objectiveRuleIn,
+  objectiveRuleOf,
   type Paired,
   pointsOf,
   power,
   rawFlipP,
-  readsStep,
-  readsStepEitherWay,
+  isSignificant,
+  isSignificantTwoSided,
   scored,
   scoresIn,
+  upperBound,
   sweepOf,
   testOf,
   WEIGHTS,
   wholePoints,
 } from "../src/kernel/compare.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { PATIENCE, patienceOf, roomOf } from "../src/kernel/reports.ts";
+import { PATIENCE, patienceOf, evalHeadroom } from "../src/kernel/reports.ts";
 import { howOftenValid, SIZE, sizeLines, smallestSteps } from "../src/kernel/size.ts";
 
 const LEVELS = [0.02, 0.05, 0.1, 0.25];
@@ -50,7 +53,6 @@ function multisets(alphabet: readonly number[], length: number): number[][] {
   return found;
 }
 
-/** Every vector up to `most` long, as multisets over `alphabet`. */
 const upTo = (alphabet: readonly number[], most: number) =>
   Array.from({ length: most + 1 }, (_, length) => multisets(alphabet, length)).flat();
 
@@ -158,12 +160,12 @@ describe("the sign-flip p", () => {
   it("reads a step at a level exactly where p is at or under it, and an A/A step the same either way", () => {
     let mixed = 0;
     for (const scores of upTo([-2, -1, 0, 1, 2], 8)) {
-      if (scores.some((one) => one < 0) && readsStep(scores, 0.05)) mixed += 1;
+      if (scores.some((one) => one < 0) && isSignificant(scores, 0.05)) mixed += 1;
       const negated = scores.map((one) => -one);
       for (const level of LEVELS) {
-        expect(readsStep(scores, level)).toBe(countedP(scores) <= level);
-        expect(readsStepEitherWay(scores, level)).toBe(readsStepEitherWay(negated, level));
-        expect(readsStepEitherWay(scores, level)).toBe(
+        expect(isSignificant(scores, level)).toBe(countedP(scores) <= level);
+        expect(isSignificantTwoSided(scores, level)).toBe(isSignificantTwoSided(negated, level));
+        expect(isSignificantTwoSided(scores, level)).toBe(
           countedP(scores) <= level || countedP(negated) <= level,
         );
       }
@@ -174,6 +176,29 @@ describe("the sign-flip p", () => {
     const outlier = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, -300];
     expect(flipP(outlier)).toBeLessThanOrEqual(0.02);
     expect(rawFlipP(outlier)).toBeGreaterThan(0.5);
+  });
+});
+
+describe("the exact upper bound", () => {
+  const atMost = (hits: number, trials: number, chance: number) => {
+    let [ways, below] = [1, 0];
+    for (let at = 0; at <= hits; at += 1) {
+      below += ways * chance ** at * (1 - chance) ** (trials - at);
+      ways = (ways * (trials - at)) / (at + 1);
+    }
+    return below;
+  };
+
+  it("leaves exactly 5% below the observed count, and never falls under the observed rate, up to 40 trials", () => {
+    for (let trials = 1; trials <= 40; trials += 1) {
+      for (let hits = 0; hits < trials; hits += 1) {
+        const bound = upperBound(hits, trials);
+        expect(bound).toBeGreaterThan(hits / trials);
+        expect(atMost(hits, trials, bound)).toBeCloseTo(0.05, 6);
+      }
+      expect(upperBound(trials, trials)).toBe(1);
+      expect(upperBound(0, trials)).toBeCloseTo(1 - 0.05 ** (1 / trials), 9);
+    }
   });
 });
 
@@ -191,7 +216,6 @@ describe("the test's power", () => {
 
   it("equals the weighed share of stepping sign patterns, and never passes the level at a share of one half", () => {
     for (const scores of upTo([-3, -1, 0, 2, 4], 7)) {
-      // Every pattern's own p, each the share of patterns whose sum is at least its sum.
       const all = patterns(scores);
       const sums = all.map(({ flipped }) => sum(flipped));
       const drawn = all.map(({ wins, untied }, at) => ({
@@ -212,13 +236,13 @@ describe("the test's power", () => {
     for (const level of [...LEVELS, 0.01, 0.2, 0.5]) {
       const sweep = sweepOf(level);
       expect(
-        readsStep(
+        isSignificant(
           Array.from({ length: sweep }, () => 1),
           level,
         ),
       ).toBe(true);
       expect(
-        readsStep(
+        isSignificant(
           Array.from({ length: sweep - 1 }, () => 1),
           level,
         ),
@@ -243,7 +267,6 @@ describe("the test's power", () => {
 });
 
 describe("a task's score", () => {
-  /** Every list of `count` validities. */
   const lists = (count: number): boolean[][] =>
     Array.from({ length: 2 ** count }, (_, bits) =>
       Array.from({ length: count }, (_v, at) => ((bits >> at) & 1) === 1),
@@ -442,7 +465,7 @@ describe("the room a task leaves a harness", () => {
       // A count's first place holds the tasks valid in no solve.
       const someValid = [...old.slice(1), ...fresh.slice(1)].some((n) => n > 0);
       const expected = count === undefined || count > 0 ? "room" : someValid ? "none" : "too-hard";
-      expect(roomOf({ valid: { informative: counts, old, fresh } }, side)).toBe(expected);
+      expect(evalHeadroom({ valid: { informative: counts, old, fresh } }, side)).toBe(expected);
     }
   });
 
@@ -557,7 +580,6 @@ describe("a comparison's size, said before it runs", () => {
         expect(smallestSteps(tasks, level)).toEqual(expected);
       }
     }
-    // The plan's figures at its level.
     expect(smallestSteps(24, 0.02).slice(0, 4)).toEqual([
       { wins: 6, losses: 0 },
       { wins: 8, losses: 1 },
@@ -618,5 +640,67 @@ describe("the protocol's measured constants", () => {
     expect(
       patienceOf([{ at: "2026-11-21T00:00:00.000Z", kind: "campaign.opened", data: { patience: 2 } }]),
     ).toBe(2);
+  });
+
+  it("scores unit-scale objectives by antisymmetric absolute difference on [0, 1] without a cliff at zero", () => {
+    const grid = [0, 0.005, 0.01, 0.25, 0.5, 0.75, 0.99, 1];
+    for (const direction of ["higher", "lower"] as const) {
+      const rule = { direction, scale: "unit" as const };
+      for (const a of grid) {
+        for (const b of grid) {
+          const got = gainOver(rule, a, b);
+          const expected = Math.max(-1, Math.min(1, direction === "lower" ? b - a : a - b));
+          expect(got).toBeCloseTo(expected, 12);
+          expect(gainOver(rule, b, a)).toBeCloseTo(-got, 12);
+        }
+      }
+    }
+    expect(gainOver({ direction: "lower", scale: "unit" }, 0, 0.02)).toBeCloseTo(0.02, 12);
+    expect(gainOver({ direction: "higher", scale: "unit" }, 0.85, 0)).toBeCloseTo(0.85, 12);
+    expect(
+      differenceOf({
+        task: "u1",
+        old: [true],
+        fresh: [true],
+        objective: { direction: "higher", scale: "unit", old: [0.85], fresh: [0.855] },
+      }),
+    ).toBe(0);
+    expect(
+      differenceOf({
+        task: "u2",
+        old: [true],
+        fresh: [true],
+        objective: { direction: "higher", scale: "unit", old: [0.7], fresh: [0.85] },
+      }),
+    ).toBe(45);
+    expect(objectiveRuleOf({ direction: "higher", scale: "unit" })).toEqual({
+      direction: "higher",
+      scale: "unit",
+    });
+    expect(objectiveRuleIn({ objective: { direction: "higher", scale: "unit" } })).toEqual({
+      direction: "higher",
+      scale: "unit",
+    });
+    expect(objectiveRuleIn({ objective: { direction: "higher" } })).toEqual({ direction: "higher" });
+    const roundTripped = objectiveRuleIn({
+      objective: { direction: "higher", scale: "unit" },
+    });
+    expect(roundTripped).toEqual({ direction: "higher", scale: "unit" });
+    expect(
+      differenceOf({
+        task: "u-zero",
+        old: [true],
+        fresh: [true],
+        objective: { ...(roundTripped ?? { direction: "higher" }), old: [0], fresh: [0.02] },
+      }),
+    ).toBe(6);
+    expect(
+      differenceOf({
+        task: "r-zero",
+        old: [true],
+        fresh: [true],
+        objective: { direction: "higher", old: [0], fresh: [0.02] },
+      }),
+    ).toBe(300);
   });
 });

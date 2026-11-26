@@ -12,7 +12,7 @@ solves.
 ```text
 bun --env-file=<file> .claude/skills/system-path-simulation/scripts/live-seat.ts start \
   --tree <worktree> --name sim-<what> --out <scratch>/arm-a --cap 30 --minutes 90 \
-  -- tools/d1b/examine.ts --session x-9 --examiner <model> ...
+  -- tools/eval/examine.ts --session x-9 --examiner <model> ...
 bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scratch>/arm-a
 ```
 
@@ -26,7 +26,7 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   `bun run runs stop sim-<what>` lists any leftover root processes.
 - `read` reports elapsed minutes and billed dollars (`billedBetween`), sessions, drafts, task
   admissions by outcome category, holds, turn counts of the reference's valid answers to
-  `try_reference` probes (`gateAnswers`), tool call counts, and (with `--mention`) calls matching a
+  pre-v0.14 `try_reference` probes (`gateAnswers`; empty on current trees), tool call counts, and (with `--mention`) calls matching a
   given string without quoting any task or answer content. On a seed log it starts at the seed cut;
   `--log` accepts an absolute path and requires `--from <event>` outside a seed. Under the current
   admission schema (`TASK_ADMISSION`, `src/examiner/write.ts`), task admissions record only whether
@@ -46,9 +46,12 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   prefixes closed so waiting launch scripts do not start them. On remote hosts, use
   `stop --host <name>` rather than `pkill -f` over SSH, which can match the SSH session's own
   command line.
-- `prompt --tree <worktree> --name sim-<what> -- tools/d1b/examine.ts <its flags>` renders the exact
-  prompt that the Examiner session would receive under that tree's code without launching a model;
-  it currently supports only Examiner sessions.
+- `prompt --tree <worktree> --name sim-<what> -- tools/eval/examine.ts|draft.ts <its flags>` renders
+  the prompt (without the home `FROM_FILE` note for drafting or the reference copy for writing) that
+  an Examiner task-writing or drafting session would receive under that tree's code without
+  launching a model or writing log events. `start`, `read`, `watch`, `due` and `compare` likewise
+  report draft sessions (`draft.*`, `exam.drafted`, `referee.draft`, `contract.frozen`) and
+  comparison rounds (`comparison.*`, `solve.*`, `referee.finding`).
 - `compare <prefix>... [--gates N]`, `pairs <control>,<arm>...`, and `calls <log or folder>...`
   aggregate paired arm rounds ([optimize](optimize.md), steps 3 and 6).
 
@@ -66,8 +69,8 @@ A backend can be probed outside any campaign directly through its provider (`cla
 - **Use the production prompt verbatim.** Nothing may inform the model that it is in a simulation
   or hint at the desired outcome. When testing a prompt edit, that edit is the sole experimental
   variable and the seed holds every other condition constant.
-- **Budget Examiner seats in drafts.** An Examiner's spend scales with its turns plus the
-  `try_reference` probe solves it requests, bounded by `--proposals`.
+- **Budget Examiner seats in drafts.** An Examiner's spend scales with its turns, bounded by
+  `--proposals`.
 
 Report a single live seat as a verified execution path rather than a statistical measurement of
 model performance. Nothing produced by a seed enters a production campaign.

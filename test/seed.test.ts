@@ -160,8 +160,18 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
 
     writeFileSync(join(home, "shared.txt"), "unchanged across sessions\n");
     writeFileSync(join(home, "NOTES.md"), "draft notes\n");
-    writeFileSync(join(home, ".env"), "SECRET=1\n");
-    writeFileSync(join(home, "auth.json"), '{"token":"secret"}\n');
+    writeFileSync(join(home, ".environment"), "keep benign lookalike\n");
+    writeFileSync(join(home, "auth.json.bak"), "keep benign lookalike\n");
+    for (const secret of [
+      ".env",
+      ".env.local",
+      "prod.env",
+      "auth.json",
+      "sub/.env.secret",
+      "sub/auth.json",
+    ]) {
+      writeFileSync(join(home, secret), "SECRET=1\n");
+    }
     mkdirSync(join(home, "node_modules", "pkg"), { recursive: true });
     writeFileSync(join(home, "node_modules", "pkg", "index.js"), "ignored\n");
     writeFileSync(join(home, "sub", "tool.sh"), "#!/bin/sh\necho v1\n");
@@ -172,13 +182,15 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
     writeFileSync(join(home, "NOTES.md"), "x-1 notes\n");
     writeFileSync(join(home, "gen.py"), "print('x-1')\n");
     snapshotHome(home, store, "x-1");
+    snapshotHome(home, store, "x-crash-0");
 
     rmSync(join(home, "gen.py"));
     writeFileSync(join(home, "NOTES.md"), "x-2 notes\n");
     snapshotHome(home, store, "x-2");
+    snapshotHome(home, store, "x-crash");
 
     const objects = readdirSync(join(store, "objects"));
-    expect(objects.length).toBe(6);
+    expect(objects.length).toBe(7);
 
     const row = (kind: EventKind, data: JsonObject) =>
       JSON.stringify({ at: "2026-11-26T00:00:00.000Z", kind, data });
@@ -189,12 +201,18 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
         row("draft.finished", { session: "d-1", ended: "stands" }),
         row("exam.started", { session: "x-1" }),
         row("exam.finished", { session: "x-1", ended: "supplied" }),
+        row("exam.started", { session: "x-crash-0" }),
+        row("exam.finished", { session: "x-crash-0", ended: "crashed", running: 0 }),
+        row("exam.started", { session: "x-crash" }),
+        row("exam.finished", { session: "x-crash", ended: "crashed", running: 1 }),
+        row("exam.started", { session: "../evil" }),
         row("exam.started", { session: "x-2", conversation: "x-1" }),
         row("exam.finished", { session: "x-2", ended: "supplied" }),
         row("exam.started", { session: "x-3" }),
         row("exam.finished", { session: "x-3", ended: "supplied" }),
       ].join("\n")}\n`,
     );
+    writeFileSync(join(source, "evil.jsonl"), '{"sessionId":"00000000-0000-0000-0000-000000000009"}\n');
     for (const id of ["d-1", "x-1", "x-2", "x-3"]) {
       writeFileSync(join(sessions, `${id}.jsonl`), `{"sessionId":"00000000-0000-0000-0000-000000000001"}\n`);
     }
@@ -202,7 +220,8 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
     const seeded = join(root, "sim-before-x2");
     const made = seedCampaign(source, seeded, { before: "x-2" });
     expect(made.examinerHome).toBe(true);
-    expect(made.examinerHomeFrom).toBe("x-1");
+    expect(made.examinerHomeFrom).toBe("x-crash-0");
+    expect(existsSync(join(seeded, "evil.jsonl"))).toBe(false);
     expect(readFileSync(join(seeded, "examiner-home", "NOTES.md"), "utf8")).toBe("x-1 notes\n");
     expect(readFileSync(join(seeded, "examiner-home", "gen.py"), "utf8")).toBe("print('x-1')\n");
     expect(readFileSync(join(seeded, "examiner-home", "shared.txt"), "utf8")).toBe(
@@ -210,19 +229,57 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
     );
     expect(readlinkSync(join(seeded, "examiner-home", "link.txt"))).toBe("shared.txt");
     expect(statSync(join(seeded, "examiner-home", "sub", "tool.sh")).mode & 0o777).toBe(0o755);
-    expect(existsSync(join(seeded, "examiner-home", ".env"))).toBe(false);
-    expect(existsSync(join(seeded, "examiner-home", "auth.json"))).toBe(false);
+    for (const secret of [
+      ".env",
+      ".env.local",
+      "prod.env",
+      "auth.json",
+      "sub/.env.secret",
+      "sub/auth.json",
+    ]) {
+      expect(existsSync(join(seeded, "examiner-home", secret))).toBe(false);
+    }
+    for (const kept of [".environment", "auth.json.bak"]) {
+      expect(existsSync(join(seeded, "examiner-home", kept))).toBe(true);
+    }
     expect(existsSync(join(seeded, "examiner-home", "node_modules"))).toBe(false);
 
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "d-1.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-1.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-2.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-3.jsonl"))).toBe(false);
+
+    const liveSource = join(root, "live-fallback");
+    mkdirSync(join(liveSource, "examiner-home"), { recursive: true });
+    symlinkSync("missing-target", join(liveSource, "examiner-home", "dangling"));
+    writeFileSync(
+      join(liveSource, "log.jsonl"),
+      `${[
+        row("exam.started", { session: "x-1" }),
+        row("exam.finished", { session: "x-1", ended: "crashed", running: 0 }),
+        row("exam.started", { session: "x-2" }),
+        row("exam.finished", { session: "x-2", ended: "supplied" }),
+      ].join("\n")}\n`,
+    );
+    const liveAll = seedCampaign(liveSource, join(root, "sim-live-all"), {});
+    expect(liveAll.examinerHome).toBe(true);
+    expect(liveAll.examinerHomeFrom).toBeUndefined();
+    expect(readlinkSync(join(root, "sim-live-all", "examiner-home", "dangling"))).toBe("missing-target");
+    const liveEarly = seedCampaign(liveSource, join(root, "sim-live-early"), { before: "x-2" });
+    expect(liveEarly.examinerHome).toBe(false);
+    expect(existsSync(join(root, "sim-live-early", "examiner-home"))).toBe(false);
   });
 
-  it("refuses manifests with escaping paths or missing blobs on restore", () => {
+  it("refuses manifests with escaping paths, unsafe ids, corrupt entries, or missing blobs on restore", () => {
     const store = join(root, "bad-store");
     mkdirSync(join(store, "objects"), { recursive: true });
+    snapshotHome(join(root, "does-not-exist"), store, "absent");
+    expect(existsSync(join(store, "absent.json"))).toBe(false);
+    expect(() => snapshotHome(store, store, "../escape")).toThrow("unsafe examiner home snapshot id");
+    expect(() => restoreHome(store, "../escape", join(root, "out-0"))).toThrow(
+      "unsafe examiner home snapshot id",
+    );
+
     writeFileSync(
       join(store, "escape.json"),
       JSON.stringify({ session: "escape", entries: [{ path: "../outside.txt", kind: "dir" }] }),
@@ -238,16 +295,56 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
     );
     expect(() => restoreHome(store, "missing", join(root, "out-2"))).toThrow("missing examiner home blob");
 
-    writeFileSync(
-      join(store, "sym-escape.json"),
-      JSON.stringify({
-        session: "sym-escape",
-        entries: [
-          { path: "linkdir", kind: "symlink", target: "/tmp" },
-          { path: "linkdir/pwn.txt", kind: "dir" },
-        ],
-      }),
-    );
-    expect(() => restoreHome(store, "sym-escape", join(root, "out-3"))).toThrow("traverses symlink");
+    const outsideSym = join(root, "outside-sym");
+    mkdirSync(outsideSym, { recursive: true });
+    for (const [id, parents] of [
+      ["sym-depth-0", []],
+      ["sym-depth-1", ["sub"]],
+      ["sym-depth-2", ["sub", "sub/deep"]],
+    ] as const) {
+      const linkPath = parents.length === 0 ? "linkdir" : `${parents.at(-1)}/linkdir`;
+      writeFileSync(
+        join(store, `${id}.json`),
+        JSON.stringify({
+          session: id,
+          entries: [
+            ...parents.map((path) => ({ path, kind: "dir" })),
+            { path: linkPath, kind: "symlink", target: outsideSym },
+            { path: `${linkPath}/pwn.txt`, kind: "dir" },
+          ],
+        }),
+      );
+      expect(() => restoreHome(store, id, join(root, `out-${id}`))).toThrow("traverses symlink");
+      expect(existsSync(join(outsideSym, "pwn.txt"))).toBe(false);
+    }
+
+    const invalidManifests: readonly [string, unknown, string][] = [
+      ["bad-array", { session: "bad-array", entries: "nope" }, "invalid examiner home manifest"],
+      ["bad-null", { session: "bad-null", entries: [null] }, "invalid examiner home snapshot entry"],
+      [
+        "bad-empty",
+        { session: "bad-empty", entries: [{ path: "", kind: "dir" }] },
+        "invalid examiner home snapshot entry",
+      ],
+      [
+        "bad-sym",
+        { session: "bad-sym", entries: [{ path: "a", kind: "symlink" }] },
+        "invalid examiner home snapshot entry",
+      ],
+      [
+        "bad-hash",
+        { session: "bad-hash", entries: [{ path: "a", kind: "file", sha256: "short", mode: 0o644 }] },
+        "invalid examiner home snapshot entry",
+      ],
+      [
+        "bad-mode",
+        { session: "bad-mode", entries: [{ path: "a", kind: "file", sha256: "a".repeat(64), mode: "644" }] },
+        "invalid examiner home snapshot entry",
+      ],
+    ];
+    for (const [id, payload, message] of invalidManifests) {
+      writeFileSync(join(store, `${id}.json`), JSON.stringify(payload));
+      expect(() => restoreHome(store, id, join(root, `out-${id}`))).toThrow(message);
+    }
   });
 });

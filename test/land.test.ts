@@ -604,6 +604,15 @@ describe.concurrent("bun run land", () => {
     });
     expect(benchRun.status).toBe(0);
     expect(benchRun.stdout).toContain("proving on all (1) at once");
+    const onlyBench = sandbox();
+    const benchOnlyRun = await onlyBench.runLand(["12", "--sanitize"], {
+      ANA_HOSTS: JSON.stringify([host("bench", 4)]),
+      EVAL_RUNNER: evalRunner,
+      ANA_CHECK_HOST: undefined,
+    });
+    expect(benchOnlyRun.status).toBe(0);
+    expect(benchOnlyRun.stdout).not.toContain("proving on all");
+    expect(wherePassesRan(onlyBench.gateLog)).toContain(`${upper} bench`);
   });
 
   it("proves at the one place an explicit ANA_CHECK_HOST names, without ANA_RUNNER_SPARE_HELD, whatever the host list holds", async () => {

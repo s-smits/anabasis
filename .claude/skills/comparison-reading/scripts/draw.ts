@@ -6,7 +6,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor, refusals, supplyOf } from "#src/campaign/admission.ts";
 import { askedOf } from "#src/campaign/state.ts";
-import { tasksByEpoch } from "#src/campaign/climb.ts";
+import { chosenForReference, starterIn, tasksByEpoch } from "#src/campaign/climb.ts";
 import { scoredSet } from "#src/campaign/round.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { familySizes } from "#src/kernel/history.ts";
@@ -76,12 +76,21 @@ export function drawLines(
   const plan = planOn(events);
   const target = values.target ?? plan.wanted.target;
   const level = values.level ?? plan.wanted.level;
-  const drawn = drawOf(events, target, frozenChecker(events)?.contract ?? "");
+  const contract = frozenChecker(events)?.contract ?? "";
+  const drawn = drawOf(events, target, contract);
   const { pool } = drawn;
   const refused = refusals(supplyOf(events), { ...askedOf(plan), target, level });
+  const starter = starterIn(events);
+  const chosen = starter === null ? new Set<string>() : chosenForReference(events, starter);
+  const read = scoredSet(events, target, contract, chosen);
   return [
     `held-out pool: ${String(pool.scorable)} scorable (${String(pool.frontier)} frontier, ${String(pool.retained)} retained, of which ${String(pool.exhausted)} exhausted), ${String(pool.awaiting)} awaiting task review and left out; ${String(pool.practiceFrontier)} on the reference's own frontier for practice`,
     `next comparison at target ${String(target)}: ${plural(drawn.scored, "frontier task")} and ${plural(drawn.retained, "retained task")} (one for every three frontier)`,
+    ...(chosen.size === 0
+      ? []
+      : [
+          `a starter read leaves out the ${plural(chosen.size, "task")} a step chose: ${plural(read.tasks.length - read.retained.length, "frontier task")} and ${plural(read.retained.length, "retained task")}`,
+        ]),
     grainLine(drawn.families),
     ...(drawn.before === null
       ? []

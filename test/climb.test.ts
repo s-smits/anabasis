@@ -676,7 +676,10 @@ describe("a campaign against its bars", () => {
     const notScored = [...base, ...report("g-4", "h2", "S", "not-scored", [])];
     expect(nextAction(notScored, plan).move).not.toBe("revert");
     const underpowered = [...base, ...report("g-4", "h2", "S", "no-step", [-1, -1, -1, 0, 0, 0])];
-    expect(epochsOf(underpowered).at(-1)).toMatchObject({ confirmed: false, starter_able: false });
+    expect(epochsOf(underpowered).at(-1)).toMatchObject({
+      confirmed: false,
+      starter_tally: { wins: 3, losses: 0, ties: 3 },
+    });
     expect(nextAction(underpowered, plan)).toMatchObject({ move: "revert", harness: "h1" });
     const allTied = [...base, ...report("g-4", "h2", "S", "no-step", [0, 0, 0, 0, 0, 0])];
     expect(nextAction(allTied, plan)).toMatchObject({ move: "revert", harness: "h1" });

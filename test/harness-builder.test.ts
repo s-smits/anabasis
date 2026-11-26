@@ -396,6 +396,10 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     const [scored = 0, beside = 0] = [tasks, retained].map((set) => (Array.isArray(set) ? set.length : 0));
     expect(beside).toBe(Math.ceil((scored - beside) / 3));
     expect(beside).toBeGreaterThan(Math.floor((scored - beside) / 3));
+    const chose = of(name, "comparison.started").find(({ session }) => session === "g-1")?.tasks;
+    expect(
+      Array.isArray(chose) && Array.isArray(tasks) && tasks.filter((task) => chose.includes(task)),
+    ).toEqual([]);
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
       reading: "no-step",

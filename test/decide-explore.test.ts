@@ -234,15 +234,8 @@ function broken(events: readonly LogEvent[], plan: Plan, decided: ScheduledActio
   }
   const epochs = epochsOf(events);
   const currentEpoch = epochs.at(-1);
-  const underpoweredLead =
-    currentEpoch?.starter_able === false &&
-    currentEpoch.starter_tally !== null &&
-    currentEpoch.starter_tally.wins > currentEpoch.starter_tally.losses;
   const revertOwed =
-    reference !== STARTER &&
-    currentEpoch?.starter_tally !== null &&
-    currentEpoch?.confirmed === false &&
-    !underpoweredLead;
+    reference !== STARTER && currentEpoch?.starter_tally !== null && currentEpoch?.confirmed === false;
   if (spent && revertOwed && decided.move === "end" && decided.ending === "budget") {
     return "the budget ended the campaign before an unconfirmed reference reverted";
   }

@@ -99,97 +99,42 @@ ${HOST_ONLY}
 
 export const HARNESS_ACCOUNT = `# The Built Harness
 
-A solver is pi's coding agent behind a command wall. Your harness is what you add under harness/.
-The host reads three paths there and nothing else. Reusable computation belongs in .toolchain/
-rather than pasted into the guide, where snippets run anonymously in traces and add clutter to every
-solve.
+A solver is pi's coding agent behind a command wall. The host reads three paths under harness/:
 
-## What every solver receives
+- **agent/tools-spec.json**: \`${capturedJsonStringify(EXAMPLE.spec)}\` (selects from ${CODING_TOOLS.join(", ")}; keep \`tools: []\`).
+- **.toolchain/**: executables in \`.toolchain/bin\` (or nested bin/shims/sbin) run by name first on PATH. If \`.toolchain/env.sh\` exists, BASH_ENV sources it before every command; derive all paths relative to \`\${BASH_SOURCE%/*}\` (never hardcoded home paths) so exports stay self-contained.
+- **agent/BUILT_AGENTS.md**: operating guide loaded into every solve's system prompt (cannot override task, tools, limits or submission).
 
-- One persistent working directory (its home) containing public/task.json, task files listed in
-  publicInput.files under public/files/, public domain rules under public/resources/, and
-  public/answer-format.json.
-- Submission via answer.json and submit: the host checks answer.json against the schema and
-  refuses mismatches with the reason. An accepted submit ends the solve and returns no verdict.
-- A host system prompt giving its tools, duty, time and turn limits, working directory, wall
-  facts, command timeouts, and the names of installed harness programs.
+## What every solver receives in campaign tasks
 
-## agent/tools-spec.json
+Home contains \`public/task.json\`, \`public/files/\`, \`public/resources/\`, and \`public/answer-format.json\`. The solver writes \`answer.json\` (and any requested \`deliverables/\`) and calls \`submit\`.
 
-\`\`\`json
-${capturedJsonStringify(EXAMPLE.spec, null, 2)}
-\`\`\`
+## Designing tools that transfer (.toolchain/)
 
-- presets selects from ${CODING_TOOLS.join(", ")}. Any omitted tool is unavailable to the solver.
-- tools must remain an empty list; executable capabilities belong in .toolchain/.
+Build small, general, verb-first CLIs (accepting relative file paths, \`--help\`, stdout results, stderr diagnostics, exit 0/1/2) that work on ordinary workspaces outside this host:
+- Multi-format inspection and extraction across CSV, Excel, Word, PDF, SQLite and JSON inputs.
+- Deliverable verification: check live evaluated workbook formulas (zero \`#REF!\`/\`#DIV/0!\`/\`#VALUE!\`/\`#NAME?\`/\`#N/A\` and zero uncached formulas), summary-first sheet ordering (summary/results tabs before large raw-data tabs so key tables are never truncated), standalone plus embedded figure export, and requirement-manifest completeness across every requested sub-item.
+- Independent domain diagnostics, assumption tests and sensitivity checks.
+Keep campaign-specific adapters (\`public/task.json\`, \`answer.json\`) strictly separate from general tools, and prune tools that practice traces show sit unused.
 
-## .toolchain/
-
-Executables in .toolchain/bin (and any nested bin, shims, or sbin directory) run by name in the
-solver's commands, with .toolchain/bin first on PATH. If .toolchain/env.sh exists, the host sets
-BASH_ENV to it so bash sources it before every seat command (including on native pi exports); export
-any language import or library path there relative to \`\${BASH_SOURCE%/*}\` (such as PYTHONPATH,
-R_LIBS_USER, NODE_PATH, LD_LIBRARY_PATH, or extra PATH entries). The tree is read-only to the
-solver. Installing interpreters, engines, libraries, or packages inside .toolchain/ avoids per-solve
-installs and keeps external exports self-contained without naming host paths.
-
-General, high-leverage domain libraries and tools (parsing ordinary data files, modelling or
-searching candidates, and independent numerical or structural verification) transfer cleanly across
-unseen tasks and external workspaces. Keep campaign-specific adapters (reading public/task.json or
-checking answer.json) separate from general domain tools. Practice traces show which programs and
-libraries are used and which sit idle.
-
-Predictable CLI conventions:
-
-- Verb-first lower-case name with hyphens: ${CHECKER}, simulate-mix.
-- Every input passed as a relative file argument; open no unnamed files.
-- Programs that compute accept plain data (CSV or JSON of the values alone) so they work on
-  ordinary domain workspaces outside this host as well as campaign tasks.
-- Readable result lines on stdout; diagnostics on stderr.
-- Exit 0 when what was tested holds, 1 when something fails, and 2 when the command could not run
-  (missing file, bad arguments). Support --help (prints usage and exits 0).
-- Stateless outside the solver's working directory.
-
-Worked program at .toolchain/bin/${CHECKER} (executable):
+Worked program at \`.toolchain/bin/${CHECKER}\` (executable):
 
 \`\`\`js
 ${EXAMPLE.programs[CHECKER].trimEnd()}
 \`\`\`
 
-## agent/BUILT_AGENTS.md
+## Designing agent/BUILT_AGENTS.md
 
-The operating guide, read whole into the solver's system prompt once per task under a host line
-stating that it cannot override the public task, tool authority, runtime limits, or submission
-rules. Without this file the solver reads no guide.
-
-Every campaign begins from the Starter guide:
+Campaigns start from the Starter guide:
 
 \`\`\`markdown
 ${STARTER.guide.trimEnd()}
 \`\`\`
 
-You may revise, replace, or remove it, including the file itself.
+- **Portable boundary**: external exports keep ONLY text above \`${HOST_ONLY}\` and strip everything below it. Keep the portable section ultra-lean (concise tool usage and high-leverage domain verification habits, never a multi-page checklist—put detailed reference notes in \`.toolchain/\` to read on demand). Put all campaign paths, answer fields, rule IDs, scoring notes and campaign wrappers strictly below \`${HOST_ONLY}\`.
+- **Protect solver depth**: never prescribe turn caps, rushing, or minimal-turn pipelines; thorough workspace discovery, standard diagnostics and independently reopening every deliverable prevent single-criterion omissions.
 
-- Exported guide: kept harnesses are exported and run outside this host on ordinary domain
-  workspaces where public/task.json, public/files/, public/resources/, answer.json, submit, exam
-  rule IDs, and campaign scoring do not exist. Export keeps the guide up to the heading
-  "${HOST_ONLY}" and strips everything below it (a guide without that heading is exported whole
-  under a host disclaimer). Keep sections above "${HOST_ONLY}" short and workspace-general: how to
-  call your portable tools and libraries, and domain verification principles that apply to ordinary
-  files of any task structure.
-- Under "${HOST_ONLY}": put every campaign-specific detail strictly under this heading — reading
-  public/task.json, public/files/, and public/resources/, exam-specific field names, schemas,
-  taxonomy rules, campaign-only check/deliverable wrappers, scoring weights, and calling submit.
-- Conciseness and pruning: every paragraph sits in the system prompt of every solve. Long
-  checklists, pasted code, or narrow formulas accumulated from individual practice families crowd
-  out reading new tasks and break when an unseen task brings different structure; practice traces
-  show which instructions go unused.
-- Limits and public documents: the host states the solve's limits and appends usage to executed tool
-  results, and guides that prescribe tight turn targets or urgency push solvers to submit
-  under-verified work with most of their budget still unused. Skipping public/resources/ or task
-  documents leaves published domain rules unread.
-
-Worked guide with one program entry:
+Worked guide:
 
 \`\`\`markdown
 ${EXAMPLE.guide.trimEnd()}

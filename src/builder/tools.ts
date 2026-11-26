@@ -37,7 +37,7 @@ import { type CommandSandbox, type NetworkReach, runSandboxed } from "../tools/c
 import { formatKeys, namedTasks, readHarnessFiles } from "../harness/files.ts";
 import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
-import { HOST_ONLY } from "../harness/starter.ts";
+import { HOST_ONLY, portableGuide } from "../harness/starter.ts";
 import { clockText } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
@@ -326,7 +326,7 @@ export function practiceTool(bench: Bench): AgentTool {
   const { request } = bench;
   return tool({
     name: "practice",
-    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, how many tool calls it made, which failed and how many ran each of the harness's programs, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given as a band against the task author's answer on record: level (within ${percent(GAP_FLOOR)}%), or better or worse by ${BAND_EDGES.map((_, at) => bandSize(at)).join(", ")}, each ${gapBasis(bench.request.contract.objective)}, as a comparison reads a gap; a task with no author's answer on record shows none. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
+    description: `Run practice tasks with harness/ (or \`under: "reference"\`) using the measured solver and limits. Returns ending, time/turns/tokens, tool-call and harness-program counts, solve id for read_trace, cumulative records and coarse objective band vs author (level within ${percent(GAP_FLOOR)}%, or ${BAND_EDGES.map((_, at) => bandSize(at)).join(", ")} ${gapBasis(bench.request.contract.objective)}). Broken harnesses spend no solve.`,
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -434,7 +434,7 @@ export function traceTool(bench: Bench): AgentTool {
   return tool({
     name: "read_trace",
     description:
-      "Read a solve of one of your practice tasks: the ones the opening message lists and the ones practice returns. With no call, return its ending, the answer it submitted, the files it delivered, its closing text and every tool call by number, each with its size and its arguments on one line. With a call number, return that call whole: its arguments and its result. With a file, return that delivered file's text as read offline (a spreadsheet's cells by sheet with its formulas counted, a document's or deck's paragraphs, a notebook's cells, a PDF's text), a page at a time from the byte `from` names.",
+      "Inspect a practice solve: overview (ending, answer, delivered files, closing text, tool calls), one full call (`call`), or a delivered file extracted offline (`file`, paged from `from` bytes, including workbook sheet order/dimensions, formulas, embedded visuals, tables and image dimensions).",
     parameters: Type.Object({
       solve: Type.String({ description: "A solve's id." }),
       call: Type.Optional(Type.Number({ minimum: 1, description: "A call's number, from the list." })),
@@ -595,8 +595,9 @@ function opens(
   const info = readHarnessFiles(dir, [...new Set(formatKeys(contract.answerFormat))], ruleIds);
   const { guide, files: toolFiles, lines: toolLines } = info.size ?? { guide: 0, files: 0, lines: 0 };
   const chars = harness.guide?.length ?? 0;
+  const keptChars = portableGuide(harness.guide ?? "").length;
   const split = info.hasSplit
-    ? `${String(info.keptLines)} before "${HOST_ONLY}", ${String(Math.max(0, guide - info.keptLines))} under it; ${String(chars)} characters`
+    ? `${String(info.keptLines)} before "${HOST_ONLY}" (${String(keptChars)} portable chars), ${String(Math.max(0, guide - info.keptLines))} under it; ${String(chars)} characters`
     : `${String(chars)} characters; no "${HOST_ONLY}" heading`;
   const guideLine = harness.guide === null ? "Guide: none." : `Guide: ${plural(guide, "line")} (${split}).`;
   const fileIssues = countPhrases([
@@ -665,7 +666,7 @@ function checkTool(bench: Bench, wall: CommandSandbox): AgentTool {
   return tool({
     name: "check_harness",
     description:
-      "Open harness/ as a solve would. Reports pi's tools, its programs, the guide's length and heading split, any host-specific paths or campaign references that break outside this host, env.sh sourcing health, and any practice task named or quoted in your files, or the error a solve would stop on. Spends no practice solve.",
+      "Validate harness/ without spending a solve: reports tools, programs, guide length and portable split, host-path/campaign leaks, env.sh health and practice-task leakage.",
     parameters: Type.Object({}),
     execute: async () =>
       await frozen(bench, async ({ dir, harness }) => {

@@ -205,7 +205,7 @@ async function solve(ask: Asked) {
     "solver" in route
       ? {
           model: modelNamed(route.solver),
-          models: (home, shutdown) => seatBackends(sweepOptions(home, undefined, shutdown)),
+          models: (home, shutdown, seatCwd) => seatBackends(sweepOptions(home, undefined, shutdown, seatCwd)),
         }
       : throughProxy(route);
   if (ask.dryRun) {
@@ -240,6 +240,7 @@ async function solve(ask: Asked) {
   const bound = ask.budgetUsd ?? Infinity;
   const { thrown: crash, spent } = await runAgent({
     ...served,
+    cwd,
     id: "pi-solve",
     effort: ask.effort,
     system: prompt,

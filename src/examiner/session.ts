@@ -29,7 +29,7 @@ interface Sitting {
     readonly turns: number;
     readonly puts: number;
   };
-  readonly models: (home: string, shutdown: AbortSignal) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
   readonly log: string;
   readonly kill?: AbortSignal;
   readonly opened?: () => void;
@@ -248,6 +248,7 @@ async function examining(
     let running = 0;
     const sat = await runAgent({
       models: request.models,
+      ...keyIfDefined("cwd", walls?.shell.dirs.home),
       id: request.id,
       model,
       effort: request.effort,

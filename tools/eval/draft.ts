@@ -37,7 +37,7 @@ const OPTIONS = {
   session: { type: "string" },
   examiner: { type: "string" },
   "examiner-effort": { type: "string", default: "high" },
-  tries: { type: "string", default: "4" },
+  tries: { type: "string", default: "6" },
   minutes: { type: "string", default: "60" },
   turns: { type: "string", default: "40" },
   jobs: { type: "string", default: "4" },

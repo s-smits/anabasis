@@ -99,7 +99,7 @@ export interface BuildRequest {
   readonly limits: BuildLimits;
   readonly solve: Limits;
   readonly solver: Solver;
-  readonly models: (home: string, shutdown: AbortSignal) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
   readonly log: string;
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
@@ -352,6 +352,7 @@ async function converse(
   const sat = await runAgent({
     models: request.models,
     home: join(host, "model"),
+    cwd: bench.home,
     id: request.id,
     model,
     effort: request.effort,

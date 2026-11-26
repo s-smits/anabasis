@@ -336,7 +336,8 @@ export async function openCampaign(args: CampaignArgs) {
       model: by.model,
       effort: by.effort,
       limits,
-      models: by.models ?? ((home, shutdown) => seatBackends(sweepOptions(home, by.window, shutdown))),
+      models:
+        by.models ?? ((home, shutdown, cwd) => seatBackends(sweepOptions(home, by.window, shutdown, cwd))),
       verify,
       log: written,
       repoRoot: REPO,
@@ -476,8 +477,8 @@ export function awaitingLines(campaign: {
  * reviewer's search would be read by nobody.
  */
 function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
-  return (home: string, shutdown: AbortSignal) =>
-    seatBackends({ claude: { ...sweepOptions(home, undefined, shutdown).claude, ...seat } });
+  return (home: string, shutdown: AbortSignal, cwd?: string) =>
+    seatBackends({ claude: { ...sweepOptions(home, undefined, shutdown, cwd).claude, ...seat } });
 }
 
 export const examinerSession = hostSession({ webSearch: false, cacheTtl: "1h" });

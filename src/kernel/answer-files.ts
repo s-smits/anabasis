@@ -116,8 +116,7 @@ export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
     throw new Error("invalid answer file path");
   }
   const filed = filing();
-  let total = 0;
-  const files = rows.map((row) => {
+  return rows.map((row) => {
     const bytes =
       "text" in row
         ? Buffer.from(row.text)
@@ -125,13 +124,8 @@ export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
           ? decodeBase64(row.base64)
           : storedZip(row.entries);
     if (bytes === null) throw new Error("invalid file base64");
-    total += bytes.length;
     return filed(row.path, bytes);
   });
-  if (files.length > DELIVERABLES.count || total > DELIVERABLES.bytes) {
-    throw new Error("answer files exceed the capture's bounds");
-  }
-  return files;
 }
 
 const storeOf = (log: string) => join(dirname(log), "states", DELIVERABLES.folder);

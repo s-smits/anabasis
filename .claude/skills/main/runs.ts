@@ -10,6 +10,8 @@ import { backends } from "#src/agent/backends/models.ts";
 import { epochsOf, ORIGINS, starterIn, starterReads } from "#src/campaign/climb.ts";
 import { comparisonsOf } from "#src/campaign/state.ts";
 import { openingOf } from "#src/campaign/opening.ts";
+import { draftOf } from "#src/examiner/draft.ts";
+import { hasJudge } from "#src/kernel/contract.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { CALL_KINDS, type EventKind, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { billedBetween, seatMeter } from "#src/kernel/meter.ts";
@@ -156,15 +158,15 @@ function releasesOf(repo: string): { name: string; at: number }[] {
   });
 }
 
-function judgedLabel(opening: ReturnType<typeof openingOf>): string {
-  if (opening?.judged !== true) return "";
-  const reviewer = opening.seats.reviewer;
+function judgedLabel(events: readonly LogEvent[], opening: ReturnType<typeof openingOf>): string {
+  if (!hasJudge(draftOf(events)?.objective)) return "";
+  const reviewer = opening?.seats.reviewer ?? null;
   return reviewer === null ? " judged" : ` judged(${reviewer.model.replace(/^claude\//u, "")})`;
 }
 
 /** Runs are read together only under one such line (`AGENTS.md`, section 9). */
 function settingOf(events: readonly LogEvent[]): string {
-  const judged = judgedLabel(openingOf(events));
+  const judged = judgedLabel(events, openingOf(events));
   const kept = recordedSetting(events);
   if (kept === null) return `no setting${judged}`;
   const { solver, minutes, modelTurns, target, solves } = kept;

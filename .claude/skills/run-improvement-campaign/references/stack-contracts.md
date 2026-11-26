@@ -37,7 +37,7 @@ Walk stages **1 through 9** in order before planning iteration repairs (`run-imp
 Input:  LaunchConfig {
           commit, cleanWorktree, pack, domain, prompt,
           seats: { builder, examiner, solver, reviewer: { model, effort, family } },
-          flags: { admitAuthored, admitJudge, target, solves, capUsd },
+          flags: { admitAuthored, target, solves, capUsd },
           limits: Limits { wallSeconds, turns, modelTurns?, shellDefaultSeconds, shellMaxSeconds, concurrency }
         }
 Owner:  tools/runs/fresh.ts, tools/campaign/{campaign,campaign-terms}.ts, src/agent/session.ts, src/agent/backends/{claude,models,codex-auth}.ts
@@ -48,7 +48,7 @@ Key events: campaign.opened (judged, attended, seats, solver, budget), campaign.
 **What must all hold:**
 - The run opens in a clean, dedicated worktree at one published commit (`treeFault` rejects the main checkout and `ana-followed` trees); every planned fix is an ancestor of the launch commit.
 - Every seat runs on the exact backend and model named at launch with zero silent fallback, and the target host holds live auth for every named family.
-- When the domain prompt requires qualitative deliverables, structure, or reasoning, `reviewer.family !== solver.family` so unattended launches auto-admit judging (`judged = values["admit-judge"] ?? (!attended && crossFamily)` in `tools/campaign/campaign-terms.ts`; `assertCrossFamily` refuses same-family judged launches).
+- Examiner always sees the Unified Rubric during `d-1` and chooses whether the domain needs `kind: "judge"` items or stays `$0` code-only. Unattended launches auto-admit judged items whenever `reviewer.family !== solver.family` (`judged = !attended && crossFamily` in `tools/campaign/campaign-terms.ts`); if Examiner drafts judged items on a same-family run, `d-1` stops cleanly (`ending: "exam"`) before solve 1 until resumed with a cross-family `--reviewer`.
 - Workspace-bearing seats (Solver, Builder, and walled Examiner) launch with `cwd === dirs.home` while private runtime state (`HOME`, `CLAUDE_CONFIG_DIR`) stays outside `dirs.home`, preventing relative-path write refusals. (The Auditor/Referee has no workspace and runs in its private `home`.)
 
 **Verify with:** `bun run runs source <run>`, `bun tools/runs/degradations.ts <run>`, `bun run runs active --here --codex`, `bun run test -- test/claude-backend.test.ts test/runs-placement.test.ts`.
@@ -58,7 +58,7 @@ Key events: campaign.opened (judged, attended, seats, solver, budget), campaign.
 ## Stage 2. Exam drafting, adversarial draft audit, and freeze
 
 ```ts
-Input:  { domainPrompt, limits, admitAuthored, admitJudge, triesBudget (default 6) }
+Input:  { domainPrompt, limits, admitAuthored, triesBudget (default 6) }
 Owner:  src/examiner/draft.ts, tools/eval/draft.ts, src/audit/draft-audit.ts, src/kernel/contract.ts, tools/eval/accept.ts
 Output: FrozenContract {
           scope, conventions, answerFormat, rules: Rule[],
@@ -167,7 +167,7 @@ Key events: verdict, referee.turn, referee.call, referee.compacted, referee.find
 **What must all hold:**
 - The Verifier runs completely offline via `isolatedArgv` (`src/kernel/verify.ts`, bypassing `src/tools/command.ts` and never setting `BASH_ENV`), never executes harness code, and returns finite `[0, 1]` item scores (no NaN or silent `Number("") === 0` vacuous passes).
 - Reproducible rejections are adjudicated before entering failure denominators; `earned` rulings carry real `probe_check` evidence rather than restating the check or compacting into zero-probe `unclear`.
-- Under `--admit-judge`, cross-family `referee.pair` executes live (`> 0` events), runs both swapped orderings (`A/B` and `B/A`), scores one criterion per vote, and combines criterion votes with equal-weight rubric-free `holistic` judgement (which never sees hidden values).
+- When `hasJudge(contract.objective)` holds, cross-family `referee.pair` executes live (`> 0` events), runs both swapped orderings (`A/B` and `B/A`), scores one criterion per vote, and combines criterion votes with equal-weight rubric-free `holistic` judgement (which never sees hidden values).
 - Rejection and pass accuracy are calibrated against blind human labels (`settle.ts`, `agreement.ts`) rather than trusting self-consistent checks alone.
 
 **Verify with:** `wri.ts reader checks`, `reader rejections`, `reader scores`, `bun tools/campaign/settle.ts`, `bun run test -- test/review.test.ts test/judge-rubric.test.ts`.

@@ -18,7 +18,6 @@
  * It prints counts, ratios, session ids and 8-character digests, never names, task text or values.
  */
 import { starterIn } from "#src/campaign/climb.ts";
-import { openingOf } from "#src/campaign/opening.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { writtenFiles } from "#src/harness/files.ts";
 import { differenceOf, pointsOf, isSignificant } from "#src/kernel/compare.ts";
@@ -243,7 +242,7 @@ function draftFreezeFindings(log: Index): string[] {
 
 function judgedLaneFindings(log: Index): string[] {
   const draft = draftOf(log.events);
-  if (openingOf(log.events)?.judged === false || draft === null || !hasJudge(draft.objective)) return [];
+  if (draft === null || !hasJudge(draft.objective)) return [];
   if (log.of("referee.pair").some((data) => isNumber(data.judge) && isNumber(data.holistic))) return [];
   const reported = log.compared.filter((comparison) => text(comparison.last.reading) !== "").length;
   const started = log.of("comparison.started").filter((data) => data.ladder !== true).length;

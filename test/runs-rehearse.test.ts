@@ -118,7 +118,7 @@ describe("simulation CLI seams", () => {
     expect(decodeOutput(ran.stdout)).toContain("bun tools/campaign/checkpoint.ts --name <name> --id <id>");
   });
 
-  it("enforces cross-family reviewer override in draft.ts on judged campaigns", async () => {
+  it("permits same-family and cross-family reviewer overrides in draft.ts", async () => {
     const name = `sim-draft-rev-${String(process.pid)}`;
     const dir = join(import.meta.dir, "..", ".ana", "d2", name);
     mkdirSync(dir, { recursive: true });
@@ -127,7 +127,6 @@ describe("simulation CLI seams", () => {
       `${line("campaign.opened", {
         project: "p",
         prompt: "Audit tables.",
-        judged: true,
         seats: {
           builder: { model: "claude/claude-opus-5-5", effort: "medium" },
           examiner: { model: "claude/claude-opus-5-5", effort: "medium" },
@@ -137,35 +136,25 @@ describe("simulation CLI seams", () => {
       })}\n`,
     );
     try {
-      await expect(
-        draftCommand([
-          "--name",
-          name,
-          "--session",
-          "d-1",
-          "--examiner",
-          "claude/claude-opus-5-5",
-          "--reviewer",
-          "claude/claude-sonnet-5-5",
-        ]),
-      ).rejects.toThrow("another family");
-      const accepted = await draftCommand(
-        [
-          "--name",
-          name,
-          "--session",
-          "d-1",
-          "--examiner",
-          "claude/claude-opus-5-5",
-          "--reviewer",
-          "openai-codex/gpt-6-luna",
-          "--reviewer-effort",
-          "low",
-        ],
-        async () => ({ ended: "finished", puts: 0, held: [], refused: [] }),
-        null,
-      );
-      expect(accepted.ended).toBe("finished");
+      for (const reviewer of ["claude/claude-sonnet-5-5", "openai-codex/gpt-6-luna"]) {
+        const accepted = await draftCommand(
+          [
+            "--name",
+            name,
+            "--session",
+            "d-1",
+            "--examiner",
+            "claude/claude-opus-5-5",
+            "--reviewer",
+            reviewer,
+            "--reviewer-effort",
+            "low",
+          ],
+          async () => ({ ended: "finished", puts: 0, held: [], refused: [] }),
+          null,
+        );
+        expect(accepted.ended).toBe("finished");
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

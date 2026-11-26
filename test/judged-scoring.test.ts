@@ -3,6 +3,7 @@ import {
   JUDGE_STEP,
   judgedGain,
   judgedPairs,
+  judgeIn,
   type JudgeWeights,
   type Paired,
   pointsOf,
@@ -103,5 +104,19 @@ describe("judged points", () => {
       expect(scoredAt([single])).toBeGreaterThan(0);
       expect(scoredAt([vote(0, 0)])).toBe(0);
     }
+  });
+
+  it("parses judge weights only when both code and judge are numbers, keeping numeric step", () => {
+    expect(judgeIn({ judge: { weights: { code: 1 } } })).toBeUndefined();
+    expect(judgeIn({ judge: { weights: { judge: 1 } } })).toBeUndefined();
+    expect(judgeIn({ judge: { weights: { code: 1, judge: 2, step: "bad" } } })).toEqual({
+      code: 1,
+      judge: 2,
+    });
+    expect(judgeIn({ judge: { weights: { code: 1, judge: 2, step: 0.4 } } })).toEqual({
+      code: 1,
+      judge: 2,
+      step: 0.4,
+    });
   });
 });

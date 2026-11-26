@@ -123,9 +123,9 @@ beforeAll(() => {
   seed = readFileSync(c.log, "utf8");
 });
 
-const tallied = (reading: string, wins: number, ties: number): JsonObject => ({
+const tallied = (reading: string, wins: number, ties: number, losses = 0): JsonObject => ({
   reading,
-  scored: { wins, losses: 0, ties, p: 0.0625, unsolved: 0 },
+  scored: { wins, losses, ties, p: 0.0625, unsolved: 0 },
   valid: { old: [4 - ties, 0, ties], fresh: [0, 0, 4] },
   aside: [],
 });
@@ -462,22 +462,29 @@ describe("the Builder's filter over that reading", () => {
       { ...tallied("not-scored", 0, 0), scored: null, aside: HELD },
     );
     const readings = [
-      ["g-2", STARTER, "no-step", 1, 3, /no step/u],
-      ["g-3", HA, "below-starter", 4, 0, /no step.*starting harness/u],
-      ["g-4", HA, "starter-unread", 4, 0, /a step.*not yet read.*starting harness/u],
-      ["g-7", HA, "regressed", 4, 0, /no step.*lost more.*earlier comparisons/u],
-      ["g-8", HA, "narrow", 4, 0, /no step yet.*one kind/u],
+      ["g-2", STARTER, "no-step", 1, 2, 1, /no step/u],
+      ["g-3", HA, "below-starter", 4, 0, 0, /no step.*starting harness/u],
+      ["g-4", HA, "starter-unread", 4, 0, 0, /a step.*not yet read.*starting harness/u],
+      ["g-7", HA, "regressed", 4, 0, 0, /no step.*lost more.*earlier comparisons/u],
+      ["g-8", HA, "narrow", 4, 0, 0, /no step yet.*one kind/u],
     ] as const;
-    for (const [id, old, reading, wins, ties] of readings) {
-      c.compared(id, { old, fresh: HB }, tallied(reading, wins, ties));
+    for (const [id, old, reading, wins, losses, ties] of readings) {
+      c.compared(id, { old, fresh: HB }, tallied(reading, wins, ties, losses));
     }
     c.compared("g-5", { old: HA, fresh: HB }, null);
     const told = formatComparisonHistory(campaignOf(c.events()).steps);
     expect(told).toHaveLength(6);
     expect(told[0]).toMatch(/aaaaaaaa.*00000000.*4 tasks.*4 won.*0 lost.*0 tied.*a step/u);
-    for (const [index, [, old, , wins, ties, meaning]] of readings.entries()) {
+    for (const [index, [, old, , wins, losses, ties, meaning]] of readings.entries()) {
       const line = told[index + 1];
-      for (const fact of ["bbbbbbbb", old.slice(0, 8), "4 tasks", `${wins} won`, "0 lost", `${ties} tied`]) {
+      for (const fact of [
+        "bbbbbbbb",
+        old.slice(0, 8),
+        "4 tasks",
+        `${wins} won`,
+        `${losses} lost`,
+        `${ties} tied`,
+      ]) {
         expect(line).toContain(fact);
       }
       expect(line).toMatch(meaning);

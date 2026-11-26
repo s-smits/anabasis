@@ -10,7 +10,13 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { gitMaybe } from "#src/meta/git.ts";
-import { join } from "#src/meta/path.ts";
+import { capturedJsonParse } from "#src/meta/json-runtime.ts";
+import { asRecord, isNumber } from "#src/meta/json-shape.ts";
+import { dirname, join, relative, resolve } from "#src/meta/path.ts";
+
+const TRANSPILER = new Bun.Transpiler({ loader: "ts" });
+const FROM_SPECIFIER = /\bfrom\s+["'][^"']+["']/gu;
+const UNTIMED_OFFSET = 1e12;
 
 const BOUNDED = [
   "test/compare-exhaustive.test.ts",
@@ -19,6 +25,8 @@ const BOUNDED = [
   "test/wall-practice.test.ts",
   "test/wall-held-out.test.ts",
 ];
+
+const CAMPAIGN_SUITES = ["test/harness-builder.test.ts", "test/campaign-kill.test.ts", "test/climb.test.ts"];
 
 const OWNERS = new Map<string, readonly string[]>([
   ["src/kernel/compare.ts", []],
@@ -30,10 +38,9 @@ const OWNERS = new Map<string, readonly string[]>([
   ["src/campaign/climb.ts", []],
   ["src/builder/past.ts", []],
   ["src/audit/agreement.ts", []],
-  [
-    "tools/campaign/campaign-actions.ts",
-    ["test/harness-builder.test.ts", "test/campaign-kill.test.ts", "test/climb.test.ts"],
-  ],
+  ["tools/campaign/campaign-actions.ts", CAMPAIGN_SUITES],
+  ["tools/campaign/campaign-terms.ts", CAMPAIGN_SUITES],
+  ["tools/campaign/campaign-status.ts", CAMPAIGN_SUITES],
   ["tools/campaign/harness-builder.ts", []],
 ]);
 
@@ -49,16 +56,98 @@ const MUTATE = join(import.meta.dir, "mutate.ts");
 
 const slug = (owner: string) => owner.replaceAll("/", "_").replace(/\.ts$/, "");
 
-function suitesOf(tree: string, owner: string): string[] {
+function resolveImport(tree: string, from: string, specifier: string): string | null {
+  let target: string | null = null;
+  if (specifier.startsWith("#skills/")) {
+    target = `.claude/skills/${specifier.slice("#skills/".length)}`;
+  } else if (specifier.startsWith("#src/") || specifier.startsWith("#tools/")) {
+    target = specifier.slice(1);
+  } else if (specifier.startsWith(".")) {
+    target = relative(tree, resolve(dirname(join(tree, from)), specifier)).replaceAll("\\", "/");
+  }
+  if (target === null) return null;
+  const full = join(tree, target);
+  return existsSync(full) && statSync(full).isFile() ? target : null;
+}
+
+function scanFile(text: string): { readonly imports: readonly string[]; readonly nonImportText: string } {
+  try {
+    return {
+      imports: TRANSPILER.scanImports(text).map(({ path }) => path),
+      nonImportText: text.replaceAll(FROM_SPECIFIER, ""),
+    };
+  } catch {
+    return { imports: [], nonImportText: text };
+  }
+}
+
+function timingsOf(tree: string): ReadonlyMap<string, number> {
+  const path = join(tree, "test", ".test-timings.json");
+  if (!existsSync(path)) return new Map();
+  let parsed: unknown;
+  try {
+    parsed = capturedJsonParse(readFileSync(path, "utf8"));
+  } catch {
+    return new Map();
+  }
+  const files = asRecord(asRecord(parsed)?.files);
+  if (files === null) return new Map();
+  return new Map(Object.entries(files).flatMap(([file, ms]) => (isNumber(ms) ? [[file, ms] as const] : [])));
+}
+
+function testIndex(tree: string) {
+  const scanned = new Map<string, ReturnType<typeof scanFile>>();
+  const scan = (rel: string) => {
+    const cached = scanned.get(rel);
+    if (cached !== undefined) return cached;
+    const full = join(tree, rel);
+    const result =
+      existsSync(full) && statSync(full).isFile()
+        ? scanFile(readFileSync(full, "utf8"))
+        : { imports: [], nonImportText: "" };
+    scanned.set(rel, result);
+    return result;
+  };
+  const importsOf = (rel: string): string[] =>
+    scan(rel).imports.flatMap((spec) => {
+      const resolved = resolveImport(tree, rel, spec);
+      return resolved === null ? [] : [resolved];
+    });
   const tests = readdirSync(join(tree, "test"))
     .filter((name) => name.endsWith(".test.ts"))
     .map((name) => `test/${name}`);
-  const importers = tests
-    .filter((path) => !BOUNDED.includes(path) && readFileSync(join(tree, path), "utf8").includes(owner))
-    .toSorted((a, b) => statSync(join(tree, a)).size - statSync(join(tree, b)).size);
-  return [...new Set([...BOUNDED, ...importers, ...(OWNERS.get(owner) ?? [])])].filter((path) =>
-    existsSync(join(tree, path)),
+  const reachable = new Map(
+    tests.map((test) => {
+      const seen = new Set<string>();
+      const pending = [test];
+      while (pending.length > 0) {
+        const current = pending.pop();
+        if (current === undefined) continue;
+        for (const dep of importsOf(current)) {
+          if (seen.has(dep)) continue;
+          seen.add(dep);
+          pending.push(dep);
+        }
+      }
+      return [test, seen] as const;
+    }),
   );
+  const timings = timingsOf(tree);
+  const suiteOrder = (path: string) => timings.get(path) ?? UNTIMED_OFFSET + statSync(join(tree, path)).size;
+  return (owner: string): { readonly suites: string[]; readonly deps: string[] } => {
+    const matched = tests
+      .filter(
+        (path) =>
+          !BOUNDED.includes(path) &&
+          (reachable.get(path)?.has(owner) === true || scan(path).nonImportText.includes(owner)),
+      )
+      .toSorted((a, b) => suiteOrder(a) - suiteOrder(b));
+    const suites = [...new Set([...BOUNDED, ...matched, ...(OWNERS.get(owner) ?? [])])].filter((path) =>
+      existsSync(join(tree, path)),
+    );
+    const deps = [...new Set(suites.flatMap((suite) => [...(reachable.get(suite) ?? [])]))];
+    return { suites, deps };
+  };
 }
 
 const rowsOf = (path: string): Row[] =>
@@ -118,11 +207,19 @@ async function nightly(args: CommandArgs, tree: string): Promise<number> {
   const until = deadlineOf(args.value("until"));
   const unfinished: string[] = [];
   const owners = [...OWNERS.keys()].filter((owner) => existsSync(join(tree, owner)));
+  const suitesFor = testIndex(tree);
   for (const owner of owners) {
-    const suites = suitesOf(tree, owner);
+    const { suites, deps } = suitesFor(owner);
     const out = join(here, `${slug(owner)}.jsonl`);
     const carried = prev === null ? null : join(state, prev, `${slug(owner)}.jsonl`);
-    const stale = changed === null || [owner, ...suites].some((path) => changed.has(path));
+    const prevSuitesPath = prev === null ? null : join(state, prev, `${slug(owner)}.suites.json`);
+    const suiteJson = JSON.stringify(Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]])));
+    const suitesChanged =
+      prevSuitesPath === null ||
+      !existsSync(prevSuitesPath) ||
+      readFileSync(prevSuitesPath, "utf8") !== suiteJson;
+    const stale =
+      changed === null || suitesChanged || [owner, ...suites, ...deps].some((path) => changed.has(path));
     if (!stale && carried !== null && existsSync(carried) && !existsSync(out)) copyFileSync(carried, out);
     if (!stale && existsSync(out)) continue;
     if (until !== null && Date.now() >= Date.parse(until)) {
@@ -130,10 +227,10 @@ async function nightly(args: CommandArgs, tree: string): Promise<number> {
       continue;
     }
     const map = join(here, `${slug(owner)}.suites.json`);
-    writeFileSync(map, JSON.stringify(Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]]))));
+    writeFileSync(map, suiteJson);
     const timeout = args.int("timeout") ?? 900;
     const command = [MUTATE, "run", tree, owner, "--out", out, "--suites", map, "--stop-at-kill"];
-    const extra = ["--timeout", String(timeout), "--clones", join(state, "clone")];
+    const extra = ["--fleet", "--timeout", String(timeout), "--clones", join(state, "clone")];
     const run = Bun.spawn(["bun", ...command, ...extra, ...(until === null ? [] : ["--until", until])], {
       stdout: "inherit",
       stderr: "inherit",
@@ -183,8 +280,9 @@ if (import.meta.main) {
       name: "nightly",
       usage: [
         "usage: nightly.ts <tree> --state <dir> [--until HH:MM] [--timeout s] [--full]",
-        "Mutates the high-importance owners at <tree>'s HEAD against bounded suites and their importers,",
-        "rerunning only owners whose file or suites changed since the last complete pass in <dir>.",
+        "Mutates the high-importance owners at <tree>'s HEAD against bounded suites and their importers",
+        "over every listed check host (`mutate.ts --fleet`), rerunning only owners whose file or suites",
+        "changed since the last complete pass in <dir>.",
         "Exits 3 when survivors are new or the pass must resume; report.md lists them.",
       ].join("\n"),
       options: { state: "text", until: "text", timeout: "int", full: "flag" },

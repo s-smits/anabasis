@@ -2,11 +2,12 @@
 // the comparison's own test, and which tasks `starterReads` counts as no step's choice. Invented data.
 import { describe, expect, it } from "bun:test";
 import { stepCount } from "#skills/comparison-reading/scripts/selection.ts";
-import { chosenForReference, starterReads } from "../src/campaign/climb.ts";
+import { chosenForReference, epochsOf, starterReads } from "../src/campaign/climb.ts";
+import { OPENING } from "../src/kernel/history.ts";
 import { scoredSet } from "../src/campaign/round.ts";
-import { flipP, isSignificant } from "../src/kernel/compare.ts";
+import { flipP, isSignificant, WEIGHTS } from "../src/kernel/compare.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
 
@@ -161,4 +162,171 @@ describe("a starter read on the tasks no step chose", () => {
     expect(read?.session).toBe("g-3");
     expect(read?.unchosen.tally.wins).toBe(after.length + lost.length);
   });
+
+  it("splits written-after starter reads across both validity signs and objectives, isolating read.after from earlier tasks", () => {
+    const valWin = () => ({ outcomes: "PP FF", oldObj: [10, 10], freshObj: [10, 10] });
+    const valLoss = () => ({ outcomes: "FF PP", oldObj: [10, 10], freshObj: [10, 10] });
+    const afterValTasks = Array.from({ length: 7 }, (_, i) => `a-val-${String(i + 1)}`);
+    const mixMargin = Math.round(0.5 * WEIGHTS.validity * 1000 - 0.25 * WEIGHTS.objective * 1000);
+    const objLog: LogEvent[] = [
+      ...gate("open-0"),
+      ...comparison("g-1", [STARTER, NEW], { "open-0": "FF PP" }, "step"),
+      { at: AT, kind: "harness.promoted", data: { harness: NEW, from: STARTER, rests: [] } },
+      ...[...afterValTasks, "a-obj", "a-mix", "a-loss"].flatMap((task) => gate(task, "x-after")),
+      ...comparisonWithObjectives(
+        "g-2",
+        [NEW, STARTER],
+        {
+          "open-0": valLoss(),
+          ...Object.fromEntries(afterValTasks.map((task) => [task, valWin()])),
+          "a-obj": { outcomes: "PP PP", oldObj: [20, 20], freshObj: [10, 10] },
+          "a-mix": { outcomes: "PP PF", oldObj: [10, 10], freshObj: [20, 20] },
+          "a-loss": valLoss(),
+        },
+        {
+          level: 0.02,
+          scored: {
+            differences: [600, -600, -600, -600, -600, -600, -600, -600, -150, -mixMargin, 600],
+          },
+        },
+      ),
+    ];
+    const [read] = starterReads(objLog);
+    expect(read?.confirmed).toBe(false);
+    expect(read?.origins["written after"]).toEqual({
+      whole: { wins: 9, losses: 1, ties: 0 },
+      validity: { wins: 8, losses: 1, ties: 0 },
+      rest: { wins: 1, losses: 0, ties: 0 },
+    });
+    expect(read?.after).toBe("a step");
+    expect(read?.rows.find(({ task }) => task === "open-0")?.writer).toBe(OPENING);
+    expect(read?.rows.find(({ task }) => task === "a-mix")?.margin).toBe(mixMargin);
+  });
+
+  it("tracks epoch Builder sessions, confirmed starter reads, and unconfirmed reverts with null promoted", () => {
+    const confirmedTasks = Array.from({ length: 6 }, (_, i) => `c-${String(i)}`);
+    const confirmedLog: LogEvent[] = [
+      ...gate("p-0"),
+      eventBuild("b-0"),
+      ...comparison("g-1", [STARTER, NEW], { "p-0": "FF PP" }, "step"),
+      { at: AT, kind: "harness.promoted", data: { harness: NEW, from: STARTER, rests: [] } },
+      eventBuild("b-1"),
+      eventBuild("b-2"),
+      ...confirmedTasks.flatMap((task) => gate(task, "x-1")),
+      ...comparison(
+        "g-2",
+        [NEW, STARTER],
+        Object.fromEntries(confirmedTasks.map((task) => [task, "PP FF"])),
+        "no-step",
+        { level: 0.02, scored: { differences: confirmedTasks.map(() => -600) } },
+      ),
+    ];
+    const epochs = epochsOf(confirmedLog);
+    expect(epochs[0]?.sessions).toBe(1);
+    expect(epochs[1]?.sessions).toBe(2);
+    expect(starterReads(confirmedLog)[0]?.confirmed).toBe(true);
+
+    const unconfirmedLog: LogEvent[] = [
+      ...gate("u-0"),
+      ...comparison("g-1", [STARTER, NEW], { "u-0": "FF PP" }, "step"),
+      { at: AT, kind: "harness.promoted", data: { harness: NEW, from: STARTER, rests: [] } },
+      ...gate("u-1", "x-1"),
+      ...comparison("g-2", [NEW, STARTER], { "u-1": "PP FF" }, "no-step", {
+        level: 0.02,
+        scored: { differences: [-600] },
+      }),
+      { at: AT, kind: "harness.promoted", data: { harness: THIRD, from: NEW, rests: [] } },
+      { at: AT, kind: "harness.reverted", data: { harness: NEW, from: THIRD } },
+    ];
+    expect(starterReads(unconfirmedLog)[0]?.confirmed).toBe(false);
+    expect(epochsOf(unconfirmedLog).at(-2)?.promoted).toBeNull();
+    expect(epochsOf(unconfirmedLog).at(-1)).toMatchObject({
+      reference: NEW,
+      confirmed: false,
+      reverted: true,
+    });
+  });
 });
+
+const eventBuild = (session: string): LogEvent => ({
+  at: AT,
+  kind: "build.started",
+  data: { session },
+});
+
+function comparisonWithObjectives(
+  session: string,
+  sides: readonly [string, string],
+  tasks: Readonly<
+    Record<
+      string,
+      { readonly outcomes: string; readonly oldObj: readonly number[]; readonly freshObj: readonly number[] }
+    >
+  >,
+  more: JsonObject,
+): LogEvent[] {
+  const outcomes = Object.fromEntries(Object.entries(tasks).map(([k, v]) => [k, v.outcomes]));
+  const { events, terms } = roundSolves(session, sides, outcomes);
+  const [old, fresh] = sides;
+  const condInfo = new Map<string, { readonly task: string; readonly harness: string }>();
+  const solveInfo = new Map<
+    string,
+    { readonly task: string; readonly harness: string; readonly nth: number }
+  >();
+  const counts = new Map<string, number>();
+  const withVerdicts = events.flatMap((ev) => {
+    if (ev.kind === "condition.recorded") {
+      const cond = asRecord(ev.data.condition);
+      if (isString(ev.data.id) && isString(cond?.task) && isString(cond?.harness)) {
+        condInfo.set(ev.data.id, { task: cond.task, harness: cond.harness });
+      }
+      return [ev];
+    }
+    if (ev.kind === "solve.started" && isString(ev.data.solve) && isString(ev.data.condition)) {
+      const info = condInfo.get(ev.data.condition);
+      if (info !== undefined) {
+        const key = `${info.task}:${info.harness}`;
+        const nth = counts.get(key) ?? 0;
+        counts.set(key, nth + 1);
+        solveInfo.set(ev.data.solve, { ...info, nth });
+      }
+      return [ev];
+    }
+    if (ev.kind !== "solve.finished" || !isString(ev.data.solve)) return [ev];
+    if (asRecord(ev.data.ending)?.outcome !== "pass") return [ev];
+    const info = solveInfo.get(ev.data.solve);
+    const spec = info === undefined ? undefined : tasks[info.task];
+    const obj =
+      info === undefined || spec === undefined
+        ? undefined
+        : (info.harness === old ? spec.oldObj : spec.freshObj)[info.nth];
+    if (obj === undefined) return [ev];
+    return [
+      ev,
+      {
+        at: AT,
+        kind: "verdict",
+        data: { solve: ev.data.solve, kind: "pass", objective: obj },
+      } satisfies LogEvent,
+    ];
+  });
+  return [
+    { at: AT, kind: "comparison.started", data: { session, old, fresh, starter: STARTER } },
+    ...withVerdicts,
+    {
+      at: AT,
+      kind: "comparison.reported",
+      data: {
+        session,
+        old,
+        fresh,
+        starter: STARTER,
+        reading: "no-step",
+        noise: null,
+        objective: { direction: "higher" },
+        ...terms,
+        ...more,
+      },
+    },
+  ];
+}

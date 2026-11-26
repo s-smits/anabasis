@@ -13,19 +13,9 @@ Split mixed compartments (`tools/runs/`, `tools/wri/`, `packages/ui/`, or files 
 
 Never write tautological properties (re-implementing the function under test or mirroring single table rows), report-wording assertions, module mocks, fixed sleeps, or test-only exports (`tree/no-test-only-export`). Pin measured constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once.
 
-## Mutation verification (`scripts/mutate.ts`)
+## Mutation verification
 
-```sh
-bun .claude/skills/commit-r/scripts/mutate.ts list <copy> <files...> # or $(git diff --name-only <base> -- src)
-bun .claude/skills/commit-r/scripts/mutate.ts run <copy> <files...> --out <scratchpad>/kills.jsonl --suites <suites.json> --stop-at-kill --timeout 120
-bun .claude/skills/commit-r/scripts/mutate.ts report <scratchpad>/kills.jsonl [--old old] [--survivors]
-```
-
-- **Execution hygiene**: `mutate.ts` spreads its mutants over the check hosts as `bun run land` spreads proofs (`checkPlaces`, `tools/runs/host-config.ts`), one worker per host slot, each suite run through the check runner with `--timeout` as its deadline; `ANA_CHECK_HOST=here` keeps every run on this machine (then pass `--jobs` at about a third of local cores). Each place must pass every baseline suite unmutated or takes no mutants (a host lacking a browser would otherwise kill every mutant it ran), and the pass refuses when none does. A place that gives no verdict hands its mutant to another; mutants no place read stay unrecorded, so rerunning the same command resumes them. Use `--only <ids>` on reruns after closing gaps.
-- **Oracle copy hygiene**: initialise `<copy>` as a git repo (`git init` + commit) when tests exercise git or `treeFault` guards; lower multi-minute `setDefaultTimeout` values on `<copy>` (e.g. `600_000` → `60_000`) so deadlocking mutants fail on the per-test timeout: a run `--timeout` ends records no verdict (`unread`), since parallel jobs push slow unmutated suites past it. Size `--timeout` above each suite's loaded duration. For filesystem-mutating code, test first on a `cp -cRp` copy-on-write clone with retargeted symlinks/gitdirs.
-- **Comparative mode (`--old`, Test pass or interface-preserving Rewrite)**: run `old`, `new`, and `kept` suites on `<copy>` with old tests restored. Classify every `O-` survivor as either (a) a **genuine invariant/boundary gap** — close by strengthening a bounded check, property, or hostile boundary case (never paste back old example boilerplate) — or (b) **intentionally retired / incidental** (report wording, CLI formatting, convenience case, dead path) — record as retired in the commit message. Leaving **>15% of `O-` survivors unexplained** halts the pass, and so does any `unread` row: `--survivors` lists them after the survivors, for a rerun (`run --only`, a longer `--timeout`) to bring to a verdict.
-- **Nightly pass (`scripts/nightly.ts <tree> --state <dir> [--until HH:MM] [--full]`)**: mutates the high-importance owners it lists at `<tree>`'s `HEAD` against the bounded suites plus every test naming the owner (fastest first, `--stop-at-kill`), sharing one set of copies (`mutate.ts --clones`). After a complete pass it reruns only owners whose file or suites changed and carries the rest forward. It stops taking mutants at `--until` and resumes on the next run. `report.md` beside the results lists per-owner counts and survivors new since the last complete pass, and the exit code is 3 when any exist. The schedule and the stacks it covers are operator settings outside the repository; CI never runs it.
-- **Solo mode (interface-changing Rewrite)**: never mix incompatible `old` and `new` suites on one copy. Run `mutate.ts` on the new high-importance owner files against `new` + `kept` (`report` without `--old`), inspect `--survivors`, and close surviving mutants on critical decision, wall, or refusal branches.
+Owned by [mutation-testing](../../mutation-testing/SKILL.md) (`scripts/mutate.ts` and `scripts/nightly.ts`): covers the rewrite-time comparative (`--old`, ≤15% unexplained `O-` bar, zero `unread`) and solo mutation oracles for `commit-r` step 8, standing nightly fleet sweeps (`--fleet`), survivor triage, equivalent-mutant retirement, and clone/timeout hygiene.
 
 ## Suite acceleration and concurrency edge cases
 

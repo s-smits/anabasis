@@ -8,8 +8,16 @@ import { describe, expect, it } from "bun:test";
 import { pairsOf } from "../src/kernel/compare.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import {
+  lastReports,
+  latestBuilt,
+  pairsReported,
+  poolOf,
+  referenceOf,
+  releaseOrder,
+} from "../src/kernel/reports.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { keyIfDefined } from "../src/meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 
@@ -217,5 +225,226 @@ describe("the pairs a comparison reads from its log", () => {
     ] as const) {
       expect(() => pairsOf(events, [version], against, 1)).toThrow(reason);
     }
+  });
+
+  const cond = (harness: string) => {
+    const condition = conditionOf("v0", harness);
+    return { id: conditionId(condition), condition: requireJsonValue(condition) };
+  };
+
+  it("isolates referee.pair votes to the read comparison and drops malformed vote events", () => {
+    const [oldC, newC] = [cond("old"), cond("new")];
+    const events: LogEvent[] = [
+      event("task.proposed", { version: "v0" }),
+      event("task.gate", { version: "v0", gate: 1, outcome: "passed" }),
+      event("condition.recorded", oldC),
+      event("condition.recorded", newC),
+      event("solve.started", { solve: "2", condition: oldC.id, comparison: COMPARISON }),
+      event("solve.finished", { solve: "2", ending: { outcome: "pass" } }),
+      event("solve.started", { solve: "1", condition: newC.id, comparison: COMPARISON }),
+      event("solve.finished", { solve: "1", ending: { outcome: "pass" } }),
+      event("referee.pair", { comparison: "c-0", solve: "1", old: "2", judge: 1, holistic: 1 }),
+      event("referee.pair", { comparison: COMPARISON, solve: 1, old: "2", judge: 1, holistic: 1 }),
+      event("referee.pair", { comparison: COMPARISON, solve: "1", old: 2, judge: 1, holistic: 1 }),
+      event("referee.pair", { comparison: COMPARISON, solve: "1", old: "2", judge: "x", holistic: 1 }),
+      event("referee.pair", { comparison: COMPARISON, solve: "1", old: "2", judge: 1, holistic: "y" }),
+    ];
+    const sides = {
+      old: "old",
+      fresh: "new",
+      setting: SETTING,
+      comparison: COMPARISON,
+      judge: { code: 1, judge: 1 },
+    };
+    expect(pairsOf(events, ["v0"], sides, 1).pairs[0]?.judged?.votes).toEqual([]);
+    const withOwn = [
+      ...events,
+      event("referee.pair", { comparison: COMPARISON, solve: "1", old: "2", judge: 0.5, holistic: -0.5 }),
+    ];
+    expect(pairsOf(withOwn, ["v0"], sides, 1).pairs[0]?.judged?.votes).toEqual([
+      { fresh: 0, old: 0, judge: 0.5, holistic: -0.5 },
+    ]);
+  });
+
+  it("reads pairsReported over noise, sides and solves 2..4 against an explicit table, and drops malformed reports", () => {
+    const [oldC, newC] = [cond("old"), cond("new")];
+    const passSolves = (harness: string, cid: string, count: number) =>
+      Array.from({ length: count }, (_, at) => [
+        event("solve.started", { solve: `${harness}-${String(at)}`, condition: cid, comparison: COMPARISON }),
+        event("solve.finished", { solve: `${harness}-${String(at)}`, ending: { outcome: "pass" } }),
+      ]).flat();
+    const expected: readonly {
+      readonly noise: boolean;
+      readonly solves: number;
+      readonly sides: "both" | "old" | "fresh";
+      readonly outcome: { readonly len: number; readonly old: string; readonly fresh: string } | null;
+    }[] = [
+      { noise: false, solves: 2, sides: "both", outcome: { len: 2, old: "old-", fresh: "new-" } },
+      { noise: false, solves: 2, sides: "old", outcome: { len: 1, old: "old-", fresh: "old-" } },
+      { noise: false, solves: 2, sides: "fresh", outcome: { len: 1, old: "new-", fresh: "new-" } },
+      { noise: false, solves: 3, sides: "both", outcome: { len: 3, old: "old-", fresh: "new-" } },
+      { noise: false, solves: 3, sides: "old", outcome: null },
+      { noise: false, solves: 3, sides: "fresh", outcome: null },
+      { noise: false, solves: 4, sides: "both", outcome: { len: 4, old: "old-", fresh: "new-" } },
+      { noise: false, solves: 4, sides: "old", outcome: { len: 2, old: "old-", fresh: "old-" } },
+      { noise: false, solves: 4, sides: "fresh", outcome: { len: 2, old: "new-", fresh: "new-" } },
+      { noise: true, solves: 2, sides: "both", outcome: { len: 2, old: "old-", fresh: "old-" } },
+      { noise: true, solves: 2, sides: "old", outcome: { len: 2, old: "old-", fresh: "old-" } },
+      { noise: true, solves: 2, sides: "fresh", outcome: null },
+      { noise: true, solves: 3, sides: "both", outcome: { len: 3, old: "old-", fresh: "old-" } },
+      { noise: true, solves: 3, sides: "old", outcome: { len: 3, old: "old-", fresh: "old-" } },
+      { noise: true, solves: 3, sides: "fresh", outcome: null },
+      { noise: true, solves: 4, sides: "both", outcome: { len: 4, old: "old-", fresh: "old-" } },
+      { noise: true, solves: 4, sides: "old", outcome: { len: 4, old: "old-", fresh: "old-" } },
+      { noise: true, solves: 4, sides: "fresh", outcome: null },
+    ];
+    const logFor = (noise: boolean, solves: number): LogEvent[] => [
+      event("task.proposed", { version: "v0" }),
+      event("task.gate", { version: "v0", gate: 1, outcome: "passed" }),
+      event("condition.recorded", oldC),
+      event("condition.recorded", newC),
+      event("comparison.started", {
+        session: COMPARISON,
+        ...keysIf(noise, () => ({ noise: true })),
+      }),
+      ...(noise
+        ? passSolves("old", oldC.id, solves * 2)
+        : [...passSolves("old", oldC.id, solves), ...passSolves("new", newC.id, solves)]),
+      event("comparison.reported", {
+        session: COMPARISON,
+        old: "old",
+        fresh: noise ? "old" : "new",
+        setting: SETTING,
+        solves,
+        versions: ["v0"],
+        scored: { wins: 0, losses: 0, ties: 1 },
+      }),
+    ];
+    for (const row of expected) {
+      const events = logFor(row.noise, row.solves);
+      const [report] = lastReports(events);
+      if (report === undefined) throw new Error("expected report");
+      const pairs = pairsReported(events, report, row.sides);
+      if (row.outcome === null) {
+        expect(pairs).toEqual([]);
+        continue;
+      }
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]?.old).toHaveLength(row.outcome.len);
+      expect(pairs[0]?.fresh).toHaveLength(row.outcome.len);
+      expect(pairs[0]?.solves?.old.every((id) => id.startsWith(row.outcome?.old ?? ""))).toBe(true);
+      expect(pairs[0]?.solves?.fresh.every((id) => id.startsWith(row.outcome?.fresh ?? ""))).toBe(true);
+    }
+
+    const validLog = logFor(false, 2);
+    const [validReport] = lastReports(validLog);
+    if (validReport === undefined) throw new Error("expected report");
+    expect(pairsReported(validLog, validReport)).toHaveLength(1);
+    for (const bad of [
+      { ...validReport.data, scored: null },
+      { ...validReport.data, old: 1 },
+      { ...validReport.data, fresh: 1 },
+      { ...validReport.data, setting: 1 },
+      { ...validReport.data, solves: "2" },
+    ]) {
+      expect(pairsReported(validLog, { ...validReport, data: bad })).toEqual([]);
+    }
+  });
+});
+
+describe("report folds over ladder reports, checkpoints, references and release order", () => {
+  it("filters ladder reports from current reads, keeps interrupted checkpoints, and falls back to the first old harness", () => {
+    const log: LogEvent[] = [
+      event("comparison.reported", { session: "g-1", old: "h-first", fresh: "h-1" }),
+      event("comparison.reported", { session: "l-1", old: "h-lad", fresh: "h-2", ladder: true }),
+      event("comparison.reported", { session: "g-2", old: "h-second", fresh: "h-3" }),
+      event("comparison.reported", { old: "h-anon", fresh: "h-4" }),
+    ];
+    expect(lastReports(log).map(({ session }) => session)).toEqual(["g-1", "g-2"]);
+    expect(lastReports(log, "all").map(({ session }) => session)).toEqual(["g-1", "l-1", "g-2"]);
+    expect(referenceOf(log)).toBe("h-first");
+
+    const crashed: LogEvent[] = [
+      event("build.finished", { session: "b-0", harness: "h-0", changed: true, ended: "finished" }),
+      event("build.checkpoint", { session: "b-1", harness: "h-chk" }),
+      event("build.finished", { session: "b-1", harness: "h-0", changed: false, ended: "crashed" }),
+    ];
+    expect(latestBuilt(crashed)).toBe("h-chk");
+  });
+
+  it("orders unanswered tasks by first reading, floors failed-task holdback, caps draws, and leaves untouched tasks out of outcomes", () => {
+    let seq = 0;
+    const held = (version: string) => [
+      event("task.proposed", { version }),
+      event("task.gate", { version, gate: 1, outcome: "passed" }),
+    ];
+    const run = (session: string, task: string, harness: string, outcome: "pass" | "fail") => {
+      const condition = conditionOf(task, harness);
+      const cid = conditionId(condition);
+      const solve = `rs-${String(++seq)}`;
+      return [
+        event("condition.recorded", { id: cid, condition: requireJsonValue(condition) }),
+        event("solve.started", { solve, condition: cid, comparison: session }),
+        event("solve.finished", {
+          solve,
+          ending: outcome === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+        }),
+        ...(outcome === "fail" ? [event("referee.finding", { solve, ruling: "earned" })] : []),
+      ];
+    };
+    const report = (session: string, versions: string[]) =>
+      event("comparison.reported", {
+        session,
+        old: "old",
+        fresh: "new",
+        starter: "old",
+        setting: SETTING,
+        solves: 1,
+        versions,
+        scored: { wins: 0, losses: 0, ties: versions.length },
+      });
+
+    const unansweredLog: LogEvent[] = [
+      ...["t1", "t2", "untouched"].flatMap(held),
+      event("task.state", { version: "untouched", state: "held" }),
+      ...run("g-1", "t1", "old", "fail"),
+      ...run("g-1", "t1", "new", "fail"),
+      report("g-1", ["t1"]),
+      ...run("g-2", "t2", "old", "fail"),
+      ...run("g-2", "t2", "new", "fail"),
+      report("g-2", ["t2"]),
+      ...run("g-3", "t2", "old", "fail"),
+      ...run("g-3", "t2", "new", "fail"),
+      ...run("g-3", "t1", "old", "fail"),
+      ...run("g-3", "t1", "new", "fail"),
+      report("g-3", ["t2", "t1"]),
+    ];
+    expect(releaseOrder(unansweredLog, ["t1", "t2"], 2, "seed").map(([v]) => v)).toEqual(["t1", "t2"]);
+    expect(releaseOrder(unansweredLog, ["t1", "t2"], 1, "seed").map(([v]) => v)).toEqual(["t1"]);
+    expect(releaseOrder(unansweredLog, ["t1", "t2"], 0, "seed")).toEqual([]);
+    expect(poolOf(unansweredLog).outcomes.has("untouched")).toBe(false);
+
+    const failedLog: LogEvent[] = [
+      ...["f1", "f2", "f3", "p1", "p2"].flatMap(held),
+      ...run("g-1", "f1", "old", "fail"),
+      ...run("g-1", "f1", "new", "pass"),
+      ...run("g-1", "f2", "old", "fail"),
+      ...run("g-1", "f2", "new", "pass"),
+      ...run("g-1", "f3", "old", "fail"),
+      ...run("g-1", "f3", "new", "pass"),
+      ...run("g-1", "p1", "old", "pass"),
+      ...run("g-1", "p1", "new", "pass"),
+      ...run("g-1", "p2", "old", "pass"),
+      ...run("g-1", "p2", "new", "pass"),
+      report("g-1", ["f1", "f2", "f3", "p1", "p2"]),
+    ];
+    expect(releaseOrder(failedLog, ["f1", "f2", "f3", "p1", "p2"], 1, "seed").map(([v]) => v)).toEqual([
+      "f1",
+    ]);
+    const all = releaseOrder(failedLog, ["f1", "f2", "f3", "p1", "p2"], 5, "seed").map(([v]) => v);
+    expect(all).toHaveLength(3);
+    expect(all[0]).toBe("f1");
+    expect(all).not.toContain("f2");
+    expect(all).not.toContain("f3");
   });
 });

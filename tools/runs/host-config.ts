@@ -84,10 +84,12 @@ export interface Place {
 export const NO_VERDICT: ReadonlySet<number> = new Set([255, 75, 69]);
 
 export function checkPlaces(root: string, jobs: number | undefined): readonly Place[] {
-  const one = [{ slots: jobs ?? 1 }];
-  if ((checkHost()?.trim() ?? "") !== "") return one;
+  return (checkHost()?.trim() ?? "") === "" ? fleetPlaces(root, jobs) : [{ slots: jobs ?? 1 }];
+}
+
+export function fleetPlaces(root: string, jobs: number | undefined): readonly Place[] {
   const hosts = hostsFor(root).map((host) => ({ name: host.name, checks: checkSlots(host) }));
-  if (hosts.length === 0) return one;
+  if (hosts.length === 0) return [{ slots: jobs ?? 1 }];
   const dealt = new Map(hosts.map((host) => [host, 0]));
   for (let left = jobs ?? Infinity; left > 0 && [...dealt].some(([host, slots]) => slots < host.checks); ) {
     for (const [host, slots] of dealt) {

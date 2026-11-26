@@ -135,6 +135,8 @@ PROMPT_FILES = (
     "src/audit/draft-audit.ts",
     "src/audit/probe.ts",
     "tools/campaign/campaign-actions.ts",
+    "tools/campaign/campaign-status.ts",
+    "tools/campaign/campaign-terms.ts",
 )
 WAIVER_FILE = "tools/oxlint/not-slop.tsv"
 POLICY_FILE = "tools/loc/source-policy.json"

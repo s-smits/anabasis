@@ -1,4 +1,5 @@
 import type { AgentTool } from "../agent/session.ts";
+import { decodeBase64, DELIVERABLES } from "../kernel/answer-files.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { GUIDE_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
@@ -6,6 +7,7 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
 import { plural } from "../meta/text.ts";
+import { storedZip } from "../meta/zip.ts";
 import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "../tools/answer.ts";
 import { INSTALLER_TOLD, type NetworkReach, reserveSeconds } from "../tools/command.ts";
 import type { CODING_TOOLS } from "../tools/coding.ts";
@@ -157,33 +159,71 @@ export function firstTurn(task: PublicTask): string {
   return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(opened(task.publicInput), null, 2)}`;
 }
 
+function safeFilePath(path: string): boolean {
+  return (
+    Buffer.byteLength(path) <= NAME_BYTES &&
+    !path.includes("\0") &&
+    !path.includes("\\") &&
+    path.split("/").every((part) => part !== "" && part !== "." && part !== "..")
+  );
+}
+
+function rowBytes(row: Record<string, JsonValue | undefined>): Buffer | null {
+  if (isString(row.text)) return Buffer.from(row.text, "utf8");
+  if (isString(row.base64)) return decodeBase64(row.base64);
+  if (!Array.isArray(row.entries)) return null;
+  const members: { path: string; text: string }[] = [];
+  const seen = new Set<string>();
+  for (const item of row.entries) {
+    const member = asRecord(item);
+    if (
+      !isString(member?.path) ||
+      !isString(member.text) ||
+      !safeFilePath(member.path) ||
+      seen.has(member.path)
+    ) {
+      return null;
+    }
+    seen.add(member.path);
+    members.push({ path: member.path, text: member.text });
+  }
+  return storedZip(members);
+}
+
 function opened(publicInput: JsonValue): JsonValue {
   const record = asRecord(publicInput);
   if (record === null || !Array.isArray(record.files)) return publicInput;
   const written = taskFiles(publicInput);
   const files = record.files.map((row) => {
-    const { path, text, ...rest } = asRecord(row) ?? {};
-    if (!isString(path) || !isString(text) || written.get(path) !== text) return row;
-    written.delete(path);
-    return { path, ...rest, file: `${TASK_FILES}/${path}`, bytes: Buffer.byteLength(text) };
+    const held = asRecord(row);
+    if (held === null || !isString(held.path)) return row;
+    const bytes = written.get(held.path);
+    const decoded = bytes === undefined ? null : rowBytes(held);
+    if (bytes === undefined || decoded === null || !decoded.equals(bytes)) return row;
+    written.delete(held.path);
+    const { text: _t, base64: _b, entries: _e, ...rest } = held;
+    return { ...rest, path: held.path, file: `${TASK_FILES}/${held.path}`, bytes: bytes.length };
   });
   return { ...record, files };
 }
 
-function taskFiles(publicInput: JsonValue): Map<string, string> {
+function taskFiles(publicInput: JsonValue): Map<string, Buffer> {
   const rows = asRecord(publicInput)?.files;
-  const files = new Map<string, string>();
+  const files = new Map<string, Buffer>();
+  let total = 0;
   for (const each of Array.isArray(rows) ? rows : []) {
-    const { path, text } = asRecord(each) ?? {};
-    if (!isString(path) || !isString(text)) continue;
-    const named =
-      Buffer.byteLength(path) <= NAME_BYTES &&
-      !path.includes("\0") &&
-      path.split("/").every((part) => part !== "" && part !== "." && part !== "..");
+    const row = asRecord(each);
+    if (row === null || !isString(row.path) || !safeFilePath(row.path)) continue;
+    const bytes = rowBytes(row);
+    if (bytes === null || total + bytes.length > DELIVERABLES.bytes) continue;
+    const path = row.path;
     const apart = [...files.keys()].every(
       (other) => other !== path && !other.startsWith(`${path}/`) && !path.startsWith(`${other}/`),
     );
-    if (named && apart) files.set(path, text);
+    if (apart) {
+      files.set(path, bytes);
+      total += bytes.length;
+    }
   }
   return files;
 }
@@ -217,9 +257,9 @@ export function seedHome(
       "utf8",
     );
   }
-  for (const [path, text] of taskFiles(task.publicInput)) {
+  for (const [path, bytes] of taskFiles(task.publicInput)) {
     mkdirSync(dirname(join(home, TASK_FILES, path)), { recursive: true });
-    writeFileSync(join(home, TASK_FILES, path), text, "utf8");
+    writeFileSync(join(home, TASK_FILES, path), bytes);
   }
   return homeHolds(task, resources);
 }

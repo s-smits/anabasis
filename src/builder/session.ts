@@ -26,7 +26,7 @@ import {
 import type { PublicResource } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
 import { openHarness } from "../harness/open.ts";
-import { type PublicTask, publicView } from "../solver/prompt.ts";
+import { opened, type PublicTask, publicView, taskFiles } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
 import {
@@ -147,9 +147,11 @@ export async function practised(request: SolveRequest): Promise<Practised> {
   const events = read(request.log, TRACE_KINDS);
   const last = endedSolves(solvesIn(events).filter(({ id }) => id.startsWith(`${request.id}-`))).at(-1);
   const named = conditionsOf(events).get(request.condition)?.harness;
-  const opened = last?.end.harness;
-  if (named !== undefined && isString(opened) && opened !== named) {
-    throw new Error(`solve ${last?.id ?? ""} opened harness ${opened} under a condition that names ${named}`);
+  const usedHarness = last?.end.harness;
+  if (named !== undefined && isString(usedHarness) && usedHarness !== named) {
+    throw new Error(
+      `solve ${last?.id ?? ""} opened harness ${usedHarness} under a condition that names ${named}`,
+    );
   }
   return { solve: last?.id ?? request.id, ending };
 }
@@ -190,10 +192,16 @@ export function layPractice(home: string, tasks: readonly PracticeTask[]): void 
   for (const path of [next, old]) rmSync(path, { recursive: true, force: true });
   mkdirSync(next, { recursive: true });
   for (const { task } of tasks) {
-    writeFileSync(
-      join(next, `${task.taskId.replaceAll(/[^A-Za-z0-9._-]+/g, "-")}.json`),
-      `${capturedJsonStringify(publicView(task), null, 2)}\n`,
-    );
+    const slug = task.taskId.replaceAll(/[^A-Za-z0-9._-]+/g, "-");
+    const files = taskFiles(task.publicInput);
+    const shown =
+      files.size === 0 ? task : { ...task, publicInput: opened(task.publicInput, `practice/${slug}/files`) };
+    writeFileSync(join(next, `${slug}.json`), `${capturedJsonStringify(publicView(shown), null, 2)}\n`);
+    for (const [path, bytes] of files) {
+      const dest = join(next, slug, "files", path);
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, bytes);
+    }
   }
   if (existsSync(folder)) renameSync(folder, old);
   rmSync(folder, { force: true });

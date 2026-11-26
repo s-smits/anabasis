@@ -184,6 +184,144 @@ function commandsInTrajLine(line: string): string[] {
   return [];
 }
 
+const HEREDOC_RE = /(<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?[^\n]*)\n[\s\S]*?\n[ \t]*\2(?=\n|$)/gu;
+const SHELL_KEYWORDS = new Set([
+  "if",
+  "then",
+  "else",
+  "elif",
+  "fi",
+  "do",
+  "done",
+  "while",
+  "until",
+  "!",
+  "{",
+  "}",
+]);
+const SHELL_WRAPPERS = new Set(["env", "exec", "time", "nice", "nohup", "command", "xargs", "timeout"]);
+const ARG_FLAGS = new Set(["-k", "-s", "-n", "-u", "-L", "-P", "-I", "-C"]);
+const ENV_ASSIGN_RE = /^[A-Za-z_][A-Za-z0-9_]*=/u;
+const DURATION_RE = /^\d+(?:\.\d+)?[smhd]?$/u;
+
+function stripQuotes(word: string): string {
+  return word.replaceAll(/^['"]|['"]$/gu, "");
+}
+
+function splitShellSegments(script: string): string[] {
+  const cleaned = script.replace(HEREDOC_RE, "$1");
+  const segments: string[] = [];
+  let [current, quote, escaped] = ["", "", false];
+  for (const ch of cleaned) {
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\" && quote !== "'") {
+      current += ch;
+      escaped = true;
+      continue;
+    }
+    if (quote !== "") {
+      current += ch;
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      current += ch;
+      quote = ch;
+    } else if (";&|()`\n".includes(ch)) {
+      if (current.trim() !== "") segments.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim() !== "") segments.push(current);
+  return segments;
+}
+
+function shellWords(segment: string): string[] {
+  const words: string[] = [];
+  let [current, quote, escaped] = ["", "", false];
+  for (const ch of segment) {
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (quote !== "") {
+      if (ch === quote) quote = "";
+      else current += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+    } else if (/\s/u.test(ch)) {
+      if (current !== "") words.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current !== "") words.push(current);
+  return words;
+}
+
+function commandIndex(words: readonly string[]): number {
+  let at = 0;
+  let inTimeout = false;
+  while (at < words.length) {
+    const word = words[at] ?? "";
+    if (SHELL_KEYWORDS.has(word) || ENV_ASSIGN_RE.test(word)) {
+      at += 1;
+      continue;
+    }
+    if (SHELL_WRAPPERS.has(word)) {
+      inTimeout = word === "timeout";
+      at += 1;
+      continue;
+    }
+    if (word.startsWith("-") && at > 0) {
+      at += ARG_FLAGS.has(word) ? 2 : 1;
+      continue;
+    }
+    if (inTimeout && DURATION_RE.test(word)) {
+      inTimeout = false;
+      at += 1;
+      continue;
+    }
+    break;
+  }
+  return at;
+}
+
+function collectInvoked(command: string, out: Set<string>, depth = 0): void {
+  if (depth > 2) return;
+  for (const segment of splitShellSegments(command)) {
+    const words = shellWords(segment);
+    const at = commandIndex(words);
+    const head = words[at];
+    if (head === undefined) continue;
+    const base = stripQuotes(head).split("/").at(-1) ?? "";
+    if (base !== "") out.add(base);
+    if ((base === "bash" || base === "sh") && words[at + 1] === "-c" && words[at + 2] !== undefined) {
+      collectInvoked(words[at + 2] ?? "", out, depth + 1);
+    }
+  }
+}
+
+function invokedCommands(command: string): Set<string> {
+  const out = new Set<string>();
+  collectInvoked(command, out);
+  return out;
+}
+
 function externalToolCounts(
   store: string,
   arm: string,
@@ -203,9 +341,12 @@ function externalToolCounts(
     if (latest === undefined) continue;
     trajCount += 1;
     if (toolNames.length === 0) continue;
-    const cmds = readFileSync(join(trajDir, latest), "utf8").split("\n").flatMap(commandsInTrajLine);
+    const invoked = new Set<string>();
+    for (const cmd of readFileSync(join(trajDir, latest), "utf8").split("\n").flatMap(commandsInTrajLine)) {
+      for (const bin of invokedCommands(cmd)) invoked.add(bin);
+    }
     for (const tool of toolNames) {
-      if (cmds.some((cmd) => cmd.includes(tool))) counts.set(tool, (counts.get(tool) ?? 0) + 1);
+      if (invoked.has(tool)) counts.set(tool, (counts.get(tool) ?? 0) + 1);
     }
   }
   return { counts, trajCount };
@@ -225,8 +366,9 @@ function campaignToolCounts(events: readonly LogEvent[], harness: string, toolNa
     const cmd = asRecord(call.args)?.command;
     if (!isString(cmd) || cmd === "") continue;
     const hits = perSolve.get(call.id) ?? new Set<string>();
+    const invoked = invokedCommands(cmd);
     for (const tool of toolNames) {
-      if (cmd.includes(tool)) hits.add(tool);
+      if (invoked.has(tool)) hits.add(tool);
     }
     perSolve.set(call.id, hits);
   }

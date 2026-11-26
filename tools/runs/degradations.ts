@@ -8,7 +8,7 @@
  *   bun tools/runs/degradations.ts <log or campaign name>...
  */
 import type { LogEvent } from "#src/kernel/log.ts";
-import { type Degradation, degradations, SEATS, tracesIn } from "#src/kernel/trace.ts";
+import { type Degradation, degradations, SEATS, tracesIn, unservedTurns } from "#src/kernel/trace.ts";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -60,13 +60,23 @@ export function recordDegradations(brought: readonly string[], repo: string, now
 
 export function degradationLines(events: readonly LogEvent[]): string[] {
   const rows = degradations(events);
-  // Exclude Referee turns because their start events do not record a requested model (`degradations`).
+  const unserved = unservedTurns(events);
   const named = tracesIn(events).flatMap((each) =>
-    each.part === "turn" && each.model !== null && each.seat !== "referee" ? [each] : [],
+    each.part === "turn" && each.model !== null ? [each] : [],
   );
   const total = rows.reduce((sum, row) => sum + row.turns, 0);
+  const unservedBySeat = Object.entries(countBy(unserved, ({ seat }) => seat))
+    .map(([seat, count]) => `${seat} ${String(count)}`)
+    .join(", ");
+  const unservedLines =
+    unserved.length === 0
+      ? []
+      : [
+          `${String(unserved.length)} of ${String(named.length + unserved.length)} turns went unserved (${unservedBySeat})`,
+        ];
   const all = `all ${String(named.length)} turns naming a model were served as their seat asked`;
-  if (rows.length === 0) return [all];
+  if (rows.length === 0 && unserved.length === 0) return [all];
+  if (rows.length === 0) return [...unservedLines, all];
   const comparisonOf = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "solve.started" && isString(data.solve) && isString(data.comparison)
@@ -86,6 +96,7 @@ export function degradationLines(events: readonly LogEvent[]): string[] {
   ).map(([under, count]) => `  solves under ${under}: ${String(count)} served another model`);
   return [
     `${String(total)} of ${String(named.length)} turns naming a model were served by another than their seat asked for`,
+    ...unservedLines,
     ...seats,
     ...compared,
     ...rows.map(

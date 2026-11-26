@@ -145,7 +145,6 @@ test/builder.test.ts	41
 test/campaign-kill.test.ts	6
 test/campaign.test.ts	13
 test/checker-commands.test.ts	17
-test/claude-backend.test.ts	10
 test/climb.test.ts	31
 test/coding-tools.test.ts	5
 test/command.test.ts	25

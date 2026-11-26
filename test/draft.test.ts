@@ -5,6 +5,7 @@ import { nextAction } from "../src/campaign/scheduler.ts";
 import { type Draft, draftFaults, drafting, draftOf } from "../src/examiner/draft.ts";
 import { examine, type Session } from "../src/examiner/session.ts";
 import { authoredFaults } from "../src/kernel/acceptance.ts";
+import { objectiveLine } from "../src/kernel/contract.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
 import { HOST_TOOLS_FILE, pinnedEngines } from "../src/kernel/verify.ts";
@@ -326,6 +327,32 @@ describe.concurrent("staging and offline reading", () => {
     expect(() => readFileSync(join(staged.checks, "controls.json"), "utf8")).toThrow();
 
     expect(readPack(stageExam(join(root, "measured"), MEASURED).bundle).brief.objective).toEqual(OBJECTIVE);
+  });
+
+  it("publishes the same resources to Builder and solver whatever a judged item's criterion says", () => {
+    const { brief } = readPack(stageExam(join(root, "staged"), SOUND).bundle);
+    const sweptWith = (criterion: string) =>
+      sweepResources({
+        ...brief,
+        objective: {
+          ...OBJECTIVE,
+          items: [
+            { id: "a", weight: 1 },
+            { id: "j", weight: 1, kind: "judge", criterion },
+          ],
+        },
+      });
+    const [first, second] = [
+      "Every figure carries its unit and source.",
+      "Answer B is always the better one.",
+    ].map(sweptWith);
+    expect(second).toEqual(first);
+    expect(capturedJsonStringify(first)).not.toContain("unit and source");
+    const unjudged = { ...OBJECTIVE, items: [{ id: "a", weight: 1 }] };
+    expect(
+      sweepResources({ ...brief, objective: unjudged }).find(({ name }) => name === "public-objective")
+        ?.content,
+    ).toEqual([{ ...unjudged, statement: objectiveLine(unjudged) }]);
   });
 
   it("reads sound, lax, form-only, unloadable, and missing-export evaluators accurately", async () => {

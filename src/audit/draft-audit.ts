@@ -78,7 +78,7 @@ const SYSTEM_PROMPT = [
   "- objective-defect: when the exam declares an objective, perturb a valid accept control into a deliberately hedged, flattened, or degraded valid answer; if it still passes with an equal, better, or barely worse objective score, the objective is gameable or uninformative. When objective.items is declared, inspect individual `scores[id]` items for recall-only/presence bias, unpenalised hedging, constant returns, or always 0 on valid controls (such as un-extractable deliverables).",
   "- sound: after inspecting the check program and probing across examples, checks, and any objective, no probe-verified defect was found (and any prior findings were confirmed fixed).",
   "The holes that matter most change a verdict on a domain answer: a check or score item that reads only surface syntax, file presence or schema shape, or leaves a declared answer field unread, so a semantically wrong answer passes or scores well; and a check that refuses, or throws on, a valid alternative the public rules allow.",
-  `Every defect you report must cite an executed probe number whose verifier result proves it (vacuous-pass requires changed=pass; check-defect requires changed=fail, or changed=faulty in the named check; objective-defect requires changed=pass with finite objectives on both original and changed). The host refuses ungrounded claims. Do not invent style nits or refuse a domain where binary checks are intentionally a feasibility floor paired with an informative non-hedgable objective. You have ${String(TURN_LIMIT)} turns, ${String(PROBE_BUDGET)} probes, and ${String(DEADLINE_SECONDS / 60)} minutes; finish with \`record_draft_review\`.`,
+  `Every defect you report must cite an executed probe number whose verifier result proves it (vacuous-pass requires changed=pass; check-defect requires changed=fail, or changed=faulty in the named check; objective-defect requires changed=pass with finite objectives on both original and changed, and names the score item that kept its score when the probe scored items). The host refuses ungrounded claims. Do not invent style nits or refuse a domain where binary checks are intentionally a feasibility floor paired with an informative non-hedgable objective. You have ${String(TURN_LIMIT)} turns, ${String(PROBE_BUDGET)} probes, and ${String(DEADLINE_SECONDS / 60)} minutes; finish with \`record_draft_review\`.`,
 ].join("\n");
 
 const PARAMETERS = Type.Object({
@@ -141,7 +141,7 @@ function refusal(
       return `objective-defect requires probe ${String(finding.probe)} to pass with a finite objective on both original and changed answers`;
     }
     const items = scoresOf(row.changed);
-    if (finding.kind === "objective-defect" && items !== null && !((finding.item ?? "") in items)) {
+    if (finding.kind === "objective-defect" && items !== null && !Object.hasOwn(items, finding.item ?? "")) {
       return `objective-defect requires naming a score item probe ${String(finding.probe)} scored`;
     }
     if (finding.kind === "check-defect") {
@@ -357,6 +357,13 @@ function reproduces(
       : [...blockingOf(replayed.changed), throwsIn(replayed)].includes(finding.check);
   }
   if (replayed.changed.kind !== "pass" || objective === undefined) return false;
+  if (finding.item !== undefined) {
+    const [was, now] = [
+      scoresOf(replayed.original)?.[finding.item],
+      scoresOf(replayed.changed)?.[finding.item],
+    ];
+    return was !== undefined && now !== undefined && now - was > -GAP_FLOOR;
+  }
   const [before, after] = [objectiveOf(replayed.original), objectiveOf(replayed.changed)];
   return before !== null && after !== null && gainOver(objective, after, before) > -GAP_FLOOR;
 }
@@ -417,8 +424,10 @@ export async function replayDraftProbes(
           return cached;
         },
       });
-      const scoredNow = scoresOf(replayed.changed);
-      const itemDropped = finding.item !== undefined && scoredNow !== null && !(finding.item in scoredNow);
+      const itemDropped =
+        finding.item !== undefined &&
+        replayed.changed.kind === "pass" &&
+        !Object.hasOwn(scoresOf(replayed.changed) ?? {}, finding.item);
       if ((!conclusive(replayed) && throwsIn(replayed) === null) || itemDropped) {
         unverified.push(formatted);
       } else if (

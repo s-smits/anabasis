@@ -1035,6 +1035,19 @@ describe("draft audit replay of an objective defect", () => {
       verifiedFixed: [],
       unverified: [expect.stringContaining("objective-defect on t-1")],
     });
+    const scalar: Verifier = async () => ({ kind: "pass", objective: 0.9 });
+    expect(await replayDraftProbes(prior, { ...target, verify: scalar })).toMatchObject({
+      unverified: [expect.stringContaining("objective-defect on t-1")],
+    });
+    const lightFix: Verifier = async (_task, answer) => ({
+      kind: "pass",
+      objective: 0.9,
+      scores: { accuracy: 0.9, report: asRecord(answer)?.span === 12 ? 1 : 0.5 },
+    });
+    expect(await replayDraftProbes(prior, { ...target, verify: lightFix })).toMatchObject({
+      stillBroken: [],
+      verifiedFixed: [expect.stringContaining("objective-defect on t-1")],
+    });
   });
 });
 

@@ -136,7 +136,7 @@ describe("the pairwise judge", () => {
   });
 
   it("waits out a judge's usage limit and asks the vote again", async () => {
-    const reset = Math.floor(Date.now() / 1000) - 59;
+    const reset = Math.floor(Date.now() / 1000) - 58;
     let limited = 0;
     const at = seated((shown) => {
       if (shown.includes("Overall, which answer") && limited++ < 2) {

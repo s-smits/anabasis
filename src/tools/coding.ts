@@ -28,14 +28,17 @@ const images: ImageProcessor = {
     (await (photon ??= createNodePhotonImages())).prepare(bytes, mimeType, limits),
 };
 
+type ImageModel = Pick<Model<Api>, "input" | "inputLimits">;
+
 export async function prepareImage(
   bytes: Uint8Array,
   path: string,
-  model: Pick<Model<Api>, "input" | "inputLimits">,
+  model: ImageModel,
 ): Promise<ImageContent | null> {
-  if (!model.input.includes("image") || !Bun.file(path).type.startsWith("image/")) return null;
+  const mimeType = Bun.file(path).type.split(";")[0] ?? "";
+  if (!model.input.includes("image") || !mimeType.startsWith("image/")) return null;
   const resize = model.inputLimits?.images?.resize;
-  const prepared = await images.prepare(bytes, "application/octet-stream", {
+  const prepared = await images.prepare(bytes, mimeType, {
     maxWidth: resize?.maxWidth ?? DEFAULT_IMAGE_LIMITS.maxWidth,
     maxHeight: resize?.maxHeight ?? DEFAULT_IMAGE_LIMITS.maxHeight,
     maxBytes: resize?.maxBytes ?? DEFAULT_IMAGE_LIMITS.maxBytes,

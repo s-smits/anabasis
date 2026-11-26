@@ -433,7 +433,7 @@ describe.concurrent("Claude pre-turn guards, interrupts, and quiet timeouts", ()
     }
 
     const silent = sandbox(
-      { compaction: "off", quiet: 250 },
+      { compaction: "off", quiet: 3000 },
       "claude",
       TEXT,
       (raw) => `${raw.trim().split("\n").slice(0, -1).join("\n")}\n`,
@@ -443,7 +443,7 @@ describe.concurrent("Claude pre-turn guards, interrupts, and quiet timeouts", ()
       expect((await silent.turn([OPENING])).errorMessage).toContain("already has a turn in flight");
       const timedOut = await first;
       expect(timedOut.stopReason).toBe("error");
-      expect(Number(timedOut.errorMessage?.match(/[\d.]+/)?.[0])).toBeCloseTo(250 / 60_000, 6);
+      expect(Number(timedOut.errorMessage?.match(/[\d.]+/)?.[0])).toBeCloseTo(3000 / 60_000, 6);
       silent.replay(TEXT);
       expect(
         (await silent.turn([OPENING, timedOut, { role: "user", content: "Again.", timestamp: 0 }]))
@@ -751,10 +751,22 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
     safeFail.shutdown.abort();
     expect(await claudeLedger(safeFail.id)).not.toBeNull();
 
-    const forked = sandbox({
-      compaction: "off",
-      fork: { transcript: join(persistDir, "x-1.jsonl"), upToTurn: 1 },
-    });
+    const childSid = "22222222-2222-3333-4444-555555555555";
+    const withChildSid = (raw: string) =>
+      raw.replaceAll(/"session_id":"[^"]+"/g, `"session_id":"${childSid}"`);
+    const forked = sandbox(
+      {
+        compaction: "off",
+        fork: { transcript: join(persistDir, "x-1.jsonl"), upToTurn: 1 },
+        persist: { dir: persistDir, seat: "x-fork" },
+      },
+      "claude",
+      TEXT,
+      withChildSid,
+    );
+    const forkedProject = join(forked.home, "claude-config", "projects", CLAUDE_PROJECT_DIR);
+    mkdirSync(forkedProject, { recursive: true });
+    writeFileSync(join(forkedProject, `${childSid}.jsonl`), "child-transcript\n");
     try {
       await forked.turn([{ role: "user", content: "Try non-uniform constraints.", timestamp: 0 }]);
       const launch = forked.launched();
@@ -762,14 +774,47 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
       expect([flag(launch, "--resume"), flag(launch, "--resume-session-at")]).toEqual([sid, "att-1"]);
       expect(launch.argv).not.toContain("--no-session-persistence");
       expect(launch.env.CLAUDE_CODE_PROJECT_DIR_NAME).toBe(CLAUDE_PROJECT_DIR);
-      expect(
-        existsSync(join(forked.home, "claude-config", "projects", CLAUDE_PROJECT_DIR, `${sid}.jsonl`)),
-      ).toBe(true);
+      expect(existsSync(join(forkedProject, `${sid}.jsonl`))).toBe(true);
+      expect(readFileSync(join(persistDir, "x-fork.jsonl"), "utf8")).toBe("child-transcript\n");
+      expect(capturedJsonParse(readFileSync(join(persistDir, "x-fork.json"), "utf8"))).toEqual({
+        seat: "x-fork",
+        sdkSessionId: childSid,
+      });
       expect(asRecord(launch.stdin.find((line) => line.type === "user")?.message)?.content).toBe(
         "Try non-uniform constraints.",
       );
     } finally {
       forked.shutdown.abort();
+    }
+
+    const noSidFork = sandbox(
+      {
+        compaction: "off",
+        fork: { transcript: join(persistDir, "x-1.jsonl"), upToTurn: 1 },
+        persist: { dir: persistDir, seat: "x-fork-nosid" },
+      },
+      "claude",
+      TEXT,
+      (raw) =>
+        raw
+          .split("\n")
+          .map((entry) => {
+            if (entry.trim() === "") return entry;
+            const parsed = asRecord(capturedJsonParse(entry));
+            if (parsed === null || !("session_id" in parsed)) return entry;
+            const { session_id: _omitted, ...rest } = parsed;
+            return JSON.stringify(rest);
+          })
+          .join("\n"),
+    );
+    const noSidProject = join(noSidFork.home, "claude-config", "projects", CLAUDE_PROJECT_DIR);
+    mkdirSync(noSidProject, { recursive: true });
+    writeFileSync(join(noSidProject, `${childSid}.jsonl`), "should-not-save\n");
+    try {
+      expect((await noSidFork.turn([OPENING])).stopReason).toBe("stop");
+      expect(existsSync(join(persistDir, "x-fork-nosid.jsonl"))).toBe(false);
+    } finally {
+      noSidFork.shutdown.abort();
     }
   });
 });

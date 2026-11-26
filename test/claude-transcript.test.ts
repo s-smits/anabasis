@@ -1,10 +1,19 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+  CLAUDE_PROJECT_DIR,
   resolveForkPoint,
   savePersistedTranscript,
   stageForkTranscript,
 } from "../src/agent/backends/claude-transcript.ts";
-import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
+import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -49,16 +58,28 @@ describe.concurrent("Claude transcript fork point resolution and staging", () =>
       resumeSessionAt: "a2-text",
       turnCount: 3,
     });
-    expect(() => resolveForkPoint(transcript, 3)).toThrow("unanswered tool calls (tu_orphan)");
+    expect(() => resolveForkPoint(transcript, 3)).toThrow(
+      "unanswered tool calls (tu_orphan); fork at turn 2 instead",
+    );
     expect(() => resolveForkPoint(transcript, 4)).toThrow("holds 3 assistant turns");
     expect(() => resolveForkPoint(transcript, 0)).toThrow("positive integer");
     expect(() => resolveForkPoint('{"type":"user","uuid":"u0"}\n', 1)).toThrow("no valid sessionId UUID");
+    expect(() => resolveForkPoint(`{"broken\n${transcript}`, 1)).toThrow(SyntaxError);
+    const onlyOpen = `${row("user", "u0")}\n${assistant("a1-open", "msg_1", [{ type: "tool_use", id: "tu_1", name: "bash" }])}\n`;
+    expect(() => resolveForkPoint(onlyOpen, 1)).toThrow("no earlier completed turn exists");
   });
 
   it("stages uuid and default-complete forks and blocks mismatched, excluded, or unsafe transcript saves", () => {
     const dir = mkdtempSync(join(root, "stage-"));
     const file = join(dir, "src.jsonl");
     writeFileSync(file, transcript);
+    const noTurns = join(dir, "no-turns.jsonl");
+    writeFileSync(noTurns, `${row("user", "u0")}\n`);
+    const onlyIncomplete = join(dir, "incomplete.jsonl");
+    writeFileSync(
+      onlyIncomplete,
+      `${row("user", "u0")}\n${assistant("a1-open", "msg_1", [{ type: "tool_use", id: "tu_1", name: "bash" }])}\n`,
+    );
     expect(stageForkTranscript(join(dir, "c1"), { transcript: file, upToUuid: "a2-text" })).toEqual({
       resume: sid,
       resumeSessionAt: "a2-text",
@@ -67,6 +88,10 @@ describe.concurrent("Claude transcript fork point resolution and staging", () =>
       resume: sid,
       resumeSessionAt: "a2-text",
     });
+    expect(stageForkTranscript(join(dir, "c-empty"), { transcript: noTurns })).toEqual({ resume: sid });
+    expect(() => stageForkTranscript(join(dir, "c-inc"), { transcript: onlyIncomplete })).toThrow(
+      "no completed assistant turn",
+    );
     expect(() =>
       stageForkTranscript(join(dir, "c3"), { transcript: file, upToTurn: 1, upToUuid: "a2-text" }),
     ).toThrow("not both");
@@ -86,8 +111,35 @@ describe.concurrent("Claude transcript fork point resolution and staging", () =>
     expect(savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, otherSid)).toBe(
       false,
     );
+    expect(savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, sid, sid)).toBe(
+      false,
+    );
     expect(
       savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, undefined, sid),
     ).toBe(false);
+
+    const multi = join(dir, "multi");
+    const project = join(multi, "projects", CLAUDE_PROJECT_DIR);
+    mkdirSync(project, { recursive: true });
+    const older = join(project, `${sid}.jsonl`);
+    const newer = join(project, `${otherSid}.jsonl`);
+    writeFileSync(older, "older\n");
+    writeFileSync(newer, "newer\n");
+    utimesSync(older, 1_700_000_000, 1_700_000_000);
+    utimesSync(newer, 1_700_000_500, 1_700_000_500);
+    const out = join(dir, "saved");
+    expect(savePersistedTranscript(multi, { dir: out, seat: "x-new" }, undefined)).toBe(true);
+    expect(readFileSync(join(out, "x-new.jsonl"), "utf8")).toBe("newer\n");
+    expect(capturedJsonParse(readFileSync(join(out, "x-new.json"), "utf8"))).toEqual({
+      seat: "x-new",
+      sdkSessionId: otherSid,
+    });
+    const custom = join(project, "custom.jsonl");
+    writeFileSync(custom, "custom\n");
+    utimesSync(custom, 1_700_001_000, 1_700_001_000);
+    expect(savePersistedTranscript(multi, { dir: out, seat: "x-custom" }, undefined)).toBe(true);
+    expect(capturedJsonParse(readFileSync(join(out, "x-custom.json"), "utf8"))).toEqual({
+      seat: "x-custom",
+    });
   });
 });

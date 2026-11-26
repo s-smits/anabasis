@@ -62,6 +62,30 @@ describe("seatForkPlan and applyContinuation", () => {
     expect(() => seatForkPlan(log, "exam", claudeModel, { nudge: "   " })).toThrow("non-empty text");
     expect(() => seatForkPlan(log, "exam", codexModel, { "fork-from": "x-1" })).toThrow("Claude backend");
     expect(() => seatForkPlan(log, "exam", claudeModel, { "fork-from": "x-1" })).toThrow("--wrap-turns");
+    const unsafeSegments = ["../bad", "..", ".", "a/b"];
+    const badInputs: readonly [Parameters<typeof seatForkPlan>[3], string][] = [
+      ...unsafeSegments.map((seg): [Parameters<typeof seatForkPlan>[3], string] => [
+        { "fork-from": seg },
+        "name a session id",
+      ]),
+      ...unsafeSegments.map((seg): [Parameters<typeof seatForkPlan>[3], string] => [
+        { "wrap-turns": `${seg}:1` },
+        "invalid session id",
+      ]),
+      [{ "fork-from": "x-1", "at-turn": "0" }, "positive integer"],
+      [{ "fork-from": "x-1", "at-turn": "-1" }, "positive integer"],
+      [{ "fork-from": "x-1", "at-turn": "1.5" }, "positive integer"],
+      [{ "fork-from": "x-1", "at-turn": "abc" }, "positive integer"],
+      [{ "wrap-turns": "x-2" }, "expected <session>:<turn>"],
+      [{ "wrap-turns": ":1" }, "expected <session>:<turn>"],
+      [{ "wrap-turns": "x-2:" }, "expected <session>:<turn>"],
+    ];
+    for (const [flags, message] of badInputs) {
+      expect(() => seatForkPlan(log, "exam", claudeModel, flags)).toThrow(message);
+    }
+    expect(seatForkPlan(log, "exam", claudeModel, { nudge: "  Try again.  " })).toEqual({
+      continuation: { mode: "nudge", text: "Try again." },
+    });
   });
 
   it("resolves native SDK forks from origin claude-sessions and caps conversational children at their own last turn", () => {
@@ -77,12 +101,28 @@ describe("seatForkPlan and applyContinuation", () => {
       ],
       "yes",
     );
+    const transcriptFile = join(origin, CLAUDE_SESSIONS_DIR, "x-1.jsonl");
     const forX1 = seatForkPlan(log, "exam", claudeModel, { "fork-from": "x-1" });
     expect(forX1.fork).toEqual({
-      transcript: join(origin, CLAUDE_SESSIONS_DIR, "x-1.jsonl"),
+      transcript: transcriptFile,
       upToTurn: 2,
     });
     expect(forX1.continuation).toEqual({ mode: "fork", text: "Continue from where you left off." });
+
+    const directPath = seatForkPlan(log, "exam", claudeModel, {
+      "fork-from": transcriptFile,
+      "at-turn": "1",
+    });
+    expect(directPath.fork).toEqual({ transcript: transcriptFile, upToTurn: 1 });
+
+    const unshared = makeSeed(
+      "sim-unshared",
+      [line("exam.started", { session: "x-1" }), line("exam.turn", { session: "x-1", turn: 1, text: "t1" })],
+      "yes",
+    );
+    expect(seatForkPlan(unshared.log, "exam", claudeModel, { "fork-from": "x-1" }).fork).toEqual({
+      transcript: join(unshared.origin, CLAUDE_SESSIONS_DIR, "x-1.jsonl"),
+    });
 
     const forX2 = seatForkPlan(log, "exam", claudeModel, {
       "fork-from": "x-2",
@@ -90,7 +130,7 @@ describe("seatForkPlan and applyContinuation", () => {
       nudge: "Focus on edge cases.",
     });
     expect(forX2.fork).toEqual({
-      transcript: join(origin, CLAUDE_SESSIONS_DIR, "x-1.jsonl"),
+      transcript: transcriptFile,
       upToTurn: 3,
     });
     expect(forX2.continuation).toEqual({ mode: "fork", text: "Focus on edge cases." });

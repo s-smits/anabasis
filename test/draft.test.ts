@@ -44,6 +44,7 @@ import {
   seat,
   sweep,
   toolOf,
+  WALL,
 } from "./helpers/examiner-seat.ts";
 import { scriptedModel } from "./helpers/fixture-pack.ts";
 
@@ -307,6 +308,24 @@ describe("draft shape and session gate", () => {
       append(sessionsLog, kind, { session });
     }
     expect(examinerSessions(read(sessionsLog))).toEqual(new Set(["d-1", "x-1"]));
+
+    const walledSeat = seat("draft", [drafted(SOUND), finish]);
+    const seenPaths: { home: string; cwd: string | undefined }[] = [];
+    await examine(
+      {
+        ...walledSeat.request,
+        models: (modelHome, _shutdown, cwd) => {
+          seenPaths.push({ home: modelHome, cwd });
+          return walledSeat.request.models();
+        },
+      },
+      WALL,
+    );
+    expect(seenPaths).toHaveLength(1);
+    expect(seenPaths[0]?.cwd).toBeDefined();
+    expect(seenPaths[0]?.cwd).not.toBe(seenPaths[0]?.home);
+    expect(seenPaths[0]?.home.endsWith(".host/model")).toBe(true);
+    expect(seenPaths[0]?.cwd?.endsWith("/home")).toBe(true);
   });
 });
 

@@ -11,6 +11,7 @@ import { boundText } from "../meta/bounded-text.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { join } from "../meta/path.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
@@ -29,7 +30,7 @@ interface Sitting {
     readonly turns: number;
     readonly puts: number;
   };
-  readonly models: (home: string, shutdown: AbortSignal) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
   readonly log: string;
   readonly kill?: AbortSignal;
   readonly opened?: () => void;
@@ -248,6 +249,8 @@ async function examining(
     let running = 0;
     const sat = await runAgent({
       models: request.models,
+      ...keyIfDefined("home", walls === undefined ? undefined : join(walls.shell.dirs.host, "model")),
+      ...keyIfDefined("cwd", walls?.shell.dirs.home),
       id: request.id,
       model,
       effort: request.effort,

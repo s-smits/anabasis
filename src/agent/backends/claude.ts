@@ -125,6 +125,7 @@ export interface ClaudeOptions {
   readonly executable: string;
   readonly compaction: ClaudeCompaction;
   readonly home: string;
+  readonly cwd?: string;
   readonly webSearch?: boolean;
   readonly cacheTtl?: "5m" | "1h";
   readonly shutdown?: AbortSignal | undefined;
@@ -277,7 +278,7 @@ function open(
     prompt: prompt.stream,
     options: {
       pathToClaudeCodeExecutable: claude.executable,
-      cwd: claude.home,
+      cwd: claude.cwd ?? claude.home,
       model: LONG_CONTEXT.has(model.id) ? `${model.id}[1m]` : model.id,
       ...keyIfDefined("effort", effort),
       ...keyIfDefined("extraArgs", effort && { "thinking-display": "summarized" }),

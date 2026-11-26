@@ -8,12 +8,13 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   utimesSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { join, resolve } from "../src/meta/path.ts";
 import { processTable } from "../src/meta/process-table.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { hostScratch } from "../src/sandbox/policy.ts";
@@ -25,6 +26,7 @@ import {
   releaseLeft,
   releaseRoot,
 } from "../src/sandbox/sandbox-root.ts";
+import { runSandboxed, sandboxBase } from "../src/tools/command.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
 const DAY = 86_400_000;
@@ -179,7 +181,7 @@ describe("a seat's root", () => {
       };
       try {
         await ready(() => reads(first.pid) && reads(child.pid));
-        endHolders(root, undefined, listing);
+        endHolders(root, { table: listing });
         await ready(() => first.signalCode === "SIGKILL" && child.signalCode === "SIGKILL");
       } finally {
         first.kill("SIGKILL");
@@ -220,6 +222,58 @@ describe("a seat's root", () => {
         loop.kill("SIGKILL");
         await releaseRoot(root);
         Bun.spawnSync(["/usr/bin/pkill", "-9", "-f", `sleep ${marker}`]);
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!onDarwin)(
+    "spares a live host-spawned seat child working in dirs.home during runSandboxed, kills bash leftovers, and reaps the seat on releaseRoot",
+    async () => {
+      const { parent, root } = unclaimed();
+      await claimRoot(root);
+      const dirs = {
+        root,
+        home: join(root, "home"),
+        temp: join(root, "tmp"),
+        kept: join(root, "kept"),
+        host: hostFolder(root),
+      };
+      const base = await sandboxBase(dirs, { repoRoot: resolve(import.meta.dir, "..") }, "seat-root-test");
+      const seat = Bun.spawn(["/bin/sh", "-c", "/bin/sleep 60; true"], {
+        cwd: dirs.home,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+      let seatChildPid = 0;
+      try {
+        await ready(() => processTable().some((row) => row.pid === seat.pid && row.cwd !== null));
+        await ready(() => {
+          seatChildPid = processTable().find((row) => row.ppid === seat.pid)?.pid ?? 0;
+          return seatChildPid > 0;
+        });
+        const { exitCode } = await runSandboxed(
+          { base, dirs, toolTree: null, limits: { shellDefaultSeconds: 15, shellMaxSeconds: 15 } },
+          "/bin/sleep 60 </dev/null >/dev/null 2>&1 &\necho $! > bg.pid",
+          { onData: () => undefined },
+        );
+        expect(exitCode).toBe(0);
+        const bgPid = Number.parseInt(readFileSync(join(dirs.home, "bg.pid"), "utf8").trim(), 10);
+        expect(Number.isInteger(bgPid)).toBe(true);
+        expect(processTable().some((row) => row.pid === bgPid)).toBe(false);
+        expect(seat.exitCode).toBeNull();
+        expect(seat.signalCode).toBeNull();
+        expect(processTable().some((row) => row.pid === seat.pid)).toBe(true);
+        expect(processTable().some((row) => row.pid === seatChildPid)).toBe(true);
+        await releaseRoot(root);
+        await seat.exited;
+        expect(seat.signalCode).toBe("SIGKILL");
+        expect(processTable().some((row) => row.pid === seatChildPid)).toBe(false);
+        expect(existsSync(root)).toBe(false);
+      } finally {
+        seat.kill("SIGKILL");
+        await seat.exited;
+        await releaseRoot(root);
         rmSync(parent, { recursive: true, force: true });
       }
     },

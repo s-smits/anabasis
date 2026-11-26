@@ -67,9 +67,17 @@ export function sweepOptions(
   home = homedir(),
   window = SWEEP_COMPACT_WINDOW,
   shutdown?: AbortSignal,
+  cwd?: string,
 ): BackendOptions {
   return {
-    claude: { executable: claudeExecutable(), compaction: { window }, home, cacheTtl: "5m", shutdown },
+    claude: {
+      executable: claudeExecutable(),
+      compaction: { window },
+      home,
+      ...keyIfDefined("cwd", cwd),
+      cacheTtl: "5m",
+      shutdown,
+    },
   };
 }
 

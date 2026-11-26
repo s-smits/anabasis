@@ -266,7 +266,8 @@ export async function runSandboxed(
     }
     return { exitCode: result.value.exitCode };
   } finally {
-    endHolders(dirs.root, existsSync(leader) ? Number.parseInt(readFileSync(leader, "utf8"), 10) : undefined);
+    const parsed = existsSync(leader) ? Number.parseInt(readFileSync(leader, "utf8"), 10) : Number.NaN;
+    endHolders(dirs.root, { group: Number.isInteger(parsed) ? parsed : undefined, spareOwn: true });
     if (into !== null) rmSync(into, { recursive: true, force: true });
   }
 }

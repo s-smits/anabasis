@@ -222,6 +222,31 @@ describe("the Claude backend", () => {
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("300000");
     expect(env.DISABLE_AUTO_COMPACT).toBeUndefined();
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+
+    const workspace = mkdtempSync(join(tmpdir(), "ana-claude-cwd-"));
+    try {
+      writeFileSync(join(home, "launch.jsonl"), "");
+      replay(TEXT);
+      const separate = claudeProvider({
+        executable,
+        compaction: "off",
+        home,
+        cwd: workspace,
+        shutdown: shutdown.signal,
+      });
+      await separate
+        .streamSimple(recorded, solverContext([opening]), {
+          ...solveOptions(),
+          sessionId: `cwd-${String(solves)}`,
+        })
+        .result();
+      const split = launched();
+      expect(realpathSync.native(split.cwd)).toBe(realpathSync.native(workspace));
+      expect(split.env.HOME).toBe(home);
+      expect(split.env.CLAUDE_CONFIG_DIR).toBe(join(home, "claude-config"));
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
   });
 
   it("sends a session no built-in tool when the options say so", async () => {

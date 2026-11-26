@@ -120,18 +120,21 @@ async function removeWhole(root: string): Promise<void> {
   await rm(root, { recursive: true, force: true });
 }
 
-export function endHolders(
-  roots: string | readonly string[],
-  group?: number,
-  table: typeof processTable = processTable,
-): void {
+interface EndHoldersOptions {
+  readonly group?: number | undefined;
+  readonly spareOwn?: boolean;
+  readonly table?: typeof processTable;
+}
+
+export function endHolders(roots: string | readonly string[], options: EndHoldersOptions = {}): void {
+  const { group, spareOwn = false, table = processTable } = options;
   if (runtimeProcess.platform !== "darwin") return;
   const list = Array.isArray(roots) ? roots : [roots];
   const real = list.filter(existsSync).map((root) => realpathSync.native(root));
   if (real.length === 0) return;
   const until = performance.now() + 1000;
   for (let settled = true; performance.now() < until; ) {
-    const holders = holdersOf(real, group, table());
+    const holders = holdersOf(real, { group, spareOwn }, table());
     if (holders.length === 0 && settled) return;
     settled = holders.length === 0;
     for (const pid of holders) {
@@ -144,20 +147,44 @@ export function endHolders(
   }
 }
 
+function descendantsOf(table: ReturnType<typeof processTable>, seed: Iterable<number>): Set<number> {
+  const found = new Set(seed);
+  for (let size = -1; size !== found.size; ) {
+    size = found.size;
+    for (const { pid, ppid } of table) if (found.has(ppid)) found.add(pid);
+  }
+  return found;
+}
+
 function holdersOf(
   roots: readonly string[],
-  group: number | undefined,
+  { group, spareOwn }: { readonly group: number | undefined; readonly spareOwn: boolean },
   rows: ReturnType<typeof processTable>,
 ): number[] {
   const inRoot = (path: string | null) =>
     path !== null && roots.some((root) => path === root || path.startsWith(`${root}/`));
   const table = rows.filter(({ pid }) => pid > 1 && pid !== runtimeProcess.pid);
-  const found = new Set(
-    table.filter((row) => row.pgid === group || inRoot(row.cwd) || inRoot(row.program)).map(({ pid }) => pid),
-  );
-  for (let size = -1; size !== found.size; ) {
-    size = found.size;
-    for (const { pid, ppid } of table) if (found.has(ppid)) found.add(pid);
-  }
-  return [...found];
+  const spared = spareOwn
+    ? descendantsOf(
+        table,
+        table
+          .filter(
+            (row) =>
+              row.ppid === runtimeProcess.pid &&
+              row.pid !== group &&
+              row.pgid !== group &&
+              !inRoot(row.program),
+          )
+          .map(({ pid }) => pid),
+      )
+    : new Set<number>();
+  const active = spared.size === 0 ? table : table.filter(({ pid }) => !spared.has(pid));
+  return [
+    ...descendantsOf(
+      active,
+      active
+        .filter((row) => row.pgid === group || inRoot(row.cwd) || inRoot(row.program))
+        .map(({ pid }) => pid),
+    ),
+  ];
 }

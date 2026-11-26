@@ -47,7 +47,7 @@ export interface SolveRequest {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: Limits;
-  readonly models: (home: string, shutdown: AbortSignal) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
   readonly verify: Verifier;
   readonly log: string;
   readonly repoRoot: string;
@@ -243,6 +243,7 @@ async function play(
     const sat = await runAgent({
       models: request.models,
       home: join(dirs.host, "model"),
+      cwd: dirs.home,
       id,
       model: request.model,
       effort: request.effort,

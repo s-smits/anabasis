@@ -27,6 +27,7 @@ export interface Extracted {
     | "binary";
   readonly text: string;
   readonly formulas: Formulas | null;
+  readonly notes: readonly string[];
   readonly fault: string | null;
 }
 
@@ -57,7 +58,7 @@ const lastLine = (text: string): string => text.trim().split(/\r?\n/u).at(-1)?.t
 function pyExtract(
   mode: "xlsx" | "docx" | "pptx" | "sqlite",
   bytes: Buffer,
-): Pick<Extracted, "text" | "formulas"> {
+): Pick<Extracted, "text" | "formulas" | "notes"> {
   const ran = runSync(
     [
       toolBin("python3"),
@@ -82,7 +83,31 @@ function pyExtract(
           : `python3 extractor timed out (${ran.signal})`;
     throw new Error(why);
   }
-  return parseJsonAs<Pick<Extracted, "text" | "formulas">>(decodeOutput(ran.stdout));
+  return parseJsonAs<Pick<Extracted, "text" | "formulas" | "notes">>(decodeOutput(ran.stdout));
+}
+
+function imageInfo(bytes: Buffer): string {
+  if (
+    bytes.length >= 24 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes.subarray(12, 16).toString("ascii") === "IHDR"
+  ) {
+    return `PNG image ${String(bytes.readUInt32BE(16))}x${String(bytes.readUInt32BE(20))} (${String(bytes.length)} bytes)`;
+  }
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return "";
+  for (let at = 2; at + 8 < bytes.length; ) {
+    const marker = bytes[at + 1] ?? 0;
+    const size = bytes.readUInt16BE(at + 2);
+    if (bytes[at] !== 0xff || size < 2) break;
+    if (marker === 0xc0 || marker === 0xc2) {
+      return `JPEG image ${String(bytes.readUInt16BE(at + 7))}x${String(bytes.readUInt16BE(at + 5))} (${String(bytes.length)} bytes)`;
+    }
+    at += 2 + size;
+  }
+  return "";
 }
 
 function notebookOf(text: string): string {
@@ -97,7 +122,13 @@ function notebookOf(text: string): string {
         ? row.outputs
             .map((out) => {
               const item = asRecord(out);
-              return joined(item?.text) || joined(asRecord(item?.data)?.["text/plain"]);
+              const data = asRecord(item?.data);
+              const body = joined(item?.text) || joined(data?.["text/plain"]);
+              const visual = ["image/png", "image/jpeg", "image/svg+xml"].flatMap((mime) => {
+                const raw = joined(data?.[mime]);
+                return raw === "" ? [] : [`[${mime} output, ${String(raw.length)} chars]`];
+              });
+              return [body, ...visual].filter((part) => part !== "").join("\n");
             })
             .join("")
         : "";
@@ -122,7 +153,8 @@ function pdfOf(bytes: Buffer): Pick<Extracted, "text" | "fault"> {
 export function extract(file: AnswerFile): Extracted {
   const { path } = file;
   const members = new Map((file.entries ?? []).map((entry) => [entry.path, entry.text]));
-  const base = { path, formulas: null, fault: null };
+  const notes: readonly string[] = [];
+  const base = { path, formulas: null, notes, fault: null };
   const bytes = Buffer.from(file.base64, "base64");
   const lower = path.toLowerCase();
   const zipLike = members.size > 0 || isZip(bytes);
@@ -149,7 +181,7 @@ export function extract(file: AnswerFile): Extracted {
     }
     if (lower.endsWith(".pdf")) return { ...base, kind: "pdf", ...pdfOf(bytes) };
     if (isSqlite(bytes)) return { ...base, kind: "database", ...pyExtract("sqlite", bytes) };
-    if (file.text === undefined) return { ...base, kind: "binary", text: "" };
+    if (file.text === undefined) return { ...base, kind: "binary", text: imageInfo(bytes) };
     const notebook = lower.endsWith(".ipynb");
     return {
       ...base,
@@ -170,7 +202,7 @@ export function headOf(extracted: Extracted): string[] {
   const bytes = Buffer.byteLength(extracted.text);
   const words = extracted.text.split(/\s+/u).filter((word) => word !== "");
   const numeric = words.filter((word) => /\d/u.test(word)).length;
-  const { formulas, fault } = extracted;
+  const { formulas, notes, fault } = extracted;
   return [
     `${extracted.path} (${extracted.kind}, ${String(bytes)} bytes extracted, ${String(words.length)} words, prose to numeric ${numeric === 0 ? "all prose" : (words.length / numeric - 1).toFixed(2)})`,
     ...(formulas === null
@@ -178,6 +210,7 @@ export function headOf(extracted: Extracted): string[] {
       : [
           `formulas: ${String(formulas.cachedEvaluated)} evaluated, ${String(formulas.uncachedFormula)} uncached, ${String(formulas.formulaError)} errors, ${String(formulas.zeroRefFormulaCount)} without a reference`,
         ]),
+    ...notes,
     ...(fault === null ? [] : [`extraction fault: ${fault}`]),
   ];
 }

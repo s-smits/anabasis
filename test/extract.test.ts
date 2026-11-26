@@ -213,4 +213,59 @@ describe("the offline file extractor", () => {
     expect(refused.fault).toContain("exceeds 16777216 byte limit");
     expect(refused.fault).not.toContain("\n");
   });
+
+  it("extracts docx tables, workbook sheet order and embedded visuals, sqlite row/index counts, notebook images, and PNG/JPEG headers", () => {
+    const doc = zipped("report.docx", {
+      "word/document.xml":
+        "<w:document><w:body><w:p><w:r><w:t>Summary</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Metric</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Value</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>N</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>42</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>",
+      "word/media/image1.png": "x",
+    });
+    const docRead = extract(doc);
+    expect(docRead.text).toBe("Summary\nMetric\tValue\nN\t42");
+    expect(docRead.notes).toEqual(["embedded visuals: 1 image(s)"]);
+
+    const book = zipped("vis.xlsx", {
+      "xl/workbook.xml":
+        '<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Summary" sheetId="1" r:id="r1"/><sheet name="Raw" sheetId="2" r:id="r2"/></sheets></workbook>',
+      "xl/_rels/workbook.xml.rels":
+        '<Relationships><Relationship Id="r1" Target="worksheets/sheet1.xml"/><Relationship Id="r2" Target="worksheets/sheet2.xml"/></Relationships>',
+      "xl/worksheets/sheet1.xml":
+        '<worksheet><sheetData><row><c r="A1"><v>1</v></c></row></sheetData></worksheet>',
+      "xl/worksheets/sheet2.xml":
+        '<worksheet><sheetData><row><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row><row><c r="A2"><v>3</v></c></row></sheetData></worksheet>',
+      "xl/media/image1.png": "x",
+      "xl/charts/chart1.xml": "<c:chartSpace/>",
+    });
+    expect(headOf(extract(book))).toContain("sheets: Summary (1x1), Raw (2x2)");
+    expect(headOf(extract(book))).toContain("embedded visuals: 1 image(s), 1 chart(s)");
+
+    const png = Buffer.alloc(24);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
+    png.write("IHDR", 12, "ascii");
+    png.writeUInt32BE(1200, 16);
+    png.writeUInt32BE(800, 20);
+    expect(extract({ path: "plot.png", base64: png.toString("base64") }).text).toBe(
+      "PNG image 1200x800 (24 bytes)",
+    );
+
+    const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x02, 0x58, 0x03, 0x20, 0xff, 0xd9]);
+    expect(extract({ path: "plot.jpg", base64: jpg.toString("base64") }).text).toBe(
+      "JPEG image 800x600 (13 bytes)",
+    );
+
+    const nb = {
+      cells: [{ cell_type: "code", source: "plot()", outputs: [{ data: { "image/png": "AAAA" } }] }],
+    };
+    expect(extract(plain("diag.ipynb", JSON.stringify(nb))).text).toContain("[image/png output, 4 chars]");
+
+    const db64 = sqliteBytes((db) => {
+      db.run("CREATE TABLE items (id INTEGER PRIMARY KEY, code TEXT)");
+      db.run("CREATE INDEX idx_items_code ON items(code)");
+      db.run("INSERT INTO items VALUES (1, 'a'), (2, 'b')");
+    });
+    expect(extract({ path: "out.db", base64: db64 }).notes).toEqual([
+      "tables: items (2 rows)",
+      "indexes: idx_items_code",
+    ]);
+  });
 });

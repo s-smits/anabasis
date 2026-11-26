@@ -22,7 +22,7 @@ import {
 const UNNAMED: Recorded = {
   solver: null,
   minutes: 30,
-  modelTurns: 20,
+  modelTurns: 40,
   target: 24,
   solves: 2,
 };
@@ -31,7 +31,7 @@ const UNLIMITED: Recorded = { ...UNNAMED, minutes: 120, modelTurns: null };
 const SHORT: Recorded = {
   solver: { model: "claude/claude-sonnet-5-5", effort: "low" },
   minutes: 8,
-  modelTurns: 40,
+  modelTurns: 15,
   target: 3,
   solves: 4,
 };
@@ -44,7 +44,7 @@ describe("what the flags of a setting name", () => {
     expect(longer).toEqual({ ...LIMITS, wallSeconds: 14_400 });
     expect(SETTING_OPTIONS).not.toHaveProperty("solve-turns");
     expect(longer.modelTurns).toBe(LIMITS.modelTurns);
-    expect(settingNamed({ "solve-model-turns": "40" }).limits).toEqual({ ...LIMITS, modelTurns: 40 });
+    expect(settingNamed({ "solve-model-turns": "50" }).limits).toEqual({ ...LIMITS, modelTurns: 50 });
     expect(settingNamed({ solver: "claude/claude-sonnet-5-5", "solver-effort": "low" }).solver).toEqual({
       model: "claude/claude-sonnet-5-5",
       effort: "low",
@@ -73,7 +73,7 @@ describe("a campaign's setting, recorded once", () => {
   it("refuses a flag that names another, and says each with what the campaign's is", () => {
     for (const [flags, recorded, fact] of [
       [{ "solve-minutes": "5" }, SHORT, /--solve-minutes 5.*--solve-minutes 8/u],
-      [{ "solve-model-turns": "20" }, SHORT, /--solve-model-turns 20.*--solve-model-turns 40/u],
+      [{ "solve-model-turns": "20" }, SHORT, /--solve-model-turns 20.*--solve-model-turns 15/u],
       [
         { solver: "claude/claude-opus-5-5" },
         SHORT,

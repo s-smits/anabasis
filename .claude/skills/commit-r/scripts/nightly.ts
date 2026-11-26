@@ -133,7 +133,7 @@ async function nightly(args: CommandArgs, tree: string): Promise<number> {
     writeFileSync(map, JSON.stringify(Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]]))));
     const timeout = args.int("timeout") ?? 900;
     const command = [MUTATE, "run", tree, owner, "--out", out, "--suites", map, "--stop-at-kill"];
-    const extra = ["--timeout", String(timeout), "--clones", join(state, "clone")];
+    const extra = ["--fleet", "--timeout", String(timeout), "--clones", join(state, "clone")];
     const run = Bun.spawn(["bun", ...command, ...extra, ...(until === null ? [] : ["--until", until])], {
       stdout: "inherit",
       stderr: "inherit",
@@ -183,7 +183,8 @@ if (import.meta.main) {
       name: "nightly",
       usage: [
         "usage: nightly.ts <tree> --state <dir> [--until HH:MM] [--timeout s] [--full]",
-        "Mutates the high-importance owners at <tree>'s HEAD against bounded suites and their importers,",
+        "Mutates the high-importance owners at <tree>'s HEAD against bounded suites and their importers",
+        "over every listed check host (mutate.ts --fleet),",
         "rerunning only owners whose file or suites changed since the last complete pass in <dir>.",
         "Exits 3 when survivors are new or the pass must resume; report.md lists them.",
       ].join("\n"),

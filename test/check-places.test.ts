@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { checkPlaces, namedPlaces, type Place, placeEnv, spread } from "../tools/runs/host-config.ts";
+import {
+  checkPlaces,
+  fleetPlaces,
+  namedPlaces,
+  type Place,
+  placeEnv,
+  spread,
+} from "../tools/runs/host-config.ts";
 
 const CHECKS = [undefined, 1, 2, 3] as const;
 const lists = (length: number): (number | undefined)[][] =>
@@ -21,7 +28,7 @@ function dealtInTurn(caps: readonly number[], slots: readonly number[], jobs: nu
 }
 
 describe("where check tasks run", () => {
-  it("deals every host list's slots in turn, or keeps one place where ANA_CHECK_HOST names one, no host is listed or a peer sent the verb", () => {
+  it("deals every host list's slots in turn, or keeps one place where no host is listed, a peer sent the verb or, short of the fleet, ANA_CHECK_HOST names one", () => {
     const saved = { hosts: Bun.env.ANA_HOSTS, check: Bun.env.ANA_CHECK_HOST, hop: Bun.env.ANA_HOP };
     const set = (key: string, value: string | undefined) => {
       if (value === undefined) delete Bun.env[key];
@@ -33,7 +40,7 @@ describe("where check tasks run", () => {
         caps.map((checks, i) => ({ name: `h${String(i)}`, ssh: "s", tree: "/t", bun: "bun", checks })),
       );
     const cases = hostLists.flatMap((hosts) =>
-      [undefined, "", "  ", "here", "auto", "h0"].flatMap((check) =>
+      [undefined, "", "  ", "here", "auto", "all", "h0"].flatMap((check) =>
         [undefined, "1"].flatMap((hop) =>
           [undefined, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((jobs) => ({ hosts, check, hop, jobs })),
         ),
@@ -45,8 +52,11 @@ describe("where check tasks run", () => {
         set("ANA_HOSTS", JSON.stringify(hosts));
         set("ANA_CHECK_HOST", check);
         set("ANA_HOP", hop);
-        const places = checkPlaces("/nowhere", jobs);
-        if ((check?.trim() ?? "") !== "" || hop === "1" || hosts.length === 0) {
+        const places = fleetPlaces("/nowhere", jobs);
+        expect(checkPlaces("/nowhere", jobs)).toStrictEqual(
+          (check?.trim() ?? "") === "" ? places : [{ slots: jobs ?? 1 }],
+        );
+        if (hop === "1" || hosts.length === 0) {
           expect(places).toStrictEqual([{ slots: jobs ?? 1 }]);
           continue;
         }
@@ -68,7 +78,7 @@ describe("where check tasks run", () => {
       set("ANA_CHECK_HOST", saved.check);
       set("ANA_HOP", saved.hop);
     }
-    expect([cases.length, dealt]).toEqual([85 * 6 * 2 * 11, 84 * 3 * 11]);
+    expect([cases.length, dealt]).toEqual([85 * 7 * 2 * 11, 84 * 7 * 11]);
   });
 
   it("names each place with its slots, and sends a host's tasks there sparing held benchmarks, leaving the caller's own otherwise", () => {

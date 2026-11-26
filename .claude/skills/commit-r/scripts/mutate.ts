@@ -6,7 +6,8 @@
  * ones so an interrupted run resumes; mutants spread over the check places (`checkPlaces`,
  * `tools/runs/host-config.ts`), one worker a slot on its own copy of the tree (`<out>.clone-<k>`,
  * or `--clones <prefix>`), running `bun test --bail` under `--timeout`, or on this machine where
- * `ANA_CHECK_HOST` is `here` or no host is listed. `--jobs N` caps workers; a place that gives no
+ * `ANA_CHECK_HOST` is set or no host is listed; `--fleet` spreads over every listed host whatever
+ * `ANA_CHECK_HOST` says (`fleetPlaces`). `--jobs N` caps workers; a place that gives no
  * verdict hands its mutant back and takes no more; `--until` stops taking mutants at that time. A
  * run with no pass, fail or bail count, or one `--timeout` ends, records `null` rather than a kill.
  * `report` tabulates per-file kills across `--old` and the other suites (or solo `killed / survived
@@ -21,6 +22,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import {
   checkHost,
   checkPlaces,
+  fleetPlaces,
   NO_VERDICT,
   namedPlaces,
   type Place,
@@ -254,9 +256,9 @@ function workersFor(
 ): { places: readonly Place[]; workers: Worker[] } {
   let places: readonly Place[] = [];
   try {
-    places = checkPlaces(root, args.int("jobs") ?? undefined);
+    places = (args.flag("fleet") ? fleetPlaces : checkPlaces)(root, args.int("jobs") ?? undefined);
   } catch (error) {
-    args.die(`${errorMessage(error)}; ANA_CHECK_HOST=here runs every suite on this machine`);
+    args.die(`${errorMessage(error)}; ANA_CHECK_HOST=here without --fleet runs every suite on this machine`);
   }
   if (places[0]?.remote !== undefined) console.error(`mutants run on ${namedPlaces(places)} at once`);
   const workers = places
@@ -320,7 +322,7 @@ function report(args: CommandArgs, results: readonly string[]): void {
 if (import.meta.main) {
   const usage = [
     "usage: mutate.ts list <worktree> <file>...",
-    "       mutate.ts run <worktree> <file>... --out <jsonl> --suites <json> [--jobs N] [--only <ids>] [--stop-at-kill] [--timeout s] [--until <time>] [--clones <prefix>]",
+    "       mutate.ts run <worktree> <file>... --out <jsonl> --suites <json> [--fleet] [--jobs N] [--only <ids>] [--stop-at-kill] [--timeout s] [--until <time>] [--clones <prefix>]",
     "       mutate.ts report <jsonl>... [--old <suite>] [--survivors]",
   ].join("\n");
   await runCommand(
@@ -330,6 +332,7 @@ if (import.meta.main) {
       options: {
         out: "text",
         suites: "text",
+        fleet: "flag",
         jobs: "int",
         only: "text",
         "stop-at-kill": "flag",

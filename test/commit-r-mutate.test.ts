@@ -288,6 +288,17 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     for (const { cwd } of run.sent) expect(existsSync(join(cwd, "node_modules"))).toBe(false);
   }, 60_000);
 
+  it("spreads over the listed hosts under --fleet where ANA_CHECK_HOST keeps the run to one place", () => {
+    const env = { ANA_CHECK_HOST: "all", ANA_HOSTS: hosts(host("a", 2), host("b", 1)) };
+    const pinned = fleet("fleet-pinned", env);
+    const spread = fleet("fleet-flag", env, ["--fleet"]);
+    expect([pinned.status, spread.status]).toEqual([0, 0]);
+    expect(new Set(pinned.sent.map(({ place }) => place))).toStrictEqual(new Set(["all"]));
+    expect(spread.stderr).toContain("mutants run on a (2), b (1) at once");
+    expect(new Set(spread.sent.map(({ place }) => place))).toStrictEqual(new Set(["a", "b"]));
+    expect([verdicts(pinned.rows), verdicts(spread.rows)]).toStrictEqual([here, here]);
+  }, 60_000);
+
   it("puts a mutant back where its host stops answering, and the host left reads it beside one down from the start", () => {
     const run = fleet("fleet-fades", {
       ANA_HOSTS: hosts(host("a", 1), host("e", 1), host("d", 1)),
@@ -366,7 +377,7 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     const run = fleet("fleet-unread", { ANA_HOSTS: "[{" });
     expect(run.status).not.toBe(0);
     expect(run.stderr).toContain("ANA_HOSTS is not JSON");
-    expect(run.stderr).toContain("ANA_CHECK_HOST=here runs every suite on this machine");
+    expect(run.stderr).toContain("ANA_CHECK_HOST=here without --fleet runs every suite on this machine");
     expect(run.sent).toEqual([]);
   }, 60_000);
 });

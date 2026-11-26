@@ -49,7 +49,7 @@ bun --env-file=<file> run runs fresh <pack> [--model sonnet] [--login N] [--as <
 - **`pause`**: stops at clean boundary (`reported`, `promoted`, `examined`, `finished`, `compacted`, or `|`-joined; `reported` also awaits pending starter confirmation). Default `--after next` drains in-flight solves via a time-bounded `PAUSE` word. One waiter per run, launched under `nohup` from a detached worktree.
 - **`keep`**: auto-attached when alternate logins exist (`ANA_KEEP=off` disables); rotates logins when waits exceed `--wait-hours`, restarts after crashes/`environment` (≤3 restarts without a turn), exits on terminal endings.
 - **Operator words** (`tools/campaign/signal.ts --name <name>`): `--stop "<why>"`, `--budget N`, `--tasks "<why>"` (invisible to seats; `--promotions N|none` is a launch flag).
-- **`sync` & `stop`**: `sync` refuses solver-visible updates on busy hosts without `--force`; prefer `pause` over `stop` (`stop` writes no `campaign.ended`).
+- **`sync` & `stop`**: `sync` refuses solver-visible updates on busy hosts without `--force`; prefer `pause` over `stop` (direct `stop --yes` kills in-flight processes and appends `campaign.ended` with `ending: "stop"` unless already ended or paused).
 
 ## Related skills
 

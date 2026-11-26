@@ -3,14 +3,17 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { keepCutNotes, sessionDirs } from "../src/builder/session.ts";
 import { builderMemoryBlock, MEMORY_FILE } from "../src/builder/memory.ts";
-import { append } from "../src/kernel/log.ts";
+import { append, read } from "../src/kernel/log.ts";
+import { endedOf } from "../src/kernel/reports.ts";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { basename, dirname, join } from "../src/meta/path.ts";
 import { capturedSpawn } from "../src/meta/process.ts";
 import { processGroupExists, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
+import type { Run } from "../tools/runs/registry.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
-import { family, stopProcessTree, unreleasedSandboxes } from "../tools/runs/stop.ts";
+import { stateOf } from "../tools/runs/state.ts";
+import { family, recordStop, stopProcessTree, unreleasedSandboxes } from "../tools/runs/stop.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-runs-stop-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -105,5 +108,46 @@ describe("a stop", () => {
     expect(existsSync(join(root, "launch-run-1.err"))).toBe(true);
     expect(await stopProcessTree(child.pid)).toBe(0);
     expect(pids.some((pid) => processGroupExists(pid))).toBe(false);
+  });
+
+  it("records campaign.ended on direct stop, while preserving pauses, existing endings, and empty logs", () => {
+    const mk = (name: string): Run => {
+      const path = join(root, name, "log.jsonl");
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, "");
+      return { name, tree: root, path, end: "comparison.reported" };
+    };
+    const closed = { writing: false, kept: false };
+    const now = Date.now();
+
+    const empty = mk("stop-empty");
+    expect(recordStop(empty)).toBe(false);
+    expect(read(empty.path)).toEqual([]);
+
+    const direct = mk("stop-direct");
+    append(direct.path, "campaign.opened", { project: "p" });
+    append(direct.path, "harness.promoted", { from: "starter", harness: "h1" });
+    append(direct.path, "build.checkpoint", { session: "b-2", harness: "h2" });
+    append(direct.path, "solve.started", { solve: "s-1" });
+    expect(recordStop(direct, "operator abort")).toBe(true);
+    const directEvents = read(direct.path);
+    expect(endedOf(directEvents)).toEqual({ ending: "stop", why: "operator abort" });
+    expect(directEvents.at(-1)?.data).toMatchObject({ reference: "h1", latest: "h2" });
+    expect(stateOf(directEvents, closed, now)).toEqual({ kind: "ended", ending: "stop" });
+    expect(recordStop(direct)).toBe(false);
+
+    const paused = mk("stop-paused");
+    append(paused.path, "campaign.opened", { project: "p" });
+    append(paused.path, "campaign.word", { word: "pause", why: "runs pause --after next" });
+    append(paused.path, "build.started", { session: "b-1" });
+    expect(recordStop(paused)).toBe(false);
+    const pausedState = stateOf(read(paused.path), closed, now);
+    expect(pausedState.kind).toBe("stopped");
+    if (pausedState.kind === "stopped") expect(pausedState.pause?.why).toBe("runs pause --after next");
+
+    const ended = mk("stop-ended");
+    append(ended.path, "campaign.ended", { ending: "budget", why: "spent" });
+    expect(recordStop(ended)).toBe(false);
+    expect(endedOf(read(ended.path))).toEqual({ ending: "budget", why: "spent" });
   });
 });

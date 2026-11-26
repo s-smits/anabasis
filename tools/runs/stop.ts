@@ -2,15 +2,20 @@
  * Stops a run and releases what it held on the host. It ends the process that writes each named
  * campaign's log and every process that one started, and nothing else, since a round started by
  * hand can share its process group with a sibling. A name is one campaign's whole name
- * (`runNamed`). Without `--yes` it prints what it would end. The campaign goes on from its log when
- * run again under the same name (`bun run runs continue`); a word (`tools/campaign/signal.ts`) or `bun run
- * runs pause` stops one at a boundary instead.
+ * (`runNamed`). Without `--yes` it prints what it would end. Once no writer remains, a direct stop
+ * records `campaign.ended` (`ending: "stop"`) unless the log already holds an ending or an active
+ * pause word, so a deliberate stop stays distinct from a crash or out-of-memory kill. The campaign
+ * goes on from its log when run again under the same name (`bun run runs continue`); a word
+ * (`tools/campaign/signal.ts`) or `bun run runs pause` stops one at a boundary instead.
  *
- *   bun run runs stop <name> ... [--yes]
+ *   bun run runs stop <name> ... [--why <reason>] [--yes]
  */
 import { EXAMINE } from "#src/campaign/admission.ts";
+import { pauseSince } from "#src/campaign/signal.ts";
 import { keepCutNotes, sessionDirs, spent } from "#src/builder/session.ts";
 import { examinerDirs } from "#src/examiner/shell.ts";
+import { append } from "#src/kernel/log.ts";
+import { endingOf, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { examinerSessions } from "#src/kernel/solves.ts";
 import { unfinished } from "#src/kernel/trace.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
@@ -19,6 +24,7 @@ import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
+import { hasText } from "#src/meta/text.ts";
 import { type SolveDirs, solveDirs } from "#src/tools/command.ts";
 import { releaseRoot } from "#src/sandbox/sandbox-root.ts";
 import {
@@ -36,6 +42,7 @@ import {
   writers,
 } from "./registry.ts";
 import { seedCut } from "./seed.ts";
+import { launchedIn } from "./state.ts";
 
 /** `pid` and every process it started, the nearest first, from a `ps` table of pid and parent. */
 export function family(table: string, pid: number): number[] {
@@ -104,9 +111,22 @@ async function end(run: Run, running: readonly Running[], yes: boolean): Promise
     if (!yes) continue;
     const left = await stopProcessTree(pid, table);
     if (left > 0) console.log(`  ⚠ ${String(left)} of them would not end`);
-    console.log(`  stopped, its log as it was. ${after(run, args)}`);
+    console.log(`  stopped. ${after(run, args)}`);
   }
   return found.length;
+}
+
+export function recordStop(run: Run, why = "runs stop"): boolean {
+  const events = logEvents(run.path);
+  if (events.length === 0 || endingOf(events) !== null) return false;
+  if (pauseSince(events, launchedIn(run, events)) !== undefined) return false;
+  append(run.path, "campaign.ended", {
+    ending: "stop",
+    why,
+    reference: promoted(events) ?? "starter",
+    latest: latestBuilt(events),
+  });
+  return true;
 }
 
 /** Release sandbox directories left open by `run` (`unreleasedSandboxes`) once no live process
@@ -142,7 +162,10 @@ export async function stop(args: readonly string[]): Promise<void> {
   const { values, positionals: names } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { yes: { type: "boolean", default: false } },
+    options: {
+      why: { type: "string" },
+      yes: { type: "boolean", default: false },
+    },
   });
   if (names.length === 0) throw new Misused();
   const named = names.map((name) => runNamed(name));
@@ -154,10 +177,21 @@ export async function stop(args: readonly string[]): Promise<void> {
     console.log(`  its keeper, pid ${String(pid)}, ended`);
   }
   let acted = 0;
-  for (const run of named) acted += await end(run, running, values.yes);
+  const stopped = new Set<string>();
+  for (const run of named) {
+    const ended = await end(run, running, values.yes);
+    acted += ended;
+    if (values.yes && ended > 0) stopped.add(run.name);
+  }
   if (acted === 0) console.log("none of these is running");
   // Read again: what ended no longer writes, and one that would not end still does.
   const left = processes();
-  for (const run of named) acted += await release(run, left, values.yes ? "release" : "describe");
+  const reason = hasText(values.why) ? values.why.trim() : "runs stop";
+  for (const run of named) {
+    if (stopped.has(run.name) && writers(run, left).length === 0 && recordStop(run, reason)) {
+      console.log(`  ${run.name}: recorded campaign.ended (stop: ${reason})`);
+    }
+    acted += await release(run, left, values.yes ? "release" : "describe");
+  }
   if (acted > 0 && !values.yes) console.log("nothing is ended or released without --yes");
 }

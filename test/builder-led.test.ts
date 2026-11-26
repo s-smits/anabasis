@@ -912,7 +912,7 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
   });
 
   it("tells the Builder the same whichever held-out task was won where the cap is short of the next test", async () => {
-    const flags = [...FLAGS, "--budget", "0.96", "--reserve", "0.01"];
+    const flags = [...FLAGS, "--budget", "1.40", "--reserve", "0.01"];
     const ended = { ending: "budget", why: containing("below what the next comparison's test costs") };
     const same = await everythingRead(
       `${STEM}-cap-one`,

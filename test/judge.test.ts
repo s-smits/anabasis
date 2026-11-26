@@ -15,6 +15,7 @@ import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { storedZip } from "../src/meta/zip.ts";
 import { judgePair } from "../src/audit/judge.ts";
 import type { Reader } from "../src/audit/auditor.ts";
 
@@ -251,10 +252,11 @@ describe("the pairwise judge", () => {
       const shown = JSON.stringify(context);
       const hasImageBlock = shown.includes('"type":"image"');
       if (!hasImageBlock && shown.includes("view_image")) {
-        const answer = answerA(shown).includes("forest.png") ? "A" : "B";
-        return fauxAssistantMessage(fauxToolCall("view_image", { answer, path: "forest.png" }), {
-          stopReason: "toolUse",
-        });
+        const answer = answerA(shown).includes("report.docx#word/media/chart.png") ? "A" : "B";
+        return fauxAssistantMessage(
+          fauxToolCall("view_image", { answer, path: "report.docx#word/media/chart.png" }),
+          { stopReason: "toolUse" },
+        );
       }
       sawImage.push(hasImageBlock);
       return fauxAssistantMessage(fauxToolCall("record_vote", { better: "A", reason: "visual check" }), {
@@ -265,8 +267,16 @@ describe("the pairwise judge", () => {
     const models = createModels();
     models.setProvider(faux.provider);
     const log = join(scratch, `judged-vision-${String(++logs)}.jsonl`);
+    const docx = storedZip([
+      {
+        path: "word/document.xml",
+        text: "<w:document><w:body><w:p><w:r><w:t>Chart</w:t></w:r></w:p></w:body></w:document>",
+      },
+      { path: "word/media/chart.png", text: Buffer.from(png1x1, "base64") },
+    ]).toString("base64");
     const files = keepAnswerFiles(log, [
       { path: "forest.png", base64: png1x1 },
+      { path: "report.docx", base64: docx },
       { path: "stub.png", base64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64") },
     ]);
     append(log, "verdict", {
@@ -291,7 +301,7 @@ describe("the pairwise judge", () => {
       { log, comparison: "g-img", task: TASK, contract: oneItem, first: "s-img", second: "s-plain" },
     );
     const pair = read(log).find(({ kind }) => kind === "referee.pair")?.data;
-    expect(pair?.extracts).toEqual({ files: 2, empty: 1, faults: 0, truncated: 0 });
+    expect(pair?.extracts).toEqual({ files: 3, empty: 1, faults: 0, truncated: 0 });
     expect(sawImage).toEqual([true, true, true, true]);
   });
 });

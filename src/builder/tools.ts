@@ -7,7 +7,7 @@ import { limitsIn } from "../kernel/condition.ts";
 import { type Contract, hasJudge } from "../kernel/contract.ts";
 import { callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
 import { readAnswerFiles } from "../kernel/answer-files.ts";
-import { type Extracted, extract, headOf } from "../kernel/extract.ts";
+import { embeddedImages, type Extracted, extract, headOf } from "../kernel/extract.ts";
 import { billedParts } from "../kernel/meter.ts";
 import {
   ended,
@@ -460,9 +460,18 @@ export function traceTool(bench: Bench): AgentTool {
       if (args.call !== undefined) return text(callText(calls, args.call));
       const { answer, files = [] } = verdictsOf(events).get(args.solve) ?? {};
       if (args.file !== undefined) {
-        const kept = files.find(({ path }) => path === args.file);
+        const cut = args.file.indexOf("#");
+        const basePath = cut === -1 ? args.file : args.file.slice(0, cut);
+        const kept = files.find(({ path }) => path === basePath);
         if (kept === undefined) throw new Error(`${args.solve} delivered no file ${args.file}`);
         const [delivered = { path: kept.path, base64: "" }] = readAnswerFiles(bench.request.log, [kept]);
+        if (cut !== -1) {
+          const item = embeddedImages(delivered).find(({ path }) => path === args.file);
+          const image =
+            item === undefined ? null : await prepareImage(item.bytes, item.path, bench.request.model);
+          if (image === null) throw new Error(`${args.solve} has no viewable image ${args.file}`);
+          return { output: [{ type: "text", text: args.file }, image] };
+        }
         const extracted = extract(delivered);
         if (extracted.kind === "binary" && (args.from ?? 0) === 0) {
           const image = await prepareImage(
@@ -474,7 +483,9 @@ export function traceTool(bench: Bench): AgentTool {
             return { output: [{ type: "text", text: headOf(extracted).join("\n") }, image] };
           }
         }
-        return text(pageOf(extracted, args.from ?? 0));
+        const visuals = extracted.kind === "binary" ? [] : embeddedImages(delivered).map(({ path }) => path);
+        const hint = visuals.length === 0 ? "" : `\nembedded images: ${visuals.join(", ")}`;
+        return text(`${pageOf(extracted, args.from ?? 0)}${hint}`);
       }
       return text(
         [

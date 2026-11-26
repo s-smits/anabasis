@@ -3,18 +3,18 @@ import { crc32, inflateRawSync } from "node:zlib";
 const LOCAL = 0x04_03_4b_50;
 const CENTRAL = 0x02_01_4b_50;
 const END = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+const IMAGE_EXT = /\.(?:png|jpe?g|gif|webp)$/iu;
 const NONE = { members: [], used: 0 };
 
-export function zipTexts(
+function zipMembers(
   bytes: Buffer,
   most: number,
-): { members: { readonly path: string; readonly text: string }[]; used: number } {
+): { members: { readonly path: string; readonly data: Buffer }[]; used: number } {
   try {
     if (bytes.readUInt32LE(0) !== LOCAL) return NONE;
     const end = bytes.lastIndexOf(END, bytes.length - 22);
     if (end === -1 || end < bytes.length - 22 - 0xff_ff) return NONE;
-    const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-    const members: { readonly path: string; readonly text: string }[] = [];
+    const members: { readonly path: string; readonly data: Buffer }[] = [];
     const seen = new Set<string>();
     let used = 0;
     let at = bytes.readUInt32LE(end + 16);
@@ -36,11 +36,7 @@ export function zipTexts(
       const raw = bytes.subarray(start, start + packed);
       const data = method === 0 ? raw : inflateRawSync(raw, { maxOutputLength: Math.max(size, 1) });
       if (data.length !== size) return NONE;
-      try {
-        members.push({ path, text: utf8.decode(data) });
-      } catch {
-        /* A binary member, such as an image, has no text. */
-      }
+      members.push({ path, data });
     }
     return { members, used };
   } catch {
@@ -48,7 +44,30 @@ export function zipTexts(
   }
 }
 
-export function storedZip(members: readonly { readonly path: string; readonly text: string }[]): Buffer {
+export function zipTexts(
+  bytes: Buffer,
+  most: number,
+): { members: { readonly path: string; readonly text: string }[]; used: number } {
+  const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+  const raw = zipMembers(bytes, most);
+  const members: { readonly path: string; readonly text: string }[] = [];
+  for (const { path, data } of raw.members) {
+    try {
+      members.push({ path, text: utf8.decode(data) });
+    } catch {
+      /* A binary member, such as an image, has no text. */
+    }
+  }
+  return { members, used: raw.used };
+}
+
+export function zipImages(bytes: Buffer, most: number): { readonly path: string; readonly data: Buffer }[] {
+  return zipMembers(bytes, most).members.filter(({ path }) => IMAGE_EXT.test(path));
+}
+
+export function storedZip(
+  members: readonly { readonly path: string; readonly text: string | Buffer }[],
+): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;

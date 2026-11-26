@@ -28,6 +28,7 @@ interface DraftAuditPass {
   readonly pass: number;
   readonly verdict: string;
   readonly findings: readonly string[];
+  readonly allFindingsProbed: boolean;
   readonly probes: number;
   readonly turns: number;
   readonly billed: number;
@@ -76,35 +77,60 @@ const passesText = (count: number) => (count === 1 ? "1 pass" : `${String(count)
 const tallyStrings = (values: readonly string[]) => tally(countBy(values, (value) => value));
 
 export function draftAuditPasses(events: readonly LogEvent[]): DraftAuditPass[] {
-  return eventsOf(events, REFEREE_DRAFT).map(({ index, event: { data } }) => ({
-    index,
-    session: text(data.session) || "d-?",
-    pass: isNumber(data.pass) ? data.pass : 1,
-    verdict: text(data.verdict) || "unknown",
-    findings: items(data.findings).flatMap((entry) => {
-      const kind = text(asRecord(entry)?.kind);
-      return kind === "" ? [] : [kind];
-    }),
-    probes: items(data.probeRows).length,
-    turns: isNumber(data.turns) ? data.turns : 0,
-    billed: isNumber(data.billed) ? data.billed : 0,
-  }));
+  return eventsOf(events, REFEREE_DRAFT).map(({ index, event: { data } }) => {
+    const probeRows = items(data.probeRows);
+    const probeIds = new Set(
+      probeRows.flatMap((entry) => {
+        const id = asRecord(entry)?.id;
+        return isNumber(id) ? [id] : [];
+      }),
+    );
+    const rawFindings = items(data.findings).flatMap((entry) => {
+      const record = asRecord(entry);
+      const kind = text(record?.kind);
+      return kind === "" ? [] : [{ kind, probe: isNumber(record?.probe) ? record.probe : null }];
+    });
+    return {
+      index,
+      session: text(data.session) || "d-?",
+      pass: isNumber(data.pass) ? data.pass : 1,
+      verdict: text(data.verdict) || "unknown",
+      findings: rawFindings.map(({ kind }) => kind),
+      allFindingsProbed:
+        rawFindings.length > 0 && rawFindings.every(({ probe }) => probe !== null && probeIds.has(probe)),
+      probes: probeRows.length,
+      turns: isNumber(data.turns) ? data.turns : 0,
+      billed: isNumber(data.billed) ? data.billed : 0,
+    };
+  });
+}
+
+function finalDefectPasses(
+  events: readonly LogEvent[],
+  passes: readonly DraftAuditPass[],
+): { readonly unverified: DraftAuditPass[]; readonly replayed: DraftAuditPass[] } {
+  const draftedBy = new Map<string, number>();
+  for (const { index, event } of eventsOf(events, "exam.drafted")) {
+    draftedBy.set(text(event.data.session) || "d-?", index);
+  }
+  const unverified: DraftAuditPass[] = [];
+  const replayed: DraftAuditPass[] = [];
+  for (const [session, rows] of Map.groupBy(passes, (row) => row.session)) {
+    const freezeAt = draftedBy.get(session);
+    const before = freezeAt === undefined ? rows : rows.filter((row) => row.index < freezeAt);
+    const last = before.at(-1);
+    if (last?.verdict !== "defects") continue;
+    if (freezeAt !== undefined && last.allFindingsProbed) replayed.push(last);
+    else unverified.push(last);
+  }
+  return { unverified, replayed };
 }
 
 export function unverifiedFinalPasses(
   events: readonly LogEvent[],
   passes: readonly DraftAuditPass[],
 ): DraftAuditPass[] {
-  const draftedBy = new Map<string, number>();
-  for (const { index, event } of eventsOf(events, "exam.drafted")) {
-    draftedBy.set(text(event.data.session) || "d-?", index);
-  }
-  return [...Map.groupBy(passes, ({ session }) => session)].flatMap(([session, rows]) => {
-    const freezeAt = draftedBy.get(session);
-    const before = freezeAt === undefined ? rows : rows.filter((row) => row.index < freezeAt);
-    const last = before.at(-1);
-    return last?.verdict === "defects" ? [last] : [];
-  });
+  return finalDefectPasses(events, passes).unverified;
 }
 
 function draftAuditSummary(events: readonly LogEvent[]) {
@@ -116,17 +142,22 @@ function draftAuditSummary(events: readonly LogEvent[]) {
   const verdicts = tally(countBy(passes, ({ verdict }) => verdict));
   const findings = tallyStrings(passes.flatMap((row) => row.findings));
   const refusedRulings = tally(countBy(refused, (data) => text(data.ruling) || "unknown"));
-  const unverified = unverifiedFinalPasses(events, passes);
-  return { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified };
+  const { unverified, replayed } = finalDefectPasses(events, passes);
+  return { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified, replayed };
 }
 
 export function draftAuditRows(events: readonly LogEvent[]): string[] {
-  const { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified } =
+  const { passes, refused, billed, turns, probes, verdicts, findings, refusedRulings, unverified, replayed } =
     draftAuditSummary(events);
   if (passes.length === 0 && refused.length === 0) return ["draft-audit: none recorded"];
   const sessions = new Set(passes.map(({ session }) => session)).size;
+  const finalParts = [
+    ...(unverified.length > 0 ? [`unverified (${String(unverified.length)})`] : []),
+    ...(replayed.length > 0 ? [`replayed (${String(replayed.length)})`] : []),
+  ];
+  const finalState = finalParts.length === 0 ? "none" : finalParts.join(", ");
   return [
-    `draft-audit: ${passesText(passes.length)} across ${plural(sessions, "session")}, $${billed.toFixed(2)} billed (${plural(turns, "turn")}, ${plural(probes, "probe")}); verdicts: ${verdicts}; findings: ${findings}; refused: ${String(refused.length)}; final-pass unverified defects: ${unverified.length > 0 ? `yes (${String(unverified.length)})` : "no"}`,
+    `draft-audit: ${passesText(passes.length)} across ${plural(sessions, "session")}, $${billed.toFixed(2)} billed (${plural(turns, "turn")}, ${plural(probes, "probe")}); verdicts: ${verdicts}; findings: ${findings}; refused: ${String(refused.length)}; final-pass defects: ${finalState}`,
     ...passes.map(
       (row) =>
         `  ${row.session} pass ${String(row.pass)}: ${row.verdict}, ${plural(row.findings.length, "finding")} (${tallyStrings(row.findings)}), ${plural(row.probes, "probe")}, ${plural(row.turns, "turn")}, $${row.billed.toFixed(2)}`,
@@ -449,7 +480,7 @@ export function componentTriggers(log: Index): Trigger[] {
     ...emitIf(
       defects.length > 0,
       "DRAFT AUDIT DEFECTS",
-      `${share(defects.length, audit.passes.length)} passes found defects (${audit.findings})${audit.unverified.length > 0 ? `; ${plural(audit.unverified.length, "unverified final pass")} before freeze` : ""}`,
+      `${share(defects.length, audit.passes.length)} passes found defects (${audit.findings})${audit.unverified.length > 0 ? `; ${plural(audit.unverified.length, "unverified final pass")} before freeze` : ""}${audit.replayed.length > 0 ? `; ${plural(audit.replayed.length, "replayed final pass")} before freeze` : ""}`,
     ),
     ...emitIf(
       audit.refused.length > 0,

@@ -130,7 +130,7 @@ function repeatOf(pair: Paired, side: "old" | "fresh"): string {
 
 /** The spread of a task's measures over both sides: raw on a unit scale, else as a share of the
  *  larger magnitude. */
-function howOftenValid(pair: Paired): string {
+function measureSpread(pair: Paired): string {
   const known = measuresOf(pair).filter(isNumber);
   if (known.length < 2) return NONE;
   const [low, high] = [Math.min(...known), Math.max(...known)];
@@ -182,7 +182,7 @@ function pairRow(context: Context, pair: Paired): string {
     self === undefined ? NONE : String(differenceOf(self)),
     `${flipped(pair.old) ? "1" : "0"}/${flipped(pair.fresh) ? "1" : "0"}`,
     `${repeatOf(pair, "old")}/${repeatOf(pair, "fresh")}`,
-    howOftenValid(pair),
+    measureSpread(pair),
     `${best("old")}/${best("fresh")}`,
     billedOf([...(pair.used?.old ?? []), ...(pair.used?.fresh ?? [])].map(({ billed }) => billed)),
     tieKind(pair) ?? NONE,

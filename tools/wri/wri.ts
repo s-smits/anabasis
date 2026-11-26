@@ -460,20 +460,23 @@ function lanes(): number {
 function collected({ out, campaigns, shared }: Investigation) {
   const catalogue = catalogueText();
   const owners = ownersOf(catalogue);
-  return allLanesFor(catalogue, campaigns)
+  const all = allLanesFor(catalogue, campaigns);
+  const unframed = new Set(all.filter((lane) => lane.blind || lane.isolated).map((lane) => lane.number));
+  const reports = all
     .filter((lane) => existsSync(promptPath(out, lane.number)))
     .map((lane) => {
       const path = reportPath(out, lane.number);
       const names = campaigns.map(({ name }) => name);
       return reportOf(lane, existsSync(path) ? readFileSync(path, "utf8") : null, owners, names, shared);
     });
+  return { reports, unframed };
 }
 
 function collect(): number {
   const investigation = opened();
-  const reports = collected(investigation);
+  const { reports, unframed } = collected(investigation);
   const { out, campaigns, shared } = investigation;
-  const index = reportIndex(reports, (lane) => reportPath(out, lane), campaigns, shared);
+  const index = reportIndex(reports, (lane) => reportPath(out, lane), campaigns, shared, unframed);
   writeFileSync(join(investigation.out, REPORTS), `# Reports\n\n${index}\n`);
   console.log(index);
   const open = reports.filter(({ state }) => state !== "ok").length;
@@ -488,7 +491,7 @@ function record(): number {
   const investigation = opened();
   const path = join(investigation.out, RECORD);
   const stand = () => {
-    const reports = collected(investigation);
+    const { reports } = collected(investigation);
     const written = reports.filter(({ state }) => state !== "missing").length;
     return `${new Date().toISOString()}, ${String(written)} of ${String(reports.length)} lane reports written`;
   };
@@ -514,7 +517,7 @@ function record(): number {
 async function synthesis(): Promise<number> {
   const investigation = opened();
   const { out, shared } = investigation;
-  const reports = collected(investigation);
+  const { reports, unframed } = collected(investigation);
   const template = readFileSync(join(REFERENCES, "synthesis.template.md"), "utf8");
   const path = join(out, "synthesis-prompt.md");
   const history = (
@@ -541,7 +544,13 @@ async function synthesis(): Promise<number> {
       overview: readFileSync(join(out, OVERVIEW), "utf8").trim(),
       history,
       evalRegressions,
-      reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns, shared),
+      reports: reportIndex(
+        reports,
+        (lane) => reportPath(out, lane),
+        investigation.campaigns,
+        shared,
+        unframed,
+      ),
       sharedInstructions: shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim(),
       register: standingLines(),
     }),

@@ -30,6 +30,7 @@ import { inheritedPracticeReleases } from "./transfer.ts";
 const REPEATED_PRACTICE = 4;
 const MAX_SHOWN = 6;
 const MIN_FAMILY_POOL = 8;
+const MIN_SESSION_FAMILY_POOL = 6;
 const UNDERPOWERED_MAX_TASKS = 10;
 const UNDERPOWERED_MIN_RUNS = 2;
 const MIN_ARM_CALLS = 10;
@@ -161,13 +162,37 @@ function examinerSignalTriggers(log: Index): Trigger[] {
   );
   const counts = Object.values(heldFamilies).toSorted((a, b) => b - a);
   const topCount = counts[0] ?? 0;
+  const runConcentrated = log.held.length >= MIN_FAMILY_POOL && topCount * 2 > log.held.length;
+  const sessionConcentrated = log.of(EXAM_END).flatMap((data) => {
+    const session = text(data.session) || "x-?";
+    const held = items(data.held).filter(isString);
+    if (held.length < MIN_SESSION_FAMILY_POOL) return [];
+    const byFamily = countBy(
+      held.flatMap((version) => {
+        const family = familyOf.get(version);
+        return family === undefined ? [] : [family];
+      }),
+      (family) => family,
+    );
+    const ranked = Object.values(byFamily).toSorted((a, b) => b - a);
+    const top = ranked[0] ?? 0;
+    return top * 2 > held.length
+      ? [
+          `${session} ${share(top, held.length)} (${String(ranked.length)} ${ranked.length === 1 ? "family" : "families"})`,
+        ]
+      : [];
+  });
+  const familyParts = [
+    ...(runConcentrated
+      ? [
+          `largest family holds ${share(topCount, log.held.length)} held tasks across ${String(counts.length)} ${counts.length === 1 ? "family" : "families"}`,
+        ]
+      : []),
+    ...(sessionConcentrated.length > 0 ? [`by session: ${sessionConcentrated.join("; ")}`] : []),
+  ];
   return [
     ...emitIf(zeroYield.length > 0, "EXAMINER ZERO YIELD", zeroYield.join("; ")),
-    ...emitIf(
-      log.held.length >= MIN_FAMILY_POOL && topCount * 2 > log.held.length,
-      "FAMILY CONCENTRATION",
-      `largest family holds ${share(topCount, log.held.length)} held tasks across ${String(counts.length)} ${counts.length === 1 ? "family" : "families"}`,
-    ),
+    ...emitIf(familyParts.length > 0, "FAMILY CONCENTRATION", familyParts.join("; ")),
   ];
 }
 

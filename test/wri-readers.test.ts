@@ -50,6 +50,7 @@ import { conditionOf } from "./helpers/logged-round.ts";
 import { wriCampaign } from "./helpers/wri-campaign.ts";
 
 const [SOLVE_STARTED, SOLVE_FINISHED] = ["solve.started", "solve.finished"] as const;
+const EXAM_DRAFTED = "exam.drafted";
 const events = wriCampaign((tag) => `secret ${tag}`);
 const { rows, triggers } = overview(events);
 const catalogue = catalogueText();
@@ -354,11 +355,13 @@ describe("a lane's report, as the synthesis collects it", () => {
     expect(vettingFaults(vetting("3"), counted, [])).toEqual([]);
   });
 
-  it("hands each operator question to its lanes, refuses a report that leaves one out, and indexes the answers", () => {
+  it("hands each operator question to its lanes, enforces status verdicts, computes a scorecard, and flags conflicts", () => {
     const questions = section(readFileSync(join(REFERENCES, "questions.md"), "utf8"), "Questions");
     const prediction = "| id | lanes | prediction |\n| --- | --- | --- |\n| p1 | 4 | the tolerance holds |";
-    const text = `## Operator questions\n\n${questions}\n| Q0 | 1, 20 | asked of lanes that may see no framing | none |\n\n## The moved variable\n\n${prediction}`;
+    const decoy = "| id | lanes | question |\n| --- | --- | --- |\n| Q999 | 4 | decoy outside section |";
+    const text = `## Orientation\n\n${decoy}\n\n## Operator questions\n\n${questions}\n| Q0 | 1, 20 | asked of lanes that may see no framing | none |\n\n## The moved variable\n\n${prediction}`;
     const ids = [...questions.matchAll(/^\| (Q\d+) \|/gmu)].map(([, id = ""]) => id);
+    expect(ids).toHaveLength(55);
     const owedBy = new Map(
       lanes.map((each) => {
         const fault =
@@ -380,19 +383,55 @@ describe("a lane's report, as the synthesis collects it", () => {
       [],
     );
     expect(new Set([...owedBy.values()].flat())).toEqual(new Set(ids));
-    const owed = owedBy.get(lane(4)) ?? [];
-    const written = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed.map((id) => `Question ${id}: 5 of 9 passes, \`checks.txt\``).join("\n")}\n`;
-    const answered = reportOf(lane(4), written, owners, one, text);
-    expect(answered).toMatchObject({ state: "ok", faults: [], resolved: { p1: "confirmed" } });
-    expect(reportOf(lane(4), written.replaceAll("\n", "\r\n"), owners, one, text)).toMatchObject({
+    const owed4 = owedBy.get(lane(4)) ?? [];
+    expect(owed4).not.toContain("Q999");
+    const missingStatus = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed4.map((id) => `Question ${id}: 5 of 9 passes, \`checks.txt\``).join("\n")}\n`;
+    expect(reportOf(lane(4), missingStatus, owners, one, text).state).toBe("invalid");
+    const naturalNo = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed4.map((id) => `Question ${id}: no gaming found, 0 of 12 solves, \`gaming.txt\``).join("\n")}\n`;
+    expect(reportOf(lane(4), naturalNo, owners, one, text).state).toBe("invalid");
+    const bareStatus = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed4.map((id) => `Question ${id}: **yes**`).join("\n")}\n`;
+    expect(reportOf(lane(4), bareStatus, owners, one, text).state).toBe("invalid");
+
+    const written4 = `${head}\nVerdict: no finding.\n## Predictions\nPrediction p1: held, 3 of 3\n## Questions\n${owed4.map((id, idx) => `Question ${id}: ${idx === 0 ? "**yes**" : "yes"}, 5 of 9 passes, \`checks.txt\``).join("\n")}\n`;
+    const answered4 = reportOf(lane(4), written4, owners, one, text);
+    expect(answered4).toMatchObject({ state: "ok", faults: [], resolved: { p1: "confirmed" } });
+    expect(reportOf(lane(4), written4.replaceAll("\n", "\r\n"), owners, one, text)).toMatchObject({
       state: "ok",
       resolved: { p1: "confirmed" },
     });
-    const index = reportIndex([answered], (number) => `/r/${String(number)}.md`, [], text);
+    const owed7 = owedBy.get(lane(7)) ?? [];
+    const written7 = `# Lane 7: supply\nVerdict: no finding.\n## Questions\n${owed7.map((id) => `Question ${id}: no, 0 of 12 valid room, \`ambition.txt\``).join("\n")}\n`;
+    const answered7 = reportOf(lane(7), written7, owners, one, text);
+    expect(answered7.state).toBe("ok");
+    const invalid11 = reportOf(
+      lane(11),
+      `# Lane 11: exam\nVerdict: finding.\n## Questions\n${(owedBy.get(lane(11)) ?? []).map((id) => `Question ${id}: yes, 1/1, \`drafted.txt\``).join("\n")}\n`,
+      owners,
+      one,
+      text,
+    );
+    expect(invalid11.state).toBe("invalid");
+
+    const unframed = new Set(lanes.filter((each) => each.blind || each.isolated).map(({ number }) => number));
+    const index = reportIndex(
+      [answered4, answered7, invalid11],
+      (number) => `/r/${String(number)}.md`,
+      [],
+      text,
+      unframed,
+    );
     expect(index).toContain("- p1: confirmed by lane 4");
-    for (const id of owed) {
-      expect(index).toMatch(new RegExp(`^- ${id}: [^\\n]*\\n {2}- lane 4: 5 of 9 passes`, "mu"));
-    }
+    const scorecardLine = index.split("\n").find((line) => line.includes("Scorecard:")) ?? "";
+    expect(scorecardLine).toContain("2 conflict");
+    expect(scorecardLine).toContain("incomplete");
+    const bucketSum = [
+      ...scorecardLine.matchAll(/(\d+) (?:yes|partial|no|unmeasured|conflict|incomplete|unanswered)/gu),
+    ].reduce((sum, [, n]) => sum + Number(n), 0);
+    expect(bucketSum).toBe(55);
+    expect(index).toMatch(/- Q16: [^\n]*\(conflict: lane 4 yes vs lane 7 no\)/u);
+    expect(index).toMatch(/- Q20: [^\n]*no line from lane 11/u);
+    expect(index).not.toContain("- Q0:");
+    expect(index).not.toContain("- Q999:");
     expect(index).toMatch(/- Q1: [^\n]* \(lane 6, 13 not opened\)/u);
   });
 
@@ -522,7 +561,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     const fired = overview([
       {
         at: AT,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: { draft: { evaluator: "export const checks = { c: ({ files }) => files.length > 0 };" } },
       },
       { at: AT, kind: "verdict", data: { solve: "s1", task: "v1", kind: "pass" } },
@@ -533,7 +572,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     const silent = overview([
       {
         at: AT,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: { draft: { evaluator: "type Req = { artifact: any; files?: any };" } },
       },
       { at: AT, kind: "verdict", data: { solve: "s1", task: "v1", kind: "pass" } },
@@ -541,7 +580,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(silent.find((trigger) => trigger.name === "NO DELIVERABLES CAPTURED")).toBeUndefined();
   });
 
-  it("fires FAMILY CONCENTRATION without printing the family name", () => {
+  it("fires FAMILY CONCENTRATION run-wide and per writing session without printing the family name", () => {
     const tasks = Array.from({ length: 8 }, (_, index) => {
       const version = `v-${String(index)}`;
       const family = index < 6 ? "SECRET-FAMILY-ALPHA" : "SECRET-FAMILY-BETA";
@@ -558,6 +597,33 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(trigger).toMatchObject({ lane: TRIGGERS["FAMILY CONCENTRATION"] });
     expect(trigger?.detail).toContain("6 of 8 held tasks across 2 families");
     expect(trigger?.detail).not.toContain("SECRET-FAMILY");
+
+    const x1Ids = Array.from({ length: 10 }, (_, i) => `a-${String(i)}`);
+    const x2Ids = Array.from({ length: 6 }, (_, i) => `b-${String(i)}`);
+    const sessionTasks: LogEvent[] = [
+      ...x1Ids.flatMap((version, i) => [
+        {
+          at: AT,
+          kind: "task.proposed" as const,
+          data: { version, task: { taskId: version, family: `SECRET-FAM-${String(i)}`, publicInput: {} } },
+        },
+        { at: AT, kind: "task.gate" as const, data: { version, gate: 1, outcome: "passed" } },
+      ]),
+      { at: AT, kind: "exam.finished", data: { session: "x-1", held: x1Ids } },
+      ...x2Ids.flatMap((version) => [
+        {
+          at: AT,
+          kind: "task.proposed" as const,
+          data: { version, task: { taskId: version, family: "SECRET-CLONE-FAM", publicInput: {} } },
+        },
+        { at: AT, kind: "task.gate" as const, data: { version, gate: 1, outcome: "passed" } },
+      ]),
+      { at: AT, kind: "exam.finished", data: { session: "x-2", held: x2Ids } },
+    ];
+    const perSession = overview(sessionTasks).triggers.find((each) => each.name === "FAMILY CONCENTRATION");
+    expect(perSession).toMatchObject({ lane: TRIGGERS["FAMILY CONCENTRATION"] });
+    expect(perSession?.detail).toContain("by session: x-2 6 of 6 (1 family)");
+    expect(perSession?.detail).not.toContain("SECRET-");
   });
 
   it("counts zero-billed compactions in BILLING RESIDUAL and epoch-spend only for open sessions", () => {
@@ -638,7 +704,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       ...events,
       {
         at: AT,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: {
           draft: {
             evaluator: "export const checks = { f: ({ files }) => files.length > 0 };",
@@ -845,7 +911,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
           billed: 0.2,
         },
       },
-      { at: AT, kind: "exam.drafted", data: { session: "d-1", draft: draftHash } },
+      { at: AT, kind: EXAM_DRAFTED, data: { session: "d-1", draft: draftHash } },
       { at: AT, kind: "draft.finished", data: { session: "d-1", ended: "finished", billed: 5 } },
       {
         at: AT,
@@ -950,7 +1016,8 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     const byName = (name: keyof typeof TRIGGERS) => fired.filter((trigger) => trigger.name === name);
     expect(byName("DRAFT AUDITED")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDITED"] });
     expect(byName("DRAFT AUDIT DEFECTS")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDIT DEFECTS"] });
-    expect(byName("DRAFT AUDIT DEFECTS")[0]?.detail).toContain("unverified final pass");
+    expect(byName("DRAFT AUDIT DEFECTS")[0]?.detail).toContain("replayed final pass");
+    expect(byName("DRAFT AUDIT DEFECTS")[0]?.detail).not.toContain("unverified final pass");
     expect(byName("DRAFT AUDIT REFUSED")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDIT REFUSED"] });
     expect(byName("DRAFT AUDIT SKIPPED")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDIT SKIPPED"] });
     expect(byName("VERIFIER TOOL PROVENANCE")[0]).toMatchObject({
@@ -967,9 +1034,52 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(byName("ROLE YIELD SKEW")[0]).toMatchObject({ lane: TRIGGERS["ROLE YIELD SKEW"] });
 
     const daText = draftAuditRows(compLog).join("\n");
-    expect(daText).toContain("final-pass unverified defects: yes (1)");
+    expect(daText).toContain("final-pass defects: replayed (1)");
     expect(daText).not.toContain("SECRET-REF-PROSE");
     expect(daText).not.toContain("SECRET-WHY");
+    const unprobedLog: LogEvent[] = [
+      {
+        at: AT,
+        kind: "referee.draft",
+        data: {
+          session: "d-1",
+          pass: 2,
+          verdict: "defects",
+          findings: [
+            { kind: "vacuous-pass", probe: 1 },
+            { kind: "objective-defect", probe: 9 },
+          ],
+          probeRows: [{ id: 1 }],
+          turns: 2,
+          billed: 0.4,
+        },
+      },
+      { at: AT, kind: EXAM_DRAFTED, data: { session: "d-1", draft: draftHash } },
+      {
+        at: AT,
+        kind: "referee.draft",
+        data: {
+          session: "d-2",
+          pass: 2,
+          verdict: "defects",
+          findings: [{ kind: "vacuous-pass", probe: 1 }],
+          probeRows: [{ id: 1 }],
+          turns: 2,
+          billed: 0.3,
+        },
+      },
+      { at: AT, kind: EXAM_DRAFTED, data: { session: "d-2", draft: draftHash } },
+    ];
+    expect(draftAuditRows(unprobedLog).join("\n")).toContain(
+      "final-pass defects: unverified (1), replayed (1)",
+    );
+    expect(gamingRows(unprobedLog).join("\n")).toContain("audit-unverified-freeze");
+    expect(
+      overview(unprobedLog).triggers.find((trigger) => trigger.name === "DRAFT AUDIT DEFECTS")?.detail,
+    ).toContain("unverified final pass");
+    expect(
+      overview(unprobedLog).triggers.find((trigger) => trigger.name === "DRAFT AUDIT DEFECTS")?.detail,
+    ).toContain("replayed final pass");
     const grText = groundingRows(compLog, examsDir).join("\n");
     expect(grText).toContain("1 drafted check (1 with tools)");
     expect(grText).not.toContain("SECRET-FAULT");
@@ -1090,7 +1200,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       },
       {
         at: STAMP,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: {
           session: "d-1",
           draft: {
@@ -1209,7 +1319,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       { at: STAMP, kind: "campaign.opened", data: { budget: { dollars: 100, reserve: 1 } } },
       {
         at: STAMP,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: {
           draft: {
             rules: [{ id: "R1", statement: "Required rule" }],
@@ -1475,7 +1585,7 @@ describe("the findings ledger", () => {
       { at, kind: "draft.finished", data: { session: "d-1", ended: "finished" } },
       {
         at,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: {
           session: "d-1",
           draft: {
@@ -1583,7 +1693,7 @@ describe("the findings ledger", () => {
       { at, kind: "campaign.opened", data: { judged: true } },
       {
         at,
-        kind: "exam.drafted",
+        kind: EXAM_DRAFTED,
         data: {
           session: "d-1",
           draft: {

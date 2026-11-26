@@ -22,6 +22,11 @@ export interface Campaign {
   readonly overview: Overview;
 }
 
+interface QuestionAnswer {
+  readonly verdict: QuestionVerdict;
+  readonly text: string;
+}
+
 interface Report {
   readonly lane: number;
   readonly state: "ok" | "missing" | "invalid";
@@ -29,7 +34,7 @@ interface Report {
   readonly verdict: string | null;
   readonly written: readonly Written[];
   readonly resolved: Readonly<Record<string, Resolution>>;
-  readonly answered: Readonly<Record<string, string>>;
+  readonly answered: Readonly<Record<string, QuestionAnswer>>;
 }
 
 interface SharedParts {
@@ -70,6 +75,10 @@ const RESOLUTION_SYNONYMS = new Map<string, Resolution>([
 ]);
 const PREDICTION = "Prediction";
 const QUESTION = "Question";
+const QUESTIONS_HEADING = "Operator questions";
+const QUESTION_VERDICTS = ["yes", "partial", "no", "unmeasured"] as const;
+type QuestionVerdict = (typeof QUESTION_VERDICTS)[number];
+const QUESTION_VERDICT_LEAD = /^(yes|partial|no|unmeasured)\s*[,:;.]\s*(.+)$/iu;
 const ASSIGNED_LINE = new RegExp(`^(${PREDICTION}|${QUESTION}) ([^:]+): *(.*?)\r?$`, "u");
 const DETAIL = 300;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
@@ -255,7 +264,7 @@ export function blankSections(shared: string): string[] {
   );
 }
 
-function assignedOf(shared: string): Assigned[] {
+function tablesIn(text: string, want: Assigned["kind"]): Assigned[] {
   const cellsOf = (line: string) =>
     line
       .split("|")
@@ -263,7 +272,7 @@ function assignedOf(shared: string): Assigned[] {
       .map((cell) => cell.trim());
   const found: Assigned[] = [];
   let head: { line: string; id: number; lanes: number; asked: number } | null = null;
-  for (const line of shared.replaceAll(/<!--[\s\S]*?-->/g, "").split("\n")) {
+  for (const line of text.split("\n")) {
     const cells = line.startsWith("|") ? cellsOf(line) : null;
     if (cells === null || head === null) {
       const [id = -1, lanes = -1, asked = -1] = ["id", "lanes", "question"].map(
@@ -272,11 +281,13 @@ function assignedOf(shared: string): Assigned[] {
       head = id >= 0 && lanes >= 0 ? { line, id, lanes, asked } : null;
       continue;
     }
+    const kind = head.asked >= 0 ? QUESTION : PREDICTION;
+    if (kind !== want) continue;
     const id = cells[head.id] ?? "";
     if (id === "" || /^[-: ]+$/u.test(id)) continue;
     const lanes = (cells[head.lanes] ?? "").split(",").map(Number);
     found.push({
-      kind: head.asked >= 0 ? QUESTION : PREDICTION,
+      kind,
       id,
       lanes: lanes.filter((lane) => lane > 0),
       question: cells[head.asked] ?? "",
@@ -285,6 +296,22 @@ function assignedOf(shared: string): Assigned[] {
     });
   }
   return found;
+}
+
+function withoutSection(markdown: string, heading: string): string {
+  const lines = markdown.split("\n");
+  const from = lines.indexOf(`## ${heading}`);
+  if (from === -1) return markdown;
+  const end = lines.slice(from + 1).findIndex((line) => line.startsWith("## "));
+  return [...lines.slice(0, from), ...(end === -1 ? [] : lines.slice(from + 1 + end))].join("\n");
+}
+
+function assignedOf(shared: string): Assigned[] {
+  const clean = shared.replaceAll(/<!--[\s\S]*?-->/g, "");
+  return [
+    ...tablesIn(withoutSection(clean, QUESTIONS_HEADING), PREDICTION),
+    ...tablesIn(section(clean, QUESTIONS_HEADING), QUESTION),
+  ];
 }
 
 const assignedTo = (lane: Lane, shared: string, kind: Assigned["kind"]) =>
@@ -299,7 +326,7 @@ const ASKING = {
   ],
   [QUESTION]: (one: boolean) => [
     "## Operator questions this lane answers",
-    `The operator asks the ${one ? "question" : "questions"} below of every investigation, and they fall to this lane. Answer each from the logs whatever else you find, and add one line per id under \`## Questions\` in your report: \`${QUESTION} <id>: <answer>\`, a sentence on that same line giving the count with its denominator and the file, command or selector that prints it again; detail may follow on later lines. Where these campaigns cannot show the answer, say so and name the read that would. The collector rejects reports missing an assigned question.`,
+    `The operator asks the ${one ? "question" : "questions"} below of every investigation, and they fall to this lane. Answer each from the logs whatever else you find, and add one line per id under \`## Questions\` in your report: \`${QUESTION} <id>: <${QUESTION_VERDICTS.join(" | ")}>, <count, denominator, and file, command, or selector that prints it again>\`; detail may follow on later lines. Where these campaigns cannot show the answer, open with \`unmeasured\` and name the owed read. The collector rejects reports missing an assigned question or its status word.`,
   ],
 } as const;
 
@@ -352,7 +379,7 @@ function form(
             `${PREDICTION} <id>: <${RESOLUTIONS.join(" | ")}>, then how often its trigger occurred and how often its event followed; a line for each row the lane's prompt hands it, and no section where it hands none`,
             "",
             "## Questions",
-            `${QUESTION} <id>: <the answer, with its count, its denominator and where it prints again>; a line for each operator question the lane's prompt hands it, and no section where it hands none`,
+            `${QUESTION} <id>: <${QUESTION_VERDICTS.join(" | ")}>, <count, denominator, and where it prints again>; a line for each operator question the lane's prompt hands it, and no section where it hands none`,
             "",
           ]
         : []),
@@ -365,7 +392,7 @@ function form(
           "Where a lane's evidence leads past its question, follow it to the code or the text that let it through, and write what you find in that lane's report with the same fields. Where a lane matters less for these campaigns, at the point their logs have reached, than the other lanes your session was given, you may leave it unread: write only the heading and `Verdict: omitted`, then one sentence why (its question does not arise here, the primary's section already settles it, or another of your lanes covers it).",
         ]
       : []),
-    "Each of the six fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 20, 13 October).",
+    "Each of the six fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused.",
     "A heading's `<kind>` is one lowercase word naming the defect's class in your own terms (a misreading, a missing right, a leak, a reuse); the collector numbers each kind within the lane and cites the finding as `lane<N>-<kind><k>`. The `Seen in:` line names every campaign on that one line, `<campaign> <selector>` or `<campaign> absent: <why>`, separated by `;`. A selector points at the log part a reader opens to see the finding, so an Oracle handover prints it beside the finding.",
     `An owner is one of: ${owners.map((owner) => `\`${owner}\``).join(", ")}. Name the file beside \`host\` and a prompt owner.`,
     "You read and you report. Write no file but your report, and scratch in a temporary directory of your own, never under the campaign's folder or the checkout. Start no solve, no session, no round and no check run; `wri.ts grade` is the one exception, and only where your lane names it. Reply with the report's path and one line per finding.",
@@ -582,7 +609,7 @@ export function reportOf(
     ? PENDING
     : ["provisional"].find((word) => verdictLine.includes(word));
   const resolved: Record<string, Resolution> = {};
-  const answered: Record<string, string> = {};
+  const answered: Record<string, QuestionAnswer> = {};
   for (const line of lines) {
     const [, kind, id = "", said = ""] = ASSIGNED_LINE.exec(line) ?? [];
     const how = said.trim();
@@ -590,9 +617,16 @@ export function reportOf(
     const synonym = [...RESOLUTION_SYNONYMS].find(([alias]) => how.startsWith(alias))?.[1];
     const resolution = direct ?? synonym;
     if (kind === PREDICTION && resolution !== undefined) resolved[id] = resolution;
-    if (kind === QUESTION && how !== "") answered[id] = how;
+    if (kind === QUESTION) {
+      const match = QUESTION_VERDICT_LEAD.exec(plain(how));
+      const word = match?.[1]?.toLowerCase();
+      const verdictWord = QUESTION_VERDICTS.find((each) => each === word);
+      if (verdictWord !== undefined && match?.[2]?.trim() !== "") {
+        answered[id] = { verdict: verdictWord, text: how };
+      }
+    }
   }
-  const owed = (kind: Assigned["kind"], done: Readonly<Record<string, string>>) =>
+  const owed = (kind: Assigned["kind"], done: Readonly<Record<string, Resolution | QuestionAnswer>>) =>
     verdict === "finding" || verdict === "no finding"
       ? assignedTo(lane, shared, kind).flatMap(({ id }) => (id in done ? [] : [id]))
       : [];
@@ -637,7 +671,7 @@ export function reportOf(
       : []),
     ...(unanswered.length > 0
       ? [
-          `no \`${QUESTION} <id>: <answer>\` line with its answer on that line for ${unanswered.join(", ")}, which the operator's questions hand this lane`,
+          `no \`${QUESTION} <id>: <${QUESTION_VERDICTS.join(" | ")}>, <evidence>\` line for ${unanswered.join(", ")}, which the operator's questions hand this lane`,
         ]
       : []),
     // A report can say no finding over findings it wrote, which is refused rather than accepted.
@@ -682,11 +716,58 @@ function writtenIn(lines: readonly string[], lane: number): Written[] {
   });
 }
 
+function questionLines(
+  rows: readonly Assigned[],
+  reports: readonly Report[],
+  unframed: ReadonlySet<number>,
+): string[] {
+  const tally = { yes: 0, partial: 0, no: 0, unmeasured: 0, conflict: 0, incomplete: 0, unanswered: 0 };
+  const okReports = reports.filter(({ state }) => state === "ok");
+  const items = rows.flatMap(({ kind, id, lanes: named, question }) => {
+    if (kind !== QUESTION) return [];
+    const open = named.filter((lane) => !unframed.has(lane));
+    if (open.length === 0) return [];
+    const answers = okReports.flatMap(({ lane, answered }) => {
+      const answer = answered[id];
+      return answer === undefined ? [] : [{ lane, ...answer }];
+    });
+    const silent = open.filter((lane) =>
+      reports.some((each) => each.lane === lane && (each.state !== "ok" || !(id in each.answered))),
+    );
+    const unopened = open.filter((lane) => !reports.some((each) => each.lane === lane));
+    const verdicts = [...new Set(answers.map(({ verdict }) => verdict))];
+    if (answers.length === 0) tally.unanswered += 1;
+    else if (verdicts.length > 1) tally.conflict += 1;
+    else if (silent.length > 0 || unopened.length > 0) tally.incomplete += 1;
+    else if (verdicts[0] !== undefined) tally[verdicts[0]] += 1;
+    const notes = [
+      ...(verdicts.length > 1
+        ? [`conflict: ${answers.map(({ lane, verdict }) => `lane ${String(lane)} ${verdict}`).join(" vs ")}`]
+        : []),
+      ...(silent.length === 0 ? [] : [`no line from lane ${silent.join(", ")}`]),
+      ...(unopened.length === 0 ? [] : [`lane ${unopened.join(", ")} not opened`]),
+    ];
+    return [
+      `- ${id}: ${question}${notes.length === 0 ? "" : ` (${notes.join("; ")})`}`,
+      ...answers.map(({ lane, text }) => `  - lane ${String(lane)}: ${text}`),
+    ];
+  });
+  if (items.length === 0) return [];
+  const counts = [
+    ...QUESTION_VERDICTS.map((v) => `${String(tally[v])} ${v}`),
+    ...(tally.conflict > 0 ? [`${String(tally.conflict)} conflict`] : []),
+    ...(tally.incomplete > 0 ? [`${String(tally.incomplete)} incomplete`] : []),
+    `${String(tally.unanswered)} unanswered`,
+  ].join(", ");
+  return ["", `Each operator question, as the lanes answered it (Scorecard: ${counts}):`, "", ...items];
+}
+
 export function reportIndex(
   reports: readonly Report[],
   pathOf: (lane: number) => string,
   campaigns: readonly Campaign[],
   shared = "",
+  unframed: ReadonlySet<number> = new Set(),
 ): string {
   const fired = new Set(campaigns.flatMap(({ overview }) => overview.triggers.map(({ lane }) => lane)));
   const lanes = reports.map(({ lane, state, verdict, faults, written }) => {
@@ -705,29 +786,16 @@ export function reportIndex(
   const rows = assignedOf(shared);
   const predictions = rows.flatMap(({ kind, id, lanes: named }) => {
     if (kind !== PREDICTION) return [];
+    const open = named.filter((lane) => !unframed.has(lane));
+    if (open.length === 0) return [];
     const resolutionNotes = RESOLUTIONS.flatMap((how) => {
       const by = reports.filter(({ resolved }) => resolved[id] === how).map(({ lane }) => lane);
       return by.length === 0 ? [] : [`${how} by lane ${by.join(", ")}`];
     });
-    const silent = named.filter((lane) => !reports.some((each) => each.lane === lane && id in each.resolved));
+    const silent = open.filter((lane) => !reports.some((each) => each.lane === lane && id in each.resolved));
     return [
       `- ${id}: ${[...resolutionNotes, ...(silent.length === 0 ? [] : [`no line from lane ${silent.join(", ")}`])].join("; ")}`,
     ];
-  });
-  const questions = rows.flatMap(({ kind, id, lanes: named, question }) => {
-    if (kind !== QUESTION) return [];
-    const said = reports.flatMap(({ lane, answered }) =>
-      answered[id] === undefined ? [] : [`  - lane ${String(lane)}: ${answered[id]}`],
-    );
-    const silent = named.filter((lane) =>
-      reports.some((each) => each.lane === lane && !(id in each.answered)),
-    );
-    const unopened = named.filter((lane) => !reports.some((each) => each.lane === lane));
-    const gaps = [
-      ...(silent.length === 0 ? [] : [`no line from lane ${silent.join(", ")}`]),
-      ...(unopened.length === 0 ? [] : [`lane ${unopened.join(", ")} not opened`]),
-    ];
-    return [`- ${id}: ${question}${gaps.length === 0 ? "" : ` (${gaps.join("; ")})`}`, ...said];
   });
   return [
     ...lanes,
@@ -735,9 +803,7 @@ export function reportIndex(
     ...(predictions.length === 0
       ? []
       : ["", "Each prediction, as the lanes resolved it:", "", ...predictions]),
-    ...(questions.length === 0
-      ? []
-      : ["", "Each operator question, as the lanes answered it:", "", ...questions]),
+    ...questionLines(rows, reports, unframed),
   ].join("\n");
 }
 

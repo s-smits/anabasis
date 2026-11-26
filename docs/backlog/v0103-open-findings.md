@@ -1,7 +1,7 @@
 # Findings left open at v0.10.3
 
-Status: rows 1, 2, 3, 17 and 19 are proved without a model, each by a hostile test that failed
-before its repair, and rows 7 and 8 by a test of their repair (20 November); the rest are planned. Each row was found by the landing review of 10 November
+Status: rows 1, 2, 3, 17, 18, 19 and 22 are proved without a model, each by a hostile test that failed
+before its repair, and rows 7 and 8 by a test of their repair; the rest are planned. Each row was found by the landing review of 10 November
 2026 (three lenses over the stack of #721 to #748), by the second-reader pass that followed it, by
 the review of the stack above the release (rows 28 to 35), or by a read of the night's jobs
 (row 36). Rows 1 to 27 were left as they are so that the release could land. Each says what would
@@ -83,11 +83,9 @@ here; "reported" means only its reader has seen it.
     `countedAgainst` gives it, so of three kept runs on a login capped at two the first two by
     name start; a fresh start still counts every kept run. Left: a keeper that moves its run to
     another login counts every kept run there, with no order (`roomFor`, `tools/runs/keep.ts`).
-18. **A solve's network line can change inside one comparison** (read, `networkReach`,
-    `src/tools/command.ts`, read by `src/solver/run.ts`). An unreached reading is probed again
-    after ten minutes, so the two sides' solves of one task can be told different things, and the
-    log records neither. With row 5 it changes what a solver is told, which is the operator's:
-    either a comparison's reach is fixed at its start, or `solve.started` records it.
+18. **A solve's network line can change inside one comparison**: mended. `COMPARISON_REACH`
+    (`src/tools/command.ts`, read by `src/solver/run.ts`) pins network reach for the life of each
+    comparison, and `solve.finished.network` records it in the log.
 19. **A kept run's ending is not alerted**: mended. The `kept` state names the environment's
     ending where the log ends on one (`stateOf`, `tools/runs/state.ts`), and `alerts` says it once.
 20. **A resumed move starts in a tree nobody checked** (reported, `tools/runs/move.ts`): a
@@ -96,9 +94,9 @@ here; "reported" means only its reader has seen it.
 21. **A preparation lock no longer lapses while its process lives** (reported, `STALE`,
     `tools/runs/code.ts`): a remote shell that outlives its killed ssh client holds the commit's
     preparation on that host. Settled by whether such a shell survives on each host.
-22. **A lock's holder is named by text the locale and time zone change** (reported,
-    `src/meta/holder.ts`): `ps -o lstart=` and the host's name, so two processes under different
-    settings each read the other's lock as free. Settled by the settings of the scheduled jobs.
+22. **A lock's holder is named by text the locale and time zone change**: mended. `src/meta/holder.ts`
+    runs `/bin/ps -o lstart=` under `TZ=UTC` and `LC_ALL=C` so every process reads the same lock
+    timestamp regardless of caller environment.
 23. **A stop can miss a writer its keeper starts meanwhile** (reported, `tools/runs/stop.ts`): the
     process table is read once, before the keeper ends.
 24. **A killed move's stage is used again** (reported, `tools/runs/move.ts`), with what the earlier

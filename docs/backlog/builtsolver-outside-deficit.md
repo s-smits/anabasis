@@ -1,10 +1,10 @@
 # Why no builtSolver has scored above the Starter outside
 
-Status (18 November 2026): six decisions wait for the operator, each below with its counts and a
-recommendation. Of them only item 1's second half is present in source. The counts are those of the
-investigation of the jobstat fork at #921's head, vetted on 18 November, and of the record's
-jobstat starter reads since 1 November, recounted on 18 November after two reviews of the first
-draft.
+Status (26 November 2026): items 1 (second half, deliverables capture), 2 (unchosen-task confirmation
+and mandatory revert), and 6 (native `pi-durable` runtime parity) are present in source; items 3 to 5
+still wait on operator decisions. The counts below are those of the investigation of the jobstat fork
+at #921's head, vetted on 18 November, and of the record's jobstat starter reads since 1 November,
+recounted on 18 November after two reviews of the first draft.
 
 ## The question
 

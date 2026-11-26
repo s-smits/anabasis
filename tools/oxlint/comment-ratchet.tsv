@@ -384,7 +384,7 @@ tools/runs/alerts.ts	20
 tools/runs/bench.ts	2
 tools/runs/cli.ts	17
 tools/runs/code.ts	14
-tools/runs/degradations.ts	3
+tools/runs/degradations.ts	2
 tools/runs/diagnosis.ts	8
 tools/runs/fresh.ts	3
 tools/runs/health.ts	7

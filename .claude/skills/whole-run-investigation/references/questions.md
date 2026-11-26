@@ -57,3 +57,8 @@ The blind lane 1 and the isolated lane 20 answer none: neither may see the share
 | Q38 | 9 | Does the launch commit hold every fix the run was meant to test? | `source.txt`, `launches.txt`, `git merge-base --is-ancestor` |
 | Q39 | 19 | Is the domain broken, or only slow, with limits binding on both arms? | `MISSES AT A LIMIT`, `execution.txt` |
 | Q40 | 12 | Did the Builder use practice honestly and practise its final bytes? | `practice.txt`, `FINAL BYTES NEVER PRACTISED` |
+| Q41 | 11, 18 | Did drafting preserve enough tries past audit pass 2 to apply fixes without burning tries on offline `unformed` faults? | `draft-audit.txt`, `drafted.txt`, `draft.call` (`draft_exam`), `referee.draft` |
+| Q42 | 9, 19 | Did walled seats (Solver, Builder, Examiner) run with `cwd` in their workspace while keeping private runtime state outside, with zero relative-write refusals? | `execution.txt`, `calls.txt`, `src/agent/backends/claude.ts` |
+| Q43 | 11 | Did the launch's seat-family pairing and scoring lane cover the prompt's qualitative requirements (via cross-family judging where needed) instead of leaving them unmeasured in a code-only run? | `drafted.txt`, `campaign.opened` (`judged`, seat families), `referee.pair` |
+| Q44 | 8, 10, 15 | Did parsed shell invocations confirm that `.toolchain/bin` and `.toolchain/env.sh` transfer externally without campaign-path coupling or exam-ontology guide drag? | `regressions.txt`, `portability.txt`, `check_harness` offenders |
+| Q45 | 9, 17 | Were all `referee.turn` calls (across reviewer overrides and reopens) served as requested, with zero unserved error turns hidden from degradations? | `degradations.txt`, `tools/runs/degradations.ts`, `referee.turn` |

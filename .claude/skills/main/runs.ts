@@ -394,7 +394,7 @@ export async function loadRuns(asked: Asked, mode: "full" | "unpriced" = "full")
     return cut;
   };
   const match = names.length > 0 ? (name: string) => names.some((part) => name.includes(part)) : null;
-  for (const each of await campaignLogs(home, [], asked.since, match)) {
+  for (const each of await campaignLogs(home, names, asked.since, match)) {
     // Under an explicit home, a campaign's host is its folder (`data/runs/<host>/<name>/log.jsonl`),
     // and this machine otherwise.
     const parts = home === null ? [] : relative(home, each.path).split(sep);

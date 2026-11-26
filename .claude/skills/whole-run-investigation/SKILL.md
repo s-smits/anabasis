@@ -68,7 +68,7 @@ When testing specific candidate improvements or open dilemmas on top of standard
 
 ## Related skills
 
-- Driving WRI2P2 cycles & landing fixes: [run-improvement-campaign](../run-improvement-campaign/SKILL.md), [stack-pr](../stack-pr/SKILL.md)
+- Driving WRI2P2 cycles, end-to-end stack contracts & landing fixes: [run-improvement-campaign](../run-improvement-campaign/SKILL.md), [stack-contracts.md](../run-improvement-campaign/references/stack-contracts.md), [stack-pr](../stack-pr/SKILL.md)
 - External benchmark regression analysis & domain WRI extensions: [regression-evals-analyzer](../regression-evals-analyzer/SKILL.md)
 - Deep comparison or external-bench diagnosis: [comparison-review](../comparison-review/SKILL.md), [compare-systems](../compare-systems/SKILL.md)
 - Examiner difficulty calibration or harness inspection: [examiner-complexity](../examiner-complexity/SKILL.md), [harness-audit](../harness-audit/SKILL.md)

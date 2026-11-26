@@ -71,11 +71,12 @@ export type Traced = Turn | Call | Compaction;
 const ARGUMENT_HEAD = 100;
 
 const BUILD_FINISHED = "build.finished";
+const REFEREE_FINDING = "referee.finding";
 const OWNER_KINDS: readonly EventKind[] = [
   "build.started",
   BUILD_FINISHED,
   "solve.started",
-  "referee.finding",
+  REFEREE_FINDING,
   "referee.brief",
   "referee.pair",
 ];
@@ -91,7 +92,7 @@ const SEAT_ENDS: Readonly<Record<Seat, readonly EventKind[]>> = {
   build: ["build.finished"],
   exam: ["exam.finished"],
   draft: ["draft.finished"],
-  referee: ["referee.finding", "referee.draft", "referee.brief", "referee.pair"],
+  referee: [REFEREE_FINDING, "referee.draft", "referee.brief", "referee.pair"],
   solve: ["solve.finished"],
 };
 export const whose = (seat: Seat) => WHOSE[seat];
@@ -107,9 +108,7 @@ const SEAT_START = new Map<EventKind, Seat>(
   SEATS.map((s): [EventKind, Seat] => [s === "referee" ? "referee.turn" : `${s}.started`, s]),
 );
 const START_KINDS: readonly EventKind[] = [...SEAT_START.keys()].filter((kind) => kind !== "referee.turn");
-const TURN_KINDS: readonly EventKind[] = SEATS.filter((s) => s !== "referee").map((s) =>
-  traceKind(s, "turn"),
-);
+const TURN_KINDS: readonly EventKind[] = SEATS.map((s) => traceKind(s, "turn"));
 
 function costOf(usage: JsonValue | undefined): number | null {
   const total = asRecord(asRecord(usage)?.cost)?.total;
@@ -157,13 +156,14 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
   return { ...mark, part, billed: usages.reduce<number>((sum, usage) => sum + (costOf(usage) ?? 0), 0) };
 }
 
+const ASKED_KINDS: readonly EventKind[] = [...START_KINDS, REFEREE_FINDING, "referee.draft"];
+
 export function askedOf(events: readonly LogEvent[]): Map<string, string> {
   const asked = new Map<string, string>();
   for (const {
     event: { kind, data },
-  } of eventsOf(events, START_KINDS)) {
-    const seat = SEAT_START.get(kind);
-    const id = seat === undefined ? undefined : data[whose(seat)];
+  } of eventsOf(events, ASKED_KINDS)) {
+    const id = data[whose(SEAT_START.get(kind) ?? "referee")];
     if (isString(id) && isString(data.model)) asked.set(id, data.model);
   }
   return asked;
@@ -171,12 +171,18 @@ export function askedOf(events: readonly LogEvent[]): Map<string, string> {
 
 export function degradations(events: readonly LogEvent[], from = 0): Degradation[] {
   const asked = askedOf(events);
+  const openings = eventsOf(events, "campaign.opened").flatMap(({ index, event: { data } }) => {
+    const model = asRecord(asRecord(data.seats)?.reviewer)?.model;
+    return isString(model) ? [{ index, model }] : [];
+  });
   const rows = new Map<string, Degradation>();
   for (const { index, event } of eventsOf(events, TURN_KINDS)) {
     if (index < from) continue;
     const each = traced(event, index);
     if (each?.part !== "turn" || each.model === null) continue;
-    const seat = asked.get(each.id);
+    const seat =
+      asked.get(each.id) ??
+      (each.seat === "referee" ? openings.findLast((opening) => opening.index <= index)?.model : undefined);
     if (seat === undefined) continue;
     const wanted = seat.slice(seat.indexOf("/") + 1);
     if (each.model === wanted || each.model.replace(/-\d{8}$/u, "") === wanted) continue;
@@ -194,6 +200,12 @@ export function degradations(events: readonly LogEvent[], from = 0): Degradation
   }
   return [...rows.values()];
 }
+
+export const unservedTurns = (events: readonly LogEvent[]): Turn[] =>
+  eventsOf(events, TURN_KINDS).flatMap(({ index, event }) => {
+    const each = traced(event, index);
+    return each?.part === "turn" && each.model === null && each.stopReason === "error" ? [each] : [];
+  });
 
 export function tracesIn(events: readonly LogEvent[]): Traced[] {
   const out: Traced[] = [];

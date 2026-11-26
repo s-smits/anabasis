@@ -204,10 +204,10 @@ export const READERS: readonly Reader[] = [
     {
       name: "diagnostics",
       answers:
-        "cross-cutting structural warnings: dead harness bins, compaction amnesia, patience burn, validity saturation, step SNR and fragility, Examiner efficiency",
+        "cross-cutting structural warnings: dead harness bins, compaction amnesia, patience burn, validity saturation, step SNR and fragility, Examiner efficiency, seat serving, draft freeze, judged lane, and write refusals",
       read: ({ log, events }) => diagnosticRows(events, join(dirname(log), "states")),
     },
-    [REPORTED, PROMOTED, EXAMINED, BUILT, ENDED],
+    [REPORTED, PROMOTED, EXAMINED, BUILT, "draft.finished", ENDED],
     /^\[WARN\]/,
   ),
   at(

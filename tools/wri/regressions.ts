@@ -1,4 +1,5 @@
 import { epochsOf, ORIGINS, starterReads } from "#src/campaign/climb.ts";
+import { callPrograms } from "#src/kernel/call-programs.ts";
 import { rawFlipP } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { ranUnder } from "#src/kernel/solves.ts";
@@ -203,9 +204,12 @@ function externalToolCounts(
     if (latest === undefined) continue;
     trajCount += 1;
     if (toolNames.length === 0) continue;
-    const cmds = readFileSync(join(trajDir, latest), "utf8").split("\n").flatMap(commandsInTrajLine);
+    const invoked = new Set<string>();
+    for (const cmd of readFileSync(join(trajDir, latest), "utf8").split("\n").flatMap(commandsInTrajLine)) {
+      for (const bin of callPrograms({ tool: "bash", args: { command: cmd } }).programs) invoked.add(bin);
+    }
     for (const tool of toolNames) {
-      if (cmds.some((cmd) => cmd.includes(tool))) counts.set(tool, (counts.get(tool) ?? 0) + 1);
+      if (invoked.has(tool)) counts.set(tool, (counts.get(tool) ?? 0) + 1);
     }
   }
   return { counts, trajCount };
@@ -221,12 +225,11 @@ function campaignToolCounts(events: readonly LogEvent[], harness: string, toolNa
   if (toolNames.length === 0 || solveIds.size === 0) return { counts, solveCount: solveIds.size };
   const perSolve = new Map<string, Set<string>>();
   for (const call of callsOf(tracesIn(events), "solve")) {
-    if (!solveIds.has(call.id)) continue;
-    const cmd = asRecord(call.args)?.command;
-    if (!isString(cmd) || cmd === "") continue;
+    if (!solveIds.has(call.id) || call.tool !== "bash") continue;
     const hits = perSolve.get(call.id) ?? new Set<string>();
+    const invoked = new Set(callPrograms(call).programs);
     for (const tool of toolNames) {
-      if (cmd.includes(tool)) hits.add(tool);
+      if (invoked.has(tool)) hits.add(tool);
     }
     perSolve.set(call.id, hits);
   }

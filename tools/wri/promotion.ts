@@ -389,7 +389,7 @@ function unconfirmedTrigger(log: Index): Trigger[] {
   return emitIf(
     lines.length > 0,
     "PROMOTION UNCONFIRMED",
-    `${share(lines.length, epochs.length - 1)} promotions: ${lines.join("; ")}`,
+    `${share(lines.length, epochs.filter(({ confirmed }) => confirmed !== null).length)} promotions: ${lines.join("; ")}`,
   );
 }
 

@@ -1,6 +1,6 @@
 # Levers: what an iteration can tune
 
-Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings** (citing ≥3 lever ids, tuned or retained with falsifiable rationale; `wri2p2.ts` checks ≥3 ids). Supply models with facts, not targets; never name a pack's domain; preserve rule 3. Prefer removing or simplifying a lever whose pre-registered keep-bar failed (`AGENTS.md` rule 13). Levers marked *operator* require operator approval.
+Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings** (citing ≥3 lever ids, tuned or retained with falsifiable rationale; `wri2p2.ts` checks ≥3 ids). Walk [stack-contracts.md](stack-contracts.md) before picking levers so upstream seam breaks are repaired rather than masked. Supply models with facts, not targets; never name a pack's domain; preserve rule 3. Prefer removing or simplifying a lever whose pre-registered keep-bar failed (`AGENTS.md` rule 13). Levers marked *operator* require operator approval.
 
 ## Supply & Exam
 | # | Lever | Owner | Trigger (`wri.ts read`) |
@@ -8,8 +8,8 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | E1 | Task-writing difficulty guidance | `src/examiner/prompt.ts` | reference valid on all tasks; `TIED TASKS`; `TIES BETWEEN VALID ANSWERS` |
 | E2 | Outcome feedback to Examiner | `heard`, `src/examiner/record.ts` | `OUTCOMES BY SESSION` reading `reference-every` |
 | E3 | Difficulty ladder rungs/examples | `DIFFICULTY_SCALE`, `src/examiner/difficulty.ts` | high blind grades on tasks reference already solves |
-| E4 | Drafting rules (objective, families) | `src/examiner/draft.ts` | objective tying every pair; `INSTRUMENT AUTHORED`; `FAMILY CONCENTRATION` |
-| E5 | Draft gate (note honesty risk if relaxed) | `draftFaults`, `src/examiner/draft.ts` | `exam` ending with 0 comparisons |
+| E4 | Drafting rules (objective, lane, families) | `src/examiner/draft.ts` | objective tying every pair; `INSTRUMENT AUTHORED`; `FAMILY CONCENTRATION`; code-only blind spot on qualitative rubrics |
+| E5 | Draft gate & try budget (note honesty risk if relaxed) | `draftFaults`, `src/examiner/draft.ts`, `tools/eval/draft.ts` | `exam` ending with 0 comparisons; offline `unformed` faults or post-audit try exhaustion |
 | E6 | Task admission gate | `refusalOf`, `src/examiner/write.ts` | `GATE REFUSED`; `EXAMINER ZERO YIELD`; thin frontier |
 | E7 | Examiner scheduling/duration (*operator* for limits) | `supplyRun`, `src/campaign/scheduler.ts` | `FIRST COMPARISON HELD OFF`; long hours to comparison 1 vs admitted count |
 | E8 | Comparison floor & retained share (*operator*) | `comparisonFloor`, `src/campaign/admission.ts` | `no-room` ending just below floor; `UNDERPOWERED NO-STEPS` |
@@ -24,10 +24,10 @@ Every `plan.md` combines defect **repairs** and evidence-backed lever **tunings*
 | B3 | Cross-session memory | `src/builder/memory.ts`, `store.ts` | session reverting prior session's edits; `BUILDER COMPACTED` |
 | B4 | Practice release order (*operator* for half-cap) | `releaseOrder`, `src/kernel/reports.ts` | `PRE-PROMOTION PRACTICE RELEASED`; Builder starved of practice failures |
 | B5 | Builder turn/time limits (*operator*) | `tools/campaign/harness-builder.ts` | sessions ending mid-edit |
-| B6 | Harness portability & `HOST_ONLY` split | `portableGuide`, `src/harness/starter.ts`, `src/builder/prompt.ts` | `BUILT HARNESS FOR EXPORT`; `portability` reader `above-leaks` or hazards |
+| B6 | Harness portability, `.toolchain/env.sh` & `HOST_ONLY` split | `portableGuide`, `src/harness/{starter,files}.ts`, `src/builder/{prompt,store,tools}.ts`, `src/sandbox/isolation.ts`, `src/tools/command.ts` | `BUILT HARNESS FOR EXPORT`; `portability` reader `above-leaks` or hazards; `check_harness` offenders; `0/N` external `.toolchain/bin` calls |
 | S1 | Starter Built Harness (*operator*) | `src/harness/starter.ts` | missing general-purpose tool |
 | S2 | Per-solve turn/time limits (*operator*) | `LIMITS`, `tools/campaign/campaign.ts` | `MISSES AT A LIMIT` on both arms |
-| S3 | Shell/sandbox grants (no protected roots) | `src/tools/command.ts`, `src/sandbox/` | `sandbox-crash` on valid path; `HIGH TOOL ERROR RATE` |
+| S3 | Shell, `cwd`, `BASH_ENV` & sandbox grants (no protected roots) | `src/tools/command.ts`, `src/sandbox/`, `src/agent/backends/claude.ts` | `sandbox-crash` on valid path; relative-write path refusals; `HIGH TOOL ERROR RATE` |
 | S4 | Cross-seat wall & network condition parity | `src/sandbox/`, `src/tools/command.ts` | `NETWORK PARITY MISMATCH`; `WALL BOUNDARY SIGNAL` |
 
 ## Reading, Verdicts & Economy

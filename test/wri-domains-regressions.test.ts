@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { openHarness } from "../src/harness/open.ts";
 import { writeBare } from "../src/harness/starter.ts";
+import { callPrograms } from "../src/kernel/call-programs.ts";
 import { conditionId } from "../src/kernel/condition.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -11,6 +12,7 @@ import { join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { placeHarness, sourceNamed } from "../studies/shared/bundle.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
+import { degradationLines } from "../tools/runs/degradations.ts";
 import {
   DEFAULT_MIN_PROMO,
   domainReadinessOf,
@@ -427,6 +429,9 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
     mkdirSync(agentDir, { recursive: true });
     writeFileSync(join(binDir, "inspect-workspace"), "#!/bin/sh\n");
     writeFileSync(join(binDir, "pystat"), "#!/bin/sh\n");
+    writeFileSync(join(binDir, "ci"), "#!/bin/sh\n");
+    writeFileSync(join(binDir, "boot"), "#!/bin/sh\n");
+    writeFileSync(join(binDir, "estimate"), "#!/bin/sh\n");
     writeFileSync(join(agentDir, "BUILT_AGENTS.md"), "# Guide\n");
 
     const store = join(root, "bench");
@@ -444,14 +449,19 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
             { index: 0, weight: 8, passed: false, cPassed: 2, cTotal: 3 },
             { index: 1, weight: 10, passed: true, cPassed: 4, cTotal: 4 },
           ],
-          commands: ["inspect-workspace"],
+          commands: [
+            "cd /tmp/statisticians_task2 && inspect-workspace",
+            "echo \"a; ci b\" && grep -E 'foo|ci ' x",
+            'python3 -c "import scipy; ci = 1"',
+            'timeout -k 5 60 "$HOME/harness/.toolchain/bin/boot" data.csv',
+          ],
         },
         {
           task: STAT_TASK,
           points: 36,
           total: 116,
           cut: [{ file: "memo.docx", chars: 205_000 }],
-          commands: ["python3 run.py"],
+          commands: ["python3 <<'EOF'\nci = 0.95\npystat = 1\nEOF", "cat <<EOF | estimate -\n1,2\nEOF"],
         },
       ],
     });
@@ -483,6 +493,9 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
     expect(report.tasks[0]?.task).toBe(SOC_TASK);
     expect(report.tasks[0]?.builtRubricMisses).toEqual([{ index: 1, weight: 8, passed: 2, total: 3 }]);
     expect(report.tools).toEqual([
+      { tool: "boot", campaignSolves: 0, externalTasks: 1 },
+      { tool: "ci", campaignSolves: 0, externalTasks: 0 },
+      { tool: "estimate", campaignSolves: 0, externalTasks: 1 },
       { tool: "inspect-workspace", campaignSolves: 1, externalTasks: 1 },
       { tool: "pystat", campaignSolves: 1, externalTasks: 0 },
     ]);
@@ -596,5 +609,87 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
     expect(
       refusalOf("Write", { file_path: "/Users/x/anabasis/.ana/wri/2026-11-24-run/lanes/31-report.md" }),
     ).toBeNull();
+  });
+
+  it("reports Referee model degradations and unserved error turns with null responseModel", () => {
+    const log: LogEvent[] = [
+      {
+        at: AT,
+        kind: "campaign.opened",
+        data: { seats: { reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "medium" } } },
+      },
+      { at: AT, kind: "build.started", data: { session: "b-1", model: "claude/claude-opus-5-5" } },
+      {
+        at: AT,
+        kind: "build.turn",
+        data: { session: "b-1", turn: 1, stopReason: "stop", responseModel: "claude-opus-5-5" },
+      },
+      {
+        at: AT,
+        kind: "referee.turn",
+        data: { reader: "draft-d-1-1", turn: 1, stopReason: "error", responseModel: null, error: "403" },
+      },
+      {
+        at: AT,
+        kind: "referee.turn",
+        data: { reader: "draft-d-1-1", turn: 2, stopReason: "error", responseModel: null, error: "403" },
+      },
+    ];
+    expect(degradationLines(log)).toEqual([
+      "2 of 3 turns went unserved (referee 2)",
+      "all 1 turns naming a model were served as their seat asked",
+    ]);
+
+    const degradedRef: LogEvent[] = [
+      ...log,
+      {
+        at: AT,
+        kind: "referee.turn",
+        data: { reader: "draft-d-1-1", turn: 3, stopReason: "stop", responseModel: "gpt-5-mini" },
+      },
+      {
+        at: AT,
+        kind: "campaign.opened",
+        data: { seats: { reviewer: { model: "claude/claude-opus-5-5", effort: "medium" } } },
+      },
+      {
+        at: AT,
+        kind: "referee.turn",
+        data: { reader: "round-override", turn: 1, stopReason: "stop", responseModel: "gpt-6.1-sol" },
+      },
+      {
+        at: AT,
+        kind: "referee.finding",
+        data: { reader: "round-override", model: "openai-codex/gpt-6.1-sol", ruling: "earned" },
+      },
+    ];
+    const lines = degradationLines(degradedRef);
+    expect(lines[0]).toContain("1 of 3 turns naming a model were served by another");
+    expect(lines[1]).toBe("2 of 5 turns went unserved (referee 2)");
+    expect(lines.join("\n")).toContain("referee: 1 of 2 turns; gpt-5-mini for openai-codex/gpt-6.1-sol");
+    expect(lines.join("\n")).not.toContain("round-override");
+  });
+
+  it("handles quoted paths with spaces and long non-matching head tokens in callPrograms without backtracking", () => {
+    const start = performance.now();
+    expect(
+      callPrograms({
+        tool: "bash",
+        args: { command: '"/Users/someone/Library/Application Support/tool" --version' },
+      }),
+    ).toEqual({ programs: [], unattributed: 1 });
+    expect(
+      callPrograms({
+        tool: "bash",
+        args: { command: `${"results_by_configuration_name".repeat(4)}[0]=x` },
+      }),
+    ).toEqual({ programs: [], unattributed: 1 });
+    expect(
+      callPrograms({
+        tool: "bash",
+        args: { command: 'timeout -s TERM 30 "${HOME}/.toolchain/bin/boot" data.csv' },
+      }),
+    ).toEqual({ programs: ["boot"], unattributed: 0 });
+    expect(performance.now() - start).toBeLessThan(200);
   });
 });

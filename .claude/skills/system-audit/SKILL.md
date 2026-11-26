@@ -43,6 +43,6 @@ Every lens also emits uncapped **Does not make sense** items (`path:line`, anoma
 
 ## Related skills
 
-- Subsystem invariants: [design-and-seats](../design-and-seats/SKILL.md), [comparison-reading](../comparison-reading/SKILL.md), [campaign-mechanics](../campaign-mechanics/SKILL.md)
+- Subsystem invariants & end-to-end stack contracts: [design-and-seats](../design-and-seats/SKILL.md), [comparison-reading](../comparison-reading/SKILL.md), [campaign-mechanics](../campaign-mechanics/SKILL.md), [stack-contracts.md](../run-improvement-campaign/references/stack-contracts.md)
 - Quantitative checks & per-run evidence: [promotion-tuner](../promotion-tuner/SKILL.md), [whole-run-investigation](../whole-run-investigation/SKILL.md), [harness-audit](../harness-audit/SKILL.md)
 - Applying approved fixes: [stack-pr](../stack-pr/SKILL.md), [commit-r](../commit-r/SKILL.md), [simplify](../simplify/SKILL.md), [reduce-complexity](../reduce-complexity/SKILL.md)

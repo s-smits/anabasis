@@ -46,6 +46,8 @@ const HEREDOC = /(?<!<)<<-?\s*(['"]?)(\w+)\1([^\n]*)(?:\n(?:[^\n]*\n)*?[ \t]*\2[
 const REDIRECTION = /^\d*(?:[<>]+|&>>?)&?/;
 const FD_DUP = /&\d$/;
 const INLINE_FLAG = /^-\w*c\w*$/;
+const TIMEOUT_VALUE_FLAGS: ReadonlySet<string> = new Set(["-k", "-s", "--kill-after", "--signal"]);
+const VAR_PATH = /^(?:\$\{\w+\}|[$\w./+@:-])+\/[\w.@:+-]+$/;
 const DIGIT_START = /^\d/;
 const SPACE_CHARS: ReadonlySet<string> = new Set([" ", "\t", "\r", "\f", "\v"]);
 const BREAK_CHARS: ReadonlySet<string> = new Set(["\n", ";", "|", "&", "(", ")", "`"]);
@@ -134,7 +136,10 @@ function afterPrefixes(words: readonly Word[]): number {
     const prefix = words[at]?.text;
     if (prefix === undefined || !PREFIXES.has(prefix)) return at;
     at += 1;
-    while (at < words.length && /^[-]|^\w+=/.test(words[at]?.text ?? "")) at += 1;
+    while (at < words.length && /^[-]|^\w+=/.test(words[at]?.text ?? "")) {
+      const flag = words[at]?.text ?? "";
+      at += prefix === "timeout" && TIMEOUT_VALUE_FLAGS.has(flag) ? 2 : 1;
+    }
     if (prefix === "timeout" && DIGIT_START.test(words[at]?.text ?? "")) at += 1;
   }
   return -1;
@@ -148,7 +153,10 @@ function segmentPrograms(all: readonly Word[]): readonly string[] | null {
   const at = afterPrefixes(words);
   const first = words[at];
   if (first === undefined) return [];
-  if (first.quoted || !PROGRAM_WORD.test(first.text)) return null;
+  const validHead = first.quoted
+    ? VAR_PATH.test(first.text)
+    : PROGRAM_WORD.test(first.text) || VAR_PATH.test(first.text);
+  if (!validHead) return null;
   const program = base(first.text);
   if (NO_PROGRAM.has(program)) return [];
   if (!NAME.test(program)) return null;

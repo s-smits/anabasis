@@ -330,6 +330,32 @@ function versionsIn(value: JsonValue | undefined): string[] {
   return Array.isArray(value) ? value.filter(isString) : [];
 }
 
+function judgeSummaryOf(events: readonly LogEvent[], session: string): string[] {
+  const ofSession = (kind: "referee.pair" | "referee.brief") =>
+    eventsOf(events, kind).flatMap(({ event: { data } }) => (data.comparison === session ? [data] : []));
+  const [pairs, briefs] = [ofSession("referee.pair"), ofSession("referee.brief")];
+  if (pairs.length === 0 && briefs.length === 0) return [];
+  const done = pairs.filter((data) => isNumber(data.judge) && isNumber(data.holistic));
+  const votes = done.reduce((sum, data) => sum + Object.keys(asRecord(data.criteria) ?? {}).length, 0);
+  const disagreed = done.reduce(
+    (sum, data) => sum + (Array.isArray(data.disagreed) ? data.disagreed.length : 0),
+    0,
+  );
+  const billed = [...pairs, ...briefs].reduce(
+    (sum, data) => sum + (isNumber(data.billed) ? data.billed : 0),
+    0,
+  );
+  const extracts = pairs.map((data) => asRecord(data.extracts)).filter((ext) => ext !== null);
+  const extSum = (key: string) => extracts.reduce((sum, ext) => sum + (isNumber(ext[key]) ? ext[key] : 0), 0);
+  const extPart =
+    extracts.length === 0
+      ? ""
+      : `, extracts ${String(extSum("files"))} files (${String(extSum("empty"))} empty, ${String(extSum("faults"))} faults, ${String(extSum("truncated"))} truncated)`;
+  return [
+    `== ${session} judge: ${String(done.length)}/${String(pairs.length)} pairs (${String(pairs.length - done.length)} null), swap disagreements ${String(disagreed)}/${String(votes)} votes${extPart}, billed $${billed.toFixed(2)}`,
+  ];
+}
+
 function comparisonRows(
   events: readonly LogEvent[],
   start: JsonObject,
@@ -350,11 +376,13 @@ function comparisonRows(
     self: report === undefined ? new Map() : byTask(pairsReported(events, report, "fresh")),
   };
   const sides = [old, fresh] as const;
+  const judged = judgeSummaryOf(events, context.session);
   if (report === undefined) {
     const rows = versionsIn(start.tasks).map((task) => unpairedRow(context, "open", task, sides));
     return [
       ...rows,
       `== ${context.session} ${context.read} open: no report; ${String(rows.length)} tasks named at its start`,
+      ...judged,
     ];
   }
   const pairs = pairsReported(events, report);
@@ -379,6 +407,7 @@ function comparisonRows(
     formatGroupBreakdown(context, pairs, "family"),
     formatGranularityBreakdown(context, pairs, grain),
     summaryOf(context, report.data, pairs, untallied),
+    ...judged,
   ];
 }
 

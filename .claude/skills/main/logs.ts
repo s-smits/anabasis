@@ -79,7 +79,10 @@ export async function campaignLogs(
             (match === null || match(run.name)),
         )
       : everyLog(home, names, match);
-  return all.filter(({ name, path }) => (names.length > 0 ? names.includes(name) : lastAt(path) >= since));
+  return all.filter(
+    ({ name, path }) =>
+      names.includes(name) || ((match !== null || names.length === 0) && lastAt(path) >= since),
+  );
 }
 
 /** A scripted rehearsal is one with a `faux/` seat or solver model. */

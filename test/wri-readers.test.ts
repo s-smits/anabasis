@@ -2,8 +2,12 @@
 // synthetic campaign: the overview's rows agree with the production folds that own each count, each
 // trigger fires on its lane with its count, the catalogue names every trigger the reader can fire,
 // and a report is collected as a finding, no finding or could not read only when its fields are even.
+import { loadRuns } from "#skills/main/runs.ts";
 import { afterAll, describe, expect, it } from "bun:test";
-import { STARTED as COMPARISON_STARTED } from "../src/campaign/comparison.ts";
+import {
+  REPORTED as COMPARISON_REPORTED,
+  STARTED as COMPARISON_STARTED,
+} from "../src/campaign/comparison.ts";
 import { conditionId } from "../src/kernel/condition.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { lastReports, referenceOf } from "../src/kernel/reports.ts";
@@ -37,7 +41,7 @@ import { rankCatalogue } from "../tools/wri/rank-lanes.ts";
 import { gamingRows } from "../tools/wri/gaming.ts";
 import { reportIndex, reportOf, ROWS, sessionsOf } from "../tools/wri/investigation.ts";
 import { buildPackets } from "../tools/wri/packets.ts";
-import { sideGap } from "../tools/wri/pairs.ts";
+import { pairRows, sideGap } from "../tools/wri/pairs.ts";
 import { portabilityRows } from "../tools/wri/portability.ts";
 import { overview } from "../tools/wri/read.ts";
 import { scoreRows } from "../tools/wri/scores.ts";
@@ -45,6 +49,7 @@ import { transferRows } from "../tools/wri/transfer.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 import { wriCampaign } from "./helpers/wri-campaign.ts";
 
+const [SOLVE_STARTED, SOLVE_FINISHED] = ["solve.started", "solve.finished"] as const;
 const events = wriCampaign((tag) => `secret ${tag}`);
 const { rows, triggers } = overview(events);
 const catalogue = catalogueText();
@@ -1446,5 +1451,295 @@ describe("the findings ledger", () => {
     expect(listed).toEqual(owed);
     expect(owed).toHaveLength(2);
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it("reports corrected lane numbers and catches seat serving gaps, draft freeze deadlocks, unexercised judged lanes, and write refusals", () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const log: LogEvent[] = [
+      {
+        at,
+        kind: "campaign.opened",
+        data: {
+          seats: {
+            builder: { model: "claude/claude-opus-5-5", effort: "high" },
+            examiner: { model: "claude/claude-opus-5-5", effort: "high" },
+            reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "medium" },
+          },
+          solver: { model: "claude/claude-opus-5-5", effort: "medium" },
+          judged: true,
+        },
+      },
+      { at, kind: "draft.started", data: { session: "d-1" } },
+      { at, kind: "referee.draft", data: { session: "d-1", pass: 1, verdict: "defects", findings: [] } },
+      { at, kind: "referee.draft", data: { session: "d-1", pass: 2, verdict: "defects", findings: [] } },
+      { at, kind: "draft.finished", data: { session: "d-1", ended: "finished" } },
+      {
+        at,
+        kind: "exam.drafted",
+        data: {
+          session: "d-1",
+          draft: {
+            objective: {
+              quantity: "quality",
+              direction: "higher",
+              scale: "unit",
+              items: [{ id: "clarity", weight: 1, kind: "judge", criterion: "Clear structure and claims" }],
+            },
+          },
+        },
+      },
+      { at, kind: "campaign.ended", data: { ending: "exam", why: "unaccepted" } },
+      {
+        at,
+        kind: "referee.turn",
+        data: { reader: "r-1", turn: 1, stopReason: "error", model: null, error: "timeout" },
+      },
+      {
+        at,
+        kind: COMPARISON_STARTED,
+        data: { session: "g-1", old: "starter", fresh: "cand", starter: "starter" },
+      },
+      {
+        at,
+        kind: COMPARISON_REPORTED,
+        data: { session: "g-1", reading: "no-step", differences: [] },
+      },
+      {
+        at,
+        kind: "solve.call",
+        data: {
+          solve: "s-1",
+          tool: "write",
+          isError: true,
+          text: "EPERM: operation not permitted, realpath '/Users/x'",
+        },
+      },
+      {
+        at,
+        kind: "solve.call",
+        data: {
+          solve: "s-2",
+          tool: "edit",
+          isError: true,
+          text: "EACCES: permission denied, open '/tmp/outside'",
+        },
+      },
+    ];
+    const lines = diagnosticRows(log, join(tmpdir(), "nonexistent-states-dir")).join("\n");
+    expect(lines).toContain("[WARN] honesty (lane 9): seat serving gap: 1 unserved error turn (referee 1)");
+    expect(lines).toContain(
+      "[WARN] verdicts (lane 18): drafting failed to freeze: 2 draft-audit pass(es) (max pass 2, last defects) without contract.frozen",
+    );
+    expect(lines).toContain(
+      "[WARN] verdicts (lane 11): unexercised judged lane: exam declared judge items yet 0 referee.pair votes completed across 1 reported comparisons",
+    );
+    expect(lines).toContain(
+      "[WARN] honesty (lane 19): solver write/edit permission refusals: 2/2 solves hit EPERM/EACCES",
+    );
+
+    const clear = diagnosticRows([], join(tmpdir(), "nonexistent-states-dir")).join("\n");
+    expect(clear).toContain("all 11 structural checks clear");
+  });
+
+  it("catches environment-aborted unexercised judged lanes and per-harness write-refusal arm asymmetry", () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const starterDigest = "1".repeat(64);
+    const builtDigest = "2".repeat(64);
+    const starterCond = conditionOf("v-1", starterDigest);
+    const builtCond = conditionOf("v-1", builtDigest);
+    const starterCid = conditionId(starterCond);
+    const builtCid = conditionId(builtCond);
+    const starterSolves: LogEvent[] = Array.from({ length: 20 }, (_, i) => [
+      { at, kind: SOLVE_STARTED, data: { solve: `st-${String(i)}`, condition: starterCid } },
+      ...(i < 2
+        ? [
+            {
+              at,
+              kind: "solve.call" as const,
+              data: {
+                solve: `st-${String(i)}`,
+                tool: "write",
+                isError: true,
+                text: "EPERM: operation not permitted",
+              },
+            },
+          ]
+        : []),
+      {
+        at,
+        kind: SOLVE_FINISHED,
+        data: { solve: `st-${String(i)}`, ending: { outcome: "pass" } },
+      },
+    ]).flat();
+    const builtSolves: LogEvent[] = Array.from({ length: 40 }, (_, i) => [
+      { at, kind: SOLVE_STARTED, data: { solve: `bu-${String(i)}`, condition: builtCid } },
+      {
+        at,
+        kind: SOLVE_FINISHED,
+        data: { solve: `bu-${String(i)}`, ending: { outcome: "pass" } },
+      },
+    ]).flat();
+    const envAbortedLog: LogEvent[] = [
+      { at, kind: "campaign.opened", data: { judged: true } },
+      {
+        at,
+        kind: "exam.drafted",
+        data: {
+          session: "d-1",
+          draft: {
+            objective: {
+              quantity: "quality",
+              direction: "higher",
+              scale: "unit",
+              items: [{ id: "clarity", weight: 1, kind: "judge", criterion: "Clear structure" }],
+            },
+          },
+        },
+      },
+      { at, kind: "condition.recorded", data: { id: starterCid, condition: requireJsonValue(starterCond) } },
+      { at, kind: "condition.recorded", data: { id: builtCid, condition: requireJsonValue(builtCond) } },
+      {
+        at,
+        kind: COMPARISON_STARTED,
+        data: { session: "g-1", old: starterDigest, fresh: builtDigest, starter: starterDigest },
+      },
+      ...starterSolves,
+      ...builtSolves,
+      { at, kind: "referee.pair", data: { comparison: "g-1", judge: null, holistic: null } },
+      { at, kind: "campaign.ended", data: { ending: "environment", why: "judge error" } },
+    ];
+    const lines = diagnosticRows(envAbortedLog, join(tmpdir(), "nonexistent-states-dir")).join("\n");
+    expect(lines).toContain(
+      "[WARN] verdicts (lane 11): unexercised judged lane: exam declared judge items yet 0 referee.pair votes completed across 1 started comparison before ending environment",
+    );
+    expect(lines).toContain(
+      `[WARN] honesty (lane 19): solver write/edit permission refusals: 2/60 solves hit EPERM/EACCES; by harness: starter ${starterDigest.slice(0, 8)} 2/20 (10.0%)`,
+    );
+
+    const completedPairLog: LogEvent[] = [
+      ...envAbortedLog,
+      { at, kind: "referee.pair", data: { comparison: "g-1", judge: 1, holistic: 1 } },
+    ];
+    expect(
+      diagnosticRows(completedPairLog, join(tmpdir(), "nonexistent-states-dir")).join("\n"),
+    ).not.toContain("unexercised judged lane");
+
+    const operatorEnded = envAbortedLog.filter(({ kind }) => kind !== "campaign.ended");
+    expect(
+      diagnosticRows(
+        [...operatorEnded, { at, kind: "campaign.ended", data: { ending: "operator", why: "paused" } }],
+        join(tmpdir(), "nonexistent-states-dir"),
+      ).join("\n"),
+    ).not.toContain("unexercised judged lane");
+  });
+
+  it("excludes reverted-to-starter epochs from the PROMOTION UNCONFIRMED denominator", () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const revertLog: LogEvent[] = [
+      { at, kind: "harness.promoted", data: { harness: "h-first00", from: "starter" } },
+      { at, kind: "harness.reverted", data: { harness: "starter", from: "h-first00", reason: "no step" } },
+      { at, kind: "harness.promoted", data: { harness: "h-second0", from: "starter" } },
+    ];
+    const unconfirmed = overview(revertLog).triggers.find(({ name }) => name === "PROMOTION UNCONFIRMED");
+    expect(unconfirmed?.detail).toStartWith("2 of 2 promotions:");
+    expect(unconfirmed?.detail).toContain("h-first0 in epoch 2, closed");
+    expect(unconfirmed?.detail).toContain("h-second in epoch 4, open");
+  });
+
+  it("summarises judged pair counts, swap disagreements, extract coverage, and spend per comparison in pairRows", () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const judgedLog: LogEvent[] = [
+      {
+        at,
+        kind: COMPARISON_STARTED,
+        data: { session: "g-j", old: "h0", fresh: "h1", starter: "h0", tasks: ["v-1"] },
+      },
+      { at, kind: "referee.brief", data: { comparison: "g-j", billed: 0.4 } },
+      {
+        at,
+        kind: "referee.pair",
+        data: {
+          comparison: "g-j",
+          judge: 0.5,
+          holistic: 1,
+          criteria: { clarity: 0.5, depth: 0, holistic: 1 },
+          disagreed: ["depth"],
+          extracts: { files: 4, empty: 1, faults: 0, truncated: 2 },
+          billed: 1.25,
+        },
+      },
+      {
+        at,
+        kind: "referee.pair",
+        data: {
+          comparison: "g-j",
+          judge: null,
+          holistic: null,
+          extracts: { files: 2, empty: 0, faults: 1, truncated: 0 },
+          billed: 0.35,
+        },
+      },
+    ];
+    const output = pairRows(judgedLog).join("\n");
+    expect(output).toContain(
+      "== g-j judge: 1/2 pairs (1 null), swap disagreements 1/3 votes, extracts 6 files (1 empty, 1 faults, 2 truncated), billed $2.00",
+    );
+    expect(output).not.toContain("depth");
+    expect(output).not.toContain("clarity");
+  });
+
+  it("excludes judge instrument rows from CONTROL COVERAGE and REFUSALS BY CHECK, and loads explicitly named seeded runs", async () => {
+    const at = "2026-11-26T00:00:00.000Z";
+    const judgedChecks: LogEvent[] = [
+      {
+        at,
+        kind: "checker.read",
+        data: {
+          rows: [
+            { id: "check-a", instrument: "author", named: 1, caught: 1 },
+            { id: "clarity", instrument: "judge", named: 0, caught: 0 },
+          ],
+        },
+      },
+      { at, kind: SOLVE_STARTED, data: { solve: "s-pass", condition: "c-1" } },
+      { at, kind: SOLVE_FINISHED, data: { solve: "s-pass", ending: { outcome: "pass" } } },
+      { at, kind: SOLVE_STARTED, data: { solve: "s-fail", condition: "c-1" } },
+      { at, kind: SOLVE_FINISHED, data: { solve: "s-fail", ending: { outcome: "fail" } } },
+      {
+        at,
+        kind: "verdict",
+        data: { solve: "s-fail", task: "v-1", kind: "fail", blocking: ["check-a"] },
+      },
+    ];
+    const fired = overview(judgedChecks).triggers.map(({ name }) => name);
+    expect(fired).not.toContain("CONTROL COVERAGE");
+    expect(fired).not.toContain("REFUSALS BY CHECK");
+
+    const runsDir = mkdtempSync(join(tmpdir(), "wri-seeded-runs-"));
+    try {
+      const opened = `${JSON.stringify({ at, kind: "campaign.opened", data: { project: "jobstat" } })}\n`;
+      for (const [name, seeded] of [
+        ["jobstat-live", false],
+        ["jobstat-seed", true],
+      ] as const) {
+        const folder = join(runsDir, "here", name);
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, "log.jsonl"), opened);
+        if (seeded) writeFileSync(join(folder, "seed.json"), '{"from":"prior"}\n');
+      }
+      const repo = join(import.meta.dir, "..");
+      const byExactSeed = await loadRuns(
+        { home: runsDir, since: "2026-11-01", names: ["jobstat-seed"], repo },
+        "unpriced",
+      );
+      expect(byExactSeed.runs.map(({ name }) => name)).toEqual(["jobstat-seed"]);
+      const byDomain = await loadRuns(
+        { home: runsDir, since: "2026-11-01", names: ["jobstat"], repo },
+        "unpriced",
+      );
+      expect(byDomain.runs.map(({ name }) => name)).toEqual(["jobstat-live"]);
+    } finally {
+      rmSync(runsDir, { recursive: true, force: true });
+    }
   });
 });

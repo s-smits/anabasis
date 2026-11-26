@@ -37,6 +37,6 @@ git diff --no-index <parent>/.toolchain/ <child>/.toolchain/ -- ':!*__pycache__*
 | --- | --- | --- |
 | Harness loading and digest | `openHarness`, `src/harness/open.ts` | `test/harness-open.test.ts` |
 | Starter Built Harness and `HARNESS.md` | `writeStarter`, `HARNESS_ACCOUNT`, `src/harness/starter.ts`; `src/builder/session.ts` | `test/starter.test.ts` |
-| Installed programs | `installedPrograms`, `programsOf`, `src/harness/programs.ts` | `test/programs.test.ts` |
-| Cross-OS portability and export | `foreignPrograms`, `src/harness/place.ts`; `studies/shared/{bundle,foreign-python,pi-solve}.ts` | `test/studies-foreign-python.test.ts`, `test/studies-harness2.test.ts`, `test/runs-bench.test.ts` |
+| Installed programs & `.toolchain/env.sh` | `installedPrograms`, `programsOf`, `src/harness/programs.ts`; `checkToolTreeEnv`, `src/builder/store.ts`; `readHarnessFiles`, `src/harness/files.ts` | `test/programs.test.ts`, `test/builder.test.ts`, `test/solve-sandbox.test.ts` |
+| Cross-OS portability and export | `foreignPrograms`, `src/harness/place.ts`; `studies/shared/{bundle,foreign-python,pi-solve}.ts` ([stack-contracts.md](../run-improvement-campaign/references/stack-contracts.md) stages 4–5, 8) | `test/studies-foreign-python.test.ts`, `test/studies-harness2.test.ts`, `test/runs-bench.test.ts` |
 | Builder, Solver, Examiner, Auditor prompts | `src/builder/prompt.ts`, `src/solver/prompt.ts`, `src/examiner/prompt.ts`, `src/audit/auditor.ts` | `test/builder.test.ts`, `test/solver-prompt.test.ts`, `test/examiner.test.ts`, `test/review.test.ts` |

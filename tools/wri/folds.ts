@@ -2,7 +2,7 @@
  * What every lane of a whole-run investigation starts from: the folds of one campaign's log and the
  * catalogue of triggers.
  */
-import { unadmitted } from "#src/kernel/acceptance.ts";
+import { JUDGE, unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { type Paired, type Tally, testOf, unsolved as noneAnswered } from "#src/kernel/compare.ts";
@@ -543,7 +543,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const lost = faults.filter((fault) => fault.includes("not on the verifier's tool path")).length;
   // The objective refuses none, so its row of zeros would read as a check that missed its control
   // answers.
-  const checks = rows.filter((row) => row.id !== OBJECTIVE.id);
+  const checks = rows.filter((row) => row.id !== OBJECTIVE.id && row.instrument !== JUDGE);
   const uncaught = checks.filter((row) => count(row.named) === 0 || count(row.caught) < count(row.named));
   const refused = refusals(log);
   // No reviewer rules on an Examiner's try, so a row of a try's refusals alone sends no lane to read

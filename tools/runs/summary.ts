@@ -98,7 +98,10 @@ function reportHead(data: JsonObject): string {
   }
   const aside = sized(data.aside);
   if (aside > 0) {
-    return `⚠ reported ${word(data.reading)} (${plural(aside, "task")} set aside awaiting operator labels)`;
+    const counted = asRecord(data.counted);
+    const level = isNumber(data.level) ? data.level : 0.02;
+    const flips = data.reading === "step" && counted !== null && !isSignificant(scoresIn(counted), level);
+    return `⚠ reported ${word(data.reading)} (${plural(aside, "task")} set aside awaiting operator labels${flips ? `; with their rejections counted it reads ${word(counted.wins)}-${word(counted.losses)}-${word(counted.ties)}, no step` : ""})`;
   }
   return `${data.reading === "not-scored" ? "⚠" : "◆"} reported ${word(data.reading)}`;
 }

@@ -6,6 +6,7 @@ import { foreignHead, placeOf, UNAME_PLACES } from "#src/harness/place.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { liveOf, payerOf, seatsIn } from "../tools/runs/live.ts";
 import { allowedLogins, asGathered, capOf, startRefusal } from "../tools/runs/logins.ts";
@@ -13,6 +14,7 @@ import type { Host } from "../tools/runs/host-config.ts";
 import { leastOccupied } from "../tools/runs/placement.ts";
 import { packOf, type Run, runNamed } from "../tools/runs/registry.ts";
 import { decidedOn, planOn } from "../tools/runs/view.ts";
+import { EVENT_FORMATTERS } from "../tools/runs/summary.ts";
 
 describe("each login's live runs, on every host", () => {
   it("leaves a host uncounted whose answer is no list of records with logins", () => {
@@ -275,5 +277,26 @@ describe("the machines a kept harness's programs run on", () => {
     const packEvents = events.slice(1);
     expect(planOn(packEvents).unprepared).toBe(true);
     expect(decidedOn(packEvents).move).toBe("prepare");
+  });
+});
+
+describe("a reported step that rests on set-aside tasks", () => {
+  it("says the step fails with their rejections counted exactly when it does", () => {
+    const report = EVENT_FORMATTERS["comparison.reported"];
+    if (report === undefined) throw new Error("no comparison.reported formatter");
+    const cases = ["step", "no-step"].flatMap((reading) =>
+      [[], ["task"]].flatMap((aside) =>
+        [0.01, 0.02, undefined].flatMap((level) =>
+          [5, 6, 7, null].map((n) => ({ reading, aside, level, n })),
+        ),
+      ),
+    );
+    for (const { reading, aside, level, n } of cases) {
+      const counted =
+        n === null ? null : { wins: n, losses: 0, ties: 0, differences: Array.from({ length: n }, () => 1) };
+      const line = report({ reading, aside, ...keyIfDefined("level", level), counted }) ?? "";
+      const flips = reading === "step" && aside.length > 0 && n !== null && 2 ** -n > (level ?? 0.02);
+      expect(line.includes(`with their rejections counted it reads ${String(n)}-0-0, no step`)).toBe(flips);
+    }
   });
 });

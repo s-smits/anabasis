@@ -115,7 +115,7 @@ Report Supply + the four factors (`AGENTS.md` §1) at pass open and close:
 | 2 | Honesty | Report `noise`; `close.ts` "The chance of a false promotion" | A/A controls & cumulative risk |
 | 3 | Supply | `--dry-run`, `runs view`, `task.gate` | `comparisonFloor(level)` frontier tasks |
 | 4 | Verdicts | `tools/campaign/settle.ts` | `AGENTS.md` factor 3 |
-| 5 | Economy | `close.ts` "Work and spend", `promotionsWorth`, `worthLine` | ≤3 attempts/epoch after setup |
+| 5 | Economy | `close.ts` "Work and spend", `promotionsWorth`, `worthLine` | dollars and active hours per promotion, no attempt bar |
 
 ## The outside aim: Harness² on JobBench
 

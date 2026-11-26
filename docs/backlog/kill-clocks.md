@@ -4,10 +4,10 @@ Two mechanisms stay on a clock: each is cut unless the next two fresh campaigns 
 
 ## Draft audit (`src/audit/draft-audit.ts`, `tools/eval/draft.ts`)
 
-- **Decision it must move:** a draft audit (`referee.draft`, verdict `defects`) after which the Examiner changes the drafted contract or checks before the freeze, or a put refused because `replayDraftProbes` still finds a cited probe broken.
-- **Reader:** `referee.draft` events by verdict, and `exam.drafted` events after a `defects` audit in the same opening. `replayDraftProbes` outcomes reach the log only as the Examiner's refused put in its `draft.call` trace; no event carries `stillBroken` or `verifiedFixed`, so a block from replay is counted from that trace.
-- **Cut when:** the two runs together hold 0 `defects` audits followed by a changed draft and 0 replay blocks. The draft audit, its prompt section, `replayDraftProbes` and `MAX_DRAFT_AUDITS` then go as one strand.
-- **Keep when:** at least one audit moves a draft. That draft's admitted controls are then re-read for whether the change fixed a real check defect (vetted by hand, not by the audit's own account).
+- **Decision it must move:** a real check defect fixed before the freeze because a draft audit found it: a `defects` finding (`referee.draft`) whose cited probe or check, re-run by hand on the admitted controls of the draft that stands, shows a wrong answer passing or a right one refused in the refused draft and not in the frozen one.
+- **Reader:** `referee.draft` events by verdict; the refused draft in the Examiner's `draft.call` trace (its `draft_exam` arguments and refusal text) beside the `exam.drafted` that stands. A `defects` audit refuses the put, so a later `exam.drafted` alone proves nothing. `replayDraftProbes` outcomes reach the log only as that refusal text; no event carries `stillBroken` or `verifiedFixed`.
+- **Cut when:** the two runs together hold 0 such vetted fixes. The draft audit, its prompt section, `replayDraftProbes` and `MAX_DRAFT_AUDITS` then go as one strand.
+- **Keep when:** at least one vetted fix.
 - **Archive baseline:** 8 `referee.draft` events across 304 archived logs: 5 `defects`, 2 `sound`, 1 `skipped`.
 
 ## Examiner conversation (`src/examiner/session.ts:conversing`)

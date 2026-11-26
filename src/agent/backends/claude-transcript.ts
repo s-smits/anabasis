@@ -50,9 +50,15 @@ function parseTranscript(jsonl: string): {
 } {
   let sdkSessionId: string | undefined;
   const entries: ParsedEntry[] = [];
-  for (const line of jsonl.split("\n")) {
-    if (line.trim() === "") continue;
-    const raw = asRecord(capturedJsonParse(line));
+  const lines = jsonl.split("\n").filter((line) => line.trim() !== "");
+  for (const [index, line] of lines.entries()) {
+    let raw: JsonObject | null;
+    try {
+      raw = asRecord(capturedJsonParse(line));
+    } catch (error) {
+      if (index === lines.length - 1 && error instanceof SyntaxError) break;
+      throw error;
+    }
     if (raw === null) continue;
     if (sdkSessionId === undefined && isString(raw.sessionId) && UUID.test(raw.sessionId)) {
       sdkSessionId = raw.sessionId;
@@ -134,6 +140,25 @@ function assistantTurns(entries: readonly ParsedEntry[]): readonly TurnSpan[] {
   return turns;
 }
 
+function missingToolIds(turn: TurnSpan): readonly string[] {
+  return [...turn.toolUseIds].filter((id) => !turn.toolResultIds.has(id));
+}
+
+function lastCompleteForkPoint(jsonl: string): {
+  readonly sdkSessionId: string;
+  readonly resumeSessionAt?: string;
+} {
+  const { sdkSessionId, entries } = parseTranscript(jsonl);
+  const turns = assistantTurns(entries);
+  if (turns.length === 0) return { sdkSessionId };
+  const complete = turns.findLast((turn) => missingToolIds(turn).length === 0);
+  if (complete === undefined) {
+    throw new Error("the Claude transcript holds no completed assistant turn to fork from");
+  }
+  const end = entries[complete.endIndex];
+  return { sdkSessionId, ...keyIfDefined("resumeSessionAt", end?.uuid) };
+}
+
 export function resolveForkPoint(
   jsonl: string,
   atTurn: number,
@@ -149,7 +174,7 @@ export function resolveForkPoint(
       `turn ${String(atTurn)} is out of range: transcript holds ${String(turns.length)} assistant turns`,
     );
   }
-  const missing = [...chosen.toolUseIds].filter((id) => !chosen.toolResultIds.has(id));
+  const missing = missingToolIds(chosen);
   if (missing.length > 0) {
     const earlier =
       atTurn > 1 ? `fork at turn ${String(atTurn - 1)} instead` : "no earlier completed turn exists";
@@ -174,9 +199,11 @@ export function stageForkTranscript(
   let sdkSessionId: string;
   let resumeSessionAt: string | undefined;
   if (fork.upToTurn === undefined) {
-    const parsed = parseTranscript(raw);
-    sdkSessionId = parsed.sdkSessionId;
-    if (fork.upToUuid !== undefined) {
+    if (fork.upToUuid === undefined) {
+      ({ sdkSessionId, resumeSessionAt } = lastCompleteForkPoint(raw));
+    } else {
+      const parsed = parseTranscript(raw);
+      sdkSessionId = parsed.sdkSessionId;
       if (!parsed.entries.some(({ uuid }) => uuid === fork.upToUuid)) {
         throw new Error(`message UUID ${fork.upToUuid} is not in ${fork.transcript}`);
       }
@@ -194,17 +221,20 @@ export function stageForkTranscript(
 function persistedSource(
   projectDir: string,
   sdkSessionId: string | undefined,
+  excludeSessionId: string | undefined,
 ): {
   readonly file: string;
   readonly sdkSessionId: string | undefined;
 } | null {
   if (!existsSync(projectDir)) return null;
   if (sdkSessionId !== undefined) {
+    if (sdkSessionId === excludeSessionId) return null;
     const exact = join(projectDir, `${sdkSessionId}.jsonl`);
-    if (existsSync(exact)) return { file: exact, sdkSessionId };
+    return existsSync(exact) ? { file: exact, sdkSessionId } : null;
   }
+  const excludedFile = excludeSessionId === undefined ? undefined : `${excludeSessionId}.jsonl`;
   const candidates = readdirSync(projectDir)
-    .filter((name) => name.endsWith(".jsonl"))
+    .filter((name) => name.endsWith(".jsonl") && name !== excludedFile)
     .map((name) => ({
       name,
       path: join(projectDir, name),
@@ -214,16 +244,21 @@ function persistedSource(
   const newest = candidates[0];
   if (newest === undefined) return null;
   const stem = newest.name.slice(0, -".jsonl".length);
-  return { file: newest.path, sdkSessionId: UUID.test(stem) ? stem : sdkSessionId };
+  return { file: newest.path, sdkSessionId: UUID.test(stem) ? stem : undefined };
 }
 
 export function savePersistedTranscript(
   configDir: string,
   persist: ClaudePersist,
   sdkSessionId: string | undefined,
+  excludeSessionId?: string,
 ): boolean {
   if (!isSafePathSegment(persist.seat)) return false;
-  const found = persistedSource(join(configDir, "projects", CLAUDE_PROJECT_DIR), sdkSessionId);
+  const found = persistedSource(
+    join(configDir, "projects", CLAUDE_PROJECT_DIR),
+    sdkSessionId,
+    excludeSessionId,
+  );
   if (found === null) return false;
   mkdirSync(persist.dir, { recursive: true });
   const target = join(persist.dir, `${persist.seat}.jsonl`);

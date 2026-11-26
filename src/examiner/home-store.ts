@@ -26,6 +26,20 @@ export const EXAMINER_HOMES = "examiner-homes";
 
 const OBJECTS = "objects";
 const HASH = /^[0-9a-f]{64}$/u;
+const SKIP_DIRS: ReadonlySet<string> = new Set([
+  "node_modules",
+  ".bundle-snapshots",
+  "__pycache__",
+  ".git",
+  ".cache",
+  ".cargo",
+  ".local",
+  ".matplotlib",
+  "Library",
+]);
+
+const isPrivateName = (name: string): boolean =>
+  name === ".env" || name.startsWith(".env.") || name.endsWith(".env") || name === "auth.json";
 
 type HomeEntry =
   | { readonly path: string; readonly kind: "dir" }
@@ -65,12 +79,14 @@ function walkHome(root: string, prefix: string, objectsDir: string, out: HomeEnt
   const dir = prefix === "" ? root : join(root, prefix);
   const names = readdirSync(dir).toSorted(compareCodeUnits);
   for (const name of names) {
+    if (isPrivateName(name)) continue;
     const rel = prefix === "" ? name : `${prefix}/${name}`;
     const full = join(root, rel);
     const stat = lstatSync(full);
     if (stat.isSymbolicLink()) {
       out.push({ path: rel, kind: "symlink", target: readlinkSync(full) });
     } else if (stat.isDirectory()) {
+      if (SKIP_DIRS.has(name)) continue;
       out.push({ path: rel, kind: "dir" });
       walkHome(root, rel, objectsDir, out);
     } else if (stat.isFile()) {
@@ -120,23 +136,39 @@ function validEntry(entry: unknown): HomeEntry {
   throw new Error(`invalid examiner home snapshot entry for ${row.path}`);
 }
 
+function traversesSymlink(path: string, symlinks: ReadonlySet<string>): boolean {
+  const parts = path.split("/");
+  let prefix = "";
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    const part = parts[index] ?? "";
+    prefix = index === 0 ? part : `${prefix}/${part}`;
+    if (symlinks.has(prefix)) return true;
+  }
+  return false;
+}
+
 export function restoreHome(storeDir: string, sessionId: string, targetDir: string): void {
   const raw = parseJsonAs<HomeManifest>(readFileSync(manifestPath(storeDir, sessionId), "utf8"));
   if (!Array.isArray(raw.entries)) throw new Error(`${sessionId}: invalid examiner home manifest`);
   const objectsDir = join(storeDir, OBJECTS);
   const root = resolve(targetDir);
   mkdirSync(root, { recursive: true });
+  const symlinks = new Set<string>();
   for (const item of raw.entries) {
     const entry = validEntry(item);
     const dest = resolve(root, entry.path);
     if (!containsPath(dest, root) || dest === root) {
       throw new Error(`${sessionId}: examiner home entry escapes target: ${entry.path}`);
     }
+    if (traversesSymlink(entry.path, symlinks)) {
+      throw new Error(`${sessionId}: examiner home entry traverses symlink: ${entry.path}`);
+    }
     if (entry.kind === "dir") {
       mkdirSync(dest, { recursive: true });
     } else if (entry.kind === "symlink") {
       mkdirSync(dirname(dest), { recursive: true });
       symlinkSync(entry.target, dest);
+      symlinks.add(entry.path);
     } else {
       const blob = join(objectsDir, entry.sha256);
       if (!existsSync(blob)) throw new Error(`${sessionId}: missing examiner home blob ${entry.sha256}`);

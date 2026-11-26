@@ -18,6 +18,7 @@ import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/jso
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
+import { warn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { EXAMINER_HOMES, snapshotHome } from "./home-store.ts";
 import {
@@ -106,7 +107,11 @@ export async function inExaminerSandbox<T>(
       rmSync(keep, { recursive: true, force: true });
       cpSync(home, keep, carry);
       if (sessionId !== undefined && isSafePathSegment(sessionId)) {
-        snapshotHome(home, join(dirname(keep), EXAMINER_HOMES), sessionId);
+        try {
+          snapshotHome(home, join(dirname(keep), EXAMINER_HOMES), sessionId);
+        } catch (error) {
+          warn(`examiner home snapshot skipped for ${sessionId}: ${errorMessage(error)}`);
+        }
       }
     };
     const result = await run({ shell, pinned, began, keep: kept });

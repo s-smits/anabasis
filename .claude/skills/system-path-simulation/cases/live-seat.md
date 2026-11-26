@@ -60,8 +60,9 @@ mid-session continuation flags (refused outside `sim-<what>` with `seed.json`):
   `<campaign>/claude-sessions/<session>.jsonl` (ephemeral solves and Referee votes do not). Forking
   stages that transcript under an isolated `CLAUDE_CONFIG_DIR` (`CLAUDE_CODE_PROJECT_DIR_NAME=seat`)
   and launches the Claude Agent SDK with `resume`, `forkSession: true`, and `resumeSessionAt` set to
-  the exact final chain UUID of assistant turn `k` (including its `tool_result` entries, refusing
-  incomplete tool-call turns). The new worktree's fresh `systemPrompt` and MCP tools apply on turn
+  the exact final chain UUID of assistant turn `k` (1-based within the named session, matching
+  `--wrap-turns <session>:<k>`, including its `tool_result` entries, refusing incomplete tool-call
+  turns; omitting `--at-turn` defaults to the session's last complete turn). The new worktree's fresh `systemPrompt` and MCP tools apply on turn
   `k + 1`, opened with `--nudge` (or `"Continue from where you left off."`). Files written to
   `examiner-home` are snapshotted per session under `examiner-homes/` (content-deduped by SHA-256),
   so `--before x-2` restores the exact `examiner-home` from after `x-1`, though edits made mid-way

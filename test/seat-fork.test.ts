@@ -86,7 +86,7 @@ describe("seatForkPlan and applyContinuation", () => {
 
     const forX2 = seatForkPlan(log, "exam", claudeModel, {
       "fork-from": "x-2",
-      "at-turn": "3",
+      "at-turn": "1",
       nudge: "Focus on edge cases.",
     });
     expect(forX2.fork).toEqual({
@@ -94,6 +94,9 @@ describe("seatForkPlan and applyContinuation", () => {
       upToTurn: 3,
     });
     expect(forX2.continuation).toEqual({ mode: "fork", text: "Focus on edge cases." });
+    expect(() => seatForkPlan(log, "exam", claudeModel, { "fork-from": "x-2", "at-turn": "2" })).toThrow(
+      "recorded 1 exam turns",
+    );
   });
 
   it("reconstructs exact turn-bounded wrapped context from log.jsonl and refuses counts past recorded turns", () => {

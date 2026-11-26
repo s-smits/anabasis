@@ -160,6 +160,10 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
 
     writeFileSync(join(home, "shared.txt"), "unchanged across sessions\n");
     writeFileSync(join(home, "NOTES.md"), "draft notes\n");
+    writeFileSync(join(home, ".env"), "SECRET=1\n");
+    writeFileSync(join(home, "auth.json"), '{"token":"secret"}\n');
+    mkdirSync(join(home, "node_modules", "pkg"), { recursive: true });
+    writeFileSync(join(home, "node_modules", "pkg", "index.js"), "ignored\n");
     writeFileSync(join(home, "sub", "tool.sh"), "#!/bin/sh\necho v1\n");
     chmodSync(join(home, "sub", "tool.sh"), 0o755);
     symlinkSync("shared.txt", join(home, "link.txt"));
@@ -206,6 +210,9 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
     );
     expect(readlinkSync(join(seeded, "examiner-home", "link.txt"))).toBe("shared.txt");
     expect(statSync(join(seeded, "examiner-home", "sub", "tool.sh")).mode & 0o777).toBe(0o755);
+    expect(existsSync(join(seeded, "examiner-home", ".env"))).toBe(false);
+    expect(existsSync(join(seeded, "examiner-home", "auth.json"))).toBe(false);
+    expect(existsSync(join(seeded, "examiner-home", "node_modules"))).toBe(false);
 
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "d-1.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-1.jsonl"))).toBe(true);
@@ -230,5 +237,17 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
       }),
     );
     expect(() => restoreHome(store, "missing", join(root, "out-2"))).toThrow("missing examiner home blob");
+
+    writeFileSync(
+      join(store, "sym-escape.json"),
+      JSON.stringify({
+        session: "sym-escape",
+        entries: [
+          { path: "linkdir", kind: "symlink", target: "/tmp" },
+          { path: "linkdir/pwn.txt", kind: "dir" },
+        ],
+      }),
+    );
+    expect(() => restoreHome(store, "sym-escape", join(root, "out-3"))).toThrow("traverses symlink");
   });
 });

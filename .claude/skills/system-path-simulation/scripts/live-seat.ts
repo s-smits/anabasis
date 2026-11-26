@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { applyContinuation } from "#src/agent/session.ts";
+import type { applyContinuation as ApplyContinuation } from "#src/agent/session.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { gateAnswers, measuredGate } from "#tools/wri/gate-era.ts";
 import type { drafting as Drafting } from "#src/examiner/draft.ts";
@@ -715,8 +715,13 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   }
   const log = seedLog(tree, name, args.die);
   const before = read(log).length;
-  const show = (mode: PrintableMode, continuation: Parameters<typeof applyContinuation>[1]) =>
-    printMode({ ...mode, opening: applyContinuation(mode.opening, continuation) }, log, before, name);
+  // SAFETY: target Anabasis trees may export `applyContinuation`; older trees omit it cleanly.
+  const sessionMod = (await import(join(tree, "src/agent/session.ts"))) as {
+    applyContinuation?: typeof ApplyContinuation;
+  };
+  const apply = sessionMod.applyContinuation ?? ((opening: string) => opening);
+  const show = (mode: PrintableMode, continuation: Parameters<typeof ApplyContinuation>[1]) =>
+    printMode({ ...mode, opening: apply(mode.opening, continuation) }, log, before, name);
   runtimeProcess.chdir(tree);
   if (script === DRAFT) {
     // SAFETY: targets current Anabasis trees exporting `drafting(terms, within, home?)`.

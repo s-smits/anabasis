@@ -1,5 +1,5 @@
 import type { AgentTool } from "../agent/session.ts";
-import { decodeBase64, DELIVERABLES } from "../kernel/answer-files.ts";
+import { DELIVERABLES, fileRowBytes } from "../kernel/answer-files.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { GUIDE_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
@@ -7,7 +7,6 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
 import { plural } from "../meta/text.ts";
-import { storedZip } from "../meta/zip.ts";
 import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "../tools/answer.ts";
 import { INSTALLER_TOLD, type NetworkReach, reserveSeconds } from "../tools/command.ts";
 import type { CODING_TOOLS } from "../tools/coding.ts";
@@ -39,8 +38,6 @@ export interface Told {
 }
 
 const TASK_FILES = "public/files";
-
-const NAME_BYTES = 255;
 
 export const NUDGE = "Finish the task with the available tools, then submit your answer.";
 
@@ -159,37 +156,6 @@ export function firstTurn(task: PublicTask): string {
   return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(opened(task.publicInput), null, 2)}`;
 }
 
-function safeFilePath(path: string): boolean {
-  return (
-    Buffer.byteLength(path) <= NAME_BYTES &&
-    !path.includes("\0") &&
-    !path.includes("\\") &&
-    path.split("/").every((part) => part !== "" && part !== "." && part !== "..")
-  );
-}
-
-function rowBytes(row: Record<string, JsonValue | undefined>): Buffer | null {
-  if (isString(row.text)) return Buffer.from(row.text, "utf8");
-  if (isString(row.base64)) return decodeBase64(row.base64);
-  if (!Array.isArray(row.entries)) return null;
-  const members: { path: string; text: string }[] = [];
-  const seen = new Set<string>();
-  for (const item of row.entries) {
-    const member = asRecord(item);
-    if (
-      !isString(member?.path) ||
-      !isString(member.text) ||
-      !safeFilePath(member.path) ||
-      seen.has(member.path)
-    ) {
-      return null;
-    }
-    seen.add(member.path);
-    members.push({ path: member.path, text: member.text });
-  }
-  return storedZip(members);
-}
-
 function opened(publicInput: JsonValue): JsonValue {
   const record = asRecord(publicInput);
   if (record === null || !Array.isArray(record.files)) return publicInput;
@@ -198,7 +164,7 @@ function opened(publicInput: JsonValue): JsonValue {
     const held = asRecord(row);
     if (held === null || !isString(held.path)) return row;
     const bytes = written.get(held.path);
-    const decoded = bytes === undefined ? null : rowBytes(held);
+    const decoded = bytes === undefined ? null : fileRowBytes(held);
     if (bytes === undefined || decoded === null || !decoded.equals(bytes)) return row;
     written.delete(held.path);
     const { text: _t, base64: _b, entries: _e, ...rest } = held;
@@ -213,9 +179,8 @@ function taskFiles(publicInput: JsonValue): Map<string, Buffer> {
   let total = 0;
   for (const each of Array.isArray(rows) ? rows : []) {
     const row = asRecord(each);
-    if (row === null || !isString(row.path) || !safeFilePath(row.path)) continue;
-    const bytes = rowBytes(row);
-    if (bytes === null || total + bytes.length > DELIVERABLES.bytes) continue;
+    const bytes = row === null ? null : fileRowBytes(row);
+    if (bytes === null || !isString(row?.path) || total + bytes.length > DELIVERABLES.bytes) continue;
     const path = row.path;
     const apart = [...files.keys()].every(
       (other) => other !== path && !other.startsWith(`${path}/`) && !path.startsWith(`${other}/`),

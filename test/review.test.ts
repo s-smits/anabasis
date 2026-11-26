@@ -23,7 +23,14 @@ import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { agreement, clears, passAgreement, settledPassLabels } from "../src/audit/agreement.ts";
+import {
+  agreement,
+  clears,
+  passAgreement,
+  settledPassLabels,
+  unclearReport,
+  VERDICT_BAR,
+} from "../src/audit/agreement.ts";
 import { replayDraftProbes, reviewDraft } from "../src/audit/draft-audit.ts";
 import { type DraftProbeRow, type ProbeRow, probeExamplesTool, probeTool } from "../src/audit/probe.ts";
 import { type Reader, auditRejection } from "../src/audit/auditor.ts";
@@ -1150,6 +1157,22 @@ describe("hand-label agreement", () => {
     expect(measured.observed).toBeCloseTo(2 / 5);
     expect(measured.kappa).toBeCloseTo(0);
     expect(measured.pabak).toBeCloseTo(0.1);
+    const nonZeroKappa = agreement(
+      [
+        ruled("k1", "earned"),
+        ruled("k2", "earned"),
+        ruled("k3", "check-defect"),
+        ruled("k4", "check-defect"),
+      ],
+      new Map([
+        ["k1", "earned"],
+        ["k2", "earned"],
+        ["k3", "check-defect"],
+        ["k4", "earned"],
+      ] as const),
+    );
+    expect(nonZeroKappa.kappa).toBeCloseTo(0.5);
+    expect(VERDICT_BAR).toEqual({ caught: 0.75, voided: 0.1 });
     expect(agreement(events, new Map([["e", "check-defect"]] as const)).caught).toBe(1);
     expect(agreement(events, new Map())).toMatchObject({ observed: null, kappa: null, pabak: null });
     expect(agreement(events, new Map([["c", "earned"]] as const))).toMatchObject({
@@ -1170,6 +1193,7 @@ describe("hand-label agreement", () => {
     const full = agreement(many, thirty);
     for (const [caught, voided, expected] of [
       [0.5, 0.7, true],
+      [0.5, 2 / 3, true],
       [0.5, 0.4, false],
       [0.8, 0.7, false],
       [0.5, 0.1, false],
@@ -1195,6 +1219,21 @@ describe("hand-label agreement", () => {
     const noDefects = agreement(many, new Map([...thirty].filter(([, v]) => v === "earned")));
     expect(noDefects.caught).toBeNull();
     expect(clears(noDefects, { caught: 0, voided: 1 })).toBe(false);
+
+    expect(unclearReport(agreement(events, new Map([["c", "earned"]] as const)))).toBeNull();
+    const unclearOf = (earnedCount: number, defectCount: number) => {
+      const total = earnedCount + defectCount;
+      const evs = Array.from({ length: total }, (_, i) => ruled(`u-${String(i)}`, "unclear"));
+      const lbls = new Map(
+        Array.from(
+          { length: total },
+          (_, i) => [`u-${String(i)}`, i < earnedCount ? "earned" : "check-defect"] as const,
+        ),
+      );
+      return unclearReport(agreement(evs, lbls));
+    };
+    expect(unclearOf(1, 3)).toBeNull();
+    expect(unclearOf(2, 5)).toMatch(/\b2\b.*\b7\b/u);
   });
 
   it("parses settled pass labels and clears at 20 decided labels with at most 10% wrong", () => {

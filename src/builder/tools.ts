@@ -32,7 +32,7 @@ import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { toolTreeEnv } from "../sandbox/isolation.ts";
 import { ending as endSession, text, tool } from "../tools/answer.ts";
-import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
+import { CODING_TOOLS, codingTools, prepareImage, selectedCodingTools } from "../tools/coding.ts";
 import { type CommandSandbox, type NetworkReach, runSandboxed } from "../tools/command.ts";
 import { formatKeys, namedTasks, readHarnessFiles } from "../harness/files.ts";
 import type { Harness } from "../harness/open.ts";
@@ -434,7 +434,7 @@ export function traceTool(bench: Bench): AgentTool {
   return tool({
     name: "read_trace",
     description:
-      "Inspect a practice solve: overview (ending, answer, delivered files, closing text, tool calls), one full call (`call`), or a delivered file extracted offline (`file`, paged from `from` bytes, including workbook sheet order/dimensions, formulas, embedded visuals, tables and image dimensions).",
+      "Inspect a practice solve: overview (ending, answer, delivered files, closing text, tool calls), one full call (`call`), or a delivered file (`file`, paged from `from` bytes, including workbook sheet order/dimensions, formulas, embedded visuals, tables, and direct image rendering for figures).",
     parameters: Type.Object({
       solve: Type.String({ description: "A solve's id." }),
       call: Type.Optional(Type.Number({ minimum: 1, description: "A call's number, from the list." })),
@@ -463,7 +463,18 @@ export function traceTool(bench: Bench): AgentTool {
         const kept = files.find(({ path }) => path === args.file);
         if (kept === undefined) throw new Error(`${args.solve} delivered no file ${args.file}`);
         const [delivered = { path: kept.path, base64: "" }] = readAnswerFiles(bench.request.log, [kept]);
-        return text(pageOf(extract(delivered), args.from ?? 0));
+        const extracted = extract(delivered);
+        if (extracted.kind === "binary" && (args.from ?? 0) === 0) {
+          const image = await prepareImage(
+            Buffer.from(delivered.base64, "base64"),
+            delivered.path,
+            bench.request.model,
+          );
+          if (image !== null) {
+            return { output: [{ type: "text", text: headOf(extracted).join("\n") }, image] };
+          }
+        }
+        return text(pageOf(extracted, args.from ?? 0));
       }
       return text(
         [

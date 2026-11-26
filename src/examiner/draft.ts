@@ -86,10 +86,11 @@ export const TEXT_FILES = Type.Optional(
   Type.Array(
     Type.Union([
       TEXT_FILE,
+      Type.Object({ path: Type.String({ minLength: 1 }), base64: Type.String({ minLength: 1 }) }),
       Type.Object({ path: Type.String({ minLength: 1 }), entries: Type.Array(TEXT_FILE) }),
     ]),
     {
-      description: `Files beside the answer, by their path under ${DELIVERABLES.folder}/, as a solver leaves them: each with its text, or for an archive such as a workbook its text members as entries, which a check then receives in an archive that stores them.`,
+      description: `Files beside the answer under ${DELIVERABLES.folder}/: { path, text }, { path, base64 } (use { "from_file": "<path>" } for binary .xlsx/.docx/.pdf/.sqlite/.png files built in your home), or { path, entries } for a stored archive.`,
     },
   ),
 );

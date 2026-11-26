@@ -288,6 +288,25 @@ describe.concurrent("the Builder running its campaign", () => {
       s.walled,
     );
     expect(left).toEqual([2, 0, 20]);
+    expect(s.of("build.started")[0]?.limits).toMatchObject({ practiceSolves: 3 });
+
+    const budgeted = await setup([finish]);
+    append(budgeted.request.log, "campaign.opened", { budget: { dollars: 30, reserve: 1 } });
+    await session(
+      {
+        ...budgeted.request,
+        id: "b-budget",
+        campaign: () => ({ tools: [], hook: () => "" }),
+      },
+      budgeted,
+      budgeted.walled,
+    );
+    expect(budgeted.of("build.started")[0]?.limits).not.toHaveProperty("practiceSolves");
+
+    const standalone = await setup([finish]);
+    append(standalone.request.log, "campaign.opened", { budget: { dollars: 30, reserve: 1 } });
+    await session({ ...standalone.request, id: "b-standalone" }, standalone, standalone.walled);
+    expect(standalone.of("build.started")[0]?.limits).toMatchObject({ practiceSolves: 3 });
   });
 
   it("keeps its conversation and edits across a nested Examiner call, and refreshes practice", async () => {

@@ -52,7 +52,7 @@ export async function checkpointCommand(
     id,
     old,
     fresh,
-    ...(await comparedOn({ campaign, setting, cap }, values, seats, reviewers)),
+    ...(await comparedOn({ campaign, setting, cap }, values, seats, reviewers, fresh.digest)),
     ...keyIfDefined("kill", kill),
   };
   const own = () => {

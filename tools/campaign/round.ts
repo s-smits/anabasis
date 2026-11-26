@@ -7,6 +7,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { servedByClaude } from "#src/agent/backends/claude.ts";
 import { stopRule, type Wanted } from "#src/campaign/admission.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
+import { chosenForReference } from "#src/campaign/climb.ts";
 import { type CheckpointRequest, type Judging, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import type { Reader } from "#src/audit/auditor.ts";
@@ -484,8 +485,10 @@ export async function comparedOn(
   values: { readonly level: string; readonly defects: string; readonly predict?: string | undefined },
   seats: Seats,
   reviewers: Reviewers | null,
+  fresh: string,
 ): Promise<Omit<CheckpointRequest, "log" | "id" | "old" | "fresh" | "kill">> {
   const packageOf = packaged(campaign);
+  const events = read(campaign.log, TRACE_KINDS);
   const judges = reviewers ?? (seats.judge === undefined ? null : campaign.reviewers(seats.judge));
   if (seats.paid && hasJudge(campaign.contract.objective)) {
     if (judges === null) {
@@ -495,7 +498,7 @@ export async function comparedOn(
   }
   return {
     starter: await starter(campaign),
-    ...scoredSet(read(campaign.log, TRACE_KINDS), setting.target, contractHash(campaign.contract)),
+    ...scoredSet(events, setting.target, contractHash(campaign.contract), chosenForReference(events, fresh)),
     solves: setting.solves,
     level: Number(values.level),
     objective: objectiveNamed(campaign),

@@ -323,6 +323,13 @@ function tasksChosenBefore(
   return new Set(chose.flatMap((report) => pairsOf(report).map(({ task }) => task)));
 }
 
+export function chosenForReference(events: readonly LogEvent[], fresh: string): ReadonlySet<string> {
+  const starter = starterIn(events);
+  if (starter !== fresh) return new Set();
+  const from = events.findLastIndex(({ kind }) => isReferenceChange(kind));
+  return tasksChosenBefore(lastReports(events), pairLookup(events), (side) => side !== starter, from);
+}
+
 export function unselectedOf(ahead: readonly number[], level: number): Unselected {
   const behind = ahead.map((one) => -one);
   if (isSignificant(ahead, level)) return "a step";

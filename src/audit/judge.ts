@@ -92,13 +92,7 @@ interface Spend {
   readonly reportedCost: number | null;
 }
 
-const spendOf = (
-  meters: readonly {
-    readonly billed: number;
-    readonly turns: number;
-    readonly reportedCost: number | null;
-  }[],
-): Spend => ({
+const spendOf = (meters: readonly Spend[]): Spend => ({
   billed: meters.reduce((sum, { billed }) => sum + billed, 0),
   turns: meters.reduce((sum, { turns }) => sum + turns, 0),
   reportedCost: meters.every(({ reportedCost }) => isNumber(reportedCost))
@@ -159,17 +153,16 @@ const IMAGE_PARAMETERS = Type.Object({
   path: Type.String({ minLength: 1 }),
 });
 
-async function voted(
-  reader: Reader,
-  given: PairCase & {
-    readonly id: string;
-    readonly lines: readonly string[];
-    readonly fence: string;
-    readonly criterion: string;
-    readonly pair: readonly [string, string];
-    readonly images: readonly [AnswerImages, AnswerImages];
-  },
-) {
+interface VoteInput extends PairCase {
+  readonly id: string;
+  readonly lines: readonly string[];
+  readonly fence: string;
+  readonly criterion: string;
+  readonly pair: readonly [string, string];
+  readonly images: readonly [AnswerImages, AnswerImages];
+}
+
+async function voted(reader: Reader, given: VoteInput) {
   const kept: Static<typeof VOTE_PARAMETERS>[] = [];
   const [a, b] = given.pair;
   const [imagesA, imagesB] = given.images;

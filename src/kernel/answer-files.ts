@@ -29,6 +29,7 @@ export interface FileManifest {
 }
 
 const SHOWN_BYTES = 4096;
+const NAME_BYTES = 255;
 
 export const DELIVERABLES = { folder: "deliverables", count: 64, bytes: 16 * 1024 * 1024 };
 
@@ -57,6 +58,7 @@ function safePaths(paths: readonly string[]): boolean {
     new Set(paths).size === paths.length &&
     paths.every(
       (path) =>
+        Buffer.byteLength(path) <= NAME_BYTES &&
         path.split("/").every((part) => part !== "" && part !== "." && part !== "..") &&
         !path.includes("\\") &&
         !path.includes("\0"),
@@ -105,9 +107,23 @@ export function capturedFiles(value: JsonValue | undefined): AnswerFile[] {
   return files;
 }
 
-export function decodeBase64(raw: string): Buffer | null {
+function decodeBase64(raw: string): Buffer | null {
   const bytes = Buffer.from(raw, "base64");
   return bytes.toString("base64") === raw ? bytes : null;
+}
+
+export function fileRowBytes(row: Record<string, JsonValue | undefined>): Buffer | null {
+  if (!isString(row.path) || !safePaths([row.path])) return null;
+  if (isString(row.text)) return Buffer.from(row.text, "utf8");
+  if (isString(row.base64)) return decodeBase64(row.base64);
+  if (!Array.isArray(row.entries)) return null;
+  const members: TextFile[] = [];
+  for (const item of row.entries) {
+    const member = asRecord(item);
+    if (!isString(member?.path) || !isString(member.text)) return null;
+    members.push({ path: member.path, text: member.text });
+  }
+  return safePaths(members.map(({ path }) => path)) ? storedZip(members) : null;
 }
 
 export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
@@ -117,12 +133,7 @@ export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
   }
   const filed = filing();
   return rows.map((row) => {
-    const bytes =
-      "text" in row
-        ? Buffer.from(row.text)
-        : "base64" in row
-          ? decodeBase64(row.base64)
-          : storedZip(row.entries);
+    const bytes = fileRowBytes(row);
     if (bytes === null) throw new Error("invalid file base64");
     return filed(row.path, bytes);
   });

@@ -102,15 +102,29 @@ const PARAMETERS = Type.Object({
   summary: Type.String({ minLength: 1 }),
 });
 
+function objectiveDefectRefusal(
+  finding: DraftDefect,
+  row: DraftProbeRow,
+  objective: Contract["objective"],
+): string | null {
+  const probe = String(finding.probe);
+  if (scoresOf(row.changed) !== null && finding.item === undefined) {
+    return `objective-defect on probe ${probe} requires naming the score item that kept its score`;
+  }
+  return reproduces(finding, row, objective)
+    ? null
+    : `objective-defect requires probe ${probe}'s changed answer to pass and keep its ${finding.item ?? "objective"} score at the original's level`;
+}
+
 function refusal(
   rows: readonly DraftProbeRow[],
   args: Static<typeof PARAMETERS>,
-  objective: "measured" | "none",
+  objective: Contract["objective"],
 ): string | null {
   if (args.verdict === "sound") {
     if (args.findings.length > 0) return "a sound verdict carries no defect findings";
     if (
-      objective === "measured" &&
+      objective !== undefined &&
       !rows.some((row) => {
         const [before, after] = [objectiveOf(row.original), objectiveOf(row.changed)];
         return conclusive(row) && before !== null && after !== null && after !== before;
@@ -134,16 +148,13 @@ function refusal(
     if (finding.kind === "vacuous-pass" && row.changed.kind !== "pass") {
       return `vacuous-pass requires probe ${String(finding.probe)} to pass on its changed answer, but it returned ${row.changed.kind}`;
     }
-    if (
-      finding.kind === "objective-defect" &&
-      (row.changed.kind !== "pass" || objectiveOf(row.original) === null || objectiveOf(row.changed) === null)
-    ) {
-      return `objective-defect requires probe ${String(finding.probe)} to pass with a finite objective on both original and changed answers`;
-    }
-    const items = scoresOf(row.changed);
-    if (finding.kind === "objective-defect" && items !== null && !Object.hasOwn(items, finding.item ?? "")) {
-      return `objective-defect requires naming a score item probe ${String(finding.probe)} scored`;
-    }
+    const problem =
+      finding.kind === "objective-defect"
+        ? objectiveDefectRefusal(finding, row, objective)
+        : finding.item === undefined
+          ? null
+          : "only an objective-defect names a score item";
+    if (problem !== null) return problem;
     if (finding.kind === "check-defect") {
       if (finding.check === undefined || finding.check === "") {
         return "check-defect requires naming the refusing check id";
@@ -262,11 +273,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
     description: "Record your final verdict on the drafted exam once probes settle it.",
     parameters: PARAMETERS,
     execute: async (args) => {
-      const problem = refusal(
-        rows,
-        args,
-        codeObjective(target.contract.objective) === undefined ? "none" : "measured",
-      );
+      const problem = refusal(rows, args, codeObjective(target.contract.objective));
       if (problem !== null) {
         append(target.log, "referee.draft.refused", {
           session: target.session,
@@ -341,8 +348,8 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
   return result;
 }
 
-export function formatDraftFinding({ kind, task, check, probe, reason }: DraftDefect): string {
-  return `independent check audit (${kind} on ${task}${check === undefined ? "" : `, check ${check}`}, probe #${String(probe)}): ${reason}`;
+export function formatDraftFinding({ kind, task, check, item, probe, reason }: DraftDefect): string {
+  return `independent check audit (${kind} on ${task}${check === undefined ? "" : `, check ${check}`}${item === undefined ? "" : `, item ${item}`}, probe #${String(probe)}): ${reason}`;
 }
 
 function reproduces(

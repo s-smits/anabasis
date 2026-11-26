@@ -42,6 +42,7 @@ const CONTRACT: Contract = {
 };
 const ANSWER = { span: 12, members: [{ area: 3 }] };
 const SPAN = "$.span";
+const CONTROL = { taskId: "t-1", answer: ANSWER, refusedBy: null };
 const AREA = "$.members[0].area";
 const BOOK = "file:book.xlsx";
 const MEMBER = `${BOOK}/xl/sharedStrings.xml`;
@@ -719,6 +720,18 @@ describe("adversarial draft audit", () => {
       }),
       reviewCall({
         verdict: "defects",
+        findings: [
+          { kind: "objective-defect", task: "t-1", item: "report", probe: 1, reason: "no item scored" },
+        ],
+        summary: "item on a probe that scored no items",
+      }),
+      reviewCall({
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "t-1", item: "report", probe: 3, reason: "item off kind" }],
+        summary: "item on a vacuous-pass",
+      }),
+      reviewCall({
+        verdict: "defects",
         findings: [{ kind: "check-defect", task: "t-1", probe: 1, reason: "actually passed" }],
         summary: "wrong kind for pass",
       }),
@@ -751,7 +764,7 @@ describe("adversarial draft audit", () => {
       session: "d-1",
       pass: 2,
       prompt: "Keep spans <= 12 m.",
-      contract: CONTRACT,
+      contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
       checks,
       verify: vacuousVerify,
       tasks: [TASK],
@@ -776,7 +789,7 @@ describe("adversarial draft audit", () => {
     ]);
     expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
     const draftRefused = read(s.log).filter(({ kind }) => kind === "referee.draft.refused");
-    expect(draftRefused).toHaveLength(9);
+    expect(draftRefused).toHaveLength(11);
     expect(draftRefused.every(({ data }) => data.pass === 2)).toBe(true);
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft")).toMatchObject([{ data: { pass: 2 } }]);
     expect(unfinished(read(s.log))).toEqual([]);
@@ -802,6 +815,7 @@ describe("adversarial draft audit", () => {
     ]);
     const bigRes = await reviewDraft(bigSetup.reader, {
       ...target,
+      contract: CONTRACT,
       tasks: [taskWithBigFile],
       verify: async (task, answer, signal, files) => {
         const list = asRecord(task.publicInput)?.files;
@@ -933,7 +947,7 @@ describe("draft audit on a check that throws", () => {
       checks,
       verify: throwing,
       tasks: [TASK],
-      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+      controls: [CONTROL],
       notes: [],
       log: s.log,
     });
@@ -944,7 +958,7 @@ describe("draft audit on a check that throws", () => {
     const target = {
       contract: CONTRACT,
       tasks: [TASK],
-      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+      controls: [CONTROL],
     };
     expect(await replayDraftProbes(res, { ...target, verify: throwing })).toMatchObject({
       stillBroken: [expect.stringContaining("still reproduces")],
@@ -979,7 +993,7 @@ describe("draft audit on a check that throws", () => {
           ? { kind: "pass", objective: 10 }
           : { kind: "faulty", check: "span", reason: "the check threw" },
       tasks: [TASK],
-      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+      controls: [CONTROL],
       notes: [],
       log: s.log,
     });
@@ -1021,7 +1035,7 @@ describe("draft audit replay of an objective defect", () => {
     const target = {
       contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
       tasks: [TASK],
-      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+      controls: [CONTROL],
     };
     expect(await replayDraftProbes(prior, { ...target, verify: scored(both) })).toMatchObject({
       stillBroken: [expect.stringContaining("still reproduces")],
@@ -1039,15 +1053,63 @@ describe("draft audit replay of an objective defect", () => {
     expect(await replayDraftProbes(prior, { ...target, verify: scalar })).toMatchObject({
       unverified: [expect.stringContaining("objective-defect on t-1")],
     });
-    const lightFix: Verifier = async (_task, answer) => ({
+    for (const [changed, fixed] of [
+      [0.995, false],
+      [0.98, true],
+      [0.5, true],
+    ] as const) {
+      const fix: Verifier = async (_task, answer) => ({
+        kind: "pass",
+        objective: 0.9,
+        scores: { accuracy: 0.9, report: asRecord(answer)?.span === 12 ? 1 : changed },
+      });
+      const replay = await replayDraftProbes(prior, { ...target, verify: fix });
+      expect([replay.stillBroken.length, replay.verifiedFixed.length]).toEqual(fixed ? [0, 1] : [1, 0]);
+    }
+  });
+
+  it("admits an objective-defect only on a scored item its own probe left standing", async () => {
+    const checks = programs.get(JSON.stringify([SPAN]));
+    if (checks === undefined) throw new Error("missing check program");
+    const finding = (item?: string) => ({
+      verdict: "defects",
+      findings: [
+        {
+          kind: "objective-defect",
+          task: "t-1",
+          ...keyIfDefined("item", item),
+          probe: 1,
+          reason: "span=13 scores",
+        },
+      ],
+      summary: item ?? "unnamed",
+    });
+    const s = setup([
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "13" }] }),
+      reviewCall(finding("report")),
+      reviewCall(finding("missing")),
+      reviewCall(finding()),
+      reviewCall(finding("accuracy")),
+    ]);
+    const itemScores: Verifier = async (_task, answer) => ({
       kind: "pass",
       objective: 0.9,
       scores: { accuracy: 0.9, report: asRecord(answer)?.span === 12 ? 1 : 0.5 },
     });
-    expect(await replayDraftProbes(prior, { ...target, verify: lightFix })).toMatchObject({
-      stillBroken: [],
-      verifiedFixed: [expect.stringContaining("objective-defect on t-1")],
+    const res = await reviewDraft(s.reader, {
+      session: "d-1",
+      prompt: "Keep spans <= 12 m.",
+      contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
+      checks,
+      verify: itemScores,
+      tasks: [TASK],
+      controls: [CONTROL],
+      notes: [],
+      priorFindings: [],
+      log: s.log,
     });
+    expect(res.findings).toMatchObject([{ item: "accuracy" }]);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(3);
   });
 });
 

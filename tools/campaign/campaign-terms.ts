@@ -5,9 +5,10 @@
  * a Referee before it opens, so no rejection it counts goes unruled.
  */
 import { STARTED, startOf } from "#src/campaign/comparison.ts";
-import { tasksToAskFor } from "#src/campaign/scheduler.ts";
-import { cutShort, type Plan } from "#src/campaign/state.ts";
-import type { ScheduledAction } from "#src/campaign/move.ts";
+import { frontierOverlap, OVERLAP_LIMIT } from "#src/campaign/round.ts";
+import { supplyRun, tasksToAskFor } from "#src/campaign/scheduler.ts";
+import { comparisonsOf, cutShort, type Plan } from "#src/campaign/state.ts";
+import { type ScheduledAction, short } from "#src/campaign/move.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, TERMS } from "#src/campaign/opening.ts";
 import { ANSWERED, type ControlSignal } from "#src/campaign/signal.ts";
 import { draftOf } from "#src/examiner/draft.ts";
@@ -21,7 +22,7 @@ import {
   read,
   TRACE_KINDS,
 } from "#src/kernel/log.ts";
-import { PATIENCE, referenceOf } from "#src/kernel/reports.ts";
+import { latestBuilt, PATIENCE, referenceOf } from "#src/kernel/reports.ts";
 import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -64,14 +65,10 @@ export interface Turn {
 
 export type Values = ReturnType<typeof flagsOf>;
 
-interface TurnSource {
+type TurnSource = Pick<Turn, "values" | "opening" | "seats" | "held"> & {
   readonly log: string;
-  readonly values: Values;
-  readonly opening: Opening;
-  readonly seats: Seats;
-  readonly held: Seated;
   readonly campaign: Campaign | null;
-}
+};
 
 const OPTIONS = {
   ...PACK_OPTIONS,
@@ -177,6 +174,9 @@ export const prepared = (
     heldBack,
   );
 
+export const awaitsOperator = (name: string, harness: string): string =>
+  `under --hitl a promotion is the operator's word: bun tools/campaign/promote.ts --name ${name} --harness ${harness} --yes, or run this command with --no-hitl`;
+
 export async function promoteMade(
   log: string,
   name: string | undefined,
@@ -196,9 +196,8 @@ export function revertMade(log: string, owed: Extract<ScheduledAction, { move: "
   });
 }
 
-export function flagsOf(args: readonly string[]) {
-  return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true }).values;
-}
+export const flagsOf = (args: readonly string[]) =>
+  parseArgs({ args: [...args], options: OPTIONS, allowNegative: true }).values;
 
 export function flagsHelp(): string {
   const wide = Math.max(...Object.keys(EXPLAINED).map((named) => named.length));
@@ -214,34 +213,18 @@ function promptOf(values: Values, was: Opening | null): string | null {
   return given ?? was?.prompt ?? null;
 }
 
-function counted(count: number, what: string): void {
+const counted = (count: number, what: string): void => {
   if (!Number.isInteger(count) || count < 1) throw new Error(`${what} are a whole number of at least one`);
-}
+};
 
-function seatOf(
+const seatOf = (
   model: string | undefined,
   effort: string | undefined,
   kept: Seat | null | undefined,
-): Seat | null {
+): Seat | null => {
   const named = model ?? kept?.model;
   return named === undefined ? null : { model: named, effort: effort ?? kept?.effort ?? DEFAULTS.effort };
-}
-
-function openingRecord(opening: Opening): JsonObject {
-  return {
-    project: opening.project,
-    budget: opening.budget === null ? null : { ...opening.budget },
-    patience: opening.patience,
-    seats: Object.fromEntries(
-      SEATS.map((each) => [each, opening.seats[each] === null ? null : { ...opening.seats[each] }]),
-    ),
-    ...keyIfDefined("attended", opening.attended || undefined),
-    ...keyIfDefined("judged", opening.judged || undefined),
-    ...keyIfDefined("prompt", opening.prompt ?? undefined),
-    ...keyIfDefined("solver", opening.solver === null ? undefined : { ...opening.solver }),
-    terms: { ...opening.terms },
-  };
-}
+};
 
 /** Merges move terms from flags and the prior opening, refusing any `--level` change after a
  *  comparison starts. */
@@ -297,14 +280,6 @@ function resolveBudget(
   return dollars === undefined ? null : capRead(String(dollars), reserve);
 }
 
-function resolveSeats(values: Values, was: Opening | null): Opening["seats"] {
-  return {
-    builder: seatOf(values.builder, values["builder-effort"], was?.seats.builder),
-    examiner: seatOf(values.examiner, values["examiner-effort"], was?.seats.examiner),
-    reviewer: seatOf(values.reviewer, values["reviewer-effort"], was?.seats.reviewer),
-  };
-}
-
 function persistOpening(
   log: string,
   events: readonly LogEvent[],
@@ -312,7 +287,19 @@ function persistOpening(
   mode: "write" | "dry-run",
   heard: readonly ControlSignal[],
 ): void {
-  const record = openingRecord(opening);
+  const record: JsonObject = {
+    project: opening.project,
+    budget: opening.budget === null ? null : { ...opening.budget },
+    patience: opening.patience,
+    seats: Object.fromEntries(
+      SEATS.map((each) => [each, opening.seats[each] === null ? null : { ...opening.seats[each] }]),
+    ),
+    ...keyIfDefined("attended", opening.attended || undefined),
+    ...keyIfDefined("judged", opening.judged || undefined),
+    ...keyIfDefined("prompt", opening.prompt ?? undefined),
+    ...keyIfDefined("solver", opening.solver === null ? undefined : { ...opening.solver }),
+    terms: { ...opening.terms },
+  };
   const { answers: _heard, led: _led, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
   if (mode === "dry-run" || (heard.length === 0 && sameJsonValue(kept, record))) return;
   mkdirSync(dirname(log), { recursive: true });
@@ -350,7 +337,11 @@ export function opened(
       "the campaign's exam was drafted from another prompt than this command gives: a prompt names one campaign, and another takes a name of its own",
     );
   }
-  const resolvedSeats = resolveSeats(values, was);
+  const resolvedSeats: Opening["seats"] = {
+    builder: seatOf(values.builder, values["builder-effort"], was?.seats.builder),
+    examiner: seatOf(values.examiner, values["examiner-effort"], was?.seats.examiner),
+    reviewer: seatOf(values.reviewer, values["reviewer-effort"], was?.seats.reviewer),
+  };
   const attended = values.hitl ?? was?.attended ?? false;
   const crossFamily =
     resolvedSeats.reviewer !== null && crossFamilyVendors(resolvedSeats.reviewer.model, solver.model);
@@ -410,9 +401,7 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
   ];
 }
 
-export function packOf({ name }: Values): string[] {
-  return flag("name", name);
-}
+export const packOf = ({ name }: Values): string[] => flag("name", name);
 
 export function sharedOf({ plan, opening, values, seats }: Turn) {
   const reviewer = seats.unreviewed === true ? null : opening.seats.reviewer;
@@ -443,15 +432,80 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
   const wanting = tasksToAskFor(turn.events, turn.plan);
   const tasks = wanting > 0 ? String(wanting) : undefined;
   return {
-    args:
-      kind === "draft"
-        ? [...flag("name", values.name), ...seat]
-        : [...packOf(values), ...seat, ...flag("tasks", tasks)],
+    args: [...packOf(values), ...seat, ...(kind === "draft" ? [] : flag("tasks", tasks))],
     tasks,
   };
 }
 
-export function comparisonOf(decided: Extract<ScheduledAction, { move: "compare" }>, turn: Turn) {
+export const LED = "led";
+export const CHOSE = "the Builder's own move in its campaign conversation";
+
+type CompareMove = Extract<ScheduledAction, { move: "compare" }>;
+
+interface ComparisonChoice {
+  readonly events: readonly LogEvent[];
+  readonly plan: Plan;
+  readonly decided: ScheduledAction;
+  readonly working: string;
+  readonly reference: string;
+  readonly contractHash: () => string;
+  readonly hasExaminer: boolean;
+  readonly examiningSession: string | null;
+}
+
+export const readAgainst = (events: readonly LogEvent[], fresh: string, reference: string): boolean =>
+  comparisonsOf(events).some((each) => each.fresh === fresh && each.old === reference);
+
+export function selectComparison(
+  input: ComparisonChoice,
+):
+  | { readonly move: CompareMove; readonly froze?: string; readonly note: string }
+  | { readonly refused: string } {
+  const { events, plan, decided, working, reference, hasExaminer, examiningSession } = input;
+  const latest = latestBuilt(events);
+  if (working === reference) {
+    return decided.move === "compare"
+      ? {
+          move: decided,
+          note: `harness/ is the reference harness, so the ${decided.fresh} harness was read against it.`,
+        }
+      : { refused: "harness/ is the reference harness: there is nothing to compare until it changes." };
+  }
+  if (decided.move === "compare" && decided.fresh === "starter") {
+    return {
+      move: decided,
+      note: "The table's comparison of the starter ran first: compare reads harness/ next.",
+    };
+  }
+  if (decided.move === "compare" && decided.fresh === "latest" && working === latest) {
+    return { move: decided, note: "" };
+  }
+  if (readAgainst(events, working, reference)) {
+    return {
+      refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare. Between equal harnesses one comparison reads a step as often as its level, and a harness changed in little draws that chance again.`,
+    };
+  }
+  const canExamine = hasExaminer && supplyRun(events, plan) < plan.patience;
+  if (canExamine) {
+    const repeat = frontierOverlap(events, plan.wanted.target, input.contractHash(), reference);
+    if (repeat !== null && repeat.ratio >= OVERLAP_LIMIT) {
+      const nextStep =
+        examiningSession === null
+          ? "Call examine to hold out fresh tasks before comparing another candidate."
+          : `Examiner session ${examiningSession} is already writing tasks; call wait before comparing another candidate.`;
+      return {
+        refused: `This comparison would draw ${String(repeat.overlap)} of ${String(repeat.total)} frontier tasks (${String(Math.round(repeat.ratio * 100))}%) already scored in comparison ${repeat.priorSession}. ${nextStep}`,
+      };
+    }
+  }
+  return {
+    move: { move: "compare", code: LED, fresh: working, reference: "promoted", why: CHOSE },
+    note: "",
+    ...keyIfDefined("froze", working === latest ? undefined : working),
+  };
+}
+
+export function comparisonOf(decided: CompareMove, turn: Turn) {
   const { events, values } = turn;
   const { cap, reviewer, pastStop } = sharedOf(turn);
   const session = decided.id ?? nextId(events, "g");

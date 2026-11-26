@@ -47,6 +47,8 @@ export const SEATS = {
       "src/builder/tools.ts",
       "src/builder/session.ts",
       "tools/campaign/campaign-actions.ts",
+      "tools/campaign/campaign-status.ts",
+      "tools/campaign/campaign-terms.ts",
       "tools/campaign/harness-builder.ts",
     ],
     tests: [

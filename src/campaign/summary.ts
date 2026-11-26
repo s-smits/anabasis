@@ -20,14 +20,16 @@ import { type Supply, supplyOf } from "./admission.ts";
 import type { Ruling } from "../audit/auditor.ts";
 import { fixedIn, overlapOf, reported, STARTED } from "./comparison.ts";
 
-export interface PracticeFail {
+type PracticeStanding =
+  | { readonly standing: "open"; readonly under: null }
+  | { readonly standing: "passed-once" | "repaired" | "failing-again"; readonly under: string };
+
+export type PracticeFail = {
   readonly solve: string;
   readonly task: string;
   readonly harness: string;
   readonly kind: string | null;
-  readonly standing: "open" | "passed-once" | "repaired" | "failing-again";
-  readonly under: string | null;
-}
+} & PracticeStanding;
 
 interface SoFar {
   readonly ended: string | null;
@@ -141,7 +143,7 @@ const text = (value: unknown): string | null => (isString(value) ? value : null)
 function standing(
   fail: Ran & { finished: number },
   taskSolves: readonly (Ran & { finished: number })[],
-): Pick<PracticeFail, "standing" | "under"> {
+): PracticeStanding {
   const since = taskSolves.filter((solve) => solve.finished > fail.finished);
   const last = since.findLast((solve) => solve.under.harness !== fail.under.harness)?.under.harness;
   if (last === undefined) return { standing: "open", under: null };

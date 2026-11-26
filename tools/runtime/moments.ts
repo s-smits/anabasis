@@ -96,7 +96,7 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "seats",
-    path: /(^|\/)src\/(builder|examiner|solver|audit|harness)\/|(^|\/)tools\/campaign\/(campaign-actions|harness-builder)\.ts$/u,
+    path: /(^|\/)src\/(builder|examiner|solver|audit|harness)\/|(^|\/)tools\/campaign\/(campaign-actions|campaign-status|campaign-terms|harness-builder)\.ts$/u,
     said: "Seat wall (rule 3; AGENTS.md §2–3): perturbing hidden values, checks or held-out winners must leave Builder and solver messages byte-identical (`test/builder.test.ts`, `test/builder-led.test.ts`). Verify with `bun .claude/skills/design-and-seats/scripts/seat-view.ts` (`builder-view.ts <name>` inspects Builder openings). Give models facts, not directives.",
     skill: "design-and-seats",
     also: [

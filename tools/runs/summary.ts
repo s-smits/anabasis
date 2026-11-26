@@ -4,7 +4,7 @@
  * their own.
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
-import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
+import { epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { isSignificant, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
 import { type EventKind, eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
@@ -57,8 +57,8 @@ const cost = (data: JsonObject) =>
   `${isNumber(data.seconds) ? ` in ${minutes(data.seconds * 1000)}` : ""}${isNumber(data.billed) ? `, ${dollars(data.billed)}` : ""}`;
 
 /**
- * The supply, A/A and epoch-attempt parts of a `comparison.reported` line, flagged where supply is
- * below its floor, the A/A control clears, or the epoch's attempts are over budget.
+ * The supply and A/A parts of a `comparison.reported` line, flagged where supply is below its floor
+ * or the A/A control clears.
  */
 function factorsOf(data: JsonObject): { text: string; flag: boolean } {
   const informative = asRecord(asRecord(data.valid)?.informative)?.old;
@@ -68,11 +68,7 @@ function factorsOf(data: JsonObject): { text: string; flag: boolean } {
   const scores = Array.isArray(noise?.differences) ? scoresIn(noise) : undefined;
   const aa = scores === undefined ? null : testOf(scores);
   const clears = scores !== undefined && isSignificant(scores, level);
-  const worth = asRecord(data.worth);
-  const spent = asRecord(worth?.cost);
-  const attempts = spent?.attempts;
   const lowSupply = isNumber(informative) && informative < floor;
-  const overBudgetAttempts = spent?.met === false;
   const parts = [
     isNumber(informative)
       ? `supply ${String(informative)}/${word(data.tasks)} informative (floor ${String(floor)})`
@@ -80,11 +76,10 @@ function factorsOf(data: JsonObject): { text: string; flag: boolean } {
     aa === null
       ? ""
       : `A/A ${String(aa.wins)}-${String(aa.losses)}-${String(aa.ties)}${clears ? " false positive" : ""}`,
-    isNumber(attempts) ? `attempt ${String(attempts)}/${String(BARS.cost)} this epoch` : "",
   ].filter((part) => part !== "");
   return {
     text: parts.map((part) => ` · ${part}`).join(""),
-    flag: clears || overBudgetAttempts || lowSupply,
+    flag: clears || lowSupply,
   };
 }
 

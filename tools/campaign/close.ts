@@ -10,7 +10,7 @@
  *   bun tools/campaign/close.ts --name queues --to ~/handover/queues [--harness <letter|digest>]
  *     [--solve <task id>[,<task id>...] [--solver <model> --solver-effort <level> ...]]
  */
-import { barLines, promotionsWorth, riskLines, starterIn, worthLine } from "#src/campaign/climb.ts";
+import { barLines, promotionCosts, riskLines, starterIn } from "#src/campaign/climb.ts";
 import { UNSETTLED } from "#src/campaign/comparison.ts";
 import { campaignOf, type Handover } from "#src/campaign/summary.ts";
 import { short } from "#src/campaign/move.ts";
@@ -249,12 +249,12 @@ function promotionLines(
         : [],
     ),
   );
-  const worths = promotionsWorth(events);
+  const costs = promotionCosts(events);
   // The first over the Starter is set-up, epoch 0, and the climb counts from it.
   const promotions = events.filter(({ kind }) => kind === "harness.promoted");
   return promotions.flatMap(({ at, data }, nth) => {
     if (!isString(data.harness)) return [];
-    const worth = worths.get(data.harness);
+    const cost = costs.get(data.harness);
     const rung = nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`;
     const from = imported.get(data.harness);
     const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
@@ -269,7 +269,7 @@ function promotionLines(
         ? ". No comparison of it tallied a task"
         : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}${last.points === null ? "" : `, the score giving it ${String(last.points.validity)} points by validity and ${String(last.points.objective)} by the objective`}`;
     return [
-      `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, decided by ${stepped.map((each) => each.id).join(" and ") || "no recorded comparison"}${held}${isString(data.despite) ? `. Promoted manually by operator override: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. ${worthLine(worth)}`}`,
+      `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, decided by ${stepped.map((each) => each.id).join(" and ") || "no recorded comparison"}${held}${isString(data.despite) ? `. Promoted manually by operator override: ${data.despite}` : ""}${origin}${cost === undefined ? "" : `. ${cost}`}`,
     ];
   });
 }

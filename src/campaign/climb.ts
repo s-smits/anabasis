@@ -58,18 +58,7 @@ export interface Epoch {
 
 const ATTEMPT = "promotion attempt";
 
-export const BARS = { cost: 3 } as const;
-
 const MILESTONE = { promotions: 6 } as const;
-
-export interface Worth {
-  readonly cost: {
-    readonly attempts: number;
-    readonly sessions: number;
-    readonly dollars: number;
-    readonly met: boolean;
-  };
-}
 
 export const ORIGINS = ["read at the promotion", "written before, not chosen on", "written after"] as const;
 export type Origin = (typeof ORIGINS)[number];
@@ -136,9 +125,7 @@ export function starterIn(events: readonly LogEvent[]): string | null {
   return isString(named) ? named : null;
 }
 
-export function epochsOf(events: readonly LogEvent[]): Epoch[] {
-  return epochsFrom(events, lastReports(events));
-}
+export const epochsOf = (events: readonly LogEvent[]): Epoch[] => epochsFrom(events, lastReports(events));
 
 function epochsFrom(
   events: readonly LogEvent[],
@@ -465,29 +452,19 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   ];
 }
 
-function costOf(events: readonly LogEvent[], epoch: Epoch, pending = 0): Worth["cost"] {
-  const attempts = epoch.falsePromotion.attempts + pending;
-  const dollars = billedBetween(events, epoch.from, epoch.to ?? undefined);
-  return { attempts, sessions: epoch.sessions, dollars, met: epoch.nth === 1 || attempts <= BARS.cost };
-}
-
-export function worthOf(events: readonly LogEvent[], id: string): Worth {
-  const before = events.filter(({ kind, data }) => kind !== "comparison.reported" || data.session !== id);
-  const last = epochsOf(before).at(-1);
-  if (last === undefined) throw new Error("epochsOf read no epoch from the log");
-  return { cost: costOf(before, last, 1) };
-}
-
-export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string, Worth> {
+export function promotionCosts(events: readonly LogEvent[]): ReadonlyMap<string, string> {
   return new Map(
-    epochsOf(events).flatMap((epoch) =>
-      epoch.promoted === null ? [] : [[epoch.promoted, { cost: costOf(events, epoch) }] as const],
-    ),
+    epochsOf(events).flatMap((epoch) => {
+      if (epoch.promoted === null) return [];
+      const dollars = billedBetween(events, epoch.from, epoch.to ?? undefined);
+      return [
+        [
+          epoch.promoted,
+          `cost: ${plural(epoch.falsePromotion.attempts, ATTEMPT)} this epoch, across ${plural(epoch.sessions, "Builder session")} and $${dollars.toFixed(2)} billed`,
+        ] as const,
+      ];
+    }),
   );
-}
-
-export function worthLine({ cost }: Worth): string {
-  return `cost (observational only): ${plural(cost.attempts, ATTEMPT)} this epoch (threshold ${String(BARS.cost)} after setup): ${cost.met ? "within threshold" : "exceeded"}, across ${plural(cost.sessions, "Builder session")} and $${cost.dollars.toFixed(2)} billed`;
 }
 
 export function barLines(events: readonly LogEvent[]): string[] {
@@ -502,15 +479,14 @@ export function barLines(events: readonly LogEvent[]): string[] {
   const confirmedReads = starterReadsFrom(events, reports, epochs, pairsOf).filter(({ session }) =>
     confirmedSessions.has(session),
   );
-  const overBar = climbed.flatMap((epoch) => {
-    const cost = costOf(events, epoch);
-    const open = epoch.promoted === null ? ", open" : "";
-    return cost.met ? [] : [`epoch ${String(epoch.nth)} at ${String(cost.attempts)}${open}`];
-  });
+  const tied = controls.filter((control) => control.tied).length;
+  const tiedNote =
+    tied === 0
+      ? ""
+      : ` ${String(tied)} of them tied every task (identical reference outcomes across rollouts, unpowered).`;
   return [
     `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
-    `- Honesty: ${plural(controls.length, "A/A control")}; ${controlCounts(controls)}.${tiedClause(controls, "them")} Observational; the bar pools a release's.`,
-    `- Economy: ${plural(climbed.length, "post-setup epoch")} against a threshold of ${plural(BARS.cost, ATTEMPT)} each, ${String(overBar.length)} exceeded${overBar.length === 0 ? "" : `: ${overBar.join("; ")}`}. Observational only.`,
+    `- Honesty: ${plural(controls.length, "A/A control")}; ${controlCounts(controls)}.${tiedNote} Observational; the bar pools a release's.`,
     starterNoiseLine(events, reports),
     repeatLine(reports, pairsOf),
   ];
@@ -528,13 +504,6 @@ function repeatLine(reports: readonly Reported[], pairsOf: (report: Reported) =>
   const named =
     fullyRepeated.length === 0 ? "" : ` (${fullyRepeated.join(", ")}, zero split-arm variance on either arm)`;
   return `- Rollout consistency: in ${plural(read.length, "comparison")} both arms had uniform validity across all rollouts per task, and in ${String(fullyRepeated.length)} uniform objective scores as well${named}. Observational only.`;
-}
-
-function tiedClause(controls: readonly { readonly tied: boolean }[], of: string): string {
-  const tied = controls.filter((control) => control.tied).length;
-  return tied === 0
-    ? ""
-    : ` ${String(tied)} of ${of} tied every task (identical reference outcomes across rollouts, unpowered).`;
 }
 
 function controlCounts(controls: readonly ReturnType<typeof controlOf>[]): string {

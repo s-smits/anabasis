@@ -4,27 +4,24 @@
  */
 import { Type } from "typebox";
 import { type AgentTool, textsOf } from "#src/agent/session.ts";
-import { comparisonFloor, Refused, stopRule } from "#src/campaign/admission.ts";
-import { CRASHES_IN_A_ROW, nextAction, practiceDue, supplyRun } from "#src/campaign/scheduler.ts";
-import { comparisonsOf, crashedRun } from "#src/campaign/state.ts";
+import { Refused } from "#src/campaign/admission.ts";
+import { nextAction, practiceDue } from "#src/campaign/scheduler.ts";
+import { comparisonsOf } from "#src/campaign/state.ts";
 import { campaignOf } from "#src/campaign/summary.ts";
 import { type ScheduledAction, short } from "#src/campaign/move.ts";
 import type { Opening } from "#src/campaign/opening.ts";
-import { frontierOverlap, OVERLAP_LIMIT } from "#src/campaign/round.ts";
 import { formatComparisonHistory } from "#src/builder/past.ts";
 import { seedSavedHarnesses, snapshot } from "#src/builder/store.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
 import { pendingSignals } from "#src/campaign/signal.ts";
-import { conversing, type Examined, examine } from "#src/examiner/session.ts";
+import { conversing, examine } from "#src/examiner/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, CALL_KINDS, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
-import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
-import { billedParts } from "#src/kernel/meter.ts";
+import { promoted as lastPromoted } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
-import { solvesIn } from "#src/kernel/solves.ts";
-import { heldAtGate, taskSets } from "#src/kernel/task.ts";
-import { isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { taskSets } from "#src/kernel/task.ts";
+import type { JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { plural } from "#src/meta/text.ts";
@@ -34,19 +31,23 @@ import { waitOut } from "#src/solver/run.ts";
 import { examineCommand } from "../eval/examine.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { resolveCheckpoint, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
+import { formatCampaignStatus } from "./campaign-status.ts";
 import {
+  awaitsOperator,
+  CHOSE,
   comparisonOf,
   examinerRun,
-  idleOf,
-  MOVED,
+  LED,
   moved,
   nextId,
   opened,
   packOf,
   prepared,
   promoteMade,
+  readAgainst,
   revertMade,
   type Seats,
+  selectComparison,
   type Turn,
   turnOf,
   type Values,
@@ -85,24 +86,6 @@ export interface CampaignContext {
   releasing?: Promise<boolean>;
   examiner?: ReturnType<typeof conversing>;
 }
-
-const LED = "led";
-const CHOSE = "the Builder's own move in its campaign conversation";
-const EXAMINED = new Map(
-  Object.entries({
-    stands: "ended whole",
-    finished: "ended whole",
-    supplied: "ended whole",
-    crashed: "crashed",
-    killed: "was stopped",
-    stopped: "was stopped",
-    wall: "ended at its limits",
-    turns: "ended at its limits",
-  } satisfies Record<Examined["ended"], string>),
-);
-
-export const awaitsOperator = (name: string, harness: string): string =>
-  `under --hitl a promotion is the operator's word: bun tools/campaign/promote.ts --name ${name} --harness ${harness} --yes, or run this command with --no-hitl`;
 
 function refreshPractice(bench: Bench, campaign: Campaign): void {
   const packages = campaign.packages();
@@ -155,19 +138,6 @@ const promotedSince = (events: readonly LogEvent[]) =>
   events.findLastIndex(({ kind }) => kind === "harness.promoted") >
   events.findLastIndex(({ kind }) => kind === "comparison.started");
 
-async function holdWhilePaused(
-  context: CampaignContext,
-  bench: Bench,
-  signal: AbortSignal | undefined,
-): Promise<boolean> {
-  await waitPaused(context.log, context.began ?? 0, context.campaign.limits.wallSeconds, {
-    host: context.seats.host,
-    signal,
-    within: (work) => bench.within(work),
-  });
-  return signal?.aborted === true;
-}
-
 async function runAction(
   context: CampaignContext,
   bench: Bench,
@@ -182,7 +152,8 @@ async function runAction(
   };
   const spent = "The campaign move limit has been reached; the host will stop this conversation.";
   if (context.used >= context.maxMoves) return halt(spent);
-  if (signal?.aborted === true) return text("The campaign has been stopped by the host.");
+  const aborted = () => signal?.aborted === true;
+  if (aborted()) return text("The campaign has been stopped by the host.");
   const writing = context.examining;
   if (move === "examine" && writing != null) {
     return text(`Examiner session ${writing.session} is still writing.`);
@@ -204,10 +175,13 @@ async function runAction(
   try {
     if (context.used >= context.maxMoves) return halt(spent);
     if (context.failed !== null) return text("The campaign has been stopped by the host.");
-    if (await holdWhilePaused(context, bench, signal)) {
-      return text("The campaign has been stopped by the host.");
-    }
     const { host } = context.seats;
+    await waitPaused(context.log, context.began ?? 0, context.campaign.limits.wallSeconds, {
+      host,
+      signal,
+      within: (work) => bench.within(work),
+    });
+    if (aborted()) return text("The campaign has been stopped by the host.");
     const { turn, decided } = actionTurn(context);
     if (decided.move === "end") {
       return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
@@ -340,7 +314,6 @@ async function comparedOf(
   { events, plan }: Turn,
   decided: ScheduledAction,
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
-  const latest = latestBuilt(events);
   if (decided.move === "compare" && decided.id !== undefined) return { move: decided, note: "" };
   let working: string;
   try {
@@ -349,58 +322,17 @@ async function comparedOf(
     return { refused: "harness/ does not open, so it cannot be compared: check_harness says why." };
   }
   const reference = (await resolveCheckpoint(context.campaign, "--reference", PROMOTED)).digest;
-  if (working === reference) {
-    return decided.move === "compare"
-      ? {
-          move: decided,
-          note: `harness/ is the reference harness, so the ${decided.fresh} harness was read against it.`,
-        }
-      : { refused: "harness/ is the reference harness: there is nothing to compare until it changes." };
-  }
-  if (decided.move === "compare" && decided.fresh === "starter") {
-    return {
-      move: decided,
-      note: "The table's comparison of the starter ran first: compare reads harness/ next.",
-    };
-  }
-  if (decided.move === "compare" && decided.fresh === "latest" && working === latest) {
-    return { move: decided, note: "" };
-  }
-  if (readAgainst(events, working, reference)) {
-    return {
-      refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare. Between equal harnesses one comparison reads a step as often as its level, and a harness changed in little draws that chance again.`,
-    };
-  }
-  // Against comparison fishing on an unchanged pool, while the Examiner can still supply fresh tasks.
-  const canExamine =
-    (context.seats.seated === solved || context.seats.examine !== undefined) &&
-    supplyRun(events, plan) < plan.patience;
-  if (canExamine) {
-    const repeat = frontierOverlap(
-      events,
-      plan.wanted.target,
-      contractHash(context.campaign.contract),
-      reference,
-    );
-    if (repeat !== null && repeat.ratio >= OVERLAP_LIMIT) {
-      const nextStep =
-        context.examining == null
-          ? "Call examine to hold out fresh tasks before comparing another candidate."
-          : `Examiner session ${context.examining.session} is already writing tasks; call wait before comparing another candidate.`;
-      return {
-        refused: `This comparison would draw ${String(repeat.overlap)} of ${String(repeat.total)} frontier tasks (${String(Math.round(repeat.ratio * 100))}%) already scored in comparison ${repeat.priorSession}. ${nextStep}`,
-      };
-    }
-  }
-  return {
-    move: { move: "compare", code: LED, fresh: working, reference: "promoted", why: CHOSE },
-    note: "",
-    ...keyIfDefined("froze", working === latest ? undefined : working),
-  };
+  return selectComparison({
+    events,
+    plan,
+    decided,
+    working,
+    reference,
+    contractHash: () => contractHash(context.campaign.contract),
+    hasExaminer: context.seats.seated === solved || context.seats.examine !== undefined,
+    examiningSession: context.examining?.session ?? null,
+  });
 }
-
-const readAgainst = (events: readonly LogEvent[], fresh: string, reference: string): boolean =>
-  comparisonsOf(events).some((each) => each.fresh === fresh && each.old === reference);
 
 const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
   actionTool(context, bench, "compare", async (turn, decided, begin, signal, unlock) => {
@@ -477,63 +409,6 @@ async function applyPendingPromotions(context: CampaignContext, bench: Bench): P
   ];
 }
 
-function examinedLines(events: readonly LogEvent[], writing: string | undefined): string[] {
-  const begun = events.findLast(
-    ({ kind, data }) => kind === MOVED && data.move === "examine" && isString(data.session),
-  )?.data.session;
-  if (!isString(begun)) return [];
-  const ended = events.findLast(({ kind, data }) => kind === "exam.finished" && data.session === begun)?.data;
-  if (begun === writing || ended === undefined) {
-    const started = events.findIndex(({ kind, data }) => kind === "exam.started" && data.session === begun);
-    const admitted = events.filter(
-      ({ kind, data }, index) => index > started && kind === "task.gate" && heldAtGate(data.outcome),
-    );
-    const held = plural(started === -1 ? 0 : admitted.length, "task");
-    return [
-      begun === writing
-        ? `Examiner session ${begun} is writing beside this conversation, ${minutesFrom(events[started]?.at)}, and has had ${held} admitted so far.`
-        : `Examiner session ${begun} stopped with the run of the campaign that began it, and had ${held} admitted.`,
-    ];
-  }
-  const said = EXAMINED.get(isString(ended.ended) ? ended.ended : "") ?? "ended at its limits";
-  return [
-    `Examiner session ${begun} ${said}, and had ${plural(Array.isArray(ended.held) ? ended.held.length : 0, "task")} admitted.`,
-  ];
-}
-
-function lastSolveOf(events: readonly LogEvent[], id: string): number {
-  const own = solvesIn(events).filter(({ start }) => start.comparison === id);
-  const at = Math.max(-1, ...own.map(({ started, finished }) => finished ?? started));
-  return at === -1
-    ? events.findIndex(({ kind, data }) => kind === "comparison.started" && data.session === id)
-    : at;
-}
-
-function minutesFrom(from: string | undefined, to = new Date().toISOString()): string {
-  const minutes =
-    from === undefined ? 0 : Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 60_000));
-  return plural(minutes, "minute");
-}
-
-function spentLines({ events }: Turn): string[] {
-  const last = comparisonsOf(events).at(-1);
-  const { sinceStep } = stopRule(events);
-  const { count } = crashedRun(events);
-  return [
-    ...(last === undefined
-      ? []
-      : [
-          `Comparison ${last.id} ${last.reported === null ? "has run" : "took"} ${minutesFrom(events[last.at]?.at, events[last.reported ?? lastSolveOf(events, last.id)]?.at)} and billed ${billedParts(events, last.id).comparison.toFixed(2)} dollars.`,
-        ]),
-    `Moves without a gain since the last step: ${String(sinceStep)} of the patience's ${String(patienceOf(events))}. A move here is a changed harness compared with room to gain, or a conversation that leaves harness/ unchanged after a practice solve of its own failed.`,
-    ...(count === 0
-      ? []
-      : [
-          `Sessions the provider failed in a row: ${String(count)} of the ${String(CRASHES_IN_A_ROW)} that end the campaign.`,
-        ]),
-  ];
-}
-
 function halted(context: CampaignContext, bench: Bench) {
   const reading = actionTurn(context);
   const { decided } = reading;
@@ -542,43 +417,8 @@ function halted(context: CampaignContext, bench: Bench) {
   return reading;
 }
 
-function firstFacts({ practice, wanted }: Turn["plan"], held: number, released: number): string {
-  const [size = ""] = sizeLines(Math.min(wanted.target, held), wanted.level);
-  if (practice === null) return `${size}.`;
-  const more =
-    released > 0 && released < practice
-      ? `, and another only while more than ${String(comparisonFloor(wanted.level))} tasks stay held out`
-      : "";
-  return `Released for practice: ${String(released)} of the ${plural(practice, "task")} the campaign names${more}. ${size}.`;
-}
-
-function campaignStatus(context: CampaignContext, bench: Bench): string {
-  const { turn } = halted(context, bench);
-  const sets = taskSets(turn.events);
-  const tallies = formatComparisonHistory(campaignOf(turn.events).steps);
-  const writing = context.examining?.session;
-  const idle = idleOf(turn.events) - 1;
-  return [
-    `Campaign facts: ${plural(sets.held.length, "held-out task")}, ${plural(sets.released.length, "practice task")}.`,
-    ...(turn.plan.left == null
-      ? []
-      : [
-          `Campaign budget: ${turn.plan.left.dollars.toFixed(2)} dollars left; ${String(turn.plan.left.reserve)} reserved for a solve.`,
-        ]),
-    tallies.length === 0
-      ? `No comparison has a tally yet. ${firstFacts(turn.plan, sets.held.length, sets.released.length)}`
-      : `${plural(tallies.length, "comparison")} with a tally; the last:\n${tallies.at(-1) ?? ""}`,
-    ...examinedLines(turn.events, writing),
-    ...spentLines(turn),
-    ...(idle < 1
-      ? []
-      : [
-          idle === 1
-            ? "The conversation before this one made no campaign move."
-            : `The ${String(idle)} conversations before this one made no campaign move.`,
-        ]),
-  ].join("\n");
-}
+const statusOf = (context: CampaignContext, bench: Bench): string =>
+  formatCampaignStatus(halted(context, bench).turn, context.examining?.session);
 
 export function campaignTools(
   context: CampaignContext,
@@ -611,25 +451,25 @@ export function campaignTools(
           : "",
       tools: [
         ...[examining, promoting(compareTool(context, bench))].map((made) =>
-          endingWith(made, () => campaignStatus(context, bench)),
+          endingWith(made, () => statusOf(context, bench)),
         ),
         waitTool(
           "Wait for the Examiner session writing beside this conversation to end, on the host's time, and return the campaign's facts; at once where none is writing.",
           async () => {
             const writing = context.examining;
-            if (writing == null) return campaignStatus(context, bench);
+            if (writing == null) return statusOf(context, bench);
             await bench.within(() => writing.done);
-            return campaignStatus(context, bench);
+            return statusOf(context, bench);
           },
         ),
         tool({
           name: "campaign_status",
           description: "Read the campaign's counts.",
           parameters: Type.Object({}),
-          execute: async () => text(campaignStatus(context, bench)),
+          execute: async () => text(statusOf(context, bench)),
         }),
       ],
-      hook: () => campaignStatus(context, bench),
+      hook: () => statusOf(context, bench),
       halts: () => {
         halted(context, bench);
       },

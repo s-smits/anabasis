@@ -256,8 +256,8 @@ PR B (`763f7ad81`, `14a1907f1`, `c43504c8d`) and PR C (`2bea90027`, `408811986`,
   - Per-task `Task.rubric`. Judged criteria are the contract's frozen `judge` items alone, so the rule 10 amendment for per-task criteria is withdrawn.
   - The model-authored tie kind and `tiesOf`. `referee.pair` records `disagreed`, the criteria whose two orders voted opposite ways.
   - `dossierOf`. A file reaches the judge whole within its `fairCap` share and is otherwise cut at its head by `boundText`.
-  - Not yet cut: scalar `scale: "unit"` (0 of 192 drafted scalar objectives in the archive declare it). Its strand runs through the comparison rule that item objectives also record, so it gets its own change.
-- **Not done.** `pdftotext` is absent on the helper Macs, so `.pdf` answers extract with a fault there; the `AGENTS.md` amendment below awaits approval; Phases 0b and 4 are paid and await the operator.
+  - Cut: the Examiner's scalar `scale: "unit"` (0 of 192 drafted scalar objectives in the archive declare it). Item objectives keep `scale: "unit"`, set by `draftedFrom`; a scalar objective compares by ratio (`gainOver`).
+- **Not done.** `pdftotext` is absent on the helper macOS runners, so `.pdf` answers extract with a fault there; Phases 0b and 4 are paid and await the operator. (`AGENTS.md` already carries the unified-rubric and cross-family judged-lane terms.)
 
 ### Phase 4 — Live Proof Runs and External Transfer Gate *(Operator-Gated)*
 - Launch one fresh `jobstat` campaign (mixed domain, cross-family `--reviewer`, `--admit-judge`) alongside one fresh `buffer` control campaign (verifiable domain without `--admit-judge`, confirming `$0` Judge spend and zero regression) at the proved stack head with pre-registered predictions.

@@ -81,4 +81,14 @@ export async function checkpointCommand(
   return report;
 }
 
-if (import.meta.main) await checkpointCommand(Bun.argv.slice(2));
+if (import.meta.main) {
+  const args = Bun.argv.slice(2);
+  if (args.includes("--help") || args.includes("-h")) {
+    const flags = Object.keys(STANDALONE_OPTIONS)
+      .map((name) => `--${name}`)
+      .join(" ");
+    console.log(`bun tools/campaign/checkpoint.ts --name <name> --id <id> [options]\n  options: ${flags}`);
+  } else {
+    await checkpointCommand(args);
+  }
+}

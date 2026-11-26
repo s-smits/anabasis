@@ -290,7 +290,7 @@ test/wri-tasks.test.ts	5
 test/wri-vectors.test.ts	6
 test/wri-walls.test.ts	17
 test/wri2p2-script.test.ts	9
-tools/campaign/campaign-actions.ts	20
+tools/campaign/campaign-actions.ts	19
 tools/campaign/campaign-terms.ts	5
 tools/campaign/campaign.ts	8
 tools/campaign/checkpoint.ts	5

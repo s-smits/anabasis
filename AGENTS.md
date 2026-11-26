@@ -33,7 +33,7 @@ Name target factor and empirical count (`docs/plan.md`):
 - **1. Climb**: promotions/campaign (`climb.ts`), confirmed when an epoch's first starter comparison beats starter (`confirmed`). Never expose the 6-promotion / 2-domain bar to agents.
 - **2. False-positive rate**: A/A control per comparison; bar is a 95% exact bound ≤2× level on false positives of powered A/As pooled over a release (`table.ts --rows releases`).
 - **3. Audit accuracy**: evidence-backed Auditor rulings (`src/audit/`); against ≥30 blind labels (≥8 defects), bar is ≥3/4 defect detection and ≤1/10 voided `earned` rejections (`clears`, `agreement.ts`).
-- **4. Economy**: list-price dollars and wall-clock hours/promotion (`close.ts`, `meter.ts:billOf`, observational epoch attempts `climb.ts:BARS`).
+- **4. Economy**: list-price dollars and wall-clock hours/promotion (`close.ts`, `meter.ts:billOf`).
 
 ### Trade-offs to keep in view
 

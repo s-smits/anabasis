@@ -66,7 +66,7 @@ import { text, tool } from "../src/tools/answer.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
 import { tallied } from "./helpers/tally.ts";
-import { anyOf, arrayWith, copies, objectWith } from "./helpers/matchers.ts";
+import { arrayWith, copies, objectWith } from "./helpers/matchers.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
 const COMPARISON_STARTED = "comparison.started";
@@ -627,9 +627,6 @@ describe("a round", () => {
         capped: false,
         reading: "step",
         settled: "unsettled",
-        worth: {
-          cost: { attempts: 1, sessions: 1, dollars: anyOf(Number), met: true },
-        },
       },
     ]);
     // A worker runs each task's mirror in order, and the next task's mirror starts the other way round;

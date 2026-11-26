@@ -37,7 +37,6 @@ import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from ".
 import { median } from "../meta/tally.ts";
 import type { PassLabel } from "../audit/agreement.ts";
 import type { Ruling } from "../audit/auditor.ts";
-import { type Worth, worthOf } from "./climb.ts";
 
 type Reading = "step" | "no-step" | "not-scored" | "check-defects" | "no-change";
 type Tested = ReturnType<typeof scored>;
@@ -88,7 +87,6 @@ export interface Report {
   readonly turns: Readonly<
     Record<string, { readonly old: number | null; readonly fresh: number | null }>
   > | null;
-  readonly worth: Worth | null;
   readonly settled:
     | typeof UNSETTLED
     | {
@@ -148,7 +146,6 @@ export const NOTHING = {
   objective: null,
   points: null,
   turns: null,
-  worth: null,
 } as const;
 
 const REPORT_KEYS = [
@@ -378,7 +375,6 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Labels)
     withdrawn: coverage.withdrawn.filter(scorable),
     reading,
     turns: turnsOf(solves, pairs),
-    worth: reading === "step" ? worthOf(events, fixed.id) : null,
     objective: fixed.objective ?? null,
     points: pairs.length === 0 ? null : pointsIn(pairs),
   };

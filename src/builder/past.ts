@@ -23,11 +23,11 @@ const ENDED = new Map<string, string>(
   } satisfies Record<Built["ended"], string>),
 );
 
-function stands({ standing, under }: PracticeFail): string {
-  if (standing === "open" || under === null) return "open";
-  const harness = `under harness ${short(under)}`;
-  if (standing === "passed-once") return `open: passed once ${harness}`;
-  return standing === "repaired" ? `repaired ${harness}` : `failing again ${harness}`;
+function stands(fail: PracticeFail): string {
+  if (fail.standing === "open") return "open";
+  const harness = `under harness ${short(fail.under)}`;
+  if (fail.standing === "passed-once") return `open: passed once ${harness}`;
+  return fail.standing === "repaired" ? `repaired ${harness}` : `failing again ${harness}`;
 }
 
 export function formatPracticeFailures(
@@ -45,8 +45,9 @@ export function formatPracticeFailures(
 
 export function formatComparisonHistory(steps: readonly Handover[]): string[] {
   return steps.flatMap((step) => {
-    const reading = step.step === "comparison" ? READ.get(step.reading ?? "") : undefined;
-    if (step.step !== "comparison" || step.tally === null || reading === undefined) return [];
+    if (step.step !== "comparison" || step.tally === null) return [];
+    const reading = READ.get(step.reading ?? "");
+    if (reading === undefined) return [];
     const { wins, losses, ties } = step.tally;
     const tasks = plural(wins + losses + ties, "task");
     const held =

@@ -174,7 +174,7 @@ function NoComparison({ reading }: { reading: CampaignReading }) {
 }
 
 function SetUp({ reading }: { reading: CampaignReading }) {
-  const { prompt, supply, seats, terms, attended, bars } = reading;
+  const { prompt, supply, seats, terms, attended } = reading;
   const checker =
     supply.faults === null
       ? "checker never read"
@@ -208,10 +208,6 @@ function SetUp({ reading }: { reading: CampaignReading }) {
             <dd>the freeze and a promotion wait for the operator's word</dd>
           </div>
         ) : null}
-        <div>
-          <dt>bars</dt>
-          <dd>{`cost ${String(bars.cost)} attempts, gating nothing`}</dd>
-        </div>
       </dl>
     </Disclosure>
   );

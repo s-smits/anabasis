@@ -137,9 +137,7 @@ export function stopRule(events: readonly LogEvent[]) {
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 
-export function comparisonFloor(level: number): number {
-  return sweepOf(level) + MARGIN;
-}
+export const comparisonFloor = (level: number): number => sweepOf(level) + MARGIN;
 
 function sizeOf(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "solves" | "judged">) {
   const scored = Math.min(wanted.target, supply.held);
@@ -203,7 +201,7 @@ function faultNote(supply: Supply): readonly [boolean, string] {
 }
 
 function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
-  const { scored, floor, test, judging } = sizeOf(supply, wanted);
+  const { scored, test, judging } = sizeOf(supply, wanted);
   const { cap, pastStop } = wanted;
   const afforded = cap === null ? test : Math.max(0, Math.floor((cap.dollars - judging) / cap.reserve));
   return {
@@ -218,7 +216,7 @@ function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
     ],
     notes: [
       `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(scored)} to score`,
-      ...(scored < floor ? [] : sizeLines(scored, wanted.level)),
+      ...sizeLines(scored, wanted.level),
       ...holding([
         [
           supply.awaiting > 0,
@@ -271,13 +269,8 @@ function sessionAdmission(supply: Supply, wanted: WantedSession): Admission {
   };
 }
 
-function alreadyStarted(
-  events: readonly LogEvent[],
-  id: string,
-  kind: typeof STARTED | "build.started",
-): boolean {
-  return eventsOf(events, kind).some(({ event }) => event.data.session === id);
-}
+const alreadyStarted = (events: readonly LogEvent[], id: string, kind: typeof STARTED | "build.started") =>
+  eventsOf(events, kind).some(({ event }) => event.data.session === id);
 
 function admitStart(
   log: string,

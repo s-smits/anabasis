@@ -25,7 +25,7 @@ import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
@@ -37,13 +37,9 @@ import { draftCommand } from "../eval/draft.ts";
 import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/registry.ts";
 import { campaignLog, LIMITS, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
+import { type CampaignContext, campaignTools, releasePendingPractice } from "./campaign-actions.ts";
 import {
   awaitsOperator,
-  type CampaignContext,
-  campaignTools,
-  releasePendingPractice,
-} from "./campaign-actions.ts";
-import {
   comparisonOf,
   examinerRun,
   flag,
@@ -326,12 +322,13 @@ async function served(opening: Opening, paid: "paid" | "scripted", named?: strin
   return opening;
 }
 
-function pinFault(manifest: JsonValue, version: string): string | null {
-  const record = asRecord(manifest);
+function checkBunPin(): void {
+  const manifest = join(REPO, "package.json");
+  const record = asRecord(capturedJsonParse(readFileSync(manifest, "utf8")));
   const pins = { packageManager: record?.packageManager, "engines.bun": asRecord(record?.engines)?.bun };
-  return pins.packageManager === `bun@${version}` && pins["engines.bun"] === version
-    ? null
-    : `${capturedJsonStringify(pins)} must pin the executing Bun ${version}`;
+  if (pins.packageManager !== `bun@${Bun.version}` || pins["engines.bun"] !== Bun.version) {
+    throw new Error(`${manifest}: ${capturedJsonStringify(pins)} must pin the executing Bun ${Bun.version}`);
+  }
 }
 
 async function runMade(decided: Made, turn: Turn, log: string, from: number): Promise<boolean> {
@@ -358,9 +355,7 @@ export async function harnessBuilder(
 ): Promise<ScheduledAction> {
   // A dry run only reports the drift, else it could pass in a main clone whose real run is then
   // refused.
-  const manifest = join(REPO, "package.json");
-  const fault = pinFault(capturedJsonParse(readFileSync(manifest, "utf8")), Bun.version);
-  if (fault !== null) throw new Error(`${manifest}: ${fault}`);
+  checkBunPin();
   const given = flagsOf(args);
   const paid = seats.seated === solved ? "paid" : "scripted";
   const refusedTree = paid === "paid" ? treeFault(REPO) : null;

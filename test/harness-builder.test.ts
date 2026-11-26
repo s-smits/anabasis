@@ -733,4 +733,15 @@ describe("a comparison's packet for a person", () => {
       passes: arrayWith(["p", "q"]),
     });
   });
+
+  it("prints usage on checkpoint.ts --help without throwing", () => {
+    const help = runSync([capturedExecPath, join(REPO, "tools/campaign/checkpoint.ts"), "--help"], {
+      cwd: REPO,
+    });
+    expect(help.exitCode).toBe(0);
+    expect(decodeOutput(help.stdout)).toContain("bun tools/campaign/checkpoint.ts --name <name> --id <id>");
+    expect(decodeOutput(help.stdout)).toContain("--new");
+    expect(decodeOutput(help.stdout)).toContain("--target");
+    expect(decodeOutput(help.stderr)).toBe("");
+  });
 });

@@ -31,6 +31,7 @@ import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
 import { type AgentRun, type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
 import { claimRoot } from "../sandbox/sandbox-root.ts";
+import { openingOf } from "../campaign/opening.ts";
 import { campaignOf } from "../campaign/summary.ts";
 import {
   copyHarness,
@@ -217,13 +218,18 @@ export async function session(
   writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
   writeFileSync(join(dirs.home, "HARNESS.md"), HARNESS_ACCOUNT);
   seedSavedHarnesses(dirs.home, request.states, before, parent.digest);
+  const { practiceSolves, ...sessionLimits } = limits;
+  const boundedByBudget = request.campaign !== undefined && openingOf(before)?.budget != null;
   append(log, BUILD_STARTED, {
     session: request.id,
     parent: parent.digest,
     tasks: request.tasks.map(({ version }) => version),
     model: priceKey(model),
     effort: request.effort,
-    limits: { ...limits },
+    limits: {
+      ...sessionLimits,
+      ...keyIfDefined("practiceSolves", boundedByBudget ? undefined : practiceSolves),
+    },
   });
   const clock = sessionClock(began, limits.wallSeconds);
   const bench: Bench = {

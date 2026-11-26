@@ -130,7 +130,7 @@ describe("a keeper's looks, scripted", () => {
   const MINUTE = 60_000;
   const WAIT_MS = Number(WAIT_HOURS) * HOUR;
 
-  function scripted(flags: readonly string[] = [`--builder=${OPUS}`], login: string | undefined = "2") {
+  function scripted(flags: readonly string[] = [`--builder=${OPUS}`], login: string | null = "2") {
     const none: string[] = [];
     const nobody: { name: string; login: string; host: string }[] = [];
     const log: LogEvent[] = [waited(40)];
@@ -150,7 +150,7 @@ describe("a keeper's looks, scripted", () => {
     const look = keeperOf("sample", async () => state.pool, WAIT_MS, {
       events: () => state.events,
       stands: (events, now) => stateOf(events, { writing: state.open, kept: state.otherKeeper }, now),
-      last: () => ({ login, flags }),
+      last: () => ({ login: login ?? undefined, flags }),
       fleet: () => Promise.resolve({ live: state.live, unasked: state.unasked }),
       read: (wanted) => {
         state.asked += wanted.length > 0 ? 1 : 0;
@@ -270,6 +270,86 @@ describe("a keeper's looks, scripted", () => {
     ];
     await transient.look(NOW);
     expect(transient.state.acted).toEqual(["start 2"]);
+  });
+
+  it("exits immediately instead of rotating Claude logins when a non-Claude seat permanently refuses", async () => {
+    const opening = (reviewer: string) =>
+      event("campaign.opened", {
+        seats: {
+          builder: { model: OPUS, effort: "high" },
+          examiner: { model: OPUS, effort: "high" },
+          reviewer: { model: reviewer, effort: "medium" },
+        },
+        solver: { model: OPUS, effort: "medium" },
+      });
+    const refTurn = event("referee.turn", {
+      reader: "draft-d-1-1",
+      turn: 1,
+      stopReason: "error",
+      error: "requires more credits",
+    });
+    const claudeTurn = event("build.turn", {
+      session: "b-1",
+      turn: 1,
+      stopReason: "error",
+      error: "disabled Claude subscription access",
+    });
+    const ended = (why: string) => event("campaign.ended", { ending: "environment", why });
+    const run = async (events: LogEvent[], flags?: readonly string[], login: string | null = "2") => {
+      const k = scripted(flags, login);
+      k.state.open = false;
+      k.state.events = events;
+      return { done: await k.look(NOW), acted: k.state.acted, said: k.state.said.at(-1) ?? "" };
+    };
+
+    const apiReviewer = await run([
+      opening("openai/gpt-5"),
+      refTurn,
+      ended("the judge recorded no vote (requires more credits)"),
+    ]);
+    expect(apiReviewer).toMatchObject({ done: true, acted: [] });
+    expect(apiReviewer.said).toContain("outside the Claude login: kept no longer");
+
+    expect(
+      await run([
+        opening(OPUS),
+        event("solve.started", { solve: "s-1", model: "openai/gpt-5" }),
+        event("solve.turn", { solve: "s-1", turn: 1, stopReason: "error", error: "requires more credits" }),
+        ended("3 sessions in a row crashed (requires more credits)"),
+      ]),
+    ).toMatchObject({ done: true, acted: [] });
+
+    expect(
+      await run(
+        [opening(OPUS), refTurn, ended("the judge recorded no vote (requires more credits)")],
+        [`--builder=${OPUS}`, "--reviewer=openai/gpt-5"],
+      ),
+    ).toMatchObject({ done: true, acted: [] });
+
+    expect(
+      await run(
+        [opening("openai/gpt-5"), refTurn, ended("the judge recorded no vote (requires more credits)")],
+        [`--builder=${OPUS}`, `--reviewer=${OPUS}`],
+      ),
+    ).toMatchObject({ done: false, acted: ["start 3"] });
+
+    expect(await run([ended("Provider is not configured")])).toMatchObject({ done: true, acted: [] });
+    expect(
+      await run([ended("disabled Claude subscription access")], [`--builder=${OPUS}`], null),
+    ).toMatchObject({
+      done: true,
+      acted: [],
+    });
+
+    const both = [opening("openai/gpt-5"), refTurn, claudeTurn];
+    expect(await run([...both, ended("the judge recorded no vote (requires more credits)")])).toMatchObject({
+      done: true,
+      acted: [],
+    });
+    expect(await run([...both, ended("disabled Claude subscription access")])).toMatchObject({
+      done: false,
+      acted: ["start 3"],
+    });
   });
 });
 

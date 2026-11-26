@@ -7,7 +7,7 @@
  *   bun --env-file=<file> run runs usage [N ...] [--json] [--open] [--closed]
  *   bun run runs active [--here [--login N]]
  */
-import { openingOf, SEATS } from "#src/campaign/opening.ts";
+import { openingOf, type SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -129,13 +129,23 @@ export function plainOnly(env: Env): boolean {
   return allowedLogins(env).length === 0 && hasText(env[TOKEN]);
 }
 
-export function billsLogin(events: readonly LogEvent[], flags: readonly string[]): boolean {
+type SeatModels = Readonly<Record<(typeof SEATS)[number] | "solver", string | undefined>>;
+
+export function seatModels(events: readonly LogEvent[], flags: readonly string[]): SeatModels {
   const values = seatFlagsOf(flags);
   const opening = openingOf(events);
-  return [
-    ...SEATS.map((seat) => values[seat] ?? opening?.seats[seat]?.model),
-    values.solver ?? opening?.solver?.model ?? recordedSetting(events)?.solver?.model,
-  ].some((model) => isString(model) && model.startsWith("claude/"));
+  return {
+    builder: values.builder ?? opening?.seats.builder?.model,
+    examiner: values.examiner ?? opening?.seats.examiner?.model,
+    reviewer: values.reviewer ?? opening?.seats.reviewer?.model,
+    solver: values.solver ?? opening?.solver?.model ?? recordedSetting(events)?.solver?.model,
+  };
+}
+
+export function billsLogin(events: readonly LogEvent[], flags: readonly string[]): boolean {
+  return Object.values(seatModels(events, flags)).some(
+    (model) => isString(model) && model.startsWith("claude/"),
+  );
 }
 
 function subOf(env: Env, login: string): { readonly sub: string; readonly runs: string } | null {

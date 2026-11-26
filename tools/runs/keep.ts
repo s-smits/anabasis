@@ -13,7 +13,9 @@
 import type { LogEvent } from "#src/kernel/log.ts";
 import { endedOf } from "#src/kernel/reports.ts";
 import { nonRetryableProvider } from "#src/kernel/solve.ts";
+import { askedOf, type Seat, traced } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { envRunsFile } from "./host-config.ts";
@@ -31,6 +33,7 @@ import {
   type readLogins,
   readNotClosed,
   room,
+  seatModels,
   startRefusal,
 } from "./logins.ts";
 import type { Live } from "./live.ts";
@@ -56,6 +59,36 @@ interface Hands {
 const LOOK_MS = 60_000;
 const ASK_MS = 10 * 60_000;
 const BARREN = 3;
+const SEAT_ROLE: Readonly<Record<Seat, "builder" | "examiner" | "reviewer" | "solver">> = {
+  build: "builder",
+  exam: "examiner",
+  draft: "examiner",
+  referee: "reviewer",
+  solve: "solver",
+};
+const CLAUDE_PREFIX = "claude/";
+const CLAUDE_LOGIN_REFUSAL = /disabled Claude subscription access/u;
+
+function refusalOnClaudeLogin(events: readonly LogEvent[], why: string, flags: readonly string[]): boolean {
+  if (!billsLogin(events, flags)) return false;
+  const asked = askedOf(events);
+  const models = seatModels(events, flags);
+  let fallback: string | undefined;
+  for (let index = events.length - 2; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event === undefined || event.kind === "campaign.ended") break;
+    if (!event.kind.endsWith(".turn")) continue;
+    if (!isString(event.data.error) || !nonRetryableProvider(event.data.error)) continue;
+    const turn = traced(event, index);
+    if (turn === null) continue;
+    const model = asked.get(turn.id) ?? models[SEAT_ROLE[turn.seat]];
+    if (model === undefined) continue;
+    if (why.includes(event.data.error)) return model.startsWith(CLAUDE_PREFIX);
+    fallback ??= model;
+  }
+  if (fallback !== undefined) return fallback.startsWith(CLAUDE_PREFIX);
+  return CLAUDE_LOGIN_REFUSAL.test(why);
+}
 
 /** Model turns the provider answered, of any seat. A failed launch still grows the log, so a keeper that
  *  counted its bytes would go on into one DNS failure again and again. */
@@ -113,7 +146,7 @@ export async function roomFor(
 }
 
 export const keeperActed = (line: string): boolean =>
-  /: (?:move|continue) (?:on login|without a login)|; left waiting$|no seat took a model turn: kept no longer$/u.test(
+  /: (?:move|continue) (?:on login|without a login)|; left waiting$|(?:no seat took a model turn|non-retryable provider refusal[^:]*): kept no longer$/u.test(
     line,
   );
 
@@ -143,15 +176,14 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       spentUntil.set(current, state.wait.until);
     }
     // A permanent provider refusal (disabled subscription, missing credits, unconfigured provider)
-    // never clears on retry, so mark the login spent and move to another roomy login instead of
-    // restarting into the same failure.
+    // never clears on retry: rotate off the login only when a Claude-billed seat refused, and exit
+    // immediately when a non-Claude seat (e.g. Codex reviewer) or an unnumbered launch refused.
     const ended = endedOf(events);
-    if (
-      turn === "continue" &&
-      current !== undefined &&
-      ended?.ending === GOES_ON &&
-      nonRetryableProvider(ended.why)
-    ) {
+    if (turn === "continue" && ended?.ending === GOES_ON && nonRetryableProvider(ended.why)) {
+      if (current === undefined || !refusalOnClaudeLogin(events, ended.why, flags)) {
+        act(now, `non-retryable provider refusal outside the Claude login: kept no longer`);
+        return true;
+      }
       spentUntil.set(current, Number.POSITIVE_INFINITY);
     }
     for (const [login, at] of spentUntil) {

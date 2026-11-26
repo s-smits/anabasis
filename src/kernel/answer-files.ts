@@ -17,7 +17,10 @@ export interface AnswerFile {
 // oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to `JsonObject`, and an interface has no implicit index signature
 type TextFile = { readonly path: string; readonly text: string };
 
-export type ControlFile = TextFile | { readonly path: string; readonly entries: readonly TextFile[] };
+export type ControlFile =
+  | TextFile
+  | { readonly path: string; readonly base64: string }
+  | { readonly path: string; readonly entries: readonly TextFile[] };
 
 export interface FileManifest {
   readonly path: string;
@@ -102,13 +105,27 @@ export function capturedFiles(value: JsonValue | undefined): AnswerFile[] {
   return files;
 }
 
+export function decodeBase64(raw: string): Buffer | null {
+  const bytes = Buffer.from(raw, "base64");
+  return bytes.toString("base64") === raw ? bytes : null;
+}
+
 export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
-  const archived = rows.flatMap((row) => ("text" in row ? [] : [row.entries.map(({ path }) => path)]));
+  const archived = rows.flatMap((row) => ("entries" in row ? [row.entries.map(({ path }) => path)] : []));
   if (![rows.map(({ path }) => path), ...archived].every(safePaths)) {
     throw new Error("invalid answer file path");
   }
   const filed = filing();
-  return rows.map((row) => filed(row.path, "text" in row ? Buffer.from(row.text) : storedZip(row.entries)));
+  return rows.map((row) => {
+    const bytes =
+      "text" in row
+        ? Buffer.from(row.text)
+        : "base64" in row
+          ? decodeBase64(row.base64)
+          : storedZip(row.entries);
+    if (bytes === null) throw new Error("invalid file base64");
+    return filed(row.path, bytes);
+  });
 }
 
 const storeOf = (log: string) => join(dirname(log), "states", DELIVERABLES.folder);

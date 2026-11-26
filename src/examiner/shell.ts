@@ -38,7 +38,7 @@ import { shellQuote } from "../sandbox/isolation.ts";
 const FILE_BYTES = 4_000_000;
 
 export const FROM_FILE =
-  'Any JSON value this tool takes, such as a public input, hidden values, an answer, a format or a check program, may instead be given as { "from_file": "<path>" }: a file in your home, by its path relative to the home, which the host reads and takes as if the value had been written here, a .json file as the JSON it holds and any other file as its text.';
+  'Any JSON value may be given as { "from_file": "<path>" } relative to your home: .json loads as JSON, a "base64" field loads raw bytes as base64 (for .xlsx/.docx/.pdf/.sqlite/.png), and any other file loads as UTF-8 text.';
 
 export interface Wall extends Walled {
   readonly engines?: VerifierTree | undefined;
@@ -129,17 +129,17 @@ export function fromHome<Parameters extends TSchema>(
   home: string | undefined,
   definition: ToolRegistration<Parameters>,
 ): ToolRegistration<Parameters> {
-  const expand = (value: JsonValue): JsonValue => {
-    if (Array.isArray(value)) return value.map(expand);
+  const expand = (value: JsonValue, field?: string): JsonValue => {
+    if (Array.isArray(value)) return value.map((item) => expand(item));
     if (isString(value) && /^\s*\{\s*"from_file"\s*:\s*"[^"\\]+"\s*\}\s*$/u.test(value)) {
-      return expand(parseJsonAs<JsonValue>(value));
+      return expand(parseJsonAs<JsonValue>(value), field);
     }
     if (!isRecord(value)) return value;
     const entries = Object.entries(value);
     if (entries.length === 1 && entries[0]?.[0] === "from_file" && isString(entries[0][1])) {
-      return homeFile(home, entries[0][1]);
+      return homeFile(home, entries[0][1], field === "base64" ? "base64" : "text");
     }
-    return Object.fromEntries(entries.map(([key, inner]) => [key, expand(inner)]));
+    return Object.fromEntries(entries.map(([key, inner]) => [key, expand(inner, key)]));
   };
   return {
     ...definition,
@@ -163,7 +163,7 @@ export function fromHome<Parameters extends TSchema>(
   };
 }
 
-function homeFile(home: string | undefined, path: string): JsonValue {
+function homeFile(home: string | undefined, path: string, encoding: "text" | "base64"): JsonValue {
   if (home === undefined) {
     throw new Error(`from_file names ${path}, and this session has no home: give the value inline`);
   }
@@ -190,6 +190,7 @@ function homeFile(home: string | undefined, path: string): JsonValue {
       `from_file names ${path} (${String(stat.size)} bytes), over the ${String(FILE_BYTES)}-byte limit`,
     );
   }
+  if (encoding === "base64") return readFileSync(real).toString("base64");
   const text = readFileSync(real, "utf8");
   if (!/\.json$/iu.test(real)) return text;
   try {

@@ -176,6 +176,8 @@ describe("what a solve opens with", () => {
           { path: "data/sales.csv", text: "region,units\nnorth,3\n" },
           { path: "notes/memo.md", text: "# Memo\n" },
           { path: "book.xlsx", base64: "UEsDBA==" },
+          { path: "pack.zip", entries: [{ path: "a.txt", text: "ok" }] },
+          { path: "bad.bin", base64: "not valid base64!" },
           { path: "data", text: "a file where a folder already stands" },
           { path: "notes/memo.md/under", text: "a folder where a file already stands" },
           { path: "data/sales.csv", text: "a second row of one path" },
@@ -192,16 +194,20 @@ describe("what a solve opens with", () => {
     };
     const home = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-prompt-files-")));
     try {
-      expect(seedHome(home, listed, [], CONTRACT.answerFormat)).toEqual({ resources: 0, files: 2 });
+      expect(seedHome(home, listed, [], CONTRACT.answerFormat)).toEqual({ resources: 0, files: 4 });
       const root = join(home, "public", "files");
       expect(readFileSync(join(root, "data", "sales.csv"), "utf8")).toBe("region,units\nnorth,3\n");
       expect(readFileSync(join(root, "notes", "memo.md"), "utf8")).toBe("# Memo\n");
+      expect(readFileSync(join(root, "book.xlsx"))).toEqual(Buffer.from("UEsDBA==", "base64"));
+      expect(readFileSync(join(root, "pack.zip")).subarray(0, 4)).toEqual(
+        Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+      );
       for (const stray of [
         join(home, "public", "outside.txt"),
         join(home, "climbs.txt"),
         join(home, "public", "climbs.txt"),
         join(root, "no-content.txt"),
-        join(root, "book.xlsx"),
+        join(root, "bad.bin"),
         join(root, "etc", "absolute.txt"),
       ]) {
         expect(existsSync(stray)).toBe(false);
@@ -217,10 +223,17 @@ describe("what a solve opens with", () => {
         files: [
           { path: "data/sales.csv", file: "public/files/data/sales.csv", bytes: 21 },
           { path: "notes/memo.md", file: "public/files/notes/memo.md", bytes: 7 },
-          ...rows.slice(2),
+          { path: "book.xlsx", file: "public/files/book.xlsx", bytes: 4 },
+          {
+            path: "pack.zip",
+            file: "public/files/pack.zip",
+            bytes: readFileSync(join(root, "pack.zip")).length,
+          },
+          ...rows.slice(4),
         ],
       });
       expect(firstTurn(listed)).not.toContain("region,units");
+      expect(firstTurn(listed)).not.toContain("UEsDBA==");
       // A public input whose `files` is no list has none, and its home no folder for them.
       const other = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-prompt-files-")));
       try {

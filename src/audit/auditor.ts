@@ -2,7 +2,8 @@ import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earen
 import { type Static, Type } from "typebox";
 import { type AgentTool, runAgent } from "../agent/session.ts";
 import { waitOut } from "../solver/run.ts";
-import { type AnswerFile, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
+import { type AnswerFile, decodeBase64, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
+import { extract, headOf } from "../kernel/extract.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
 import { append, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
@@ -156,8 +157,12 @@ export function taskFileTexts(publicInput: JsonValue): Map<string, string> {
   const files = new Map<string, string>();
   for (const entry of Array.isArray(rows) ? rows : []) {
     const row = asRecord(entry);
-    if (row !== null && isString(row.path) && isString(row.text) && !files.has(row.path)) {
+    if (row === null || !isString(row.path) || files.has(row.path)) continue;
+    if (isString(row.text)) {
       files.set(row.path, row.text);
+    } else if (isString(row.base64) && decodeBase64(row.base64) !== null) {
+      const extracted = extract({ path: row.path, base64: row.base64 });
+      files.set(row.path, [...headOf(extracted), extracted.text].join("\n"));
     }
   }
   return files;
@@ -169,7 +174,18 @@ export function boundPublicInput(publicInput: JsonValue): JsonValue {
   let remaining = TASK_FILES_PREVIEW_BUDGET_BYTES;
   const files = record.files.map((entry) => {
     const row = asRecord(entry);
-    if (row === null || !isString(row.path) || !isString(row.text)) return entry;
+    if (row === null || !isString(row.path)) return entry;
+    if (isString(row.base64)) {
+      const bytes = decodeBase64(row.base64)?.length;
+      if (bytes === undefined) return entry;
+      const { base64: _omitted, ...rest } = row;
+      return { ...rest, bytes, omittedBytes: bytes };
+    }
+    if (Array.isArray(row.entries)) {
+      const { entries: _omitted, ...rest } = row;
+      return { ...rest, members: row.entries.length };
+    }
+    if (!isString(row.text)) return entry;
     const bytes = Buffer.byteLength(row.text);
     const budget = Math.min(TASK_FILE_PREVIEW_BYTES, Math.max(0, remaining));
     if (bytes <= budget) {

@@ -18,7 +18,9 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { gateAnswers, measuredGate } from "#tools/wri/gate-era.ts";
+import type { drafting as Drafting } from "#src/examiner/draft.ts";
 import type { writing as Writing } from "#src/examiner/write.ts";
+import type { draftCommand as DraftCommand } from "#tools/eval/draft.ts";
 import type { examineCommand as ExamineCommand } from "#tools/eval/examine.ts";
 import type { solved as Solved } from "#tools/campaign/round.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
@@ -35,7 +37,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { processGroupExists } from "#src/meta/subprocess.ts";
-import { BUILDER, ROUND, SEED_FILE } from "#tools/runs/registry.ts";
+import { BUILDER, DRAFT, ROUND, SEED_FILE } from "#tools/runs/registry.ts";
 import { codeLine, seedCut } from "#tools/runs/seed.ts";
 import { seats as seatFlags } from "#tools/runs/fresh.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
@@ -52,7 +54,7 @@ const USAGE = `usage:
   live-seat.ts compare <prefix>... [--gates N]
   live-seat.ts pairs <control>,<arm>... [--gates N]
   live-seat.ts calls <log or campaign folder>...
-  live-seat.ts prompt --tree <worktree> --name sim-<what> -- tools/eval/examine.ts <its flags>
+  live-seat.ts prompt --tree <worktree> --name sim-<what> -- tools/eval/examine.ts|draft.ts <its flags>
 
 start runs <command> with --name in <tree>, on a seed only, and prints the reading when it ends.
 watch prints one line for each event worth reading as it lands, until the seat's process is gone.
@@ -66,7 +68,7 @@ the shorter arm's count of task admissions (or N), and counts for each Examiner 
 did more, fewer or as many; a pair under 6 task admissions is marked thin and left out of that count.
 calls counts the Examiner's tool calls, failed calls by tool and kind, and finishes the session
 went on after, over every log named, a seed's from its cut, each call once however many logs hold it.
-prompt prints the system prompt, opening, tools and nudges the Examiner command would seat, and
+prompt prints the system prompt, opening, tools and nudges the Examiner or draft command would seat, and
 seats nothing.`;
 const OPTIONS = {
   tree: "abs",
@@ -108,6 +110,13 @@ interface Reading {
   readonly billed: number;
   readonly sessions: readonly string[];
   readonly ended: readonly string[];
+  readonly drafted: number;
+  readonly audits: Readonly<Record<string, number>>;
+  readonly frozen: number;
+  readonly comparisons: readonly string[];
+  readonly reported: number;
+  readonly solves: { readonly started: number; readonly finished: number };
+  readonly rulings: Readonly<Record<string, number>>;
   readonly proposed: number;
   /** Each task admission by what the reference's solves of its draft did: `every`, `some`, `none`,
    *  `none, proved` (its author's answer passes), `package` (refused on its package before a solve)
@@ -155,23 +164,49 @@ function spread(values: readonly number[]): readonly [number, number, number] | 
 }
 
 const examCalls = (events: readonly LogEvent[]) => callsOf(tracesIn(events), "exam");
+const hasDraftActivity = ({ drafted, audits, frozen }: Pick<Reading, "drafted" | "audits" | "frozen">) =>
+  drafted > 0 || Object.keys(audits).length > 0 || frozen > 0;
+const hasComparisonActivity = ({ comparisons, reported }: Pick<Reading, "comparisons" | "reported">) =>
+  comparisons.length > 0 || reported > 0;
 
 export function readingOf(events: readonly LogEvent[], from: number, mentions: readonly string[]): Reading {
   const stretch = events.slice(from);
   const of = (kind: string) => stretch.flatMap((event) => (event.kind === kind ? [event.data] : []));
   const admissions = of("task.gate");
-  const calls = examCalls(stretch);
+  const traces = tracesIn(stretch);
+  const calls = [...callsOf(traces, "exam"), ...callsOf(traces, "draft")];
   const first = stretch[0]?.at;
   const last = stretch.at(-1)?.at;
   const turns = [...gateAnswers(events, from - 1).values()].flatMap((answers) =>
     answers.flatMap(({ turns: used }) => (used === null ? [] : [used])),
   );
+  const comparisons = of("comparison.started").flatMap(({ session }) => (isString(session) ? [session] : []));
+  const compIds = new Set(comparisons);
+  const compSolves = new Set(
+    of("solve.started").flatMap(({ solve, comparison }) =>
+      isString(solve) && isString(comparison) && compIds.has(comparison) ? [solve] : [],
+    ),
+  );
   return {
     events: [from, events.length],
     minutes: first === undefined || last === undefined ? 0 : (Date.parse(last) - Date.parse(first)) / 60_000,
     billed: billedBetween(events, from),
-    sessions: of("exam.started").flatMap(({ session }) => (isString(session) ? [session] : [])),
-    ended: of("exam.finished").flatMap(({ ended }) => (isString(ended) ? [ended] : [])),
+    sessions: stretch.flatMap(({ kind, data }) =>
+      (kind === "exam.started" || kind === "draft.started") && isString(data.session) ? [data.session] : [],
+    ),
+    ended: stretch.flatMap(({ kind, data }) =>
+      (kind === "exam.finished" || kind === "draft.finished") && isString(data.ended) ? [data.ended] : [],
+    ),
+    drafted: of("exam.drafted").length,
+    audits: countBy(of("referee.draft"), ({ verdict }) => (isString(verdict) ? verdict : "unknown")),
+    frozen: of("contract.frozen").length,
+    comparisons,
+    reported: of("comparison.reported").length,
+    solves: {
+      started: compSolves.size,
+      finished: of("solve.finished").filter(({ solve }) => isString(solve) && compSolves.has(solve)).length,
+    },
+    rulings: countBy(of("referee.finding"), ({ ruling }) => (isString(ruling) ? ruling : "unknown")),
     proposed: of("task.proposed").length,
     gates: countBy(admissions, admissionWord),
     held: admissions.filter(({ outcome }) => heldAtGate(outcome)).length,
@@ -205,6 +240,16 @@ export function told(reading: Reading): string[] {
   return [
     `events ${String(reading.events[0])} to ${String(reading.events[1])}, ${reading.minutes.toFixed(0)} min, $${reading.billed.toFixed(2)} billed`,
     `sessions ${reading.sessions.join(", ") || "none"}; ended ${reading.ended.join(", ") || "none yet"}`,
+    ...(hasDraftActivity(reading)
+      ? [
+          `exam drafted ${String(reading.drafted)}, audits ${listed(reading.audits)}, frozen ${String(reading.frozen)}`,
+        ]
+      : []),
+    ...(hasComparisonActivity(reading)
+      ? [
+          `comparisons ${reading.comparisons.join(", ") || "none"} (reported ${String(reading.reported)}), solves ${String(reading.solves.finished)}/${String(reading.solves.started)}, rulings ${listed(reading.rulings)}`,
+        ]
+      : []),
     `drafts proposed ${String(reading.proposed)}, task admissions ${listed(reading.gates)}; held ${String(reading.held)}`,
     `task admission ran ${String(reading.ran.reduce((sum, count) => sum + count, 0))} solves over ${String(reading.ran.length)} drafts${reading.ran.length === 0 ? "" : `: ${reading.ran.join(", ")}`}`,
     `the reference's valid room-solve answers took ${turns === null ? "no turns on record" : `${String(turns[0])} to ${String(turns[2])} turns, median ${String(turns[1])}`}`,
@@ -222,9 +267,16 @@ export function newsOf(events: readonly LogEvent[], from: number): string[] {
         `gate ${text(data.outcome)}, ${admissionWord(data)}${isNumber(ran) ? `, ${plural(ran, "solve")} ran` : ""}`,
       ];
     }
+    if (kind === "exam.drafted") return ["exam drafted"];
+    if (kind === "referee.draft") {
+      return [`draft audit ${text(data.verdict)}${isNumber(data.pass) ? ` pass ${String(data.pass)}` : ""}`];
+    }
+    if (kind === "referee.draft.refused") return ["draft audit refused"];
+    if (kind === "contract.frozen") return ["contract frozen"];
     if (kind === "referee.finding") return [`ruling ${text(data.ruling)} on ${text(data.solve)}`];
     if (kind === "referee.refused") return [`ruling refused on ${text(data.solve)}`];
-    if (kind === "exam.finished" || kind === "build.finished") {
+    if (kind === "comparison.reported") return [`${text(data.session)} reported ${text(data.reading)}`];
+    if (kind === "exam.finished" || kind === "draft.finished" || kind === "build.finished") {
       return [`${text(data.session)} ended ${text(data.ended)}`];
     }
     return [];
@@ -511,22 +563,43 @@ function compare(args: CommandArgs, seats: readonly string[]): number {
     const { log, from, commit } = keptSeat(seat, args.die);
     return { seat, commit, reading: readingOf(cutAt(read(log), from, admissionLimit), from, []) };
   });
-  const words = [...new Set(readings.flatMap(({ reading }) => Object.keys(reading.gates)))].toSorted();
   const each = (row: (reading: Reading) => number | string) =>
     readings.map(({ reading }) => String(row(reading)));
   const perHeld = (reading: Reading) =>
     reading.held === 0 ? "none held" : `$${(reading.billed / reading.held).toFixed(2)}`;
+  const countRows = (prefix: string, pick: (reading: Reading) => Readonly<Record<string, number>>) =>
+    [...new Set(readings.flatMap(({ reading }) => Object.keys(pick(reading))))]
+      .toSorted()
+      .map((key): [string, readonly string[]] => [
+        `${prefix}${key}`,
+        each((reading) => pick(reading)[key] ?? 0),
+      ]);
+  const draftRows: [string, readonly string[]][] = readings.some(({ reading }) => hasDraftActivity(reading))
+    ? [
+        ["exam drafted", each((reading) => reading.drafted)],
+        ...countRows("  audit ", (reading) => reading.audits),
+        ["frozen", each((reading) => reading.frozen)],
+      ]
+    : [];
+  const compRows: [string, readonly string[]][] = readings.some(({ reading }) =>
+    hasComparisonActivity(reading),
+  )
+    ? [
+        ["solves", each(({ solves }) => `${String(solves.finished)}/${String(solves.started)}`)],
+        ["reported", each((reading) => reading.reported)],
+        ...countRows("  ruling ", (reading) => reading.rulings),
+      ]
+    : [];
   const rows: [string, readonly string[]][] = [
     ["seat", readings.map(({ seat }) => basename(seat))],
     ["commit", readings.map(({ commit }) => commit)],
     ["minutes", each((reading) => reading.minutes.toFixed(0))],
     ["billed", each((reading) => `$${reading.billed.toFixed(2)}`)],
+    ...draftRows,
+    ...compRows,
     ["proposed", each((reading) => reading.proposed)],
     ["gated", each((reading) => reading.ran.length)],
-    ...words.map((word): [string, readonly string[]] => [
-      `  ${word}`,
-      each((reading) => reading.gates[word] ?? 0),
-    ]),
+    ...countRows("  ", (reading) => reading.gates),
     ["held", each((reading) => reading.held)],
     ["per held", each(perHeld)],
     ["room solves", each((reading) => reading.ran.reduce((sum, count) => sum + count, 0))],
@@ -628,38 +701,65 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
   return 0;
 }
 
-/** The session stands in for `examine`, prints its mode, and exits before any turn, gate or event;
- *  the engines in its shell are left out. It is composed as `try_task`; an older tree composes
- *  `propose_tasks` here. */
+function printMode(
+  mode: {
+    readonly system: string;
+    readonly opening: string;
+    readonly tools: readonly { readonly name: string; readonly description: string }[];
+    readonly nudge: string;
+    readonly finish: string;
+    readonly declined: string | null;
+  },
+  log: string,
+  before: number,
+  name: string,
+): never {
+  console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
+  for (const tool of mode.tools) console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
+  console.log(`\n=== NUDGE ${mode.nudge}\n=== FINISH ${mode.finish}\n=== DECLINED ${String(mode.declined)}`);
+  if (read(log).length !== before) {
+    console.error(`${name}: composing wrote ${String(read(log).length - before)} events`);
+  }
+  return runtimeProcess.exit(0);
+}
+
+/** The session stands in for `examine` or `draft`, prints its mode, and exits before any turn, gate
+ *  or event; the engines in its shell are left out. It is composed as `try_task` or `draft_exam`;
+ *  an older tree composes `propose_tasks` here. */
 async function prompt(args: CommandArgs, command: readonly string[]): Promise<number> {
   const tree = args.required("tree");
   const name = args.required("name");
   const [script, ...flags] = command;
-  if (script !== EXAMINE) {
-    args.die(`prompt composes an Examiner session: -- ${EXAMINE}`);
+  if (script !== EXAMINE && script !== DRAFT) {
+    args.die(`prompt composes an Examiner or draft session: -- ${EXAMINE} | ${DRAFT}`);
   }
   const log = seedLog(tree, name, args.die);
   const before = read(log).length;
-  // SAFETY: both paths are modules of an Anabasis tree, which export these two functions; a tree whose
-  // signatures differ fails the call below with the tree's own error.
-  const { examineCommand } = (await import(join(tree, script))) as { examineCommand: typeof ExamineCommand };
-  // SAFETY: as above.
-  const { writing } = (await import(join(tree, "src/examiner/write.ts"))) as { writing: typeof Writing };
-  // SAFETY: as above.
-  const { solved } = (await import(join(tree, ROUND))) as { solved: typeof Solved };
   runtimeProcess.chdir(tree);
-  const composed: Parameters<typeof ExamineCommand>[1] = (request) => {
-    // An older tree takes a third argument, whether its home holds the reference's copy, which every
-    // campaign of it did; it is printed without the copy here.
-    const mode = writing(request, undefined);
-    console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
-    for (const tool of mode.tools) console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
-    console.log(`\n=== NUDGE ${mode.nudge}\n=== FINISH ${mode.finish}\n=== DECLINED ${mode.declined}`);
-    if (read(log).length !== before) {
-      console.error(`${name}: composing wrote ${String(read(log).length - before)} events`);
-    }
-    return runtimeProcess.exit(0);
-  };
+  if (script === DRAFT) {
+    // SAFETY: targets current Anabasis trees exporting `drafting(terms, within, home?)`.
+    const [{ draftCommand }, { drafting }] = (await Promise.all([
+      import(join(tree, script)),
+      import(join(tree, "src/examiner/draft.ts")),
+    ])) as [{ draftCommand: typeof DraftCommand }, { drafting: typeof Drafting }];
+    const composed: Parameters<typeof DraftCommand>[1] = (request) =>
+      printMode(
+        drafting(request, async (action) => await action(), undefined),
+        log,
+        before,
+        name,
+      );
+    await draftCommand([...flags, "--name", name], composed, null);
+    return 0;
+  }
+  // SAFETY: these paths are modules of an Anabasis tree; a tree whose signatures differ fails below.
+  const [{ examineCommand }, { writing }, { solved }] = (await Promise.all([
+    import(join(tree, script)),
+    import(join(tree, "src/examiner/write.ts")),
+    import(join(tree, ROUND)),
+  ])) as [{ examineCommand: typeof ExamineCommand }, { writing: typeof Writing }, { solved: typeof Solved }];
+  const composed: Parameters<typeof ExamineCommand>[1] = (request) =>
+    printMode(writing(request, undefined), log, before, name);
   // SAFETY: a tree before v0.14 takes its seats third, and the session exits before its first turn.
   await (examineCommand as (...given: unknown[]) => Promise<void>)(
     [...flags, "--name", name],

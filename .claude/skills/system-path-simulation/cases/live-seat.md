@@ -88,10 +88,7 @@ A backend can be probed outside any campaign directly through its provider (`cla
 - **Use the production prompt verbatim.** Nothing may inform the model that it is in a simulation
   or hint at the desired outcome. When testing a prompt edit, that edit is the sole experimental
   variable and the seed holds every other condition constant.
-- **Keep path checks surgical.** Bound Examiner seats with `--proposals` / `--turns`, Builder seats
-  with `--moves 1 --turns` / `--practice-solves`, and standalone comparisons with `--cap`. Never
-  run a \$15–\$40 single-draw arm hoping a <5% edge case fires when an archived event can be
-  replayed at Tier 1–2.
+- **Keep live runs bounded and cap concurrency at 2.** Plan **1 to 2 live angles** for a small PR and **4 to 8 live angles** (covering distinct seams, domains, or controls) for a large PR or stack, running **at most 2 concurrently** on a quiet host. Bound each angle with `--proposals` / `--turns` / `--tries` (Examiner/draft), `--moves 1 --turns` / `--practice-solves` (Builder), or `--cap` (comparisons), and replay rare (<5%) archived events model-free instead of spending \$15 to \$40 on a single draw.
 
 Report a single live seat as a verified execution path (`exercised live`) rather than a
 statistical measurement of model performance (`AGENTS.md` rule 6). Nothing produced by a seed enters a

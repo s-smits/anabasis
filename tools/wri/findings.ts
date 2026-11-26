@@ -37,6 +37,7 @@ interface Finding {
 }
 
 interface Vetted {
+  readonly folder: string;
   readonly day: number;
   readonly keyed: boolean;
   readonly findings: readonly Finding[];
@@ -150,7 +151,7 @@ function vettedUnder(root: string): Vetted[] {
     if (day === undefined || !existsSync(path)) return [];
     const text = readFileSync(path, "utf8");
     const keyed = tablesOf(text).some(({ header }) => header.map((cell) => plain(cell)).includes("standing"));
-    return [{ day: Date.parse(`${day}T00:00:00Z`), keyed, findings: findingsIn(text) }];
+    return [{ folder, day: Date.parse(`${day}T00:00:00Z`), keyed, findings: findingsIn(text) }];
   });
 }
 
@@ -222,6 +223,17 @@ export function findingsLedger(root: string, until: number, days: number): strin
       (level) => `- ${level}: ${share(({ importance }) => importance === level, keyed, confirmed)}`,
     ),
     ...FATES.map((fate) => `- ${fate}: ${share((finding) => finding.fate === fate, keyed, confirmed)}`),
+    "",
+    "Confirmed I0 and I1 rows waiting on the operator, newest window:",
+    "",
+    ...(keyed[0] ?? []).flatMap(({ folder, findings }) =>
+      findings
+        .filter(
+          (finding) =>
+            confirmed(finding) && finding.fate === "operator" && ["I0", "I1"].includes(finding.importance),
+        )
+        .map(({ id, importance }) => `- ${importance}: ${folder} ${id}`),
+    ),
     "",
     "## Lanes, by the rows each fed: all | refuted | shared with another lane, newest window",
     "",

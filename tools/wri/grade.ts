@@ -16,22 +16,23 @@
  *   another JSON type than the field's, so no field is added or retyped unseen, and prints each
  *   change back. Several `--set`s are one change, as a Referee's coupled probe is.
  * - `--answers` grades every `.json` file of a folder in name order, each against the task its name
- *   begins with (`<taskId>.json` or `<taskId>--<label>.json`), and prints the sha256 of the bytes it
- *   graded, so a lane's frozen digests can be set against what was graded.
+ *   begins with (`<taskId>.json` or `<taskId>--<label>.json`), with the files of the folder of the same
+ *   stem as its deliverables, and prints the sha256 of the bytes it graded, so a lane's frozen digests
+ *   can be set against what was graded.
  */
 import { draftOf } from "#src/examiner/draft.ts";
-import { type AnswerFile, readAnswerFiles } from "#src/kernel/answer-files.ts";
+import { type AnswerFile, capturedFiles, readAnswerFiles } from "#src/kernel/answer-files.ts";
 import { answerFormatFault } from "#src/kernel/contract.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
 import { verdictsOf } from "#src/kernel/solves.ts";
 import { openVerifier, spelled, type Task } from "#src/kernel/verify.ts";
 import { sha256 } from "#src/meta/digest.ts";
-import { readdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { resolveJsonPath } from "#src/meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
-import { join } from "#src/meta/path.ts";
+import { join, sep } from "#src/meta/path.ts";
 import { withReplacedField } from "#src/audit/probe.ts";
 import { stagedExamOf } from "../campaign/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
@@ -113,10 +114,24 @@ function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Grad
       .toSorted()
       .map((file) => {
         const bytes = readFileSync(join(dir, file), "utf8");
+        const stem = file.slice(0, -".json".length);
+        const folder = join(dir, stem);
+        const paths =
+          existsSync(folder) && statSync(folder).isDirectory()
+            ? readdirSync(folder, { recursive: true, encoding: "utf8" })
+                .filter((path) => !path.split(sep).some((part) => part.startsWith(".")))
+                .filter((path) => lstatSync(join(folder, path)).isFile())
+                .toSorted()
+            : [];
+        const files = paths.map((path) => ({
+          path,
+          base64: readFileSync(join(folder, path)).toString("base64"),
+        }));
         return {
-          task: file.slice(0, -".json".length).split("--")[0] ?? "",
+          task: stem.split("--")[0] ?? "",
           answer: capturedJsonParse(bytes),
-          label: `${file}  ${sha256(bytes).slice(0, 8)}`,
+          files: capturedFiles(files),
+          label: `${file}  ${sha256(bytes + capturedJsonStringify(files)).slice(0, 8)}${paths.length > 0 ? ` + ${String(paths.length)} files` : ""}`,
           recorded: null,
           repeat: [...base, "--answers", quoted(dir)],
         };

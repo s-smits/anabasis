@@ -28,7 +28,7 @@ import { continuityRows } from "../tools/wri/continuity.ts";
 import { deliverableRows } from "../tools/wri/deliverables.ts";
 import { READERS } from "../tools/wri/derive.ts";
 import { diagnosticRows } from "../tools/wri/diagnostics.ts";
-import { vettingFaults } from "../tools/wri/findings.ts";
+import { findingsLedger, vettingFaults } from "../tools/wri/findings.ts";
 import { rowsOf } from "../tools/wri/ledger.ts";
 import { epochSpendLines } from "../tools/wri/epoch-spend.ts";
 import { executionRows } from "../tools/wri/execution.ts";
@@ -1163,12 +1163,10 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(byName("SPECIFICATION GAMING LEAD")[0]).toMatchObject({
       lane: TRIGGERS["SPECIFICATION GAMING LEAD"],
     });
-    expect(byName("SPECIFICATION GAMING LEAD")[0]?.detail).toContain("ceremony-only");
     expect(byName("SPECIFICATION GAMING LEAD")[0]?.detail).toContain("identical-objective cluster");
 
     const text = gamingRows(gamingLog).join("\n");
     expect(text).toContain("draft-rule-drop");
-    expect(text).toContain("audit-ceremony-only");
     expect(text).toContain("practice-hill-climbing");
     expect(text).toContain("untried-compare-fishing");
     expect(text).toContain("repeated-objective-cluster");
@@ -1414,5 +1412,39 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(oldGap.ratio).toBeCloseTo((1.9 + 1.05) / 2, 12);
     expect(freshGap).toMatchObject({ read: 2, unread: 0, atBest: 2 });
     expect(freshGap.ratio).toBeCloseTo(1, 12);
+  });
+});
+
+describe("the findings ledger", () => {
+  it("names each confirmed I0 or I1 row that waits on the operator in the newest window, and no other", () => {
+    const root = mkdtempSync(join(tmpdir(), "wri-ledger-"));
+    const vetted = ["confirmed", "plausible"].flatMap((verdict) =>
+      ["I0", "I1", "I2"].flatMap((importance) =>
+        ["operator", "repair"].map((fate) => ({ verdict, importance, fate })),
+      ),
+    );
+    mkdirSync(join(root, "2026-11-26-run"));
+    writeFileSync(
+      join(root, "2026-11-26-run", "vetting.md"),
+      [
+        "| id | finding | lanes | standing | owner | importance | verdict | fate |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        ...vetted.map(
+          ({ verdict, importance, fate }, at) =>
+            `| vet-${String(at + 1)} | f | primary | new | operator | ${importance} | ${verdict} | ${fate}: why |`,
+        ),
+      ].join("\n"),
+    );
+    const listed = findingsLedger(root, Date.parse("2026-11-26T00:00:00Z"), 7).filter((line) =>
+      /^- I[0-3]: 2026-/u.test(line),
+    );
+    const owed = vetted.flatMap(({ verdict, importance, fate }, at) =>
+      verdict === "confirmed" && fate === "operator" && importance !== "I2"
+        ? [`- ${importance}: 2026-11-26-run vet-${String(at + 1)}`]
+        : [],
+    );
+    expect(listed).toEqual(owed);
+    expect(owed).toHaveLength(2);
+    rmSync(root, { recursive: true, force: true });
   });
 });

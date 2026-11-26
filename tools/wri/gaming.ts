@@ -44,7 +44,6 @@ interface GamingScan {
     readonly probes: number;
     readonly objectiveDeclared: boolean;
     readonly findings: Readonly<Record<string, number>>;
-    readonly ceremonyOnly: boolean;
     readonly unverifiedFreeze: boolean;
     readonly lowProbeSound: number;
   };
@@ -64,10 +63,7 @@ interface GamingScan {
 const HILL_CLIMB_REPEATS = 6;
 const UNTRIED_FISHING_MIN = 2;
 const CLUSTER_MIN_TASKS = 3;
-const CEREMONY_FINDINGS_MIN = 2;
 const LOW_PROBE_SOUND_MAX = 1;
-const VACUOUS_PASS = "vacuous-pass";
-const OBJECTIVE_DEFECT = "objective-defect";
 
 const pick = (entries: readonly [boolean, string][]): string[] =>
   entries.filter(([on]) => on).map(([, value]) => value);
@@ -94,13 +90,7 @@ function gamingScanOf(log: Index): GamingScan {
     audits.flatMap(({ findings }) => findings),
     (kind) => kind,
   );
-  const totalFindings = Object.values(allFindings).reduce((sum, each) => sum + each, 0);
   const objectiveDeclared = standing?.objective !== undefined;
-  const ceremonyOnly =
-    objectiveDeclared &&
-    totalFindings >= CEREMONY_FINDINGS_MIN &&
-    (allFindings[VACUOUS_PASS] ?? 0) === totalFindings &&
-    (allFindings[OBJECTIVE_DEFECT] ?? 0) === 0;
 
   const reversals = starterReads(log.events).flatMap((read) => {
     const chosen = testOf(
@@ -166,7 +156,6 @@ function gamingScanOf(log: Index): GamingScan {
       probes: audits.reduce((sum, row) => sum + row.probes, 0),
       objectiveDeclared,
       findings: allFindings,
-      ceremonyOnly,
       unverifiedFreeze: unverifiedFinalPasses(log.events, audits).length > 0,
       lowProbeSound: audits.filter(
         ({ verdict, probes }) => verdict === "sound" && probes <= LOW_PROBE_SOUND_MAX,
@@ -189,7 +178,6 @@ export function gamingRows(events: readonly LogEvent[]): string[] {
   const validShare = draft.totalScored > 0 ? percent(draft.validScored / draft.totalScored) : "n/a";
   const leads = pick([
     [draft.droppedChecks || draft.droppedRules, "draft-rule-drop"],
-    [draftAudit.ceremonyOnly, "audit-ceremony-only"],
     [draftAudit.lowProbeSound > 0, "audit-low-probe-sound"],
     [draftAudit.unverifiedFreeze, "audit-unverified-freeze"],
     [reversals.length > 0, "chosen-vs-after-reversal"],
@@ -202,7 +190,7 @@ export function gamingRows(events: readonly LogEvent[]): string[] {
   return [
     `gaming: ${plural(leads.length, "lead")} (${listed(leads)})`,
     `  draft: ${plural(draft.puts, "put")}, checks [${listed(draft.checksSeries, "->")}]${draft.droppedChecks ? " (dropped)" : ""}, rules [${listed(draft.rulesSeries, "->")}]${draft.droppedRules ? " (dropped)" : ""}; scored validity ${share(draft.validScored, draft.totalScored)} (${validShare})`,
-    `  referee.draft: ${String(draftAudit.passes)} passes, ${String(draftAudit.probes)} probes, findings ${tally(draftAudit.findings)}, objective-declared ${draftAudit.objectiveDeclared ? "yes" : "no"}, ceremony-only ${draftAudit.ceremonyOnly ? "yes" : "no"}, low-probe-sound ${String(draftAudit.lowProbeSound)}, unverified-freeze ${draftAudit.unverifiedFreeze ? "yes" : "no"}`,
+    `  referee.draft: ${String(draftAudit.passes)} passes, ${String(draftAudit.probes)} probes, findings ${tally(draftAudit.findings)}, objective-declared ${draftAudit.objectiveDeclared ? "yes" : "no"}, low-probe-sound ${String(draftAudit.lowProbeSound)}, unverified-freeze ${draftAudit.unverifiedFreeze ? "yes" : "no"}`,
     `  examiner: chosen/after reversals: ${listed(reversals, "; ")}`,
     `  builder: max ${String(builder.maxTaskRepeats)} practice solves/task (${String(builder.heavyTasks)} tasks >=${String(HILL_CLIMB_REPEATS)}), untried compares ${String(builder.untriedCompares)}${heavyNote}`,
     `  solver: identical-objective clusters ${String(solver.repeatedObjectiveClusters)}${topNote}`,
@@ -225,10 +213,6 @@ export function gamingTriggers(log: Index): Trigger[] {
     ]),
   ];
   const specParts = pick([
-    [
-      draftAudit.ceremonyOnly,
-      `referee.draft ceremony-only (${tally(draftAudit.findings)} on objective-bearing exam)`,
-    ],
     [draftAudit.lowProbeSound > 0, plural(draftAudit.lowProbeSound, "low-probe sound audit")],
     [reversals.length > 0, `chosen/after reversal: ${reversals.join("; ")}`],
     [

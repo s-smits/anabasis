@@ -46,7 +46,7 @@ path	count
 .claude/skills/stack-pr/scripts/republish.ts	7
 .claude/skills/stack-pr/scripts/stack.ts	1
 .claude/skills/system-audit/scripts/recent.ts	4
-.claude/skills/system-path-simulation/scripts/live-seat.ts	28
+.claude/skills/system-path-simulation/scripts/live-seat.ts	25
 .claude/skills/system-path-simulation/scripts/synthetic.ts	5
 .claude/skills/system-path-simulation/scripts/wall-probe.ts	10
 packages/ui/build.ts	1

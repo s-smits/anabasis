@@ -86,7 +86,7 @@ export const GAP_FLOOR = 0.01;
 const ZERO_FLOOR = 1e-12;
 export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 const POINTS_SCALE = 1000;
-export const JUDGE_STEP = 0.25;
+export const JUDGE_STEP = 0.5;
 const BOUND_TAIL = 0.05;
 
 function plusTotalChances(sizes: readonly number[], share: number): Float64Array {

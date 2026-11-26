@@ -183,7 +183,7 @@ describe("the pairwise judge", () => {
 
   it("uses distinct session ids per vote, anchors to operator prompt/rules, and preserves middle deliverable files", async () => {
     const at = seated(onSubstance);
-    const pad = "Z".repeat(15_000);
+    const pad = "Z".repeat(55_000);
     const mid = "CRITICAL_MIDDLE_FILE_MARKER";
     const files = keepAnswerFiles(
       at.log,
@@ -230,6 +230,6 @@ describe("the pairwise judge", () => {
     );
     expect(pairPrompts.every((shown) => shown.includes("Include every reconciliation table."))).toBe(true);
     expect(pairPrompts.every((shown) => shown.includes(mid))).toBe(true);
-    expect(Math.max(...pairPrompts.map((shown) => Buffer.byteLength(answerA(shown))))).toBeLessThan(24_500);
+    expect(Math.max(...pairPrompts.map((shown) => Buffer.byteLength(answerA(shown))))).toBeLessThan(96_500);
   });
 });

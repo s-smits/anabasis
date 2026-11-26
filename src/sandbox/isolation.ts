@@ -104,6 +104,7 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
     HOME: dirs.home,
     TMPDIR: dirs.temp,
     LANG: "en_US.UTF-8",
+    MPLBACKEND: "Agg",
     PIP_BREAK_SYSTEM_PACKAGES: "1",
     UV_VENV_RELOCATABLE: "1",
   };

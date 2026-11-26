@@ -391,6 +391,26 @@ describe.concurrent("a Builder session", () => {
     symlinkSync(join(scratch, "nowhere"), join(home, "practice"));
     layPractice(home, TASKS);
     expect(readdirSync(join(home, "practice")).toSorted()).toEqual(["t-1.json", "t-2.json"]);
+    const payload = Buffer.from("PK\u0003\u0004binary-sheet-content");
+    const encoded = payload.toString("base64");
+    const withBin: PracticeTask = {
+      version: "v-bin",
+      task: {
+        taskId: "t-bin",
+        family: "fixture",
+        publicInput: { files: [{ path: "sub/data.xlsx", base64: encoded }] },
+      },
+    };
+    layPractice(home, [withBin]);
+    expect(readFileSync(join(home, "practice", "t-bin", "files", "sub", "data.xlsx")).equals(payload)).toBe(
+      true,
+    );
+    const openedJson = readFileSync(join(home, "practice", "t-bin.json"), "utf8");
+    expect(openedJson).toContain("practice/t-bin/files/sub/data.xlsx");
+    expect(openedJson).not.toContain(encoded);
+    expect(namedTasks([{ path: "guide", text: encoded, executable: false }], [withBin.task])).toEqual([]);
+    layPractice(home, TASKS);
+    expect(readdirSync(join(home, "practice")).toSorted()).toEqual(["t-1.json", "t-2.json"]);
   });
 
   it("refuses a held task handed to a session before showing it to the Builder", async () => {

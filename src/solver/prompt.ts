@@ -156,7 +156,7 @@ export function firstTurn(task: PublicTask): string {
   return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(opened(task.publicInput), null, 2)}`;
 }
 
-function opened(publicInput: JsonValue): JsonValue {
+export function opened(publicInput: JsonValue, filesDir = TASK_FILES): JsonValue {
   const record = asRecord(publicInput);
   if (record === null || !Array.isArray(record.files)) return publicInput;
   const written = taskFiles(publicInput);
@@ -168,12 +168,12 @@ function opened(publicInput: JsonValue): JsonValue {
     if (bytes === undefined || decoded === null || !decoded.equals(bytes)) return row;
     written.delete(held.path);
     const { text: _t, base64: _b, entries: _e, ...rest } = held;
-    return { ...rest, path: held.path, file: `${TASK_FILES}/${held.path}`, bytes: bytes.length };
+    return { ...rest, path: held.path, file: `${filesDir}/${held.path}`, bytes: bytes.length };
   });
   return { ...record, files };
 }
 
-function taskFiles(publicInput: JsonValue): Map<string, Buffer> {
+export function taskFiles(publicInput: JsonValue): Map<string, Buffer> {
   const rows = asRecord(publicInput)?.files;
   const files = new Map<string, Buffer>();
   let total = 0;

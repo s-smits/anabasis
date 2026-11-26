@@ -29,7 +29,14 @@ import { openHarness } from "../harness/open.ts";
 import { type PublicTask, publicView } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
-import { type AgentRun, type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
+import {
+  type AgentRun,
+  type AgentTool,
+  applyContinuation,
+  type Continuation,
+  sessionClock,
+  runAgent,
+} from "../agent/session.ts";
 import { claimRoot } from "../sandbox/sandbox-root.ts";
 import { openingOf } from "../campaign/opening.ts";
 import { campaignOf } from "../campaign/summary.ts";
@@ -99,11 +106,12 @@ export interface BuildRequest {
   readonly limits: BuildLimits;
   readonly solve: Limits;
   readonly solver: Solver;
-  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string, seat?: string) => Models;
   readonly log: string;
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
   readonly packRoots?: readonly string[] | undefined;
+  readonly continuation?: Continuation | undefined;
   readonly practise: (
     task: PracticeTask,
     harness: string,
@@ -357,7 +365,10 @@ async function converse(
     model,
     effort: request.effort,
     system: systemPrompt(bench.modePrompts, request.contract.objective),
-    opening: [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
+    opening: applyContinuation(
+      [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
+      request.continuation,
+    ),
     tools,
     ...keyIfDefined("env", env),
     trace: { log, of: "build" },

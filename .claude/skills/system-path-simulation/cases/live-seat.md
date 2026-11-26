@@ -50,6 +50,32 @@ Two arms of an ablation use two seeds cut at the identical event (`sim-<what>-be
 differing by a single CLI flag. Use `--reviewer` / `--reviewer-effort` on `tools/eval/draft.ts` to
 override a seed's recorded draft reviewer explicitly.
 
+## Mid-session forking & nudging (seed-only)
+
+`tools/eval/examine.ts`, `tools/eval/draft.ts`, and `tools/campaign/session.ts` accept seed-only
+mid-session continuation flags (refused outside `sim-<what>` with `seed.json`):
+
+- **Native Claude SDK fork (`--fork-from <session|path> [--at-turn <k>] [--nudge <text>]`):**
+  Examiner, draft, and Builder sessions persist their Claude Code transcripts under
+  `<campaign>/claude-sessions/<session>.jsonl` (ephemeral solves and Referee votes do not). Forking
+  stages that transcript under an isolated `CLAUDE_CONFIG_DIR` (`CLAUDE_CODE_PROJECT_DIR_NAME=seat`)
+  and launches the Claude Agent SDK with `resume`, `forkSession: true`, and `resumeSessionAt` set to
+  the exact final chain UUID of assistant turn `k` (including its `tool_result` entries, refusing
+  incomplete tool-call turns). The new worktree's fresh `systemPrompt` and MCP tools apply on turn
+  `k + 1`, opened with `--nudge` (or `"Continue from where you left off."`). Files written to
+  `examiner-home` are snapshotted per session under `examiner-homes/` (content-deduped by SHA-256),
+  so `--before x-2` restores the exact `examiner-home` from after `x-1`, though edits made mid-way
+  through turns `1..k` of `x-2` itself are not snapshotted mid-session.
+- **Retroactive log-wrapped screen (`--wrap-turns <session>:<k> [--nudge <text>]`):**
+  Explicit opt-in only for archived logs that predate `claude-sessions/` persistence (never a silent
+  fallback from `--fork-from`). Reconstructs turns `1..k` and their tool calls from `log.jsonl`
+  (`traceOf`, subject to 64 KB trace truncation) inside a clearly labelled context block appended to
+  the opening message, followed by `--nudge`. Inspect the exact composed opening at `\$0` via
+  `live-seat.ts prompt`.
+- **Opening nudge (`--nudge <text>`):** Appends an extra instruction to the opening message on a
+  seed when used without `--fork-from` / `--wrap-turns`. Keep ablations of production prompts clean
+  (omit `--nudge` unless the nudge itself is the experimental variable).
+
 ## Probing smaller than a solve
 
 A backend can be probed outside any campaign directly through its provider (`claudeProvider`,

@@ -36,11 +36,18 @@ import {
 import { updateUsage } from "../../../vendor/pi-claude-bridge/usage.ts";
 import { existsSync, mkdirSync } from "../../meta/filesystem.ts";
 import { asRecord, isString } from "../../meta/json-shape.ts";
-import { keyIfDefined } from "../../meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "../../meta/optional-key.ts";
 import { dirname, join } from "../../meta/path.ts";
 import { runtimeProcess } from "../../meta/process.ts";
 import { type BackendSpend, claudeSpend } from "../../kernel/meter.ts";
 import { errorMessage } from "../../meta/runtime-values.ts";
+import {
+  CLAUDE_PROJECT_DIR,
+  type ClaudeFork,
+  type ClaudePersist,
+  savePersistedTranscript,
+  stageForkTranscript,
+} from "./claude-transcript.ts";
 
 const CLAUDE_PROVIDER = "claude";
 export const CLAUDE_API_PROVIDER = "claude-api";
@@ -87,6 +94,9 @@ interface Session {
   reading: boolean;
   readonly quiet: number;
   readonly provider: string;
+  readonly configDir: string;
+  readonly persist?: ClaudePersist | undefined;
+  sdkSessionId?: string | undefined;
 }
 
 type TurnEnd = Extract<StopReason, "stop" | "length" | "toolUse">;
@@ -130,6 +140,8 @@ export interface ClaudeOptions {
   readonly cacheTtl?: "5m" | "1h";
   readonly shutdown?: AbortSignal | undefined;
   readonly quiet?: number;
+  readonly persist?: ClaudePersist | undefined;
+  readonly fork?: ClaudeFork | undefined;
 }
 
 const BARE_WINDOW = 200_000;
@@ -274,6 +286,9 @@ function open(
   const effort = claudeEffort(model, options.reasoning);
   const own = getCurrentSystemPrompt(context.messages).trim();
   mkdirSync(claude.home, { recursive: true });
+  const configDir = join(claude.home, "claude-config");
+  const staged = claude.fork === undefined ? undefined : stageForkTranscript(configDir, claude.fork);
+  const keepTranscript = claude.persist !== undefined || claude.fork !== undefined;
   const live = query({
     prompt: prompt.stream,
     options: {
@@ -282,6 +297,9 @@ function open(
       model: LONG_CONTEXT.has(model.id) ? `${model.id}[1m]` : model.id,
       ...keyIfDefined("effort", effort),
       ...keyIfDefined("extraArgs", effort && { "thinking-display": "summarized" }),
+      ...keyIfDefined("resume", staged?.resume),
+      ...keysIf(staged !== undefined, () => ({ forkSession: true })),
+      ...keyIfDefined("resumeSessionAt", staged?.resumeSessionAt),
       systemPrompt: own,
       tools: claude.webSearch === false ? [] : CLI_TOOLS,
       skills: [],
@@ -290,7 +308,7 @@ function open(
       allowDangerouslySkipPermissions: true,
       strictMcpConfig: true,
       settingSources: [],
-      persistSession: false,
+      persistSession: keepTranscript,
       includePartialMessages: true,
       abortController: abort,
       env: claudeEnv(claude, { provider: model.provider, token: options.apiKey }),
@@ -305,6 +323,8 @@ function open(
     reading: false,
     quiet: claude.quiet ?? QUIET_MS,
     provider: model.provider,
+    configDir,
+    ...keyIfDefined("persist", claude.persist),
   };
   sessions.set(key, session);
   claude.shutdown?.addEventListener("abort", () => close(key, session), {
@@ -321,7 +341,7 @@ function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): Effo
 }
 
 function claudeEnv(
-  { cacheTtl, compaction, home }: ClaudeOptions,
+  { cacheTtl, compaction, home, persist, fork }: ClaudeOptions,
   credential: { readonly provider: string; readonly token: string | undefined },
 ): Record<string, string> {
   const account = ACCOUNTS.get(credential.provider);
@@ -338,6 +358,10 @@ function claudeEnv(
     ...keyIfDefined("PATH", Bun.env.PATH),
     ...keyIfDefined("TMPDIR", Bun.env.TMPDIR),
     CLAUDE_CONFIG_DIR: config,
+    ...keyIfDefined(
+      "CLAUDE_CODE_PROJECT_DIR_NAME",
+      persist !== undefined || fork !== undefined ? CLAUDE_PROJECT_DIR : undefined,
+    ),
     [account.variable]: token,
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
@@ -391,6 +415,9 @@ async function readTurn(
   } finally {
     signal?.removeEventListener("abort", interrupt);
     for (const usage of spent) addUsage(turn.usage, usage);
+    if (session.persist !== undefined) {
+      savePersistedTranscript(session.configDir, session.persist, session.sdkSessionId);
+    }
   }
 }
 
@@ -407,6 +434,7 @@ async function readMessages(
     const next = await heard(key, session);
     if (next.done === true) throw new Error("Claude Code ended the query without a result");
     const message = next.value;
+    if ("session_id" in message && isString(message.session_id)) session.sdkSessionId = message.session_id;
     if (message.type === "assistant" && message.parent_tool_use_id === null) take(message, model, turn);
     else if (message.type === "system" && message.subtype === "compact_boundary") {
       const { pre_tokens: tokensBefore, duration_ms: ms } = message.compact_metadata;
@@ -497,7 +525,12 @@ function close(key: string, session: Session): void {
   if (sessions.get(key) !== session) return;
   sessions.delete(key);
   session.prompt.end();
-  const end = () => session.abort.abort();
+  const end = () => {
+    if (session.persist !== undefined) {
+      savePersistedTranscript(session.configDir, session.persist, session.sdkSessionId);
+    }
+    session.abort.abort();
+  };
   const interrupted = session.query.interrupt();
   if (session.reading) interrupted.then(end, end);
   else {

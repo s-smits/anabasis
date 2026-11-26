@@ -10,6 +10,7 @@
  *   bun tools/eval/examine.ts --name truss --session x-1 --examiner claude/claude-opus-5-5
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { taskSets, taskStates } from "#src/kernel/task.ts";
@@ -17,7 +18,16 @@ import { readBrief } from "#src/kernel/verify.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, openCampaign, PACK_OPTIONS, packNamed, REPO, stayAwake } from "../campaign/campaign.ts";
+import {
+  campaignLog,
+  hostSession,
+  openCampaign,
+  PACK_OPTIONS,
+  packNamed,
+  REPO,
+  stayAwake,
+} from "../campaign/campaign.ts";
+import { FORK_OPTIONS, seatForkPlan } from "../campaign/seat-fork.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
@@ -33,6 +43,7 @@ const EXAMINE_OPTIONS = {
   /** The setting flags, read when the log records no setting yet. `--tasks` belongs to this
    *  command, so comparison set size uses `--target`. */
   ...SETTING_OPTIONS,
+  ...FORK_OPTIONS,
   target: { type: "string" },
 } as const;
 
@@ -53,6 +64,17 @@ export async function examineCommand(
   const declared = readBrief(campaign.checks).truthChecks;
   const sofar = read(campaign.log);
   const before = taskStates(sofar);
+  const model = modelNamed(examiner);
+  const forkPlan = seatForkPlan(campaign.log, "exam", model, values);
+  const models =
+    forkPlan.fork === undefined
+      ? campaign.examiner
+      : hostSession({
+          webSearch: false,
+          cacheTtl: "1h",
+          persistDir: join(dirname(campaign.log), CLAUDE_SESSIONS_DIR),
+          fork: forkPlan.fork,
+        });
   stayAwake();
   const examined = await session(
     {
@@ -76,7 +98,7 @@ export async function examineCommand(
         before.get(version) === "refused" ? [] : [task],
       ),
       pack: campaign.pack,
-      model: modelNamed(examiner),
+      model,
       // SAFETY: effort is a pi thinking level; unsupported values are rejected by the backend.
       effort: values["examiner-effort"] as ThinkingLevel,
       limits: {
@@ -85,8 +107,9 @@ export async function examineCommand(
         puts: Number(values.proposals),
       },
       wanted: Number(values.tasks),
-      models: campaign.examiner,
+      models,
       log: campaign.log,
+      ...keyIfDefined("continuation", forkPlan.continuation),
       ...keyIfDefined("kill", kill),
     },
     {

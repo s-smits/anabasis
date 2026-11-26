@@ -3,13 +3,21 @@
 // one cut inside the second to the run's own tree.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { CLAUDE_SESSIONS_DIR } from "../src/agent/backends/claude-transcript.ts";
+import { EXAMINER_HOMES, restoreHome, snapshotHome } from "../src/examiner/home-store.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
@@ -18,7 +26,7 @@ import { join, resolve } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { codeOf } from "../tools/campaign/campaign.ts";
 import { atCommit } from "../tools/runs/code.ts";
-import { codeLine, treeAsRan } from "../tools/runs/seed.ts";
+import { codeLine, seedCampaign, treeAsRan } from "../tools/runs/seed.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-seed-test-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -138,5 +146,89 @@ describe("the points a seed can be cut at", () => {
     const before = readdirSync(own, { recursive: true });
     expect(points(folder)).toEqual(["1 build.started b-1", "3 build.started b-2"]);
     expect(readdirSync(own, { recursive: true })).toEqual(before);
+  });
+});
+
+describe("deduped examiner-home snapshots and claude-session seeding", () => {
+  it("deduplicates blobs across sessions, restores historical examiner-home at --before, and copies relevant claude sessions", () => {
+    const source = join(root, "snap-source");
+    const home = join(source, "examiner-home");
+    const store = join(source, EXAMINER_HOMES);
+    const sessions = join(source, CLAUDE_SESSIONS_DIR);
+    mkdirSync(join(home, "sub"), { recursive: true });
+    mkdirSync(sessions, { recursive: true });
+
+    writeFileSync(join(home, "shared.txt"), "unchanged across sessions\n");
+    writeFileSync(join(home, "NOTES.md"), "draft notes\n");
+    writeFileSync(join(home, "sub", "tool.sh"), "#!/bin/sh\necho v1\n");
+    chmodSync(join(home, "sub", "tool.sh"), 0o755);
+    symlinkSync("shared.txt", join(home, "link.txt"));
+    snapshotHome(home, store, "d-1");
+
+    writeFileSync(join(home, "NOTES.md"), "x-1 notes\n");
+    writeFileSync(join(home, "gen.py"), "print('x-1')\n");
+    snapshotHome(home, store, "x-1");
+
+    rmSync(join(home, "gen.py"));
+    writeFileSync(join(home, "NOTES.md"), "x-2 notes\n");
+    snapshotHome(home, store, "x-2");
+
+    const objects = readdirSync(join(store, "objects"));
+    expect(objects.length).toBe(6);
+
+    const row = (kind: EventKind, data: JsonObject) =>
+      JSON.stringify({ at: "2026-11-26T00:00:00.000Z", kind, data });
+    writeFileSync(
+      join(source, "log.jsonl"),
+      `${[
+        row("draft.started", { session: "d-1" }),
+        row("draft.finished", { session: "d-1", ended: "stands" }),
+        row("exam.started", { session: "x-1" }),
+        row("exam.finished", { session: "x-1", ended: "supplied" }),
+        row("exam.started", { session: "x-2", conversation: "x-1" }),
+        row("exam.finished", { session: "x-2", ended: "supplied" }),
+        row("exam.started", { session: "x-3" }),
+        row("exam.finished", { session: "x-3", ended: "supplied" }),
+      ].join("\n")}\n`,
+    );
+    for (const id of ["d-1", "x-1", "x-2", "x-3"]) {
+      writeFileSync(join(sessions, `${id}.jsonl`), `{"sessionId":"00000000-0000-0000-0000-000000000001"}\n`);
+    }
+
+    const seeded = join(root, "sim-before-x2");
+    const made = seedCampaign(source, seeded, { before: "x-2" });
+    expect(made.examinerHome).toBe(true);
+    expect(made.examinerHomeFrom).toBe("x-1");
+    expect(readFileSync(join(seeded, "examiner-home", "NOTES.md"), "utf8")).toBe("x-1 notes\n");
+    expect(readFileSync(join(seeded, "examiner-home", "gen.py"), "utf8")).toBe("print('x-1')\n");
+    expect(readFileSync(join(seeded, "examiner-home", "shared.txt"), "utf8")).toBe(
+      "unchanged across sessions\n",
+    );
+    expect(readlinkSync(join(seeded, "examiner-home", "link.txt"))).toBe("shared.txt");
+    expect(statSync(join(seeded, "examiner-home", "sub", "tool.sh")).mode & 0o777).toBe(0o755);
+
+    expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "d-1.jsonl"))).toBe(true);
+    expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-1.jsonl"))).toBe(true);
+    expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-2.jsonl"))).toBe(true);
+    expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-3.jsonl"))).toBe(false);
+  });
+
+  it("refuses manifests with escaping paths or missing blobs on restore", () => {
+    const store = join(root, "bad-store");
+    mkdirSync(join(store, "objects"), { recursive: true });
+    writeFileSync(
+      join(store, "escape.json"),
+      JSON.stringify({ session: "escape", entries: [{ path: "../outside.txt", kind: "dir" }] }),
+    );
+    expect(() => restoreHome(store, "escape", join(root, "out-1"))).toThrow("escapes target");
+
+    writeFileSync(
+      join(store, "missing.json"),
+      JSON.stringify({
+        session: "missing",
+        entries: [{ path: "a.txt", kind: "file", sha256: "a".repeat(64), mode: 0o644 }],
+      }),
+    );
+    expect(() => restoreHome(store, "missing", join(root, "out-2"))).toThrow("missing examiner home blob");
   });
 });

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { applyContinuation } from "#src/agent/session.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { gateAnswers, measuredGate } from "#tools/wri/gate-era.ts";
 import type { drafting as Drafting } from "#src/examiner/draft.ts";
@@ -678,23 +679,20 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
   return 0;
 }
 
-function printMode(
-  mode: {
-    readonly system: string;
-    readonly opening: string;
-    readonly tools: readonly {
-      readonly name: string;
-      readonly description: string;
-      readonly parameters?: unknown;
-    }[];
-    readonly nudge: string;
-    readonly finish: string;
-    readonly declined: string | null;
-  },
-  log: string,
-  before: number,
-  name: string,
-): never {
+interface PrintableMode {
+  readonly system: string;
+  readonly opening: string;
+  readonly tools: readonly {
+    readonly name: string;
+    readonly description: string;
+    readonly parameters?: unknown;
+  }[];
+  readonly nudge: string;
+  readonly finish: string;
+  readonly declined: string | null;
+}
+
+function printMode(mode: PrintableMode, log: string, before: number, name: string): never {
   console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
   for (const tool of mode.tools) {
     console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
@@ -710,14 +708,15 @@ function printMode(
 }
 
 async function prompt(args: CommandArgs, command: readonly string[]): Promise<number> {
-  const tree = args.required("tree");
-  const name = args.required("name");
+  const [tree, name] = [args.required("tree"), args.required("name")];
   const [script, ...flags] = command;
   if (script !== EXAMINE && script !== DRAFT) {
     args.die(`prompt composes an Examiner or draft session: -- ${EXAMINE} | ${DRAFT}`);
   }
   const log = seedLog(tree, name, args.die);
   const before = read(log).length;
+  const show = (mode: PrintableMode, continuation: Parameters<typeof applyContinuation>[1]) =>
+    printMode({ ...mode, opening: applyContinuation(mode.opening, continuation) }, log, before, name);
   runtimeProcess.chdir(tree);
   if (script === DRAFT) {
     // SAFETY: targets current Anabasis trees exporting `drafting(terms, within, home?)`.
@@ -726,11 +725,9 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
       import(join(tree, "src/examiner/draft.ts")),
     ])) as [{ draftCommand: typeof DraftCommand }, { drafting: typeof Drafting }];
     const composed: Parameters<typeof DraftCommand>[1] = (request) =>
-      printMode(
+      show(
         drafting(request, async (action) => await action(), undefined),
-        log,
-        before,
-        name,
+        request.continuation,
       );
     await draftCommand([...flags, "--name", name], composed, null);
     return 0;
@@ -742,7 +739,7 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
     import(join(tree, ROUND)),
   ])) as [{ examineCommand: typeof ExamineCommand }, { writing: typeof Writing }, { solved: typeof Solved }];
   const composed: Parameters<typeof ExamineCommand>[1] = (request) =>
-    printMode(writing(request, undefined), log, before, name);
+    show(writing(request, undefined), request.continuation);
   // SAFETY: a tree before v0.14 takes its seats third, and the session exits before its first turn.
   await (examineCommand as (...given: unknown[]) => Promise<void>)(
     [...flags, "--name", name],

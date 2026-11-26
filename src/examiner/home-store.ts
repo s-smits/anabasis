@@ -1,0 +1,148 @@
+import { sha256OfFile } from "../meta/digest.ts";
+import {
+  chmodSync,
+  cloneFile,
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "../meta/filesystem.ts";
+import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
+import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
+import { dirname, join, resolve } from "../meta/path.ts";
+import { containsPath } from "../meta/path-containment.ts";
+import { isSafePathSegment } from "../meta/path-segment.ts";
+import { runtimeProcess } from "../meta/process.ts";
+import { compareCodeUnits } from "../meta/stable-json.ts";
+
+export const EXAMINER_HOMES = "examiner-homes";
+
+const OBJECTS = "objects";
+const HASH = /^[0-9a-f]{64}$/u;
+
+type HomeEntry =
+  | { readonly path: string; readonly kind: "dir" }
+  | { readonly path: string; readonly kind: "symlink"; readonly target: string }
+  | { readonly path: string; readonly kind: "file"; readonly sha256: string; readonly mode: number };
+
+interface HomeManifest {
+  readonly session: string;
+  readonly entries: readonly HomeEntry[];
+}
+
+function copyBlob(source: string, destination: string): void {
+  try {
+    cloneFile(source, destination);
+  } catch {
+    copyFileSync(source, destination);
+  }
+}
+
+function storeBlob(objectsDir: string, source: string): string {
+  const digest = sha256OfFile(source);
+  const blob = join(objectsDir, digest);
+  if (existsSync(blob)) return digest;
+  const temp = `${blob}.${String(runtimeProcess.pid)}.tmp`;
+  try {
+    copyBlob(source, temp);
+    chmodSync(temp, 0o644);
+    renameSync(temp, blob);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    if (!existsSync(blob)) throw error;
+  }
+  return digest;
+}
+
+function walkHome(root: string, prefix: string, objectsDir: string, out: HomeEntry[]): void {
+  const dir = prefix === "" ? root : join(root, prefix);
+  const names = readdirSync(dir).toSorted(compareCodeUnits);
+  for (const name of names) {
+    const rel = prefix === "" ? name : `${prefix}/${name}`;
+    const full = join(root, rel);
+    const stat = lstatSync(full);
+    if (stat.isSymbolicLink()) {
+      out.push({ path: rel, kind: "symlink", target: readlinkSync(full) });
+    } else if (stat.isDirectory()) {
+      out.push({ path: rel, kind: "dir" });
+      walkHome(root, rel, objectsDir, out);
+    } else if (stat.isFile()) {
+      out.push({
+        path: rel,
+        kind: "file",
+        sha256: storeBlob(objectsDir, full),
+        mode: stat.mode & 0o777,
+      });
+    }
+  }
+}
+
+function manifestPath(storeDir: string, sessionId: string): string {
+  if (!isSafePathSegment(sessionId)) throw new Error(`unsafe examiner home snapshot id: ${sessionId}`);
+  return join(storeDir, `${sessionId}.json`);
+}
+
+export function snapshotHome(sourceDir: string, storeDir: string, sessionId: string): void {
+  if (!existsSync(sourceDir)) return;
+  const objectsDir = join(storeDir, OBJECTS);
+  mkdirSync(objectsDir, { recursive: true });
+  const entries: HomeEntry[] = [];
+  walkHome(sourceDir, "", objectsDir, entries);
+  const manifest = manifestPath(storeDir, sessionId);
+  const temp = `${manifest}.${String(runtimeProcess.pid)}.tmp`;
+  writeFileSync(temp, `${capturedJsonStringify({ session: sessionId, entries })}\n`);
+  renameSync(temp, manifest);
+}
+
+export function hasHomeSnapshot(storeDir: string, sessionId: string): boolean {
+  return isSafePathSegment(sessionId) && existsSync(manifestPath(storeDir, sessionId));
+}
+
+function validEntry(entry: unknown): HomeEntry {
+  const row = isRecord(entry) ? entry : null;
+  if (row === null || !isString(row.path) || row.path === "" || !isString(row.kind)) {
+    throw new Error("invalid examiner home snapshot entry");
+  }
+  if (row.kind === "dir") return { path: row.path, kind: "dir" };
+  if (row.kind === "symlink" && isString(row.target)) {
+    return { path: row.path, kind: "symlink", target: row.target };
+  }
+  if (row.kind === "file" && isString(row.sha256) && HASH.test(row.sha256) && isNumber(row.mode)) {
+    return { path: row.path, kind: "file", sha256: row.sha256, mode: row.mode & 0o777 };
+  }
+  throw new Error(`invalid examiner home snapshot entry for ${row.path}`);
+}
+
+export function restoreHome(storeDir: string, sessionId: string, targetDir: string): void {
+  const raw = parseJsonAs<HomeManifest>(readFileSync(manifestPath(storeDir, sessionId), "utf8"));
+  if (!Array.isArray(raw.entries)) throw new Error(`${sessionId}: invalid examiner home manifest`);
+  const objectsDir = join(storeDir, OBJECTS);
+  const root = resolve(targetDir);
+  mkdirSync(root, { recursive: true });
+  for (const item of raw.entries) {
+    const entry = validEntry(item);
+    const dest = resolve(root, entry.path);
+    if (!containsPath(dest, root) || dest === root) {
+      throw new Error(`${sessionId}: examiner home entry escapes target: ${entry.path}`);
+    }
+    if (entry.kind === "dir") {
+      mkdirSync(dest, { recursive: true });
+    } else if (entry.kind === "symlink") {
+      mkdirSync(dirname(dest), { recursive: true });
+      symlinkSync(entry.target, dest);
+    } else {
+      const blob = join(objectsDir, entry.sha256);
+      if (!existsSync(blob)) throw new Error(`${sessionId}: missing examiner home blob ${entry.sha256}`);
+      mkdirSync(dirname(dest), { recursive: true });
+      copyBlob(blob, dest);
+      chmodSync(dest, entry.mode);
+    }
+  }
+}

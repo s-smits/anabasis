@@ -18,10 +18,13 @@ import {
   claudeSpendNow,
   SWEEP_COMPACT_WINDOW,
 } from "../src/agent/backends/claude.ts";
+import { CLAUDE_PROJECT_DIR, resolveForkPoint } from "../src/agent/backends/claude-transcript.ts";
 import { runAgent } from "../src/agent/session.ts";
 import type { Spent } from "../src/kernel/meter.ts";
 import {
+  existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -641,5 +644,173 @@ describe("the Claude backend", () => {
     expect(inFlight.errorMessage).toContain("already has a turn in flight");
     shutdown.abort();
     await first;
+  });
+
+  it("resolves turn-k fork points across multi-block assistant turns, tool results, and attachments, refusing incomplete or out-of-range turns", () => {
+    const sid = "11111111-2222-3333-4444-555555555555";
+    const entries = [
+      { type: "user", uuid: "u0", sessionId: sid, message: { role: "user", content: "Open." } },
+      {
+        type: "assistant",
+        uuid: "a1-think",
+        parentUuid: "u0",
+        sessionId: sid,
+        message: { id: "msg_1", model: "claude-opus-5-5", content: [{ type: "thinking", thinking: "hmm" }] },
+      },
+      {
+        type: "assistant",
+        uuid: "a1-tool",
+        parentUuid: "a1-think",
+        sessionId: sid,
+        message: {
+          id: "msg_1",
+          model: "claude-opus-5-5",
+          content: [{ type: "tool_use", id: "tu_1", name: "bash" }],
+        },
+      },
+      {
+        type: "user",
+        uuid: "u1-res",
+        parentUuid: "a1-tool",
+        sessionId: sid,
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu_1", content: "ok" }] },
+      },
+      { type: "attachment", uuid: "att-1", parentUuid: "u1-res", sessionId: sid },
+      {
+        type: "assistant",
+        uuid: "side-1",
+        isSidechain: true,
+        sessionId: sid,
+        message: { id: "msg_side", model: "claude-opus-5-5", content: [{ type: "text", text: "side" }] },
+      },
+      {
+        type: "assistant",
+        uuid: "synth-1",
+        sessionId: sid,
+        message: { id: "msg_synth", model: "<synthetic>", content: [{ type: "text", text: "ignored" }] },
+      },
+      {
+        type: "assistant",
+        uuid: "a2-text",
+        parentUuid: "att-1",
+        sessionId: sid,
+        message: { id: "msg_2", model: "claude-opus-5-5", content: [{ type: "text", text: "Done." }] },
+      },
+      {
+        type: "user",
+        uuid: "u2-nudge",
+        parentUuid: "a2-text",
+        sessionId: sid,
+        message: { role: "user", content: "Old nudge." },
+      },
+      {
+        type: "assistant",
+        uuid: "a3-open-tool",
+        parentUuid: "u2-nudge",
+        sessionId: sid,
+        message: {
+          id: "msg_3",
+          model: "claude-opus-5-5",
+          content: [{ type: "tool_use", id: "tu_orphan", name: "bash" }],
+        },
+      },
+    ];
+    const jsonl = `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+    expect(resolveForkPoint(jsonl, 1)).toEqual({
+      sdkSessionId: sid,
+      resumeSessionAt: "att-1",
+      turnCount: 3,
+    });
+    expect(resolveForkPoint(jsonl, 2)).toEqual({
+      sdkSessionId: sid,
+      resumeSessionAt: "a2-text",
+      turnCount: 3,
+    });
+    expect(() => resolveForkPoint(jsonl, 3)).toThrow("unanswered tool calls (tu_orphan)");
+    expect(() => resolveForkPoint(jsonl, 4)).toThrow("holds 3 assistant turns");
+    expect(() => resolveForkPoint(jsonl, 0)).toThrow("positive integer");
+  });
+
+  it("persists transcripts under CLAUDE_CODE_PROJECT_DIR_NAME and stages native SDK forks with resumeSessionAt", async () => {
+    const sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const transcript = `${[
+      JSON.stringify({ type: "user", uuid: "u0", sessionId: sid, message: { role: "user", content: "Hi" } }),
+      JSON.stringify({
+        type: "assistant",
+        uuid: "a1",
+        parentUuid: "u0",
+        sessionId: sid,
+        message: { id: "msg_1", model: "claude-opus-5-5", content: [{ type: "text", text: "Turn 1" }] },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        uuid: "a2",
+        parentUuid: "a1",
+        sessionId: sid,
+        message: { id: "msg_2", model: "claude-opus-5-5", content: [{ type: "text", text: "Turn 2" }] },
+      }),
+    ].join("\n")}\n`;
+
+    const persistDir = join(home, "persisted");
+    const projectDir = join(home, "claude-config", "projects", CLAUDE_PROJECT_DIR);
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(join(projectDir, `${sid}.jsonl`), transcript);
+
+    replay(TEXT);
+    const persisting = claudeProvider({
+      executable,
+      compaction: "off",
+      home,
+      persist: { dir: persistDir, seat: "x-1" },
+      shutdown: shutdown.signal,
+    });
+    await persisting
+      .streamSimple(recorded, solverContext([opening]), {
+        ...solveOptions(),
+        sessionId: `p-${String(solves)}`,
+      })
+      .result();
+    const persistLaunch = launched();
+    expect(persistLaunch.argv).not.toContain("--no-session-persistence");
+    expect(persistLaunch.env.CLAUDE_CODE_PROJECT_DIR_NAME).toBe(CLAUDE_PROJECT_DIR);
+    expect(existsSync(join(persistDir, "x-1.jsonl"))).toBe(true);
+    expect(existsSync(join(persistDir, "x-1.json"))).toBe(true);
+
+    const forkHome = mkdtempSync(join(tmpdir(), "ana-claude-fork-"));
+    try {
+      writeFileSync(join(forkHome, "launch.jsonl"), "");
+      writeFileSync(join(forkHome, "replay.jsonl"), readFileSync(join(FIXTURES, TEXT), "utf8"));
+      const forking = claudeProvider({
+        executable,
+        compaction: "off",
+        home: forkHome,
+        fork: { transcript: join(persistDir, "x-1.jsonl"), upToTurn: 1 },
+        shutdown: shutdown.signal,
+      });
+      await forking
+        .streamSimple(recorded, solverContext([{ role: "user", content: "New nudge.", timestamp: 0 }]), {
+          ...solveOptions(),
+          sessionId: `f-${String(solves)}`,
+        })
+        .result();
+      const lines = readFileSync(join(forkHome, "launch.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => asRecord(capturedJsonParse(line)) ?? {});
+      const argv = lines.find((entry) => Array.isArray(entry.argv))?.argv;
+      const env = asRecord(lines.find((entry) => Array.isArray(entry.argv))?.env);
+      const args = Array.isArray(argv) ? argv.filter(isString) : [];
+      const forkLaunch: Launch = { argv: args, env: env ?? {}, stdin: [], cwd: "" };
+      expect(args).toContain("--fork-session");
+      expect(flag(forkLaunch, "--resume")).toBe(sid);
+      expect(flag(forkLaunch, "--resume-session-at")).toBe("a1");
+      expect(args).not.toContain("--no-session-persistence");
+      expect(env?.CLAUDE_CODE_PROJECT_DIR_NAME).toBe(CLAUDE_PROJECT_DIR);
+      expect(
+        existsSync(join(forkHome, "claude-config", "projects", CLAUDE_PROJECT_DIR, `${sid}.jsonl`)),
+      ).toBe(true);
+    } finally {
+      rmSync(forkHome, { recursive: true, force: true });
+    }
   });
 });

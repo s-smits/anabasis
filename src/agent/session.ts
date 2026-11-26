@@ -38,8 +38,19 @@ import { releaseRoot } from "../sandbox/sandbox-root.ts";
 
 export type AgentTool = ToolRegistration;
 
+export interface Continuation {
+  readonly mode: "fork" | "wrap" | "nudge";
+  readonly text: string;
+}
+
+export function applyContinuation(opening: string, continuation?: Continuation): string {
+  if (continuation === undefined) return opening;
+  if (continuation.mode === "fork") return continuation.text;
+  return `${opening}\n\n${continuation.text}`;
+}
+
 export interface AgentSpec {
-  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string, seat?: string) => Models;
   readonly home?: string;
   readonly cwd?: string;
   readonly id: string;
@@ -163,7 +174,7 @@ export async function runAgent(seat: AgentSpec): Promise<AgentRun> {
         hooks: [...frame.hooks, hook(CompactionTask, { beforeCompact: frame.before }), compactions.hook],
       }),
     );
-    const models = seat.models(home, shutdown, seat.cwd);
+    const models = seat.models(home, shutdown, seat.cwd, seat.id);
     meter.catalogue(models);
     harness = await Harness.open(
       new MemoryStorage(),

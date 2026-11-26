@@ -5,6 +5,7 @@
  * `contract.frozen`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { unaudited } from "#src/campaign/scheduler.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
@@ -19,10 +20,19 @@ import {
 } from "#src/audit/draft-audit.ts";
 import type { Reader } from "#src/audit/auditor.ts";
 import { isString } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, examinerSession, REPO, stayAwake, worktreesOf } from "../campaign/campaign.ts";
+import {
+  campaignLog,
+  examinerSession,
+  hostSession,
+  REPO,
+  stayAwake,
+  worktreesOf,
+} from "../campaign/campaign.ts";
 import { assertCrossFamily } from "../campaign/round.ts";
+import { FORK_OPTIONS, seatForkPlan } from "../campaign/seat-fork.ts";
 import { keepReading } from "../eval/accept.ts";
 import { draftReading } from "../campaign/exam.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
@@ -47,6 +57,7 @@ const OPTIONS = {
   /** The setting flags, read when the log records no setting yet, for the solve budget shown to the
    *  drafting Examiner. */
   ...SETTING_OPTIONS,
+  ...FORK_OPTIONS,
   target: { type: "string" },
 } as const;
 
@@ -149,6 +160,14 @@ export async function draftCommand(
   /** The last entry is the accepted draft's reading. */
   const readings: (DraftSeen | undefined)[] = [];
   const auditClean = draftAuditGate({ session: id, prompt, log, auditor, reader: auditReader });
+  const model = modelNamed(examiner);
+  const forkPlan = seatForkPlan(log, "draft", model, values);
+  const models = hostSession({
+    webSearch: false,
+    cacheTtl: "1h",
+    persistDir: join(dirname(log), CLAUDE_SESSIONS_DIR),
+    ...keyIfDefined("fork", forkPlan.fork),
+  });
   stayAwake();
   const drafted = await session(
     {
@@ -162,7 +181,7 @@ export async function draftCommand(
         readings.push(seen);
         return faults.length > 0 || seen === undefined ? faults : await auditClean(seen);
       },
-      model: modelNamed(examiner),
+      model,
       // SAFETY: effort is a pi thinking level; unsupported values are rejected by the backend.
       effort: values["examiner-effort"] as ThinkingLevel,
       limits: {
@@ -170,8 +189,9 @@ export async function draftCommand(
         turns: Number(values.turns),
         puts: Number(values.tries),
       },
-      models: examinerSession,
+      models,
       log,
+      ...keyIfDefined("continuation", forkPlan.continuation),
     },
     // Kept beside the log so later task-writing sessions inherit the generators and environment made
     // while drafting.

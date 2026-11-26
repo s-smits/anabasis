@@ -13,6 +13,7 @@ import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { draftOf } from "../src/examiner/draft.ts";
 import { taskHistory } from "../src/examiner/record.ts";
 import { type Ask, examine } from "../src/examiner/session.ts";
+import { EXAMINER_HOMES, hasHomeSnapshot } from "../src/examiner/home-store.ts";
 import { examinerDirs, inExaminerSandbox } from "../src/examiner/shell.ts";
 import { writing } from "../src/examiner/write.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
@@ -271,6 +272,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     });
     expect(opened).toEqual(["kept.txt", "wrote.txt"]);
     expect(readdirSync(keep)).toEqual(["kept.txt"]);
+    expect(hasHomeSnapshot(join(dirname(s.log), EXAMINER_HOMES), s.request.id)).toBe(false);
   });
 
   it("carries a relative link as it stands, into the home and out of it", async () => {
@@ -333,6 +335,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
       { ...WALL, keep },
     );
     expect(atRest).toEqual([["first.txt"]]);
+    expect(hasHomeSnapshot(join(dirname(s.log), EXAMINER_HOMES), s.request.id)).toBe(true);
   });
 });
 

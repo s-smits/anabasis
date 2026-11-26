@@ -17,7 +17,9 @@ import { parseJsonAs } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
+import { isSafePathSegment } from "../meta/path-segment.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { EXAMINER_HOMES, snapshotHome } from "./home-store.ts";
 import {
   type CommandSandbox,
   INSTALLER_TOLD,
@@ -46,7 +48,7 @@ export interface Walls {
   readonly shell: CommandSandbox;
   readonly pinned: readonly Engine[];
   readonly began: number;
-  readonly keep: () => void;
+  readonly keep: (sessionId?: string) => void;
 }
 
 export const examinerDirs = (log: string, id: string): SolveDirs =>
@@ -99,14 +101,19 @@ export async function inExaminerSandbox<T>(
     const { home } = dirs;
     const carry = { recursive: true, verbatimSymlinks: true } as const;
     if (keep !== undefined && existsSync(keep)) cpSync(keep, home, carry);
-    const kept = () => {
+    const kept = (sessionId?: string) => {
       if (keep === undefined) return;
       rmSync(keep, { recursive: true, force: true });
       cpSync(home, keep, carry);
+      if (sessionId !== undefined && isSafePathSegment(sessionId)) {
+        snapshotHome(home, join(dirname(keep), EXAMINER_HOMES), sessionId);
+      }
     };
     const result = await run({ shell, pinned, began, keep: kept });
     const ended = read(log, (kind) => kind !== "exam.finished" && kind !== "draft.finished").at(-1)?.data;
-    if (!(ended?.ended === "crashed" && Number(ended.running) > 0)) kept();
+    if (!(ended?.ended === "crashed" && Number(ended.running) > 0)) {
+      kept(isString(ended?.session) ? ended.session : id);
+    }
     return result;
   } finally {
     await release();

@@ -19,7 +19,7 @@ Use [stack-contracts.md](../run-improvement-campaign/references/stack-contracts.
 
 1. Pre-register intent and 2–3 rival outcomes (gain, null, regression with metrics/thresholds) in `.ana/wri/` before running; separate delivery checks from empirical predictions.
 2. **Archive-first & surgical spend:** check the archive base rate before launching Tier 3. If a branch fires rarely in archived logs (<5%, e.g. a format-breaking probe) or archive counts already settle the question, replay the real archived event at Tier 1–2 (`\$0`) instead of spending on live seats hoping a single draw hits it. Keep Tier-3 path checks surgical (`\$1–\$6`, tight `--turns`/`--proposals`/`--moves`); reserve larger paired rounds strictly for [optimize](cases/optimize.md).
-3. Seed late from a quiescent log (`bun run runs seed --from <run> --name sim-<what> [--points | --before <session-or-comparison> | --events N]`) and note how it differs from live state. Use distinct `-before`/`-after` names across worktrees.
+3. Seed late from a quiescent log (`bun run runs seed --from <run> --name sim-<what> [--points | --before <session-or-comparison> | --events N]`) and note how it differs from live state. Cuts on runs with per-session `examiner-homes/` restore the exact `examiner-home` from the last finished Examiner/draft session before the cut, and copy persisted `claude-sessions/` transcripts for native mid-session forking. Use distinct `-before`/`-after` names across worktrees.
 4. Build states strictly with campaign commands (never hand-edit logs or `states/`). Vary one factor at a time and keep prompts at production defaults unless testing a prompt.
 5. Codify cleared conditions in an owning `test/` case running real writer against real reader; trash seeds after use (`/usr/bin/trash .ana/d2/sim-<what>`).
 
@@ -37,9 +37,9 @@ Requires operator approval naming seats, model, effort, login, and USD/time cap;
 
 | Seat | Seed cut | Command | Reader |
 | --- | --- | --- | --- |
-| Draft | `--before d-1` | `tools/eval/draft.ts --session d-1 --examiner <m> [--reviewer <r>] ...` | `live-seat.ts read`, `compare`, `prompt` |
-| Examiner | `--before x-<n>` | `tools/eval/examine.ts --session x-<n> --examiner <m> --examiner-effort <e> ...` | `live-seat.ts read`, `compare`, `pairs`, `prompt` |
-| Builder | `--before b-<n>` | `tools/campaign/session.ts --session b-<n> --builder <m> --no-comparison ...` | `live-seat.ts read`, `compare` |
+| Draft | `--before d-1` | `tools/eval/draft.ts --session d-1 --examiner <m> [--reviewer <r>] [--fork-from ... \| --wrap-turns ... \| --nudge ...]` | `live-seat.ts read`, `compare`, `prompt` |
+| Examiner | `--before x-<n>` | `tools/eval/examine.ts --session x-<n> --examiner <m> --examiner-effort <e> [--fork-from <id> --at-turn <k>] [--nudge <text>]` | `live-seat.ts read`, `compare`, `pairs`, `prompt` |
+| Builder | `--before b-<n>` | `tools/campaign/session.ts --session b-<n> --builder <m> [--fork-from <id> --at-turn <k>] [--nudge <text>]` | `live-seat.ts read`, `compare` |
 | Comparison | `--before g-<n>` | `tools/campaign/checkpoint.ts --id g-<n> --new latest ...` | `live-seat.ts read`, comparison report |
 | Stretch | `--before b-<n>` / rest | `tools/campaign/harness-builder.ts`, all 4 seats named by `live-seat.ts start --model` | `live-seat.ts read`, log readers |
 

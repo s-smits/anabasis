@@ -408,7 +408,7 @@ tools/runs/rehearse.ts	11
 tools/runs/replay.ts	2
 tools/runs/retire.ts	22
 tools/runs/search.ts	8
-tools/runs/seed.ts	17
+tools/runs/seed.ts	14
 tools/runs/snapshots.ts	10
 tools/runs/state.ts	8
 tools/runs/stop.ts	1

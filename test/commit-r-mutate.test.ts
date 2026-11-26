@@ -1,4 +1,4 @@
-// The commit-r mutation oracle (`.claude/skills/commit-r/scripts/mutate.ts`) records a kill for a
+// The mutation oracle (`.claude/skills/mutation-testing/scripts/mutate.ts`) records a kill for a
 // mutant its suite fails on (including Bun 1.4 `--bail` runs that print no pass/fail counts),
 // refuses to mutate when a baseline suite fails unmutated, and supports both comparative (`--old`)
 // and solo (`report` without `--old`) reporting.
@@ -20,8 +20,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 
-const SCRIPT = join(import.meta.dir, "..", ".claude", "skills", "commit-r", "scripts", "mutate.ts");
-const NIGHTLY = join(import.meta.dir, "..", ".claude", "skills", "commit-r", "scripts", "nightly.ts");
+const SCRIPT = join(import.meta.dir, "..", ".claude", "skills", "mutation-testing", "scripts", "mutate.ts");
+const NIGHTLY = join(import.meta.dir, "..", ".claude", "skills", "mutation-testing", "scripts", "nightly.ts");
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-mutate-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
@@ -57,7 +57,7 @@ describe("the mutation oracle", () => {
     mkdirSync(tree);
     writeFileSync(
       join(tree, "a.ts"),
-      'export const above = (x: number) => x > 1;\nexport const label = (x: number) => (x > 5 ? "big" : "small");\n',
+      'export const above = (x: number) => {\n  console.log(x > 9);\n  return x > 1;\n};\nexport const label = (x: number) => (x > 5 ? "big" : "small");\n',
     );
     writeFileSync(
       join(tree, "a.test.ts"),
@@ -76,26 +76,27 @@ describe("the mutation oracle", () => {
     expect(run.exitCode).toBe(0);
     const rows = rowsOf(out);
     const onLine = (line: number) => rows.filter((row) => row.line === line);
-    expect(onLine(1).length).toBeGreaterThan(0);
-    expect(onLine(2).length).toBeGreaterThan(0);
-    expect(new Set(onLine(1).map(({ killed }) => killed.t))).toStrictEqual(new Set([true]));
-    expect(new Set(onLine(2).map(({ killed }) => killed.t))).toStrictEqual(new Set([false]));
+    expect(onLine(2)).toEqual([]);
+    expect(onLine(3).length).toBeGreaterThan(0);
+    expect(onLine(5).length).toBeGreaterThan(0);
+    expect(new Set(onLine(3).map(({ killed }) => killed.t))).toStrictEqual(new Set([true]));
+    expect(new Set(onLine(5).map(({ killed }) => killed.t))).toStrictEqual(new Set([false]));
 
-    // Solo report (no `--old`) tallies killed/survived/unread and lists line-2 survivors.
+    // Solo report (no `--old`) tallies killed/survived/unread and lists line-5 survivors.
     const solo = runScript("report", out);
     expect(solo.exitCode).toBe(0);
     expect(solo.stdout.toString().trim()).toBe(
-      `file  killed  survived  unread\na.ts  ${String(onLine(1).length)}  ${String(onLine(2).length)}  0`,
+      `file  killed  survived  unread\na.ts  ${String(onLine(3).length)}  ${String(onLine(5).length)}  0`,
     );
     const soloSurvivors = runScript("report", out, "--survivors");
     expect(soloSurvivors.exitCode).toBe(0);
-    expect(soloSurvivors.stdout.toString().trim().split("\n")).toStrictEqual(onLine(2).map((row) => row.id));
+    expect(soloSurvivors.stdout.toString().trim().split("\n")).toStrictEqual(onLine(5).map((row) => row.id));
 
-    // Comparative report (`--old t` with no second suite) marks every line-1 kill as `O-`.
+    // Comparative report (`--old t` with no second suite) marks every line-3 kill as `O-`.
     const compared = runScript("report", out, "--old", "t");
     expect(compared.exitCode).toBe(0);
     expect(compared.stdout.toString().trim()).toBe(
-      `file  ON  O-  -N  --  unread\na.ts  0  ${String(onLine(1).length)}  0  ${String(onLine(2).length)}  0`,
+      `file  ON  O-  -N  --  unread\na.ts  0  ${String(onLine(3).length)}  0  ${String(onLine(5).length)}  0`,
     );
   }, 60_000);
 

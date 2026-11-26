@@ -7,7 +7,7 @@ Repository invariants and map; read the owning skill before editing or answering
 | Agents, prompts, sandbox, starter | `design-and-seats` (§1–3) | `examiner-complexity`, `harness-audit`, `system-path-simulation` | `seat-view.ts`, sandbox tests |
 | Campaign loop, admission, practice, endings | `campaign-mechanics` (§4–6) | `run-management`, `decision-points`, `run-improvement-campaign`, `whole-run-investigation`, `zip-run`, `oracle-handover` | `runs replay`, `runs rehearse` |
 | Comparisons, scoring, sampling, A/A, `scheduler` | `comparison-reading` (§7–8) | `promotion-tuner`, `attribution-and-proof`, `comparison-review`, `compare-systems` | `promotion-tuner` replay |
-| Commits, PRs, checks, claims, writing | `repository-practice` (§9–14), `tools/oxlint/HABITS.md` | `stack-pr`, `consolidate-stack`, `simplify`, `reduce-complexity`, `commit-r`, `local-checks`, `system-audit`, `codex-gpt-swarm` | `bun run gate`, `preflight.ts` |
+| Commits, PRs, checks, claims, writing | `repository-practice` (§9–14), `tools/oxlint/HABITS.md` | `stack-pr`, `consolidate-stack`, `simplify`, `reduce-complexity`, `commit-r`, `mutation-testing`, `local-checks`, `system-audit`, `codex-gpt-swarm` | `bun run gate`, `preflight.ts` |
 
 Scripts: `bun .claude/skills/<skill>/scripts/<name>.ts`. Metrics: `docs/plan.md`; v1: `docs/v1.md`, `docs/transfer.md`, `studies/`; nudges: `tools/runtime/moments.ts`.
 

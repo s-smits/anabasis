@@ -4,7 +4,6 @@ path	count
 .claude/skills/campaign-mechanics/scripts/ending.ts	5
 .claude/skills/codex-gpt-swarm/scripts/gpt-receipts.ts	10
 .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts	12
-.claude/skills/commit-r/scripts/mutate.ts	5
 .claude/skills/compare-systems/scripts/systems.ts	10
 .claude/skills/compare-systems/scripts/trial.ts	3
 .claude/skills/comparison-reading/scripts/draw.ts	2
@@ -26,6 +25,7 @@ path	count
 .claude/skills/main/print.ts	2
 .claude/skills/main/runs.ts	25
 .claude/skills/main/stats.ts	10
+.claude/skills/mutation-testing/scripts/mutate.ts	5
 .claude/skills/oracle-handover/scripts/bundle.ts	4
 .claude/skills/oracle-handover/scripts/document.ts	7
 .claude/skills/oracle-handover/scripts/open-pulls.ts	11

@@ -60,13 +60,20 @@ const SWAPS = new Map([
   ["??", "&&"],
 ]);
 
-/** A node no mutant touches: types, imports and template text, where a swap would not compile. */
+const isConsoleCall = (node: ts.Node) =>
+  ts.isCallExpression(node) &&
+  ts.isPropertyAccessExpression(node.expression) &&
+  ts.isIdentifier(node.expression.expression) &&
+  node.expression.expression.text === "console";
+
+/** A node no mutant touches: types, imports, template text, and console logging (arid nodes). */
 const inert = (node: ts.Node) =>
   ts.isTypeNode(node) ||
   ts.isImportDeclaration(node) ||
   ts.isTemplateExpression(node) ||
   ts.isInterfaceDeclaration(node) ||
-  ts.isTypeAliasDeclaration(node);
+  ts.isTypeAliasDeclaration(node) ||
+  isConsoleCall(node);
 
 /** Each replacement one node offers: an operator, a negation, a literal, an `if`, a `?:`, or a row of a table of `code` rows. */
 function edits(node: ts.Node, tree: ts.SourceFile): [number, number, string, string][] {

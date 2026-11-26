@@ -11,9 +11,10 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { gitText } from "../src/meta/git.ts";
+import { changedLinesInDiff, gitText } from "../src/meta/git.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { asRecord } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -25,12 +26,19 @@ const NIGHTLY = join(import.meta.dir, "..", ".claude", "skills", "mutation-testi
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-mutate-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-const runScript = (...argv: string[]) =>
-  Bun.spawnSync([capturedExecPath, SCRIPT, ...argv], {
-    env: { ...Bun.env, ANA_CHECK_HOST: "here" },
+const localPipe = () =>
+  ({
+    env: { ...Bun.env, ANA_CHECK_HOST: "here", ANA_HOSTS: "[]" },
     stdout: "pipe",
     stderr: "pipe",
-  });
+  }) as const;
+
+const runScript = (...argv: string[]) => Bun.spawnSync([capturedExecPath, SCRIPT, ...argv], localPipe());
+const runNightly = (target: string, stateDir: string, extra: readonly string[] = []) =>
+  Bun.spawnSync(
+    [capturedExecPath, NIGHTLY, target, "--state", stateDir, "--timeout", "30", ...extra],
+    localPipe(),
+  );
 
 interface Row {
   readonly id: string;
@@ -378,6 +386,18 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     expect(new Set(run.sent.map(({ place, spare }) => `${place}:${spare}`))).toStrictEqual(new Set(["a:"]));
   }, 60_000);
 
+  it("batches mutants remotely under --batch with --prune and matches single-mutant verdicts in fewer trips", () => {
+    const batched = fleet("fleet-batch", { ANA_HOSTS: hosts(host("a", 2)) }, [
+      "--batch",
+      "4",
+      "--prune",
+      "--stop-at-kill",
+    ]);
+    expect(batched.status).toBe(0);
+    expect(verdicts(batched.rows)).toStrictEqual(here);
+    expect(batched.sent.length).toBeLessThan(1 + Object.keys(here).length);
+  }, 60_000);
+
   it("refuses a host list it cannot read, before it runs anything", () => {
     const run = fleet("fleet-unread", { ANA_HOSTS: "[{" });
     expect(run.status).not.toBe(0);
@@ -425,6 +445,12 @@ describe("nightly mutation suite selection", () => {
       'import { expect, it } from "bun:test";\nit("unrelated", () => expect(1).toBe(1));\n',
     );
     writeFileSync(join(tree, "test", "unparseable.test.ts"), "export const = ;;;\n");
+    gitText(tree, "init");
+    gitText(tree, "config", "user.email", "test@example.com");
+    gitText(tree, "config", "user.name", "Test");
+    gitText(tree, "add", ".");
+    gitText(tree, "commit", "-m", "seed");
+    const head = gitText(tree, "rev-parse", "HEAD");
     writeFileSync(
       join(tree, "test", ".test-timings.json"),
       JSON.stringify({
@@ -432,19 +458,23 @@ describe("nightly mutation suite selection", () => {
         files: { "test/a-slow-indirect.test.ts": 50_000, "test/z-fast-indirect.test.ts": 100 },
       }),
     );
-    gitText(tree, "init");
-    gitText(tree, "config", "user.email", "test@example.com");
-    gitText(tree, "config", "user.name", "Test");
-    gitText(tree, "add", ".");
-    gitText(tree, "commit", "-m", "seed");
-    const head = gitText(tree, "rev-parse", "HEAD");
+    const linked = join(root, "nightly-linked");
+    gitText(tree, "worktree", "add", "--detach", linked, "HEAD");
+    const sym = join(root, "nightly-link");
+    symlinkSync(linked, sym);
+    const linkedState = join(root, "nightly-linked-state");
+    expect(runNightly(sym, linkedState).exitCode).toBe(0);
+    const linkedChosen = asRecord(
+      capturedJsonParse(readFileSync(join(linkedState, head, "src_kernel_solve.suites.json"), "utf8")),
+    );
+    expect(Object.keys(linkedChosen ?? {})).toEqual([
+      "z-fast-indirect",
+      "a-slow-indirect",
+      "literal-mention",
+    ]);
+
     const state = join(root, "nightly-state");
-    const run = Bun.spawnSync([capturedExecPath, NIGHTLY, tree, "--state", state, "--timeout", "30"], {
-      env: { ...Bun.env, ANA_CHECK_HOST: "here", ANA_HOSTS: "[]" },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    expect(run.exitCode).toBe(0);
+    expect(runNightly(tree, state).exitCode).toBe(0);
     const chosen = asRecord(
       capturedJsonParse(readFileSync(join(state, head, "src_kernel_solve.suites.json"), "utf8")),
     );
@@ -459,16 +489,168 @@ describe("nightly mutation suite selection", () => {
           killed["literal-mention"] === null,
       ),
     ).toBe(true);
+    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
+      commit: head,
+      full: head,
+    });
+
+    const baselineReport = readFileSync(join(state, head, "report.md"), "utf8");
+    const noop = runNightly(tree, state);
+    expect(noop.exitCode).toBe(0);
+    expect(noop.stdout.toString()).toContain("0 diff mutants");
+    expect(readFileSync(join(state, head, "report.md"), "utf8")).toBe(baselineReport);
+
+    writeFileSync(
+      join(tree, "src", "kernel", "solve.ts"),
+      "export type Flag = boolean;\nexport const above = (x: number): Flag => x > 1;\nexport const below = (x: number): Flag => x < 0;\n",
+    );
+    writeFileSync(join(tree, "src", "extra.ts"), "export const zero = (x: number) => x === 0;\n");
+    writeFileSync(
+      join(tree, "src", "extra-wrap.ts"),
+      'import { zero } from "./extra.ts";\nexport const wrap = (x: number) => zero(x);\n',
+    );
+    writeFileSync(
+      join(tree, "test", "extra.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { zero } from "../src/extra.ts";\nit("zero", () => expect([zero(0), zero(1)]).toEqual([true, false]));\n',
+    );
+    writeFileSync(
+      join(tree, "test", "extra-indirect.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { wrap } from "../src/extra-wrap.ts";\nit("wrap", () => expect(wrap(0)).toBe(true));\n',
+    );
+    gitText(tree, "add", ".");
+    gitText(tree, "commit", "-m", "diff hunk");
+    const head2 = gitText(tree, "rev-parse", "HEAD");
+    expect(runNightly(tree, state).exitCode).toBe(3);
+    const diffSolve = rowsOf(join(state, head2, `src_kernel_solve.diff-${head.slice(0, 9)}.jsonl`));
+    expect(diffSolve.length).toBeGreaterThan(0);
+    expect(diffSolve.every((row) => row.line === 3)).toBe(true);
+    const diffExtra = rowsOf(join(state, head2, `src_extra.diff-${head.slice(0, 9)}.jsonl`));
+    expect(diffExtra.length).toBeGreaterThan(0);
+    expect(diffExtra.every(({ killed }) => killed.extra === true)).toBe(true);
+    expect(
+      capturedJsonParse(
+        readFileSync(join(state, head2, `src_extra.diff-${head.slice(0, 9)}.suites.json`), "utf8"),
+      ),
+    ).toEqual({ extra: ["test/extra.test.ts"] });
+    const diffReport = readFileSync(join(state, head2, "report.md"), "utf8");
+    expect(diffReport).toContain("src/kernel/solve.ts:3  [2:");
+    const recheckIds = readFileSync(join(state, head2, `survivors.diff-${head.slice(0, 9)}.ids.txt`), "utf8")
+      .trim()
+      .split("\n");
+    expect(recheckIds).toEqual(diffSolve.map(({ id }) => id));
+    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
+      commit: head2,
+      full: head,
+    });
+
+    writeFileSync(
+      join(tree, "src", "kernel", "untested.ts"),
+      "export const orphan = (x: number) => x > 0;\n",
+    );
+    gitText(tree, "add", ".");
+    gitText(tree, "commit", "-m", "untested only");
+    const headUntested = gitText(tree, "rev-parse", "HEAD");
+    expect(runNightly(tree, state).exitCode).toBe(3);
+    expect(readFileSync(join(state, headUntested, "report.md"), "utf8")).toContain(
+      "No nearby test: `src/kernel/untested.ts`",
+    );
+
+    writeFileSync(
+      join(tree, "src", "extra.ts"),
+      "// comment only\nexport const zero = (x: number) => x === 0;\n",
+    );
+    gitText(tree, "add", ".");
+    gitText(tree, "commit", "-m", "comment only");
+    const head3 = gitText(tree, "rev-parse", "HEAD");
+    expect(runNightly(tree, state).exitCode).toBe(0);
+    expect(existsSync(join(state, head3, `src_extra.diff-${headUntested.slice(0, 9)}.jsonl`))).toBe(false);
+    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
+      commit: head3,
+      full: head,
+    });
+    expect(runNightly(tree, state, ["--diff", head]).exitCode).toBe(3);
+    expect(existsSync(join(state, head3, `src_extra.diff-${head.slice(0, 9)}.jsonl`))).toBe(true);
+    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
+      commit: head3,
+      full: head,
+    });
+    const badRef = runNightly(tree, state, ["--diff", "nonexistent-ref"]);
+    expect(badRef.exitCode).toBe(2);
+    expect(badRef.stderr.toString()).toContain("not a reachable commit");
+    const bothFlags = runNightly(tree, state, ["--diff", head, "--full"]);
+    expect(bothFlags.exitCode).toBe(2);
+    expect(bothFlags.stderr.toString()).toContain("cannot be combined");
+
+    expect(runNightly(tree, state, ["--full"]).exitCode).toBe(3);
+    expect(new Set(rowsOf(join(state, head3, "src_kernel_solve.jsonl")).map((row) => row.line))).toEqual(
+      new Set([2, 3]),
+    );
+    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
+      commit: head3,
+      full: head3,
+    });
 
     writeFileSync(join(tree, "test", ".test-timings.json"), "{broken");
-    const fallback = Bun.spawnSync(
-      [capturedExecPath, NIGHTLY, tree, "--state", join(root, "nightly-bad"), "--timeout", "30"],
-      {
-        env: { ...Bun.env, ANA_CHECK_HOST: "here", ANA_HOSTS: "[]" },
-        stdout: "pipe",
-        stderr: "pipe",
-      },
+    expect(runNightly(tree, join(root, "nightly-bad")).exitCode).toBe(0);
+
+    gitText(tree, "update-ref", "refs/remotes/origin/main", head);
+    gitText(tree, "checkout", "-q", "-f", "-B", "rebased", head);
+    mkdirSync(join(tree, "tools", "sub"), { recursive: true });
+    writeFileSync(join(tree, "tools", "sub", "run.ts"), "export const flag = (n: number) => n > 0;\n");
+    writeFileSync(
+      join(tree, "test", "sub.test.ts"),
+      [
+        'import { expect, it } from "bun:test";',
+        'import { join } from "node:path";',
+        'const dir = join("tools", "sub");',
+        'it("reads dir", () => expect(dir).toContain("sub"));',
+      ].join("\n"),
     );
-    expect(fallback.exitCode).toBe(0);
+    gitText(tree, "add", ".");
+    gitText(tree, "commit", "-m", "rebased stack");
+    const head4 = gitText(tree, "rev-parse", "HEAD");
+    expect(runNightly(tree, state).exitCode).toBe(3);
+    expect(
+      capturedJsonParse(
+        readFileSync(join(state, head4, `tools_sub_run.diff-${head.slice(0, 9)}.suites.json`), "utf8"),
+      ),
+    ).toEqual({ sub: ["test/sub.test.ts"] });
+    expect(readFileSync(join(state, head4, "report.md"), "utf8")).toContain(`(since ${head.slice(0, 9)})`);
   }, 60_000);
+
+  it("parses unified=0 diff hunks across spaces, deletions, /dev/null, and --/++ content lines", () => {
+    const sample = [
+      "+++ b/stray.ts",
+      "@@ -1 +1 @@",
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -5,2 +5,0 @@",
+      "-a",
+      "-b",
+      "@@ -8 +8 @@",
+      "--- old",
+      "+++ new",
+      "@@ -10,0 +10,2 @@",
+      "+x",
+      "++ j",
+      "diff --git a/src/has space.ts b/src/has space.ts",
+      "--- a/src/has space.ts\t",
+      "+++ b/src/has space.ts\t",
+      "@@ -1 +3 @@",
+      "-old",
+      "+new",
+      "diff --git a/src/gone.ts b/src/gone.ts",
+      "--- a/src/gone.ts",
+      "+++ /dev/null",
+      "@@ -1,3 +0,0 @@",
+      "-1",
+      "-2",
+      "-3",
+    ].join("\n");
+    const parsed = changedLinesInDiff(sample);
+    expect([...parsed.keys()]).toEqual(["src/a.ts", "src/has space.ts"]);
+    expect([...(parsed.get("src/a.ts") ?? [])]).toEqual([8, 10, 11]);
+    expect([...(parsed.get("src/has space.ts") ?? [])]).toEqual([3]);
+  });
 });

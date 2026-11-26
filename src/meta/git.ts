@@ -44,3 +44,53 @@ export function mainTree(repo: string): string {
   const common = gitText(repo, "rev-parse", "--path-format=absolute", "--git-common-dir");
   return basename(common) === ".git" ? dirname(common) : (worktrees(repo)[0] ?? repo);
 }
+
+export function changedLinesInDiff(diff: string): Map<string, Set<number>> {
+  const changed = new Map<string, Set<number>>();
+  let lines: Set<number> | undefined;
+  let sawMinus = false;
+  let oldLeft = 0;
+  let newLeft = 0;
+  for (const row of diff.split("\n")) {
+    if (row.startsWith("diff --git ")) {
+      sawMinus = false;
+      oldLeft = 0;
+      newLeft = 0;
+      continue;
+    }
+    if (oldLeft > 0 || newLeft > 0) {
+      if (row.startsWith("-") && oldLeft > 0) {
+        oldLeft -= 1;
+        continue;
+      }
+      if (row.startsWith("+") && newLeft > 0) {
+        newLeft -= 1;
+        continue;
+      }
+    }
+    if (row.startsWith("--- ")) {
+      sawMinus = true;
+      continue;
+    }
+    if (sawMinus && row.startsWith("+++ ")) {
+      sawMinus = false;
+      const file = row.slice(4).replace(/\t$/u, "").replace(/^b\//u, "");
+      if (file === "/dev/null") {
+        lines = undefined;
+      } else {
+        lines = changed.get(file) ?? new Set<number>();
+        changed.set(file, lines);
+      }
+      continue;
+    }
+    sawMinus = false;
+    const hunk = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/u.exec(row);
+    if (hunk === null || lines === undefined) continue;
+    oldLeft = Number(hunk[1] ?? 1);
+    const start = Number(hunk[2]);
+    const count = Number(hunk[3] ?? 1);
+    newLeft = count;
+    for (let line = start; line < start + count; line += 1) lines.add(line);
+  }
+  return changed;
+}

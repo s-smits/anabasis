@@ -707,7 +707,7 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
       resumeSessionAt: "att-1",
       turnCount: 3,
     });
-    expect(resolveForkPoint(transcript, 2)).toEqual({
+    expect(resolveForkPoint(`${transcript}{"truncated`, 2)).toEqual({
       sdkSessionId: sid,
       resumeSessionAt: "a2-text",
       turnCount: 3,
@@ -724,7 +724,10 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
       resume: sid,
       resumeSessionAt: "a2-text",
     });
-    expect(stageForkTranscript(join(dir, "c2"), { transcript: file })).toEqual({ resume: sid });
+    expect(stageForkTranscript(join(dir, "c2"), { transcript: file })).toEqual({
+      resume: sid,
+      resumeSessionAt: "a2-text",
+    });
     expect(() =>
       stageForkTranscript(join(dir, "c3"), { transcript: file, upToTurn: 1, upToUuid: "a2-text" }),
     ).toThrow("not both");
@@ -740,11 +743,24 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
     expect(savePersistedTranscript(join(dir, "empty"), { dir: join(dir, "out"), seat: "x-1" }, sid)).toBe(
       false,
     );
+    const otherSid = "22222222-2222-3333-4444-555555555555";
+    expect(savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, otherSid)).toBe(
+      false,
+    );
+    expect(
+      savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, undefined, sid),
+    ).toBe(false);
   });
 
-  it("persists under CLAUDE_CODE_PROJECT_DIR_NAME and forks with --fork-session, --resume, and --resume-session-at", async () => {
+  it("persists under CLAUDE_CODE_PROJECT_DIR_NAME, forks cleanly, and never masks turns on save failure", async () => {
+    const withSid = (raw: string) => raw.replaceAll(/"session_id":"[^"]+"/g, `"session_id":"${sid}"`);
     const persistDir = mkdtempSync(join(root, "persist-"));
-    const writer = sandbox({ compaction: "off", persist: { dir: persistDir, seat: "x-1" } });
+    const writer = sandbox(
+      { compaction: "off", persist: { dir: persistDir, seat: "x-1" } },
+      "claude",
+      TEXT,
+      withSid,
+    );
     const projectDir = join(writer.home, "claude-config", "projects", CLAUDE_PROJECT_DIR);
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(join(projectDir, `${sid}.jsonl`), transcript);
@@ -753,11 +769,30 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
       const launch = writer.launched();
       expect(launch.argv).not.toContain("--no-session-persistence");
       expect(launch.env.CLAUDE_CODE_PROJECT_DIR_NAME).toBe(CLAUDE_PROJECT_DIR);
-      expect(existsSync(join(persistDir, "x-1.jsonl"))).toBe(true);
-      expect(existsSync(join(persistDir, "x-1.json"))).toBe(true);
+      expect(readFileSync(join(persistDir, "x-1.jsonl"), "utf8")).toBe(transcript);
+      expect(capturedJsonParse(readFileSync(join(persistDir, "x-1.json"), "utf8"))).toEqual({
+        seat: "x-1",
+        sdkSessionId: sid,
+      });
     } finally {
       writer.shutdown.abort();
     }
+
+    const blocked = join(persistDir, "not-a-dir");
+    writeFileSync(blocked, "file");
+    const safeFail = sandbox(
+      { compaction: "off", persist: { dir: blocked, seat: "x-bad" } },
+      "claude",
+      TEXT,
+      withSid,
+    );
+    const badProject = join(safeFail.home, "claude-config", "projects", CLAUDE_PROJECT_DIR);
+    mkdirSync(badProject, { recursive: true });
+    writeFileSync(join(badProject, `${sid}.jsonl`), transcript);
+    const turn = await safeFail.turn([OPENING]);
+    expect(turn.stopReason).toBe("stop");
+    safeFail.shutdown.abort();
+    expect(await claudeLedger(safeFail.id)).not.toBeNull();
 
     const forked = sandbox({
       compaction: "off",

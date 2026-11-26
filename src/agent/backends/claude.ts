@@ -38,7 +38,7 @@ import { existsSync, mkdirSync } from "../../meta/filesystem.ts";
 import { asRecord, isString } from "../../meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "../../meta/optional-key.ts";
 import { dirname, join } from "../../meta/path.ts";
-import { runtimeProcess } from "../../meta/process.ts";
+import { runtimeProcess, warn } from "../../meta/process.ts";
 import { type BackendSpend, claudeSpend } from "../../kernel/meter.ts";
 import { errorMessage } from "../../meta/runtime-values.ts";
 import {
@@ -96,6 +96,7 @@ interface Session {
   readonly provider: string;
   readonly configDir: string;
   readonly persist?: ClaudePersist | undefined;
+  readonly stagedForkId?: string | undefined;
   sdkSessionId?: string | undefined;
 }
 
@@ -325,6 +326,7 @@ function open(
     provider: model.provider,
     configDir,
     ...keyIfDefined("persist", claude.persist),
+    ...keyIfDefined("stagedForkId", staged?.resume),
   };
   sessions.set(key, session);
   claude.shutdown?.addEventListener("abort", () => close(key, session), {
@@ -415,9 +417,17 @@ async function readTurn(
   } finally {
     signal?.removeEventListener("abort", interrupt);
     for (const usage of spent) addUsage(turn.usage, usage);
-    if (session.persist !== undefined) {
-      savePersistedTranscript(session.configDir, session.persist, session.sdkSessionId);
-    }
+    trySaveTranscript(session);
+  }
+}
+
+function trySaveTranscript(session: Session): void {
+  if (session.persist === undefined) return;
+  if (session.stagedForkId !== undefined && session.sdkSessionId === undefined) return;
+  try {
+    savePersistedTranscript(session.configDir, session.persist, session.sdkSessionId, session.stagedForkId);
+  } catch (error) {
+    warn(`Claude transcript save skipped for ${session.persist.seat}: ${errorMessage(error)}`);
   }
 }
 
@@ -526,10 +536,11 @@ function close(key: string, session: Session): void {
   sessions.delete(key);
   session.prompt.end();
   const end = () => {
-    if (session.persist !== undefined) {
-      savePersistedTranscript(session.configDir, session.persist, session.sdkSessionId);
+    try {
+      trySaveTranscript(session);
+    } finally {
+      session.abort.abort();
     }
-    session.abort.abort();
   };
   const interrupted = session.query.interrupt();
   if (session.reading) interrupted.then(end, end);

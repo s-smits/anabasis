@@ -81,14 +81,35 @@ function defaultTurnCap(
   return lastTurn !== null && lastTurn >= 1 ? lastTurn : undefined;
 }
 
+function resolveSessionTurn(
+  events: readonly LogEvent[],
+  seat: SeatKind,
+  session: string,
+  root: string,
+  requested: number | undefined,
+): number | undefined {
+  const sessionTurns = traceOf(events, seat, session).turns;
+  if (requested !== undefined) {
+    if (sessionTurns.length === 0) return requested;
+    if (requested > sessionTurns.length) {
+      throw new Error(
+        `--at-turn ${String(requested)}: session ${session} recorded ${String(sessionTurns.length)} ${seat} turns`,
+      );
+    }
+    return sessionTurns[requested - 1]?.turn ?? requested;
+  }
+  return defaultTurnCap(events, seat, session, root);
+}
+
 function resolveTranscript(
   log: string,
   fromDir: string,
   seat: SeatKind,
   target: string,
-): { readonly transcript: string; readonly defaultTurn?: number | undefined } {
+  requestedTurn: number | undefined,
+): { readonly transcript: string; readonly upToTurn?: number | undefined } {
   if ((target.includes("/") || target.endsWith(".jsonl")) && existsSync(target)) {
-    return { transcript: target };
+    return { transcript: target, ...keyIfDefined("upToTurn", requestedTurn) };
   }
   if (!isSafePathSegment(target)) {
     throw new Error(`--fork-from ${target}: name a session id or an existing .jsonl transcript path`);
@@ -108,12 +129,12 @@ function resolveTranscript(
     if (found !== undefined) {
       return {
         transcript: found,
-        ...keyIfDefined("defaultTurn", defaultTurnCap(events, seat, target, root)),
+        ...keyIfDefined("upToTurn", resolveSessionTurn(events, seat, target, root, requestedTurn)),
       };
     }
   }
   const direct = findFile(target);
-  if (direct !== undefined) return { transcript: direct };
+  if (direct !== undefined) return { transcript: direct, ...keyIfDefined("upToTurn", requestedTurn) };
   throw new Error(
     `no persisted Claude transcript for ${target} under ${CLAUDE_SESSIONS_DIR}/ (the run predates SDK transcript persistence; for a lossy seed-only screen from log.jsonl, pass --wrap-turns ${target}:<turn> explicitly)`,
   );
@@ -207,10 +228,10 @@ export function seatForkPlan(log: string, seat: SeatKind, model: Model<Api>, fla
     if (!servedByClaude(model.provider)) {
       throw new Error(`--fork-from requires a Claude backend seat, not ${model.provider}/${model.id}`);
     }
-    const resolved = resolveTranscript(log, fromDir, seat, forkFrom);
-    const upToTurn = atTurn === undefined ? resolved.defaultTurn : parsePositiveInt(atTurn, "--at-turn");
+    const requested = atTurn === undefined ? undefined : parsePositiveInt(atTurn, "--at-turn");
+    const resolved = resolveTranscript(log, fromDir, seat, forkFrom, requested);
     return {
-      fork: { transcript: resolved.transcript, ...keyIfDefined("upToTurn", upToTurn) },
+      fork: { transcript: resolved.transcript, ...keyIfDefined("upToTurn", resolved.upToTurn) },
       continuation: { mode: "fork", text: nudge ?? "Continue from where you left off." },
     };
   }

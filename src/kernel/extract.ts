@@ -2,8 +2,9 @@ import { asRecord, isString } from "../meta/json-shape.ts";
 import { capturedJsonParse, parseJsonAs } from "../meta/json-runtime.ts";
 import { delimiter } from "../meta/path.ts";
 import { decodeOutput, runSync } from "../meta/subprocess.ts";
+import { zipImages } from "../meta/zip.ts";
 import { toolchainPathDirs } from "../sandbox/policy.ts";
-import type { AnswerFile } from "./answer-files.ts";
+import { type AnswerFile, DELIVERABLES } from "./answer-files.ts";
 import EXTRACT_PY from "./extract.py" with { type: "text" };
 
 interface Formulas {
@@ -89,8 +90,6 @@ function pyExtract(
 function notebookOf(text: string): string {
   const cells = asRecord(capturedJsonParse(text))?.cells;
   if (!Array.isArray(cells)) throw new Error("a notebook without cells");
-  const joined = (value: unknown): string =>
-    Array.isArray(value) ? value.filter(isString).join("") : isString(value) ? value : "";
   return cells
     .map((cell) => {
       const row = asRecord(cell);
@@ -99,16 +98,16 @@ function notebookOf(text: string): string {
             .map((out) => {
               const item = asRecord(out);
               const data = asRecord(item?.data);
-              const body = joined(item?.text) || joined(data?.["text/plain"]);
+              const body = joinedText(item?.text) || joinedText(data?.["text/plain"]);
               const visual = ["image/png", "image/jpeg", "image/svg+xml"].flatMap((mime) => {
-                const raw = joined(data?.[mime]);
+                const raw = joinedText(data?.[mime]);
                 return raw === "" ? [] : [`[${mime} output, ${String(raw.length)} chars]`];
               });
               return [body, ...visual].filter((part) => part !== "").join("\n");
             })
             .join("")
         : "";
-      return `## ${isString(row?.cell_type) ? row.cell_type : "cell"}\n${joined(row?.source)}${outputs === "" ? "" : `\n# output\n${outputs}`}`;
+      return `## ${isString(row?.cell_type) ? row.cell_type : "cell"}\n${joinedText(row?.source)}${outputs === "" ? "" : `\n# output\n${outputs}`}`;
     })
     .join("\n\n");
 }
@@ -172,6 +171,56 @@ export function extract(file: AnswerFile): Extracted {
       fault: `could not read ${path}: ${String(error)}`,
     };
   }
+}
+
+const NOTEBOOK_IMAGES = [
+  ["image/png", "png"],
+  ["image/jpeg", "jpg"],
+  ["image/webp", "webp"],
+  ["image/gif", "gif"],
+] as const;
+
+const joinedText = (value: unknown): string =>
+  Array.isArray(value) ? value.filter(isString).join("") : isString(value) ? value : "";
+
+function notebookImages(filePath: string, text: string): { readonly path: string; readonly bytes: Buffer }[] {
+  try {
+    const cells = asRecord(capturedJsonParse(text))?.cells;
+    if (!Array.isArray(cells)) return [];
+    return cells.flatMap((cell, cellAt) => {
+      const outputs = asRecord(cell)?.outputs;
+      if (!Array.isArray(outputs)) return [];
+      return outputs.flatMap((out, outAt) => {
+        const data = asRecord(asRecord(out)?.data);
+        return NOTEBOOK_IMAGES.flatMap(([mime, ext]) => {
+          const raw = joinedText(data?.[mime]).trim();
+          return raw === ""
+            ? []
+            : [
+                {
+                  path: `${filePath}#cell-${String(cellAt)}-out-${String(outAt)}.${ext}`,
+                  bytes: Buffer.from(raw, "base64"),
+                },
+              ];
+        });
+      });
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function embeddedImages(file: AnswerFile): { readonly path: string; readonly bytes: Buffer }[] {
+  const bytes = Buffer.from(file.base64, "base64");
+  if (isZip(bytes)) {
+    return zipImages(bytes, DELIVERABLES.bytes).map(({ path, data }) => ({
+      path: `${file.path}#${path}`,
+      bytes: data,
+    }));
+  }
+  return file.text !== undefined && file.path.toLowerCase().endsWith(".ipynb")
+    ? notebookImages(file.path, file.text)
+    : [];
 }
 
 export function headOf(extracted: Extracted): string[] {

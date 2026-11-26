@@ -156,17 +156,24 @@ function releasesOf(repo: string): { name: string; at: number }[] {
   });
 }
 
+function judgedLabel(opening: ReturnType<typeof openingOf>): string {
+  if (opening?.judged !== true) return "";
+  const reviewer = opening.seats.reviewer;
+  return reviewer === null ? " judged" : ` judged(${reviewer.model.replace(/^claude\//u, "")})`;
+}
+
 /** Runs are read together only under one such line (`AGENTS.md`, section 9). */
 function settingOf(events: readonly LogEvent[]): string {
+  const judged = judgedLabel(openingOf(events));
   const kept = recordedSetting(events);
-  if (kept === null) return "no setting";
+  if (kept === null) return `no setting${judged}`;
   const { solver, minutes, modelTurns, target, solves } = kept;
   const window = solver?.window === undefined ? "" : `@${String(solver.window)}`;
   const by =
     solver === null
       ? "the cycle's solver"
       : `${solver.model.replace(/^claude\//u, "")}/${solver.effort}${window}`;
-  return `${by} ${String(minutes)}m ${modelTurns === null ? "unlimited" : String(modelTurns)}t ${String(target)}x${String(solves)}`;
+  return `${by} ${String(minutes)}m ${modelTurns === null ? "unlimited" : String(modelTurns)}t ${String(target)}x${String(solves)}${judged}`;
 }
 
 function machineOf(events: readonly LogEvent[]) {
@@ -210,7 +217,6 @@ function heldOf(events: readonly LogEvent[], comparisons: ReturnType<typeof comp
   const reads = starterReads(events);
   const starter = starterIn(events);
   return {
-    reads: reads.length,
     after: summed(reads.map(({ origins }) => origins[ORIGINS[2]].whole)),
     compared: comparisons.filter(
       ({ report, old, fresh }) => report !== null && fresh !== old && fresh !== starter,
@@ -314,10 +320,10 @@ function runOf(
   const indexes = eventsOf(events, "harness.promoted").map(({ index }) => index);
   const epochs = epochsOf(events);
   const promotions = indexes.map((at, nth): Promotion => {
-    const start = indexes[nth - 1] ?? 0;
+    const built = epochs.find((epoch) => epoch.to === at);
+    const opened = epochs.find((epoch) => epoch.from === at);
+    const start = built?.from ?? indexes[nth - 1] ?? 0;
     const [before = first, now = first] = [stamp(start), stamp(at)];
-    // The epoch a promotion opens is the one its starter comparison is read in.
-    const opened = epochs[nth + 1];
     const { harness } = events[at]?.data ?? {};
     return {
       nth: nth + 1,
@@ -329,7 +335,7 @@ function runOf(
       epochActive: activeAt(now, before),
       epochUnloaded: unloadedAt(now, before),
       dollars: billedBetween(events, start, at + 1),
-      comparisons: epochs[nth]?.comparisons.length ?? 0,
+      comparisons: built?.comparisons.length ?? 0,
       tally: tallyOf(events, comparisons, at),
     };
   });
@@ -363,7 +369,12 @@ function runOf(
     ...(meterOf === null ? { repriced: null, unpriced: null } : repricedOf(events, meterOf)),
     ...validityOf(validitySteps(events, comparisons), events),
     ...heldOf(events, comparisons),
-    confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
+    reads: epochs.filter(
+      ({ nth, reverted, starter_tally }) => nth > 1 && reverted !== true && starter_tally !== null,
+    ).length,
+    confirmed: epochs.filter(
+      ({ nth, reverted, confirmed }) => nth > 1 && reverted !== true && confirmed === true,
+    ).length,
     controls: noise?.controls ?? 0,
     aaSteps: noise?.errors ?? 0,
     aaValidityControls: noise?.byMeasure.validity.controls ?? 0,

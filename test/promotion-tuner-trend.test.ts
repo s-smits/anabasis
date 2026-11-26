@@ -1,13 +1,21 @@
 // `trend.ts` sets the newest window's runs against earlier windows', and `outside.ts` sets a
 // benchmark's scores beside their promotions; both describe the record and decide nothing.
 import { afterAll, expect, it } from "bun:test";
-import type { Promotion, Run } from "#skills/main/runs.ts";
+import { loadRuns, type Promotion, type Run } from "#skills/main/runs.ts";
 import { outsideLines, type Score, scoresOf } from "#skills/promotion-tuner/scripts/outside.ts";
-import { changeOf, type Measure, MEASURES } from "#skills/promotion-tuner/scripts/trend.ts";
+import {
+  changeOf,
+  comparable,
+  type Measure,
+  MEASURES,
+  windowsOf,
+} from "#skills/promotion-tuner/scripts/trend.ts";
+import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { join, resolve } from "../src/meta/path.ts";
 
 const DAY_MS = 86_400_000;
 
@@ -247,4 +255,126 @@ it("stratifies baselines by runtime and solver tier, persists criteria and solve
     "above, one bareSolver rollout",
   ]);
   expect(rows.get("pi-lone")?.slice(10, 13)).toEqual(["-", "-", "-"]);
+});
+
+const REPO = resolve(import.meta.dir, "..");
+const WIN_DIFFS = [-600, -600, -600, -600, -600, -600];
+const LOSS_DIFFS = [600, 600, 600, 600, 600, 600];
+
+function writeLog(dir: string, name: string, events: readonly LogEvent[]): void {
+  const folder = join(dir, name);
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, "log.jsonl"), `${events.map((event) => JSON.stringify(event)).join("\n")}\n`);
+}
+
+function openingEvents(judged: boolean, reviewer: string | null = "openai/gpt-5.4"): LogEvent[] {
+  return [
+    {
+      at: "2026-11-25T00:00:00.000Z",
+      kind: "campaign.opened",
+      data: {
+        judged,
+        solver: { model: "claude/claude-opus-5-5", effort: "medium" },
+        seats: {
+          builder: { model: "claude/claude-opus-5-5", effort: "medium" },
+          examiner: { model: "claude/claude-opus-5-5", effort: "medium" },
+          ...keyIfNotNull("reviewer", reviewer === null ? null : { model: reviewer, effort: "medium" }),
+        },
+      },
+    },
+    {
+      at: "2026-11-25T00:01:00.000Z",
+      kind: "campaign.setting",
+      data: {
+        solver: { model: "claude/claude-opus-5-5", effort: "medium" },
+        minutes: 30,
+        modelTurns: 20,
+        target: 24,
+        solves: 2,
+      },
+    },
+  ];
+}
+
+function starterReport(at: string, session: string, reference: string, diffs: readonly number[]): LogEvent[] {
+  return [
+    {
+      at,
+      kind: "comparison.started",
+      data: { session, old: reference, fresh: "starter", starter: "starter" },
+    },
+    {
+      at,
+      kind: "comparison.reported",
+      data: {
+        session,
+        old: reference,
+        fresh: "starter",
+        starter: "starter",
+        level: 0.02,
+        reading: "no-step",
+        scored: { differences: [...diffs], wins: 0, losses: diffs.length, ties: 0, p: 1 },
+      },
+    },
+  ];
+}
+
+it("matches reverted epochs accurately and separates judged runs in setting comparability", async () => {
+  const runsDir = join(home, "reverted-and-judged");
+  writeLog(runsDir, "buf-reverted", [
+    ...openingEvents(false),
+    { at: "2026-11-25T00:10:00.000Z", kind: "harness.promoted", data: { from: "starter", harness: "h1" } },
+    ...starterReport("2026-11-25T00:20:00.000Z", "g-s1", "h1", WIN_DIFFS),
+    { at: "2026-11-25T00:30:00.000Z", kind: "harness.promoted", data: { from: "h1", harness: "h2" } },
+    { at: "2026-11-25T00:35:00.000Z", kind: "build.finished", data: { session: "b-old", billed: 50 } },
+    ...starterReport("2026-11-25T00:40:00.000Z", "g-s2", "h2", LOSS_DIFFS),
+    { at: "2026-11-25T00:45:00.000Z", kind: "harness.reverted", data: { from: "h2", harness: "h1" } },
+    { at: "2026-11-25T00:48:00.000Z", kind: "build.finished", data: { session: "b-new", billed: 7 } },
+    {
+      at: "2026-11-25T00:50:00.000Z",
+      kind: "comparison.reported",
+      data: { session: "g-2", reading: "no-step" },
+    },
+    {
+      at: "2026-11-25T00:55:00.000Z",
+      kind: "comparison.reported",
+      data: { session: "g-3", reading: "step" },
+    },
+    { at: "2026-11-25T01:00:00.000Z", kind: "harness.promoted", data: { from: "h1", harness: "h3" } },
+    ...starterReport("2026-11-25T01:10:00.000Z", "g-s3", "h3", WIN_DIFFS),
+  ]);
+  const [bareOpened] = openingEvents(true, null);
+  if (bareOpened === undefined) throw new Error("expected opening event");
+  writeLog(runsDir, "job-judged-a", openingEvents(true, "openai/gpt-5.4"));
+  writeLog(runsDir, "job-judged-b", openingEvents(true, "claude/claude-sonnet-5"));
+  writeLog(runsDir, "job-judged-bare", [bareOpened]);
+  const { runs } = await loadRuns({ home: runsDir, since: "2026-11-01", repo: REPO }, "unpriced");
+  const byName = (wanted: string) => runs.find(({ name }) => name === wanted);
+  const reverted = byName("buf-reverted");
+  const judgedA = byName("job-judged-a");
+  const judgedB = byName("job-judged-b");
+  const judgedBare = byName("job-judged-bare");
+  expect([reverted?.reads, reverted?.confirmed]).toEqual([3, 2]);
+  expect(reverted?.promotions.map(({ confirmed }) => confirmed)).toEqual([true, false, true]);
+  expect(reverted?.promotions[2]?.comparisons).toBe(2);
+  expect(reverted?.promotions[2]?.epochElapsed).toBeCloseTo(0.25, 6);
+  expect(reverted?.promotions[2]?.dollars).toBe(7);
+  expect(judgedA?.setting).toContain("judged(openai/gpt-5.4)");
+  expect(judgedB?.setting).toContain("judged(claude-sonnet-5)");
+  expect(judgedBare?.setting).toBe("no setting judged");
+  expect(reverted?.setting).not.toContain("judged");
+  const [first, second] = windowsOf(runs, Date.parse("2026-11-26T00:00:00.000Z"), 7, 1);
+  if (first === undefined || second === undefined) throw new Error("expected two windows");
+  expect(
+    comparable([
+      { ...first, runs: judgedA === undefined ? [] : [judgedA] },
+      { ...second, runs: reverted === undefined ? [] : [reverted] },
+    ]).left,
+  ).toBe(1);
+  expect(
+    comparable([
+      { ...first, runs: judgedA === undefined ? [] : [judgedA] },
+      { ...second, runs: judgedB === undefined ? [] : [judgedB] },
+    ]).left,
+  ).toBe(1);
 });

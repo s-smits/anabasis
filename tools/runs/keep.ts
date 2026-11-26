@@ -10,6 +10,7 @@
  * unless that login is at its cap; any other ending is the campaign's own, and the keeper leaves.
  * A run goes on from its log at its worktree's commit, through the refusals of `runs continue`.
  */
+import { openingOf } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { endedOf } from "#src/kernel/reports.ts";
 import { nonRetryableProvider } from "#src/kernel/solve.ts";
@@ -18,7 +19,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { envRunsFile } from "./host-config.ts";
 import { GOES_ON, type RunState, runState } from "./state.ts";
-import { payerOf } from "./live.ts";
+import { payerOf, seatFlagsOf } from "./live.ts";
 import {
   allowedLogins,
   atCap,
@@ -117,6 +118,13 @@ export const keeperActed = (line: string): boolean =>
     line,
   );
 
+function refusedOnLogin(events: readonly LogEvent[], flags: readonly string[]): boolean {
+  const failed = events.findLast(({ kind, data }) => kind.endsWith(".turn") && data.stopReason === "error");
+  if (failed?.kind !== "referee.turn") return true;
+  const model = seatFlagsOf(flags).reviewer ?? openingOf(events)?.seats.reviewer?.model;
+  return model?.startsWith("claude/") === true;
+}
+
 export function keeperOf(name: string, pool: () => Promise<readonly string[]>, waitMs: number, hands: Hands) {
   const spentUntil = new Map<string, number>();
   let barren = 0;
@@ -143,16 +151,15 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       spentUntil.set(current, state.wait.until);
     }
     // A permanent provider refusal (disabled subscription, missing credits, unconfigured provider)
-    // never clears on retry, so mark the login spent and move to another roomy login instead of
-    // restarting into the same failure.
+    // never clears on retry: mark the login spent and move on when the refusing seat bills it (only
+    // `claude/` seats do; a Referee turn names no model), and keep the run no longer when none does.
     const ended = endedOf(events);
-    if (
-      turn === "continue" &&
-      current !== undefined &&
-      ended?.ending === GOES_ON &&
-      nonRetryableProvider(ended.why)
-    ) {
-      spentUntil.set(current, Number.POSITIVE_INFINITY);
+    if (turn === "continue" && ended?.ending === GOES_ON && nonRetryableProvider(ended.why)) {
+      if (!refusedOnLogin(events, flags)) {
+        hands.say(`${name}: a seat no login pays for refused in a way no retry clears: kept no longer`);
+        return true;
+      }
+      if (current !== undefined) spentUntil.set(current, Number.POSITIVE_INFINITY);
     }
     for (const [login, at] of spentUntil) {
       if (at <= now) spentUntil.delete(login);

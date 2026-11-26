@@ -271,6 +271,26 @@ describe("a keeper's looks, scripted", () => {
     await transient.look(NOW);
     expect(transient.state.acted).toEqual(["start 2"]);
   });
+
+  it("keeps a run no longer when a reviewer no login pays for refused, and rotates when one it pays for did", async () => {
+    for (const [reviewer, acted] of [
+      ["openai-codex/gpt-6.1-sol", []],
+      ["claude/claude-opus-5-5", ["start 3"]],
+    ] as const) {
+      const refused = scripted([`--builder=${OPUS}`, `--reviewer=${reviewer}`]);
+      refused.state.open = false;
+      refused.state.otherKeeper = true;
+      refused.state.events = [
+        event("referee.turn", { stopReason: "error", responseModel: null }),
+        event("campaign.ended", {
+          ending: "environment",
+          why: "the judge gave no vote on 27 pairs (The model is not supported when using Codex)",
+        }),
+      ];
+      expect(await refused.look(NOW)).toBe(acted.length === 0);
+      expect(refused.state.acted).toEqual([...acted]);
+    }
+  });
 });
 
 describe.concurrent("going on with a live run after a pause", () => {

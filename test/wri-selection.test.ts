@@ -2,7 +2,8 @@
 // the comparison's own test, and which tasks `starterReads` counts as no step's choice. Invented data.
 import { describe, expect, it } from "bun:test";
 import { stepCount } from "#skills/comparison-reading/scripts/selection.ts";
-import { starterReads } from "../src/campaign/climb.ts";
+import { chosenForReference, starterReads } from "../src/campaign/climb.ts";
+import { scoredSet } from "../src/campaign/round.ts";
 import { flipP, isSignificant } from "../src/kernel/compare.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -114,14 +115,24 @@ describe("a starter read on the tasks no step chose", () => {
   const second = Array.from({ length: 6 }, (_, nth) => `second-${String(nth)}`);
   const after = ["after-0", "after-1"];
   const all = [...chose, ...second, ...after];
-  const log: LogEvent[] = [
+  const beforeRead: LogEvent[] = [
     ...promotion,
     ...second.flatMap((task) => gate(task, "x-2")),
     ...comparison("g-2", [NEW, THIRD], Object.fromEntries(second.map((task) => [task, "FF PP"])), "step"),
     { at: AT, kind: "harness.promoted", data: { harness: THIRD, from: NEW, rests: [] } },
     ...after.flatMap((task) => gate(task, "x-3")),
+  ];
+  const log: LogEvent[] = [
+    ...beforeRead,
     ...comparison("g-3", [THIRD, STARTER], Object.fromEntries(all.map((task) => [task, "PP FF"])), "step"),
   ];
+
+  it("is drawn on none of the tasks a step chose before the reference, retained ones included", () => {
+    expect(chosenForReference(beforeRead, NEW).size).toBe(0);
+    const leftOut = chosenForReference(beforeRead, STARTER);
+    expect([...leftOut].toSorted()).toEqual([...chose, ...second].toSorted());
+    expect(scoredSet(beforeRead, 12, "c", leftOut).tasks.toSorted()).toEqual(after);
+  });
 
   it("leaves out an ancestor's chosen tasks, which the origins count as written before and not chosen on", () => {
     const [read] = starterReads(log);

@@ -24,9 +24,9 @@ Promotion decisions rest on paired comparisons of a candidate harness against th
    - One retained task (exhausted or from prior epochs) is drawn per three frontier tasks using a comparison-rotated deterministic seed (`draw`), scored jointly with the frontier to catch regressions while reported separately (`UNMEASURED` when empty rather than zero regressions).
    - `frontierOverlap` caps projected overlap at `OVERLAP_LIMIT = 0.8` between consecutive `no-step` candidate comparisons on the same reference, reading pre-registered starts alone so candidate outcomes never cross the wall.
 
-4. **First-starter-comparison confirmation and underpowered-lead revert guard (`src/campaign/climb.ts`, `againstStarter`; `src/campaign/scheduler.ts`, `unconfirmedRevert`)**
+4. **First-starter-comparison confirmation on unchosen tasks, and revert (`src/campaign/climb.ts`, `againstStarter`; `src/campaign/scheduler.ts`, `unconfirmedRevert`)**
    - A promotion is confirmed only by the epoch's first starter comparison that tallies at least one task, preventing later draws from overwriting a failed confirmation. Scores are negated to orient them from the reference's perspective, and `starterReads` separates `written after` and `unchosen` tasks from winner's-curse-selected tasks.
-   - `unconfirmedRevert` reverts a reference that fails its first scored starter read unless it led (`wins > losses`) in an underpowered comparison (`starter_able === false`) that could not clear its significance level even at 100% wins. All-tied and losing underpowered reads still revert.
+   - The starter read draws on no task a step comparison chose before the current reference (`chosenForReference`, passed to `scoredSet`), so confirmation never counts the selection's own evidence again. `unconfirmedRevert` reverts every reference that fails its first scored starter read, underpowered or not: a read too small to confirm is no confirmation.
 
 5. **Pricing-invariant economy bar (`src/campaign/climb.ts`, `BARS`, `MILESTONE`)**
    `BARS = { cost: 3 }` tracks promotion attempts per epoch (excluding provider-interrupted sessions) rather than raw dollars so the bar stays invariant to solver price changes. Both `BARS` and `MILESTONE` (`6` promotions, `10` post-milestone controls) are strictly observational and never exposed to seats or decision rules.

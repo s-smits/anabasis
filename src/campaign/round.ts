@@ -91,15 +91,21 @@ const TASK_STATE = "task.state";
 const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released"]);
 const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]);
 
-export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
+export function scoredSet(
+  events: readonly LogEvent[],
+  target: number,
+  contract: string,
+  leftOut: ReadonlySet<string> = new Set(),
+) {
   const pool = poolOf(events);
   const began = events.findLastIndex(({ kind }) => kind === STARTED);
   const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
-  const held = new Set(pool.frontier);
+  const held = new Set(pool.frontier.filter((task) => !leftOut.has(task)));
+  const retained = pool.retained.filter((task) => !leftOut.has(task));
   const count = Math.min(target, held.size);
   const picked = draw(
-    pool.retained,
-    Math.min(pool.retained.length, Math.ceil(count / 3)),
+    retained,
+    Math.min(retained.length, Math.ceil(count / 3)),
     `${contract}:retained:${String(events.filter(({ kind }) => kind === STARTED).length)}`,
   );
   const tiers = tasksByEpoch(events)
@@ -110,7 +116,7 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
     });
   const families = familiesOf(events);
   const familyOf = (version: string) => families.get(version) ?? version;
-  const cap = new Set(pool.frontier.map(familyOf)).size >= 3 ? Math.ceil(count * FAMILY_SHARE) : count;
+  const cap = new Set([...held].map(familyOf)).size >= 3 ? Math.ceil(count * FAMILY_SHARE) : count;
   const order = tiers.flatMap((tier) => {
     const byFamily = Map.groupBy(draw(tier, tier.length, contract), familyOf);
     const most = Math.max(0, ...[...byFamily.values()].map((group) => group.length));

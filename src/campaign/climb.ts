@@ -52,7 +52,6 @@ export interface Epoch {
   readonly starter_tally: Tally | null;
   readonly starter_read: string | null;
   readonly confirmed: boolean | null;
-  readonly starter_able: boolean | null;
   readonly reverted?: boolean;
   readonly falsePromotion: FalsePromotion;
 }
@@ -161,7 +160,7 @@ function epochsFrom(
     const referenceDigest = isStarter ? starter : reference;
     const starterCheck =
       reverted && !isStarter && confirmedDigests.has(reference)
-        ? { starter_tally: null, starter_read: null, confirmed: true, starter_able: null }
+        ? { starter_tally: null, starter_read: null, confirmed: true }
         : againstStarter(own, isStarter ? null : referenceDigest, starter);
     if (starterCheck.confirmed === true && !isStarter) confirmedDigests.add(reference);
     return {
@@ -184,9 +183,9 @@ function againstStarter(
   reports: readonly Reported[],
   reference: string | null,
   starter: string | null,
-): Pick<Epoch, "starter_tally" | "starter_read" | "confirmed" | "starter_able"> {
+): Pick<Epoch, "starter_tally" | "starter_read" | "confirmed"> {
   if (reference === null) {
-    return { starter_tally: null, starter_read: null, confirmed: null, starter_able: null };
+    return { starter_tally: null, starter_read: null, confirmed: null };
   }
   const first = reports.find(
     ({ data }) =>
@@ -196,7 +195,7 @@ function againstStarter(
       asRecord(data.scored) !== null,
   );
   if (first === undefined) {
-    return { starter_tally: null, starter_read: null, confirmed: false, starter_able: null };
+    return { starter_tally: null, starter_read: null, confirmed: false };
   }
   const ahead = scoresIn(first.data.scored).map((one) => -one);
   const { wins, losses, ties } = testOf(ahead);
@@ -205,7 +204,6 @@ function againstStarter(
     starter_tally: { wins, losses, ties },
     starter_read: first.session,
     confirmed: isSignificant(ahead, level),
-    starter_able: isSignificant(ahead.map(Math.abs), level),
   };
 }
 
@@ -324,6 +322,13 @@ function tasksChosenBefore(
     ({ index, data }) => index < from && stepped(data.fresh) && data.reading === "step",
   );
   return new Set(chose.flatMap((report) => pairsOf(report).map(({ task }) => task)));
+}
+
+export function chosenForReference(events: readonly LogEvent[], fresh: string): ReadonlySet<string> {
+  const starter = starterIn(events);
+  if (starter !== fresh) return new Set();
+  const from = events.findLastIndex(({ kind }) => isReferenceChange(kind));
+  return tasksChosenBefore(lastReports(events), pairLookup(events), (side) => side !== starter, from);
 }
 
 export function unselectedOf(ahead: readonly number[], level: number): Unselected {

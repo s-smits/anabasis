@@ -357,9 +357,6 @@ function unconfirmedRevert({ events, reference, starter }: Ground): Move | null 
   const epochs = epochsOf(events);
   const current = epochs.at(-1);
   if (current?.starter_tally == null || current.confirmed !== false) return null;
-  if (current.starter_able === false && current.starter_tally.wins > current.starter_tally.losses) {
-    return null;
-  }
   const target =
     epochs.findLast((epoch) => epoch.confirmed === true && epoch.reference !== reference)?.reference ??
     starter;

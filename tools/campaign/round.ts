@@ -6,7 +6,6 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { servedByClaude } from "#src/agent/backends/claude.ts";
 import { stopRule, type Wanted } from "#src/campaign/admission.ts";
-import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
 import { type CheckpointRequest, type Judging, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
@@ -336,11 +335,10 @@ export function reportLines({
   frontier,
   noise,
   turns = null,
-  worth = null,
   points = null,
   ...apart
 }: Pick<Report, "valid" | "objective" | "frontier" | "noise"> &
-  Partial<Pick<Report, "scored" | "turns" | "worth" | "points" | Apart>>): string[] {
+  Partial<Pick<Report, "scored" | "turns" | "points" | Apart>>): string[] {
   if (valid === null) return [];
   // The turns of a valid answer, over the tasks both harnesses answered: reported, in no test.
   const both = Object.values(turns ?? {}).flatMap(({ old, fresh }) =>
@@ -364,7 +362,6 @@ export function reportLines({
       : [
           `the median turns of a valid answer, over the ${plural(both.length, "task")} both answered: reference ${took("old")}, new ${took("fresh")} (reported, in no test)`,
         ]),
-    ...(worth === null ? [] : [worthLine(worth)]),
   ];
 }
 

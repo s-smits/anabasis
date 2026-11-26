@@ -59,16 +59,13 @@ export interface Epoch {
 
 const ATTEMPT = "promotion attempt";
 
-export const BARS = { cost: 3 } as const;
-
 const MILESTONE = { promotions: 6 } as const;
 
-export interface Worth {
+interface Worth {
   readonly cost: {
     readonly attempts: number;
     readonly sessions: number;
     readonly dollars: number;
-    readonly met: boolean;
   };
 }
 
@@ -460,17 +457,9 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   ];
 }
 
-function costOf(events: readonly LogEvent[], epoch: Epoch, pending = 0): Worth["cost"] {
-  const attempts = epoch.falsePromotion.attempts + pending;
+function costOf(events: readonly LogEvent[], epoch: Epoch): Worth["cost"] {
   const dollars = billedBetween(events, epoch.from, epoch.to ?? undefined);
-  return { attempts, sessions: epoch.sessions, dollars, met: epoch.nth === 1 || attempts <= BARS.cost };
-}
-
-export function worthOf(events: readonly LogEvent[], id: string): Worth {
-  const before = events.filter(({ kind, data }) => kind !== "comparison.reported" || data.session !== id);
-  const last = epochsOf(before).at(-1);
-  if (last === undefined) throw new Error("epochsOf read no epoch from the log");
-  return { cost: costOf(before, last, 1) };
+  return { attempts: epoch.falsePromotion.attempts, sessions: epoch.sessions, dollars };
 }
 
 export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string, Worth> {
@@ -482,7 +471,7 @@ export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string
 }
 
 export function worthLine({ cost }: Worth): string {
-  return `cost (observational only): ${plural(cost.attempts, ATTEMPT)} this epoch (threshold ${String(BARS.cost)} after setup): ${cost.met ? "within threshold" : "exceeded"}, across ${plural(cost.sessions, "Builder session")} and $${cost.dollars.toFixed(2)} billed`;
+  return `cost: ${plural(cost.attempts, ATTEMPT)} this epoch, across ${plural(cost.sessions, "Builder session")} and $${cost.dollars.toFixed(2)} billed`;
 }
 
 export function barLines(events: readonly LogEvent[]): string[] {
@@ -497,15 +486,9 @@ export function barLines(events: readonly LogEvent[]): string[] {
   const confirmedReads = starterReadsFrom(events, reports, epochs, pairsOf).filter(({ session }) =>
     confirmedSessions.has(session),
   );
-  const overBar = climbed.flatMap((epoch) => {
-    const cost = costOf(events, epoch);
-    const open = epoch.promoted === null ? ", open" : "";
-    return cost.met ? [] : [`epoch ${String(epoch.nth)} at ${String(cost.attempts)}${open}`];
-  });
   return [
     `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
     `- Honesty: ${plural(controls.length, "A/A control")}; ${controlCounts(controls)}.${tiedClause(controls, "them")} Observational; the bar pools a release's.`,
-    `- Economy: ${plural(climbed.length, "post-setup epoch")} against a threshold of ${plural(BARS.cost, ATTEMPT)} each, ${String(overBar.length)} exceeded${overBar.length === 0 ? "" : `: ${overBar.join("; ")}`}. Observational only.`,
     starterNoiseLine(events, reports),
     repeatLine(reports, pairsOf),
   ];

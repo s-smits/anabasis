@@ -543,7 +543,7 @@ describe("a campaign against its bars", () => {
   });
 
   it("reads the starter against itself on the halves of its own solves in each starter comparison, and counts it towards no bar", () => {
-    const starterLine = (events: readonly LogEvent[]) => barLines([opened, ...events])[3];
+    const starterLine = (events: readonly LogEvent[]) => barLines([opened, ...events])[2];
     let solves = 0;
     const solved = (session: string, task: string, harness: string, valid: readonly boolean[]) => {
       const ran = condition(task, harness);
@@ -603,14 +603,14 @@ describe("a campaign against its bars", () => {
     expect(starterLine([...promoted, ...compared("g-2", "h1", "h2", 2, drifts)])).toBe(none);
     const log = [opened, ...promoted, ...compared("g-2", "h1", "S", 2, drifts)];
     expect(epochsOf(log)[1]?.starter_tally).toEqual({ wins: 0, losses: 0, ties: 6 });
-    const repeats = (events: readonly LogEvent[]) => barLines([opened, ...events])[4];
+    const repeats = (events: readonly LogEvent[]) => barLines([opened, ...events])[3];
     expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toBe(
       "- Rollout consistency: in 1 comparison both arms had uniform validity across all rollouts per task, and in 1 uniform objective scores as well (g-2, zero split-arm variance on either arm). Observational only.",
     );
     expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toBe(
       "- Rollout consistency: in 0 comparisons both arms had uniform validity across all rollouts per task, and in 0 uniform objective scores as well. Observational only.",
     );
-    expect(barLines(objectiveLog(0.05))[4]).toBe(
+    expect(barLines(objectiveLog(0.05))[3]).toBe(
       "- Rollout consistency: in 1 comparison both arms had uniform validity across all rollouts per task, and in 0 uniform objective scores as well. Observational only.",
     );
     // A difference within the floor the score ties at is no split (1.9e-9 is left unnamed); 2% apart is
@@ -619,34 +619,11 @@ describe("a campaign against its bars", () => {
       Object.fromEntries(["t0", "t1", "t2", "t3", "t4", "t5"].map((task) => [task, measures]));
     const measured = (measures: readonly [number, number]) =>
       /and in (\d+) uniform objective scores/.exec(
-        barLines(objectiveLog(0.05, "tied", every(measures)))[4] ?? "",
+        barLines(objectiveLog(0.05, "tied", every(measures)))[3] ?? "",
       )?.[1];
     expect(measured([1, 1])).toBe("1");
     expect(measured([1, 1 + 1e-9])).toBe("1");
     expect(measured([1, 0.98])).toBe("0");
-  });
-
-  it("holds every epoch after set-up to the cost bar, an open one too, and set-up's to none", () => {
-    const attempts = (old: string, count: number) =>
-      Array.from({ length: count }, (_, at) =>
-        reported(`${old}-${String(at)}`, old, `${old}-c${String(at)}`),
-      );
-    const economy = (events: readonly LogEvent[]) => barLines([opened, ...events])[2];
-    const log = [
-      ...attempts("S", 5),
-      promotedTo("h1", "S"),
-      ...attempts("h1", 3),
-      promotedTo("h2", "h1"),
-      ...attempts("h2", 4),
-      promotedTo("h3", "h2"),
-      ...attempts("h3", 5),
-    ];
-    expect(economy(log)).toBe(
-      "- Economy: 3 post-setup epochs against a threshold of 3 promotion attempts each, 2 exceeded: epoch 3 at 4; epoch 4 at 5, open. Observational only.",
-    );
-    expect(economy(attempts("S", 9))).toContain(
-      "0 post-setup epochs against a threshold of 3 promotion attempts each, 0 exceeded.",
-    );
   });
 
   it("reverts an unconfirmed second promotion to the confirmed ancestor without a repeat starter read, counts it against patience, and ignores not-scored starter reads", () => {
@@ -711,7 +688,6 @@ describe("a campaign against its bars", () => {
     expect(nextAction(reverted, plan).move).toBe("build");
     expect(stopRule(reverted)).toMatchObject({ sinceStep: 1, stop: false });
     expect(barLines(reverted)[0]).toContain("2 promotions, 1 confirmed");
-    expect(barLines(reverted)[2]).toContain("2 post-setup epochs");
     // Downstream readers that count harness.promoted never conflate a revert with a promotion,
     // and the Examiner's record distinguishes a revert from a promotion.
     expect(reverted.filter(({ kind }) => kind === "harness.promoted")).toHaveLength(2);

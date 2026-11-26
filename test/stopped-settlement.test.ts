@@ -144,7 +144,6 @@ function unscored(report: comparison.Report, reading = STOPPED, capped = false) 
     counted: null,
     points: null,
     turns: null,
-    worth: null,
   });
 }
 

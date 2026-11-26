@@ -9,7 +9,6 @@
  * the level (`isSignificant`), as `climb.ts` and the release bar read one.
  */
 import { type ScheduledAction, decidedLine, type Ending } from "../../../../src/campaign/move.ts";
-import { BARS } from "../../../../src/campaign/climb.ts";
 import { openSteps } from "../../../../src/campaign/summary.ts";
 import { reported } from "../../../../src/campaign/comparison.ts";
 import { namesOf } from "../../../../src/campaign/names.ts";
@@ -168,7 +167,6 @@ const coreIn = once((log) => {
     prompt: openingIn(log)?.prompt ?? null,
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
-    bars: BARS,
     supply: { ...campaign.supply, doubted: doubtedIn(log).size },
     reference: campaign.reference,
     starter: starterIn(log),

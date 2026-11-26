@@ -254,7 +254,6 @@ export interface CampaignReading extends Answer {
   /** Whether the freeze and a promotion wait for the operator's word (`Opening.attended`,
    *  `--hitl`). The table names such a move all the same, and the campaign command waits. */
   readonly attended: boolean;
-  readonly bars: { readonly cost: number };
   readonly supply: Supply & { readonly doubted: number };
   readonly reference: string | null;
   readonly starter: string | null;

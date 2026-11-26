@@ -100,7 +100,7 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
     begin(keyIfDefined("admitted", admits && [...admits]));
     await acceptCommand([
       ...pack,
-      ...flag("admit", admits?.join(",")),
+      ...flag("admit", values.admit),
       ...(opening.attended ? [] : ["--freeze", "--admit-authored"]),
       ...(opening.judged ? ["--admit-judge"] : []),
     ]);
@@ -137,6 +137,7 @@ function examLines(
   values: Values,
   ending: string,
   faults: "printed" | "unprinted",
+  mode: "attended" | "unattended",
 ): string[] {
   if (ending !== "exam") return [];
   const faulted = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
@@ -153,7 +154,9 @@ function examLines(
     ...(judged.length === 0
       ? []
       : [
-          `to admit the judged rubric items (${judged.join(", ")}), pass --admit-judge with a cross-family --reviewer: bun tools/campaign/harness-builder.ts ${packOf(values).join(" ")} --admit-judge`,
+          mode === "attended"
+            ? `to admit the judged rubric items (${judged.join(", ")}) under --hitl, freeze via accept.ts: bun tools/eval/accept.ts ${packOf(values).join(" ")} --admit-judge --freeze (or resume with --no-hitl and a cross-family --reviewer)`
+            : `to admit the judged rubric items (${judged.join(", ")}), resume with a cross-family --reviewer: bun tools/campaign/harness-builder.ts ${packOf(values).join(" ")} --reviewer <other-family-model>`,
         ]),
   ];
 }
@@ -407,7 +410,13 @@ export async function harnessBuilder(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
     if (decided.move === "end") {
-      const faults = examLines(events, values, decided.ending, last === "accept" ? "printed" : "unprinted");
+      const faults = examLines(
+        events,
+        values,
+        decided.ending,
+        last === "accept" ? "printed" : "unprinted",
+        opening.attended ? "attended" : "unattended",
+      );
       for (const line of faults) console.log(line);
       if (values["dry-run"]) return decided;
       ended(log, events, decided);

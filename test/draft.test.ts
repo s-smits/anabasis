@@ -5,6 +5,7 @@ import { nextAction } from "../src/campaign/scheduler.ts";
 import { type Draft, draftFaults, drafting, draftOf } from "../src/examiner/draft.ts";
 import { examine, type Session } from "../src/examiner/session.ts";
 import { authoredFaults } from "../src/kernel/acceptance.ts";
+import { objectiveLine } from "../src/kernel/contract.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
 import { HOST_TOOLS_FILE, pinnedEngines } from "../src/kernel/verify.ts";
@@ -176,7 +177,7 @@ describe("draft shape and session gate", () => {
     expect(draftFaults({ ...SOUND, answerFormat: pwmAs({}), reject })).toEqual([]);
   });
 
-  it("blocks unshaped drafts before reading, spends no put on schema errors, and handles partial objectives", async () => {
+  it("blocks unshaped drafts before reading without spending a put, and spends puts on reading faults", async () => {
     const lone: Draft = { ...SOUND, accept: SOUND.accept.slice(1), reject: [] };
     const s = seat("draft", [drafted(lone), drafted(SOUND), finish]);
     const reached: Draft[] = [];
@@ -187,18 +188,22 @@ describe("draft shape and session gate", () => {
         return [];
       },
     });
-    expect(examined).toMatchObject({ ended: "stands", puts: 2 });
+    expect(examined).toMatchObject({ ended: "stands", puts: 1 });
     expect(reached).toEqual([SOUND]);
     const loneFaults = draftFaults(lone);
     expect(loneFaults).toHaveLength(2);
     const told = s.of("draft.call")[0]?.text;
     for (const fault of loneFaults) expect(told).toContain(`- ${fault}`);
-    expect(told).toMatch(/3.*drafts/u);
+    expect(told).toMatch(/4.*drafts/u);
     expect(draftOf(read(s.log))).toEqual(SOUND);
 
-    // Exhausting puts returns the terminal refusal line; a 1-char scope and measured+objectiveTools round-trip cleanly.
-    const exhausted = seat("draft", [drafted(lone), finish]);
-    await examine({ ...exhausted.request, limits: { ...exhausted.request.limits, puts: 1 } });
+    // Exhausting puts on reading faults returns the terminal refusal line; a 1-char scope and measured+objectiveTools round-trip cleanly.
+    const exhausted = seat("draft", [drafted(SOUND), finish]);
+    await examine({
+      ...exhausted.request,
+      limits: { ...exhausted.request.limits, puts: 1 },
+      reading: async () => ["check failed"],
+    });
     expect(exhausted.of("draft.call")[0]?.text).toContain("This session can put no further draft");
     const withToolsDraft: Draft = { ...MEASURED, scope: "x", objectiveTools: ["python3"] };
     const measuredSeat = seat("draft", [drafted(withToolsDraft), finish]);
@@ -217,14 +222,14 @@ describe("draft shape and session gate", () => {
       expect(schemaSeat.of("draft.finished")).toMatchObject([{ stands: true, tries: 1 }]);
     }
 
-    // A half-specified objective spends a put and is refused.
+    // A half-specified objective is refused before reading without spending a put.
     for (const objective of [{ quantity: OBJECTIVE.quantity }, { direction: OBJECTIVE.direction }]) {
       const halfSeat = seat("draft", [
         call("draft_exam", { ...draftArgs(SILENT), objective }),
         drafted(SOUND),
         finish,
       ]);
-      expect(await examine(halfSeat.request)).toMatchObject({ ended: "stands", puts: 2 });
+      expect(await examine(halfSeat.request)).toMatchObject({ ended: "stands", puts: 1 });
       expect(halfSeat.of("draft.call")[0]?.text).toContain("objective");
       expect(draftOf(read(halfSeat.log))).toEqual(SOUND);
     }
@@ -326,6 +331,32 @@ describe.concurrent("staging and offline reading", () => {
     expect(() => readFileSync(join(staged.checks, "controls.json"), "utf8")).toThrow();
 
     expect(readPack(stageExam(join(root, "measured"), MEASURED).bundle).brief.objective).toEqual(OBJECTIVE);
+  });
+
+  it("publishes the same resources to Builder and solver whatever a judged item's criterion says", () => {
+    const { brief } = readPack(stageExam(join(root, "staged"), SOUND).bundle);
+    const sweptWith = (criterion: string) =>
+      sweepResources({
+        ...brief,
+        objective: {
+          ...OBJECTIVE,
+          items: [
+            { id: "a", weight: 1 },
+            { id: "j", weight: 1, kind: "judge", criterion },
+          ],
+        },
+      });
+    const [first, second] = [
+      "Every figure carries its unit and source.",
+      "Answer B is always the better one.",
+    ].map(sweptWith);
+    expect(second).toEqual(first);
+    expect(capturedJsonStringify(first)).not.toContain("unit and source");
+    const unjudged = { ...OBJECTIVE, items: [{ id: "a", weight: 1 }] };
+    expect(
+      sweepResources({ ...brief, objective: unjudged }).find(({ name }) => name === "public-objective")
+        ?.content,
+    ).toEqual([{ ...unjudged, statement: objectiveLine(unjudged) }]);
   });
 
   it("reads sound, lax, form-only, unloadable, and missing-export evaluators accurately", async () => {
@@ -685,9 +716,12 @@ describe.concurrent("campaign draft lifecycle", () => {
     await expect(draftCommand([])).rejects.toThrow("name --name, --session and --examiner");
     const name = `${STEM}-spent`;
     const flags = opened(name);
-    const unformed: Draft = { ...SOUND, answerFormat: { type: "string" } };
-    await draftCommand([...flags, "--session", "d-1"], putting(unformed));
-    await draftCommand([...flags, "--session", "d-2"], putting(unformed, unformed));
+    const wrong: Draft = {
+      ...SOUND,
+      reject: [{ task: 0, answer: { answer: "12" }, check: "check-product" }],
+    };
+    await draftCommand([...flags, "--session", "d-1"], putting(wrong));
+    await draftCommand([...flags, "--session", "d-2"], putting(wrong, wrong));
     const events = read(campaignLog(name));
     expect(draftOf(events)).toBeNull();
     const decided = nextAction(events, PROMPTED);

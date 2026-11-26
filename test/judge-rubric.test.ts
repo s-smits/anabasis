@@ -1,6 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import {
   codeObjective,
+  type Contract,
   CRITERION,
   hasJudge,
   type Objective,
@@ -9,6 +11,12 @@ import {
   type RubricItem,
 } from "../src/kernel/contract.ts";
 import { authoredFaults, JUDGE } from "../src/kernel/acceptance.ts";
+import { keepAnswerFiles, textFiles } from "../src/kernel/answer-files.ts";
+import { append, read } from "../src/kernel/log.ts";
+import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
+import { judgePair } from "../src/audit/judge.ts";
 import { crossFamilyVendors, modelVendor } from "../tools/campaign/round.ts";
 
 const LINE = "Names each figure's source table and the year it covers.";
@@ -123,5 +131,68 @@ describe("the unified rubric", () => {
     expect(crossFamilyVendors("deepinfra/deepseek-ai/DeepSeek-R1", "openrouter/deepseek/deepseek-r1")).toBe(
       false,
     );
+  });
+});
+
+describe("referee.pair extract telemetry", () => {
+  const scratch = mkdtempSync(join(tmpdir(), "ana-judge-extracts-"));
+  afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+  it("logs files, empty, faults, and truncated counts across both answers on referee.pair", async () => {
+    const faux = fauxProvider({
+      models: [
+        {
+          id: "faux-judge",
+          contextWindow: 200_000,
+          cost: { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+    });
+    const reply = () =>
+      fauxAssistantMessage(fauxToolCall("record_vote", { better: "A", reason: "r" }), {
+        stopReason: "toolUse",
+      });
+    faux.setResponses(Array.from({ length: 8 }, () => reply));
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const log = join(scratch, "log.jsonl");
+    const firstFiles = keepAnswerFiles(log, [
+      ...textFiles([{ path: "big.txt", text: "X".repeat(30_000) }]),
+      { path: "chart.png", base64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64") },
+      ...textFiles([{ path: "broken.ipynb", text: "{not json" }]),
+    ]);
+    append(log, "verdict", {
+      solve: "s-1",
+      task: "t-1",
+      kind: "pass",
+      answer: { note: "ok" },
+      files: firstFiles.map((file) => ({ ...file })),
+    });
+    append(log, "verdict", {
+      solve: "s-2",
+      task: "t-1",
+      kind: "pass",
+      answer: { note: "Y".repeat(30_000) },
+    });
+    const contract: Contract = {
+      answerFormat: {},
+      conventions: "",
+      rules: [],
+      scope: "Memos.",
+      objective: unit([judge("cites")]),
+    };
+    await judgePair(
+      { model: faux.getModel(), effort: "low", models: () => models },
+      {
+        log,
+        comparison: "g-1",
+        task: { taskId: "t-1", family: "memo", publicInput: {}, hidden: null },
+        contract,
+        first: "s-1",
+        second: "s-2",
+      },
+    );
+    const pair = read(log).find(({ kind }) => kind === "referee.pair")?.data;
+    expect(pair?.extracts).toEqual({ files: 3, empty: 1, faults: 1, truncated: 1 });
   });
 });

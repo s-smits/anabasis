@@ -2,9 +2,16 @@ import { type Static, Type } from "typebox";
 import type { Control } from "../kernel/acceptance.ts";
 import type { AnswerFile } from "../kernel/answer-files.ts";
 import { GAP_FLOOR, gainOver } from "../kernel/compare.ts";
-import { answerFormatFault, codeObjective, type Contract } from "../kernel/contract.ts";
+import { codeObjective, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
-import { blockingOf, objectiveOf, type Task, type Verifier } from "../kernel/verify.ts";
+import {
+  blockingOf,
+  objectiveOf,
+  scoresOf,
+  type Task,
+  type Verdict,
+  type Verifier,
+} from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
@@ -17,6 +24,7 @@ import {
   executeProbe,
   FILE,
   fileTexts,
+  formedOnly,
   probeExamplesTool,
   taskContentDigest,
 } from "./probe.ts";
@@ -51,6 +59,7 @@ type DraftDefect = {
   readonly kind: "vacuous-pass" | "check-defect" | "objective-defect";
   readonly task: string;
   readonly check?: string;
+  readonly item?: string;
   readonly probe: number;
   readonly reason: string;
 };
@@ -76,7 +85,7 @@ const SYSTEM_PROMPT = [
   "- objective-defect: when the exam declares an objective, perturb a valid accept control into a deliberately hedged, flattened, or degraded valid answer; if it still passes with an equal, better, or barely worse objective score, the objective is gameable or uninformative. When objective.items is declared, inspect individual `scores[id]` items for recall-only/presence bias, unpenalised hedging, constant returns, or always 0 on valid controls (such as un-extractable deliverables).",
   "- sound: after inspecting the check program and probing across examples, checks, and any objective, no probe-verified defect was found (and any prior findings were confirmed fixed).",
   "The holes that matter most change a verdict on a domain answer: a check or score item that reads only surface syntax, file presence or schema shape, or leaves a declared answer field unread, so a semantically wrong answer passes or scores well; and a check that refuses, or throws on, a valid alternative the public rules allow.",
-  `Every defect you report must cite an executed probe number whose verifier result proves it (vacuous-pass requires changed=pass; check-defect requires changed=fail, or changed=faulty in the named check; objective-defect requires changed=pass with finite objectives on both original and changed). The host refuses ungrounded claims. Do not invent style nits or refuse a domain where binary checks are intentionally a feasibility floor paired with an informative non-hedgable objective. You have ${String(TURN_LIMIT)} turns, ${String(PROBE_BUDGET)} probes, and ${String(DEADLINE_SECONDS / 60)} minutes; finish with \`record_draft_review\`.`,
+  `Every defect you report must cite an executed probe number whose verifier result proves it (vacuous-pass requires changed=pass; check-defect requires changed=fail, or changed=faulty in the named check; objective-defect requires changed=pass with finite objectives on both original and changed, and names the score item that kept its score when the probe scored items). The host refuses ungrounded claims. Do not invent style nits or refuse a domain where binary checks are intentionally a feasibility floor paired with an informative non-hedgable objective. You have ${String(TURN_LIMIT)} turns, ${String(PROBE_BUDGET)} probes, and ${String(DEADLINE_SECONDS / 60)} minutes; finish with \`record_draft_review\`.`,
 ].join("\n");
 
 const PARAMETERS = Type.Object({
@@ -89,7 +98,15 @@ const PARAMETERS = Type.Object({
         Type.Literal("objective-defect"),
       ]),
       task: Type.String({ minLength: 1, description: "The example task id probed." }),
-      check: Type.Optional(Type.String({ description: "For check-defect: the refusing check id." })),
+      check: Type.Optional(
+        Type.String({ minLength: 1, description: "For check-defect: the refusing check id." }),
+      ),
+      item: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: "For objective-defect: the score item id that kept its score.",
+        }),
+      ),
       probe: Type.Integer({ minimum: 1, description: "The probe number proving this defect." }),
       reason: Type.String({ minLength: 1 }),
     }),
@@ -97,15 +114,34 @@ const PARAMETERS = Type.Object({
   summary: Type.String({ minLength: 1 }),
 });
 
+function ownScore(verdict: Verdict, item: string): number | undefined {
+  const scores = scoresOf(verdict);
+  return scores !== null && Object.hasOwn(scores, item) ? scores[item] : undefined;
+}
+
+function objectiveDefectRefusal(
+  finding: DraftDefect,
+  row: DraftProbeRow,
+  objective: Contract["objective"],
+): string | null {
+  const probe = String(finding.probe);
+  if (scoresOf(row.changed) !== null && finding.item === undefined) {
+    return `objective-defect on probe ${probe} requires naming the score item that kept its score`;
+  }
+  return reproduces(finding, row, objective)
+    ? null
+    : `objective-defect requires probe ${probe}'s changed answer to pass and keep its ${finding.item ?? "objective"} score at the original's level`;
+}
+
 function refusal(
   rows: readonly DraftProbeRow[],
   args: Static<typeof PARAMETERS>,
-  objective: "measured" | "none",
+  objective: Contract["objective"],
 ): string | null {
   if (args.verdict === "sound") {
     if (args.findings.length > 0) return "a sound verdict carries no defect findings";
     if (
-      objective === "measured" &&
+      objective !== undefined &&
       !rows.some((row) => {
         const [before, after] = [objectiveOf(row.original), objectiveOf(row.changed)];
         return conclusive(row) && before !== null && after !== null && after !== before;
@@ -129,14 +165,15 @@ function refusal(
     if (finding.kind === "vacuous-pass" && row.changed.kind !== "pass") {
       return `vacuous-pass requires probe ${String(finding.probe)} to pass on its changed answer, but it returned ${row.changed.kind}`;
     }
-    if (
-      finding.kind === "objective-defect" &&
-      (row.changed.kind !== "pass" || objectiveOf(row.original) === null || objectiveOf(row.changed) === null)
-    ) {
-      return `objective-defect requires probe ${String(finding.probe)} to pass with a finite objective on both original and changed answers`;
-    }
+    const problem =
+      finding.kind === "objective-defect"
+        ? objectiveDefectRefusal(finding, row, objective)
+        : finding.item === undefined
+          ? null
+          : "only an objective-defect names a score item";
+    if (problem !== null) return problem;
     if (finding.kind === "check-defect") {
-      if (finding.check === undefined || finding.check === "") {
+      if (finding.check === undefined) {
         return "check-defect requires naming the refusing check id";
       }
       if (![...blockingOf(row.changed), throwing].includes(finding.check)) {
@@ -253,11 +290,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
     description: "Record your final verdict on the drafted exam once probes settle it.",
     parameters: PARAMETERS,
     execute: async (args) => {
-      const problem = refusal(
-        rows,
-        args,
-        codeObjective(target.contract.objective) === undefined ? "none" : "measured",
-      );
+      const problem = refusal(rows, args, codeObjective(target.contract.objective));
       if (problem !== null) {
         append(target.log, "referee.draft.refused", {
           session: target.session,
@@ -270,10 +303,11 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
       }
       recorded.push({
         verdict: args.verdict,
-        findings: args.findings.map(({ kind, task, check, probe, reason }) => ({
+        findings: args.findings.map(({ kind, task, check, item, probe, reason }) => ({
           kind,
           task,
           ...keyIfDefined("check", check),
+          ...keyIfDefined("item", item),
           probe,
           reason: boundText(reason, REASON_DISPLAY_BYTES).shown,
         })),
@@ -331,8 +365,8 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
   return result;
 }
 
-export function formatDraftFinding({ kind, task, check, probe, reason }: DraftDefect): string {
-  return `independent check audit (${kind} on ${task}${check === undefined ? "" : `, check ${check}`}, probe #${String(probe)}): ${reason}`;
+export function formatDraftFinding({ kind, task, check, item, probe, reason }: DraftDefect): string {
+  return `independent check audit (${kind} on ${task}${check === undefined ? "" : `, check ${check}`}${item === undefined ? "" : `, item ${item}`}, probe #${String(probe)}): ${reason}`;
 }
 
 function reproduces(
@@ -347,18 +381,12 @@ function reproduces(
       : [...blockingOf(replayed.changed), throwsIn(replayed)].includes(finding.check);
   }
   if (replayed.changed.kind !== "pass" || objective === undefined) return false;
+  if (finding.item !== undefined) {
+    const [was, now] = [ownScore(replayed.original, finding.item), ownScore(replayed.changed, finding.item)];
+    return was !== undefined && now !== undefined && now - was > -GAP_FLOOR;
+  }
   const [before, after] = [objectiveOf(replayed.original), objectiveOf(replayed.changed)];
   return before !== null && after !== null && gainOver(objective, after, before) > -GAP_FLOOR;
-}
-
-function formedOnly(contract: Contract, verify: Verifier): Verifier {
-  return async (task, answer, signal, files) =>
-    answer !== undefined && answerFormatFault(contract.answerFormat, answer) !== null
-      ? {
-          kind: "non-result",
-          reason: "the changed answer breaks the answer format, so a campaign never checks it",
-        }
-      : verify(task, answer, signal, files);
 }
 
 export async function replayDraftProbes(
@@ -417,7 +445,15 @@ export async function replayDraftProbes(
           return cached;
         },
       });
-      if (!conclusive(replayed) && throwsIn(replayed) === null) {
+      const sameThrow =
+        finding.kind === "check-defect" &&
+        finding.check !== undefined &&
+        throwsIn(replayed) === finding.check;
+      const itemDropped =
+        finding.item !== undefined &&
+        replayed.changed.kind === "pass" &&
+        ownScore(replayed.changed, finding.item) === undefined;
+      if ((!conclusive(replayed) && !sameThrow) || itemDropped) {
         unverified.push(formatted);
       } else if (
         reproduces(finding, { task: finding.task, ...replayed }, codeObjective(target.contract.objective))

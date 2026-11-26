@@ -149,7 +149,20 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
       "public-objective",
       brief.objective === undefined
         ? []
-        : [{ ...brief.objective, statement: objectiveLine(brief.objective) }],
+        : [
+            {
+              ...brief.objective,
+              ...keyIfDefined(
+                "items",
+                brief.objective.items?.map(({ id, weight, kind }) => ({
+                  id,
+                  weight,
+                  ...keyIfDefined("kind", kind),
+                })),
+              ),
+              statement: objectiveLine(brief.objective),
+            },
+          ],
     ],
     [
       "public-validity-rules",

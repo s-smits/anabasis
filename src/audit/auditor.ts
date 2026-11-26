@@ -26,7 +26,16 @@ import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { ending, RESULT, text, tool } from "../tools/answer.ts";
-import { conclusive, FILE, fileTexts, inFile, type ProbeRow, probeTool, reaches } from "./probe.ts";
+import {
+  conclusive,
+  FILE,
+  fileTexts,
+  formedOnly,
+  inFile,
+  type ProbeRow,
+  probeTool,
+  reaches,
+} from "./probe.ts";
 
 export interface Reader {
   readonly model: Model<Api>;
@@ -498,10 +507,11 @@ export async function auditRejection(reader: Reader, fail: RefereeCase): Promise
           tools: [
             ...readTools(fail.checks, verdict.files, fail.task.publicInput, caseFiles),
             probeTool(
-              async (task, answer, signal, files) =>
+              formedOnly(fail.contract, async (task, answer, signal, files) =>
                 replay !== null && answer === verdict.answer && files === verdict.files
                   ? replay
                   : fail.verify(task, answer, signal, files),
+              ),
               fail.task,
               verdict.answer,
               rows,

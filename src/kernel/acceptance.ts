@@ -1,5 +1,5 @@
 import { Pointer } from "typebox/value";
-import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isBoolean, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import type { AnswerFile } from "./answer-files.ts";
@@ -73,6 +73,45 @@ interface Probe {
   readonly run: ControlAnswerRun;
   readonly task: Task;
   readonly files: readonly AnswerFile[] | undefined;
+  readonly field?: Field;
+}
+
+interface Field {
+  readonly path: string;
+  readonly answer: JsonValue;
+}
+
+type Strings = "emptied" | "filled";
+
+function otherLeaf(value: JsonValue, strings: Strings): JsonValue | undefined {
+  if (isBoolean(value)) return !value;
+  if (isString(value) && value !== "" && strings === "emptied") return "";
+  if (isString(value)) return value === "x" ? "y" : "x";
+  if (!isNumber(value)) return undefined;
+  if (value === 0) return 1;
+  return Number.isInteger(value) ? Math.trunc(value / 2) : value / 2;
+}
+
+function fieldsOf(answer: JsonValue, path: string, strings: Strings): Field[] {
+  if (Array.isArray(answer)) {
+    const each = answer.map(
+      (item) => new Map(fieldsOf(item, `${path}[]`, strings).map((field) => [field.path, field.answer])),
+    );
+    return [...new Set(each.flatMap((fields) => [...fields.keys()]))].map((at) => ({
+      path: at,
+      answer: answer.map((item, index) => each[index]?.get(at) ?? item),
+    }));
+  }
+  if (isRecord(answer)) {
+    return Object.entries(answer).flatMap(([key, value]) =>
+      fieldsOf(value, `${path}.${key}`, strings).map((field) => ({
+        ...field,
+        answer: { ...answer, [key]: field.answer },
+      })),
+    );
+  }
+  const other = otherLeaf(answer, strings);
+  return other === undefined ? [] : [{ path, answer: other }];
 }
 
 type SchemaHandler = (
@@ -155,9 +194,10 @@ async function probeReading(
   );
   const probed = async (probes: readonly Probe[]) =>
     (
-      await pooled(probes, given.width, async ({ run, task, files }) => ({
+      await pooled(probes, given.width, async ({ run, task, files, field }) => ({
         run,
-        verdict: await given.verify(task, run.answer, undefined, files),
+        field,
+        verdict: await given.verify(task, field?.answer ?? run.answer, undefined, files),
       }))
     ).filter(({ verdict }) => verdict.kind !== "non-result");
   const blind = (results: Awaited<ReturnType<typeof probed>>) =>
@@ -176,7 +216,7 @@ async function probeReading(
   const carried =
     tasks.length > 1 && !hasJudge(given.brief.objective) && tasks.every(({ hidden }) => hidden !== null);
 
-  const [swaps, hidden, stripped] = await Promise.all([
+  const [swaps, hidden, stripped, changed] = await Promise.all([
     probed(accepted.flatMap((run) => others(run, (other) => other))),
     probed(
       carried
@@ -196,7 +236,25 @@ async function probeReading(
         return task === undefined ? [] : [{ run, task, files: NO_FILES }];
       }),
     ),
+    probed(
+      hasJudge(given.brief.objective)
+        ? []
+        : accepted.flatMap((run) => {
+            const task = byId.get(run.taskId);
+            if (task === undefined) return [];
+            const formed = (field: Field | undefined): field is Field =>
+              field !== undefined && answerFormatFault(given.contract.answerFormat, field.answer) === null;
+            const filled = fieldsOf(run.answer, "$", "filled");
+            return fieldsOf(run.answer, "$", "emptied")
+              .map((field, at) => (formed(field) ? field : filled[at]))
+              .filter(formed)
+              .map((field) => ({ run, task, files: run.files, field }));
+          }),
+    ),
   ]);
+  const unread = [...Map.groupBy(changed, ({ field }) => field?.path ?? "")].flatMap(([path, results]) =>
+    results.every(({ run, verdict }) => spelled(verdict) === spelled(run.verdicts[0])) ? [path] : [],
+  );
   const byRun = Map.groupBy(swaps, ({ run }) => run);
   const probes = [...swaps, ...hidden, ...stripped].map(({ verdict }) => verdict);
   return {
@@ -217,9 +275,15 @@ async function probeReading(
         "deliverable files had no effect on any accept control: with all deliverables removed, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective reads them",
       ),
     ],
-    notes: probes.some(({ kind }) => kind === "pass")
-      ? flatRubricNotes(given.brief, [...accepted.map(({ verdicts: [first] }) => first), ...probes])
-      : [],
+    notes: [
+      ...(probes.some(({ kind }) => kind === "pass")
+        ? flatRubricNotes(given.brief, [...accepted.map(({ verdicts: [first] }) => first), ...probes])
+        : []),
+      ...when(
+        unread.length > 0,
+        `answer fields ${unread.join(", ")} had no effect on any accept control that carries them: with each changed on its own once (a number halved or set to 1 from 0, a string emptied, or set to one letter where empty or where the format needs text, a boolean flipped), in every element of a list, every such control kept its verdict, objective and scores; a check reading only a bound the change stays within looks the same`,
+      ),
+    ],
   };
 }
 

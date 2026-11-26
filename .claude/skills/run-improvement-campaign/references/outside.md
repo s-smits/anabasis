@@ -24,7 +24,7 @@ Always pass `--tasks` explicitly to `score.ts score`:
 | `first task` | `statisticians/task1` | Reference vs Starter (reported separately) |
 | `outside pair` | `supply_chain_managers/task2,sociology_teachers_postsecondary/task2` | Out-of-query transfer vs Starter (reported separately) |
 
-Because the judge truncates deliverables at 200,000 chars (`CUT <n>` in `score.ts table`), always roll a fresh Starter in the same sitting and report both `fair` and `fair uncut` sums plus `score.ts spread`.
+Because the judge truncates deliverables at 200,000 chars (`CUT <n>` in `score.ts table`), always roll a fresh Starter in the same sitting and report both `fair` and `fair uncut` sums plus `score.ts spread`. The judge also reads a workbook as extracted text, so an embedded chart counts only where the deliverable's text names it. `sociology_teachers_postsecondary/task2` is a ceiling task: the Starter took full marks there in 11 of 12 eight-task sittings, so a reference can only tie or lose on it.
 
 1. **Pre-register** `jobbench-<label>-prediction.md` in the cycle dir from the dry run:
    ```sh

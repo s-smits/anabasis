@@ -15,7 +15,7 @@ import { containing } from "./helpers/matchers.ts";
 
 const TASK: Task = { taskId: "t-1", family: "span", publicInput: {}, hidden: {} };
 const CONTRACT: Contract = {
-  answerFormat: {},
+  answerFormat: { type: "object" },
   conventions: "SI units.",
   rules: [{ id: "R1", statement: "The span is at most 10 m." }],
   scope: "Spans.",

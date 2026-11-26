@@ -37,7 +37,7 @@ const OPTIONS = {
   session: { type: "string" },
   examiner: { type: "string" },
   "examiner-effort": { type: "string", default: "high" },
-  tries: { type: "string", default: "4" },
+  tries: { type: "string", default: "6" },
   minutes: { type: "string", default: "60" },
   turns: { type: "string", default: "40" },
   jobs: { type: "string", default: "4" },
@@ -59,7 +59,6 @@ function draftAuditGate(given: {
   readonly reader: Reader | null;
 }) {
   let audits = 0;
-  let priorFindings: readonly string[] = [];
   const priorReviews: DraftAuditFinding[] = [];
   return async (seen: DraftSeen): Promise<readonly string[]> => {
     const verifiedFixed: string[] = [];
@@ -75,7 +74,6 @@ function draftAuditGate(given: {
       verifiedFixed.push(...replay.verifiedFixed);
       unverified.push(...replay.unverified);
     }
-    if (priorReviews.length > 0) priorFindings = unverified;
     if (audits >= MAX_DRAFT_AUDITS || given.auditor === null || given.reader === null) return [];
     audits += 1;
     const review = await given.auditor(given.reader, {
@@ -88,18 +86,16 @@ function draftAuditGate(given: {
       tasks: seen.tasks,
       controls: seen.controls,
       notes: seen.reading.notes,
-      priorFindings,
+      priorFindings: unverified,
       verifiedFixed,
       log: given.log,
     });
     if (review.verdict !== "defects" || review.findings.length === 0) {
       priorReviews.length = 0;
-      priorFindings = [];
       return [];
     }
     priorReviews.push(review);
-    priorFindings = review.findings.map(formatDraftFinding);
-    return priorFindings;
+    return review.findings.map(formatDraftFinding);
   };
 }
 

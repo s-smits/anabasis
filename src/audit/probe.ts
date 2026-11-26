@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { AgentTool } from "../agent/session.ts";
 import { type AnswerFile, textFiles } from "../kernel/answer-files.ts";
+import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import {
   blockingOf,
   decides,
@@ -245,6 +246,16 @@ function changedAnswer(
     throw new Error(`the answer already carries that value at ${change.path}`);
   }
   return changed;
+}
+
+export function formedOnly(contract: Contract, verify: Verifier): Verifier {
+  return async (task, answer, signal, files) =>
+    answer !== undefined && answerFormatFault(contract.answerFormat, answer) !== null
+      ? {
+          kind: "non-result",
+          reason: "the changed answer breaks the answer format, so a campaign never checks it",
+        }
+      : verify(task, answer, signal, files);
 }
 
 function probeAnswer(

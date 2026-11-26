@@ -42,6 +42,7 @@ const CONTRACT: Contract = {
 };
 const ANSWER = { span: 12, members: [{ area: 3 }] };
 const SPAN = "$.span";
+const CONTROL = { taskId: "t-1", answer: ANSWER, refusedBy: null };
 const AREA = "$.members[0].area";
 const BOOK = "file:book.xlsx";
 const MEMBER = `${BOOK}/xl/sharedStrings.xml`;
@@ -502,6 +503,17 @@ describe("rejection adjudication and evidence gates", () => {
     expect(coupledAnswer.left).toEndWith("bad");
   });
 
+  it("grounds no check-defect ruling on a probe whose change breaks the answer format", async () => {
+    const typed = { ...CONTRACT, answerFormat: { type: "object", properties: { span: { type: "number" } } } };
+    const s = setup([
+      callTool(PROBE, { changes: [{ path: SPAN, value: '"12"' }] }),
+      ruling({ ruling: "check-defect", check: "span", reason: "A span of 12 passes as text.", probes: [1] }),
+      ruling(UNSETTLED),
+    ]);
+    expect(await auditRejection(s.reader, s.fail({ contract: typed }))).toMatchObject({ ruling: "unclear" });
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
+  });
+
   it("handles submitted text files and archive members across replay, probes, and rulings", async () => {
     // Text file replay, packet preview without base64, and file-based earned ruling.
     const textFile = [{ path: "report.txt", base64: "YmFk", text: "bad" }];
@@ -708,6 +720,18 @@ describe("adversarial draft audit", () => {
       }),
       reviewCall({
         verdict: "defects",
+        findings: [
+          { kind: "objective-defect", task: "t-1", item: "report", probe: 1, reason: "no item scored" },
+        ],
+        summary: "item on a probe that scored no items",
+      }),
+      reviewCall({
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "t-1", item: "report", probe: 3, reason: "item off kind" }],
+        summary: "item on a vacuous-pass",
+      }),
+      reviewCall({
+        verdict: "defects",
         findings: [{ kind: "check-defect", task: "t-1", probe: 1, reason: "actually passed" }],
         summary: "wrong kind for pass",
       }),
@@ -740,7 +764,7 @@ describe("adversarial draft audit", () => {
       session: "d-1",
       pass: 2,
       prompt: "Keep spans <= 12 m.",
-      contract: CONTRACT,
+      contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
       checks,
       verify: vacuousVerify,
       tasks: [TASK],
@@ -765,7 +789,7 @@ describe("adversarial draft audit", () => {
     ]);
     expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
     const draftRefused = read(s.log).filter(({ kind }) => kind === "referee.draft.refused");
-    expect(draftRefused).toHaveLength(9);
+    expect(draftRefused).toHaveLength(11);
     expect(draftRefused.every(({ data }) => data.pass === 2)).toBe(true);
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft")).toMatchObject([{ data: { pass: 2 } }]);
     expect(unfinished(read(s.log))).toEqual([]);
@@ -791,6 +815,7 @@ describe("adversarial draft audit", () => {
     ]);
     const bigRes = await reviewDraft(bigSetup.reader, {
       ...target,
+      contract: CONTRACT,
       tasks: [taskWithBigFile],
       verify: async (task, answer, signal, files) => {
         const list = asRecord(task.publicInput)?.files;
@@ -922,7 +947,7 @@ describe("draft audit on a check that throws", () => {
       checks,
       verify: throwing,
       tasks: [TASK],
-      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+      controls: [CONTROL],
       notes: [],
       log: s.log,
     });
@@ -933,11 +958,32 @@ describe("draft audit on a check that throws", () => {
     const target = {
       contract: CONTRACT,
       tasks: [TASK],
-      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+      controls: [CONTROL],
     };
     expect(await replayDraftProbes(res, { ...target, verify: throwing })).toMatchObject({
       stillBroken: [expect.stringContaining("still reproduces")],
       unverified: [],
+    });
+    const otherThrow: Verifier = async (_task, answer) =>
+      asRecord(answer)?.span === -2
+        ? { kind: "faulty", check: "other", reason: "another check threw" }
+        : { kind: "pass", objective: 10 };
+    expect(await replayDraftProbes(res, { ...target, verify: otherThrow })).toMatchObject({
+      stillBroken: [],
+      verifiedFixed: [],
+      unverified: [expect.stringContaining("check-defect on t-1")],
+    });
+    const vacuousOnThrow = await replayDraftProbes(
+      {
+        ...res,
+        findings: [{ kind: "vacuous-pass", task: "t-1", probe: 1, reason: "vacuous" }],
+      },
+      { ...target, verify: throwing },
+    );
+    expect(vacuousOnThrow).toMatchObject({
+      stillBroken: [],
+      verifiedFixed: [],
+      unverified: [expect.stringContaining("vacuous-pass on t-1")],
     });
     const mended: Verifier = async () => ({ kind: "pass", objective: 10 });
     expect((await replayDraftProbes(res, { ...target, verify: mended })).verifiedFixed).toHaveLength(1);
@@ -968,12 +1014,125 @@ describe("draft audit on a check that throws", () => {
           ? { kind: "pass", objective: 10 }
           : { kind: "faulty", check: "span", reason: "the check threw" },
       tasks: [TASK],
-      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+      controls: [CONTROL],
       notes: [],
       log: s.log,
     });
     expect(res.findings).toEqual([]);
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(1);
+  });
+});
+
+describe("draft audit replay of an objective defect", () => {
+  it("reproduces while the scored item stands, and leaves it to a fresh audit once the revision drops the item", async () => {
+    const scored =
+      (scores: Record<string, number>): Verifier =>
+      async () => ({ kind: "pass", objective: 0.9, scores });
+    const both = { accuracy: 0.9, report: 1 };
+    const prior = {
+      verdict: "defects" as const,
+      summary: "report item reads keywords only",
+      findings: [
+        {
+          kind: "objective-defect" as const,
+          task: "t-1",
+          item: "report",
+          probe: 1,
+          reason: "wrong report keeps report=1",
+        },
+      ],
+      probes: [
+        {
+          id: 1,
+          task: "t-1",
+          changes: [{ path: SPAN, value: "13", edit: null }],
+          texts: [],
+          original: { kind: "pass" as const, objective: 0.9, scores: both },
+          changed: { kind: "pass" as const, objective: 0.9, scores: both },
+          moved: [],
+        },
+      ],
+    };
+    const target = {
+      contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
+      tasks: [TASK],
+      controls: [CONTROL],
+    };
+    expect(await replayDraftProbes(prior, { ...target, verify: scored(both) })).toMatchObject({
+      stillBroken: [expect.stringContaining("still reproduces")],
+      unverified: [],
+    });
+    expect(await replayDraftProbes(prior, { ...target, verify: scored({ report: 1 }) })).toMatchObject({
+      stillBroken: [expect.stringContaining("still reproduces")],
+    });
+    expect(await replayDraftProbes(prior, { ...target, verify: scored({ accuracy: 0.9 }) })).toMatchObject({
+      stillBroken: [],
+      verifiedFixed: [],
+      unverified: [expect.stringContaining("objective-defect on t-1")],
+    });
+    const scalar: Verifier = async () => ({ kind: "pass", objective: 0.9 });
+    expect(await replayDraftProbes(prior, { ...target, verify: scalar })).toMatchObject({
+      unverified: [expect.stringContaining("objective-defect on t-1")],
+    });
+    for (const [changed, fixed] of [
+      [0.995, false],
+      [0.98, true],
+      [0.5, true],
+    ] as const) {
+      const fix: Verifier = async (_task, answer) => ({
+        kind: "pass",
+        objective: 0.9,
+        scores: { accuracy: 0.9, report: asRecord(answer)?.span === 12 ? 1 : changed },
+      });
+      const replay = await replayDraftProbes(prior, { ...target, verify: fix });
+      expect([replay.stillBroken.length, replay.verifiedFixed.length]).toEqual(fixed ? [0, 1] : [1, 0]);
+    }
+  });
+
+  it("admits an objective-defect only on a scored item its own probe left standing", async () => {
+    const checks = programs.get(JSON.stringify([SPAN]));
+    if (checks === undefined) throw new Error("missing check program");
+    const finding = (item?: string) => ({
+      verdict: "defects",
+      findings: [
+        {
+          kind: "objective-defect",
+          task: "t-1",
+          ...keyIfDefined("item", item),
+          probe: 1,
+          reason: "span=13 scores",
+        },
+      ],
+      summary: item === undefined || item === "" ? "unnamed" : item,
+    });
+    const s = setup([
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "13" }] }),
+      reviewCall(finding("report")),
+      reviewCall(finding("missing")),
+      reviewCall(finding("toString")),
+      reviewCall(finding("")),
+      reviewCall(finding()),
+      reviewCall(finding("accuracy")),
+    ]);
+    const itemScores: Verifier = async (_task, answer) => ({
+      kind: "pass",
+      objective: 0.9,
+      scores: { accuracy: 0.9, report: asRecord(answer)?.span === 12 ? 1 : 0.5 },
+    });
+    const res = await reviewDraft(s.reader, {
+      session: "d-1",
+      prompt: "Keep spans <= 12 m.",
+      contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
+      checks,
+      verify: itemScores,
+      tasks: [TASK],
+      controls: [CONTROL],
+      notes: [],
+      priorFindings: [],
+      log: s.log,
+    });
+    expect(res.findings).toMatchObject([{ item: "accuracy" }]);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(4);
   });
 });
 

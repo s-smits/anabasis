@@ -23,6 +23,7 @@ import {
   type Verifier,
 } from "../src/kernel/verify.ts";
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
+import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { matching } from "./helpers/matchers.ts";
 
 const BRIEF: Brief = {
@@ -608,6 +609,84 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
     expect(probed.notes).toEqual([matching(/rubric item flat-item stayed within 1%/u)]);
     // Without hidden values no probe passes, so the three accept controls alone note nothing.
     expect((await rubricRead([null, null, null])).notes).toEqual([]);
+  });
+
+  it("names exactly the answer fields no check or objective reads, each changed in every list element", async () => {
+    const optional = ["$.note", "$.flags[].ok", "$.flags[].why"] as const;
+    const format = {
+      type: "object",
+      properties: { v: { type: "number" }, note: { type: "string" }, flags: { type: "array" } },
+    };
+    const answerOf = (v: JsonValue | undefined, note: string): JsonValue => ({
+      v: Number(v),
+      note,
+      flags: [
+        { ok: true, why: "a" },
+        { ok: false, why: "bc" },
+      ],
+    });
+    const unread = async (
+      check: Verifier,
+      over: { brief?: Brief; answerFormat?: JsonValue; note?: string } = {},
+    ) =>
+      (
+        await readChecker({
+          brief: over.brief ?? probeBrief,
+          contract: { ...contract, answerFormat: over.answerFormat ?? format },
+          verify: check,
+          tasks: tasksOf([null, null, null]),
+          controls: [1, 2, 3].map((v) => ({
+            taskId: `ex-00${String(v)}`,
+            answer: answerOf(v, over.note ?? "seen"),
+            refusedBy: null,
+          })),
+          found: () => true,
+          width: 2,
+        })
+      ).notes
+        .filter((note) => note.startsWith("answer fields "))
+        .map((note) => note.split(" had no effect")[0]);
+    const reads =
+      (read: ReadonlySet<string>): Verifier =>
+      async (t, a) => {
+        const answer = asRecord(a);
+        const last = asRecord(Array.isArray(answer?.flags) ? answer.flags.at(-1) : null);
+        if (answer?.v !== asRecord(t.publicInput)?.id) return { kind: "fail", blocking: ["ok"] };
+        const seen = [answer?.note, last?.ok, last?.why].filter((_, at) => read.has(optional[at] ?? ""));
+        return { kind: "pass", objective: capturedJsonStringify(seen).length };
+      };
+    for (const note of ["seen", ""]) {
+      for (const mask of [0, 1, 2, 3, 4, 5, 6, 7]) {
+        const read = new Set(optional.filter((_, at) => (mask >> at) % 2 === 1));
+        const left = optional.filter((field) => !read.has(field));
+        expect(await unread(reads(read), { note })).toEqual(
+          left.length === 0 ? [] : [`answer fields ${left.join(", ")}`],
+        );
+      }
+    }
+    const judged: Brief = {
+      ...probeBrief,
+      objective: {
+        quantity: "score",
+        direction: "higher",
+        scale: "unit",
+        items: [{ id: "plain", weight: 1, kind: "judge", criterion: "The note explains the flags." }],
+      },
+    };
+    expect(await unread(reads(new Set()), { brief: judged })).toEqual([]);
+    const noteAtLeast = (minLength: number) => ({
+      ...format,
+      properties: { ...format.properties, note: { type: "string", minLength } },
+    });
+    expect(await unread(reads(new Set()), { answerFormat: noteAtLeast(1) })).toEqual([
+      "answer fields $.note, $.flags[].ok, $.flags[].why",
+    ]);
+    expect(await unread(reads(new Set(["$.note"])), { answerFormat: noteAtLeast(1) })).toEqual([
+      "answer fields $.flags[].ok, $.flags[].why",
+    ]);
+    expect(await unread(reads(new Set()), { answerFormat: noteAtLeast(2) })).toEqual([
+      "answer fields $.flags[].ok, $.flags[].why",
+    ]);
   });
 });
 

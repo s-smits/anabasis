@@ -114,15 +114,25 @@ function fairCap(parts: readonly string[], budget: number): number {
   return budget;
 }
 
-function answerOf(events: readonly LogEvent[], log: string, solve: string): string {
+function answerOf(events: readonly LogEvent[], log: string, solve: string) {
   const verdict = loggedVerdict(events, solve, log);
   if (verdict === null) throw new Error(`solve ${solve} has no answer on record to judge`);
+  const extracted = verdict.files.map(extract);
   const parts = [
     `answer: ${capturedJsonStringify(verdict.answer)}`,
-    ...verdict.files.map(extract).map((file) => [...headOf(file), file.text].join("\n")),
+    ...extracted.map((file) => [...headOf(file), file.text].join("\n")),
   ];
   const cap = fairCap(parts, ANSWER_BYTES);
-  return parts.map((part) => boundText(part, cap).shown).join("\n\n");
+  const bounded = parts.map((part) => boundText(part, cap));
+  return {
+    text: bounded.map(({ shown }) => shown).join("\n\n"),
+    extracts: {
+      files: extracted.length,
+      empty: extracted.filter((file) => file.text.trim() === "").length,
+      faults: extracted.filter((file) => file.fault !== null).length,
+      truncated: bounded.slice(1).filter(({ truncated }) => truncated).length,
+    },
+  };
 }
 
 async function voted(
@@ -184,7 +194,7 @@ export async function judgePair(reader: Reader, given: PairCase): Promise<void> 
   const settled = await pooled(jobs, PAIR_CONCURRENCY, async ({ one, criterion, aIsFirst, voteId }) => {
     try {
       const lines = taskLines(given, one !== HOLISTIC);
-      const order: [string, string] = aIsFirst ? [first, second] : [second, first];
+      const order: [string, string] = aIsFirst ? [first.text, second.text] : [second.text, first.text];
       const { vote, meter } = await voted(reader, { ...given, id: voteId, lines, fence }, criterion, order);
       const sign = vote === null ? null : VOTE[vote.better] * (aIsFirst ? 1 : -1);
       return { status: "fulfilled" as const, value: { one, voteId, sign, meter } };
@@ -200,6 +210,12 @@ export async function judgePair(reader: Reader, given: PairCase): Promise<void> 
     old: given.second,
     reader: id,
     readers: jobs.map(({ voteId }) => voteId),
+    extracts: {
+      files: first.extracts.files + second.extracts.files,
+      empty: first.extracts.empty + second.extracts.empty,
+      faults: first.extracts.faults + second.extracts.faults,
+      truncated: first.extracts.truncated + second.extracts.truncated,
+    },
     ...spendOf(passes.map(({ meter }) => meter)),
   };
   const votedPasses = passes.flatMap((pass) => (pass.sign === null ? [] : [{ ...pass, sign: pass.sign }]));

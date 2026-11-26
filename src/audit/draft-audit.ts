@@ -4,7 +4,7 @@ import type { AnswerFile } from "../kernel/answer-files.ts";
 import { GAP_FLOOR, gainOver } from "../kernel/compare.ts";
 import { codeObjective, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
-import { blockingOf, objectiveOf, type Task, type Verifier } from "../kernel/verify.ts";
+import { blockingOf, objectiveOf, scoresOf, type Task, type Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
@@ -408,7 +408,11 @@ export async function replayDraftProbes(
           return cached;
         },
       });
-      if (!conclusive(replayed) && throwsIn(replayed) === null) {
+      const scoredNow = scoresOf(replayed.changed) ?? {};
+      const itemDropped =
+        finding.kind === "objective-defect" &&
+        Object.keys(scoresOf(row.changed) ?? {}).some((id) => !(id in scoredNow));
+      if ((!conclusive(replayed) && throwsIn(replayed) === null) || itemDropped) {
         unverified.push(formatted);
       } else if (
         reproduces(finding, { task: finding.task, ...replayed }, codeObjective(target.contract.objective))

@@ -988,6 +988,47 @@ describe("draft audit on a check that throws", () => {
   });
 });
 
+describe("draft audit replay of an objective defect", () => {
+  it("reproduces while the scored item stands, and leaves it to a fresh audit once the revision drops the item", async () => {
+    const scored =
+      (scores: Record<string, number>): Verifier =>
+      async () => ({ kind: "pass", objective: 0.9, scores });
+    const both = { accuracy: 0.9, report: 1 };
+    const prior = {
+      verdict: "defects" as const,
+      summary: "report item reads keywords only",
+      findings: [
+        { kind: "objective-defect" as const, task: "t-1", probe: 1, reason: "wrong report keeps report=1" },
+      ],
+      probes: [
+        {
+          id: 1,
+          task: "t-1",
+          changes: [{ path: SPAN, value: "13", edit: null }],
+          texts: [],
+          original: { kind: "pass" as const, objective: 0.9, scores: both },
+          changed: { kind: "pass" as const, objective: 0.9, scores: both },
+          moved: [],
+        },
+      ],
+    };
+    const target = {
+      contract: { ...CONTRACT, objective: { quantity: "score", direction: "higher" as const } },
+      tasks: [TASK],
+      controls: [{ taskId: "t-1", answer: ANSWER, refusedBy: null }],
+    };
+    expect(await replayDraftProbes(prior, { ...target, verify: scored(both) })).toMatchObject({
+      stillBroken: [expect.stringContaining("still reproduces")],
+      unverified: [],
+    });
+    expect(await replayDraftProbes(prior, { ...target, verify: scored({ accuracy: 0.9 }) })).toMatchObject({
+      stillBroken: [],
+      verifiedFixed: [],
+      unverified: [expect.stringContaining("objective-defect on t-1")],
+    });
+  });
+});
+
 describe("hand-label agreement", () => {
   const at = "2026-10-08T00:00:00.000Z";
   const ruled = (solve: string, decision: string) => ({

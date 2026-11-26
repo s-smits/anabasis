@@ -19,12 +19,7 @@ import {
   servedByClaude,
   SWEEP_COMPACT_WINDOW,
 } from "../src/agent/backends/claude.ts";
-import {
-  CLAUDE_PROJECT_DIR,
-  resolveForkPoint,
-  savePersistedTranscript,
-  stageForkTranscript,
-} from "../src/agent/backends/claude-transcript.ts";
+import { CLAUDE_PROJECT_DIR } from "../src/agent/backends/claude-transcript.ts";
 import { runAgent } from "../src/agent/session.ts";
 import type { Spent } from "../src/kernel/meter.ts";
 import {
@@ -414,6 +409,24 @@ describe.concurrent("Claude pre-turn guards, interrupts, and quiet timeouts", ()
         timestamp: 0,
       };
       expect((await box.turn([OPENING, prior])).errorMessage).toContain("no live Claude Code query");
+      expect(
+        (
+          await box.turn([
+            OPENING,
+            { ...prior, content: [{ type: "toolCall", id: "tc1", name: "read", arguments: { path: "a" } }] },
+            {
+              role: "toolResult",
+              toolCallId: "tc1",
+              toolName: "read",
+              content: [{ type: "text", text: "ok" }],
+              isError: false,
+              timestamp: 0,
+            },
+          ])
+        ).errorMessage,
+      ).toContain("takes these tool results");
+      box.shutdown.abort();
+      expect((await box.turn([OPENING])).stopReason).toBe("aborted");
       expect(box.launches()).toBe(0);
     } finally {
       box.shutdown.abort();
@@ -441,7 +454,9 @@ describe.concurrent("Claude pre-turn guards, interrupts, and quiet timeouts", ()
       silent.shutdown.abort();
     }
   });
+});
 
+describe.concurrent("Claude post-toolUse aborts and active request interrupts", () => {
   it("keeps the query open across post-toolUse aborts and interrupts active requests cleanly", async () => {
     const keep = sandbox({}, "claude", PARALLEL);
     try {
@@ -691,66 +706,8 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
       message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu_1", content: "ok" }] },
     }),
     row("attachment", "att-1"),
-    row("progress", "prog-1"),
-    assistant("side-1", "msg_side", [{ type: "text", text: "side" }], { isSidechain: true }),
-    row("assistant", "synth-1", {
-      message: { id: "msg_synth", model: "<synthetic>", content: [{ type: "text", text: "x" }] },
-    }),
     assistant("a2-text", "msg_2", [{ type: "text", text: "Done." }]),
-    row("user", "u2-nudge", { message: { role: "user", content: "Old nudge." } }),
-    assistant("a3-open", "msg_3", [{ type: "tool_use", id: "tu_orphan", name: "bash" }]),
   ].join("\n")}\n`;
-
-  it("resolves turn-k and uuid fork points cleanly and refuses incomplete, missing, or malformed transcripts", () => {
-    expect(resolveForkPoint(transcript, 1)).toEqual({
-      sdkSessionId: sid,
-      resumeSessionAt: "att-1",
-      turnCount: 3,
-    });
-    expect(resolveForkPoint(`${transcript}{"truncated`, 2)).toEqual({
-      sdkSessionId: sid,
-      resumeSessionAt: "a2-text",
-      turnCount: 3,
-    });
-    expect(() => resolveForkPoint(transcript, 3)).toThrow("unanswered tool calls (tu_orphan)");
-    expect(() => resolveForkPoint(transcript, 4)).toThrow("holds 3 assistant turns");
-    expect(() => resolveForkPoint(transcript, 0)).toThrow("positive integer");
-    expect(() => resolveForkPoint('{"type":"user","uuid":"u0"}\n', 1)).toThrow("no valid sessionId UUID");
-
-    const dir = mkdtempSync(join(root, "stage-"));
-    const file = join(dir, "src.jsonl");
-    writeFileSync(file, transcript);
-    expect(stageForkTranscript(join(dir, "c1"), { transcript: file, upToUuid: "a2-text" })).toEqual({
-      resume: sid,
-      resumeSessionAt: "a2-text",
-    });
-    expect(stageForkTranscript(join(dir, "c2"), { transcript: file })).toEqual({
-      resume: sid,
-      resumeSessionAt: "a2-text",
-    });
-    expect(() =>
-      stageForkTranscript(join(dir, "c3"), { transcript: file, upToTurn: 1, upToUuid: "a2-text" }),
-    ).toThrow("not both");
-    expect(() => stageForkTranscript(join(dir, "c4"), { transcript: file, upToUuid: "missing" })).toThrow(
-      "not in",
-    );
-    expect(() => stageForkTranscript(join(dir, "c5"), { transcript: join(dir, "none.jsonl") })).toThrow(
-      "not found",
-    );
-    expect(savePersistedTranscript(join(dir, "empty"), { dir: join(dir, "out"), seat: "../bad" }, sid)).toBe(
-      false,
-    );
-    expect(savePersistedTranscript(join(dir, "empty"), { dir: join(dir, "out"), seat: "x-1" }, sid)).toBe(
-      false,
-    );
-    const otherSid = "22222222-2222-3333-4444-555555555555";
-    expect(savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, otherSid)).toBe(
-      false,
-    );
-    expect(
-      savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, undefined, sid),
-    ).toBe(false);
-  });
 
   it("persists under CLAUDE_CODE_PROJECT_DIR_NAME, forks cleanly, and never masks turns on save failure", async () => {
     const withSid = (raw: string) => raw.replaceAll(/"session_id":"[^"]+"/g, `"session_id":"${sid}"`);

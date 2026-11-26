@@ -75,7 +75,7 @@ const GROUPS = {
       "copy a stopped campaign whole to another worktree",
     ),
     stop: verbOf(
-      (a) => import("./stop.ts").then((m) => m.stop(a)),
+      (a) => import("./stop.ts").then((m) => m.stop(a, { record: true })),
       "stop.ts",
       "end the process writing each log, and its keeper",
     ),

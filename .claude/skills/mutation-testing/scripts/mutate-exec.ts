@@ -8,7 +8,7 @@ import {
 } from "#src/meta/filesystem.ts";
 import { availableParallelism, tmpdir } from "#src/meta/os.ts";
 import { isAbsolute, join, relative } from "#src/meta/path.ts";
-import { capturedExecPath } from "#src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
 import { checkHost, NO_VERDICT, type Place, placeEnv } from "#tools/runs/host-config.ts";
 import { PER_TEST_WALL_MS } from "#tools/runtime/test-suite.ts";
@@ -167,6 +167,11 @@ async function drainProcess(
       (parts) => parts.join(""),
     );
     const code = await run.exited;
+    try {
+      runtimeProcess.kill(-run.pid, "SIGKILL");
+    } catch {
+      // SAFETY: ESRCH means the suite left no process in its group to hold the pipes open
+    }
     const said = await Promise.race([drain, Bun.sleep(200).then(() => "")]);
     return { said, code, signalled: timedOut || run.signalCode !== null };
   } finally {

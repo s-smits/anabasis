@@ -150,6 +150,37 @@ describe("the mutation oracle", () => {
     );
   }, 60_000);
 
+  it("reads a suite that leaves a child holding its output open, killed when it fails and passing unmutated", () => {
+    const tree = join(root, "held-tree");
+    mkdirSync(tree);
+    writeFileSync(join(tree, "h.ts"), "export const past = (x: number) => x > 1;\n");
+    writeFileSync(
+      join(tree, "h.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { past } from "./h.ts";\nit("holds", () => {\n  Bun.spawn(["sleep", "60"], { stdout: "inherit", stderr: "inherit" });\n  expect([past(1), past(2)]).toEqual([false, true]);\n});\n',
+    );
+    const suites = join(root, "held-suites.json");
+    writeFileSync(suites, JSON.stringify({ t: ["h.test.ts"] }));
+    const out = join(root, "held-out.jsonl");
+    const run = runScript(
+      "run",
+      tree,
+      "h.ts",
+      "--out",
+      out,
+      "--suites",
+      suites,
+      "--jobs",
+      "2",
+      "--timeout",
+      "20",
+    );
+    expect(run.exitCode).toBe(0);
+    expect(Object.fromEntries(rowsOf(out).map(({ label, killed }) => [label, killed]))).toStrictEqual({
+      "> -> >=": { t: true },
+      "1 -> 2": { t: true },
+    });
+  }, 60_000);
+
   it("refuses to run mutants when a baseline suite fails or gives no verdict unmutated", () => {
     const tree = join(root, "bad-tree");
     mkdirSync(tree);

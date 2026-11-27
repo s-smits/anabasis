@@ -11,6 +11,7 @@ import { chosenForReference } from "#src/campaign/climb.ts";
 import { type CheckpointRequest, type Judging, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import type { Reader } from "#src/audit/auditor.ts";
+import type { RubricLane } from "#src/examiner/draft.ts";
 import {
   JUDGE_STEP,
   type ObjectiveRule,
@@ -469,6 +470,12 @@ export function crossFamilyVendors(first: string, second: string): boolean {
   const left = modelVendor(first);
   const right = modelVendor(second);
   return left !== null && right !== null && left !== right;
+}
+
+export function rubricLaneOf(reviewer: string | undefined, solver: string | undefined): RubricLane {
+  return reviewer !== undefined && solver !== undefined && crossFamilyVendors(reviewer, solver)
+    ? "judged"
+    : "code-only";
 }
 
 export function assertCrossFamily(reviewer: string, solver: string, prefix = ""): void {

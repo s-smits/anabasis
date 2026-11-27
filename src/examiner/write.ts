@@ -15,7 +15,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
-import { TEXT_FILES } from "./draft.ts";
+import { type RubricLane, TEXT_FILES } from "./draft.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt, wakeMessage } from "./prompt.ts";
 import { taskHistory, measured } from "./record.ts";
 import { readReviews, REVIEW_EVENT_KINDS } from "./reviews.ts";
@@ -34,6 +34,7 @@ interface Terms {
   readonly budget: SolveBudget | null;
   readonly verify: Verifier | null;
   readonly revise?: ReviseRunner | undefined;
+  readonly lane?: RubricLane | undefined;
 }
 
 interface Desk {
@@ -430,7 +431,9 @@ export function writing(
       exampleTool(() => [...writtenTasks(read(desk.request.log, TRACE_KINDS)), ...desk.request.tasks]),
       reviewsTool(desk),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
-      ...(request.revise === undefined ? [] : [readExamTool(request.log), reviseTool(desk, request.revise)]),
+      ...(request.revise === undefined
+        ? []
+        : [readExamTool(request.log), reviseTool(desk, request.revise, request.lane ?? "judged")]),
     ],
     enters: "Nothing in your home enters the exam: a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",

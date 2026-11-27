@@ -33,6 +33,7 @@ import {
   worktreesOf,
 } from "../campaign/campaign.ts";
 import { FORK_OPTIONS, seatForkPlan } from "../campaign/seat-fork.ts";
+import { rubricLaneOf } from "../campaign/round.ts";
 import { keepReading } from "../eval/accept.ts";
 import { draftReading } from "../campaign/exam.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
@@ -158,6 +159,7 @@ export async function draftCommand(
   const defaultAuditor: DraftAuditor | null = session === examine ? reviewDraft : null;
   const auditor: DraftAuditor | null = audit === undefined ? defaultAuditor : audit;
   const auditReader = draftAuditReader(values, opening);
+  const lane = rubricLaneOf(values.reviewer ?? opening?.seats.reviewer?.model, opening?.solver?.model);
   const setting = settingAsked(values, recordedSetting(events));
   const { wallSeconds, modelTurns } = setting.named.limits;
   /** The last entry is the accepted draft's reading. */
@@ -177,6 +179,7 @@ export async function draftCommand(
       id,
       mode: "draft",
       prompt,
+      lane,
       budget: { modelTurns: modelTurns ?? null, minutes: wallSeconds / 60, solves: setting.solves },
       reading: async (draft, home) => {
         const { faults, read: seen } = await draftReading(dirname(log), draft, Number(values.jobs), home);

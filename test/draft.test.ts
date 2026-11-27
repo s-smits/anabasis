@@ -1119,6 +1119,32 @@ describe.concurrent("campaign draft lifecycle", () => {
       },
     };
     expect(draftFaults(judgedDraft)).toEqual([]);
+    expect(draftFaults(judgedDraft, "code-only")[0]).toContain("cross-family judging reviewer");
+    const sameFamilyLog = join(root, "same-family-judge", "log.jsonl");
+    mkdirSync(dirname(sameFamilyLog), { recursive: true });
+    let readings = 0;
+    const codeDesk = drafting(
+      {
+        id: "d-1",
+        log: sameFamilyLog,
+        prompt: "A fixture.",
+        budget: { modelTurns: 10, minutes: 5, solves: 2 },
+        lane: "code-only",
+        limits: { wallSeconds: 60, turns: 10, puts: 2 },
+        reading: async () => {
+          readings += 1;
+          return [];
+        },
+      },
+      async (action) => await action(),
+    );
+    expect(codeDesk.system).toContain("no cross-family judging reviewer");
+    expect(codeDesk.system).not.toContain("pairwise judging");
+    expect(() => invoke(toolOf(codeDesk, "draft_exam"), "call-judge", draftArgs(judgedDraft))).toThrow(
+      'expected "code"',
+    );
+    expect(readings).toBe(0);
+    expect(codeDesk.counted()).toEqual({ tries: 0, stands: false });
 
     const staged = stageExam(join(root, "rubric-stage"), rubricDraft);
     const brief = readPack(staged.bundle).brief;

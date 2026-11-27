@@ -29,6 +29,7 @@ import {
   stayAwake,
 } from "../campaign/campaign.ts";
 import { type RevisionAuditor, revisionRunner } from "../campaign/revise.ts";
+import { rubricLaneOf } from "../campaign/round.ts";
 import { FORK_OPTIONS, seatForkPlan } from "../campaign/seat-fork.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
@@ -74,6 +75,7 @@ export async function examineCommand(
   const model = modelNamed(examiner);
   const forkPlan = seatForkPlan(campaign.log, "exam", model, values);
   const canRevise = values.revise ?? opening?.revise ?? true;
+  const lane = rubricLaneOf(values.reviewer ?? opening?.seats.reviewer?.model, opening?.solver?.model);
   const revise = canRevise
     ? revisionRunner({
         log: campaign.log,
@@ -127,6 +129,7 @@ export async function examineCommand(
       wanted: Number(values.tasks),
       models,
       log: campaign.log,
+      lane,
       ...keyIfDefined("revise", revise),
       ...keyIfDefined("continuation", forkPlan.continuation),
       ...keyIfDefined("kill", kill),

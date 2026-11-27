@@ -621,7 +621,7 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     await harnessBuilder(["--name", name, "--level", "0.125", "--moves", "0"], seats);
   });
 
-  it("lets Examiner choose judged or code-only dynamically on a same-family opening and admits on cross-family resume", async () => {
+  it("gates judged drafting on cross-family seat capability while keeping dynamic lane choice flag-free", async () => {
     const { exam, examples } = draftedOf(SMALL);
     const judgedExam = {
       ...exam,
@@ -654,61 +654,62 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
       "--level",
       "0.125",
     ];
-    const makeSeats = (draft: JsonObject): Seats => ({
+    const crossFamily = [...sameFamily, "--reviewer", "openai-codex/gpt-6.1-sol"];
+    const makeSeats = (...drafts: JsonObject[]): Seats => ({
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, examples, []),
-      draft: (request) => examine({ ...request, ...scripted([["draft_exam", draft]]) }),
+      draft: (request) =>
+        examine({
+          ...request,
+          ...scripted(drafts.map((draft) => ["draft_exam", draft] as const)),
+        }),
     });
 
-    const codeName = `${STEM}-dyn-code`;
-    names.push(codeName);
-    await harnessBuilder(["--name", codeName, ...sameFamily, "--moves", "1"], makeSeats(exam));
-    expect(of(codeName, "contract.frozen")).toHaveLength(1);
-    expect(of(codeName, "checker.read").at(-1)?.faults).toEqual([]);
-
-    const judgeName = `${STEM}-dyn-judge`;
-    names.push(judgeName);
-    const judgeSeats = makeSeats(judgedExam);
-    const paused = await harnessBuilder(["--name", judgeName, ...sameFamily], judgeSeats);
-    expect(paused).toMatchObject({ move: "end", ending: "exam" });
-    expect(of(judgeName, "draft.finished")).toMatchObject([{ session: "d-1", stands: true }]);
-    expect(of(judgeName, "checker.read").at(-1)?.faults).toEqual([containing("--admit-judge")]);
-    expect(of(judgeName, "contract.frozen")).toEqual([]);
-
+    const sameFamilyName = `${STEM}-same-family-mend`;
+    names.push(sameFamilyName);
     await harnessBuilder(
-      ["--name", judgeName, "--reviewer", "openai-codex/gpt-6.1-sol", "--moves", "1"],
-      judgeSeats,
+      ["--name", sameFamilyName, ...sameFamily, "--moves", "1"],
+      makeSeats(judgedExam, exam),
     );
-    expect(of(judgeName, "draft.finished")).toHaveLength(1);
-    expect(of(judgeName, "checker.read").at(-1)?.faults).toEqual([]);
-    expect(of(judgeName, "contract.frozen")).toHaveLength(1);
-    const openCount = of(judgeName, OPENED).length;
+    expect(
+      of(sameFamilyName, "draft.call").some(
+        ({ isError, text }) => isError === true && isString(text) && text.includes('expected "code"'),
+      ),
+    ).toBe(true);
+    expect(of(sameFamilyName, "draft.finished")).toMatchObject([{ session: "d-1", stands: true, tries: 1 }]);
+    expect(of(sameFamilyName, "contract.frozen")).toHaveLength(1);
+    expect(of(sameFamilyName, "checker.read").at(-1)?.faults).toEqual([]);
+
+    const crossCodeName = `${STEM}-cross-code`;
+    names.push(crossCodeName);
+    await harnessBuilder(["--name", crossCodeName, ...crossFamily, "--moves", "1"], makeSeats(exam));
+    expect(of(crossCodeName, "contract.frozen")).toHaveLength(1);
+    expect(of(crossCodeName, "checker.read").at(-1)?.faults).toEqual([]);
+
+    const crossJudgeName = `${STEM}-cross-judge`;
+    names.push(crossJudgeName);
+    await harnessBuilder(["--name", crossJudgeName, ...crossFamily, "--moves", "1"], makeSeats(judgedExam));
+    expect(of(crossJudgeName, "draft.finished")).toMatchObject([{ session: "d-1", stands: true }]);
+    expect(of(crossJudgeName, "checker.read").at(-1)?.faults).toEqual([]);
+    expect(of(crossJudgeName, "contract.frozen")).toHaveLength(1);
+    const openCount = of(crossJudgeName, OPENED).length;
     expect(() =>
       opened(
-        join(REPO, ".ana", "d2", judgeName, LOG_FILE),
-        flagsOf(["--name", judgeName, "--reviewer", "claude/claude-opus-5-5", "--budget", "100"]),
+        join(REPO, ".ana", "d2", crossJudgeName, LOG_FILE),
+        flagsOf(["--name", crossJudgeName, "--reviewer", "claude/claude-opus-5-5", "--budget", "100"]),
         "paid",
       ),
     ).toThrow("another family");
-    expect(of(judgeName, OPENED)).toHaveLength(openCount);
+    expect(of(crossJudgeName, OPENED)).toHaveLength(openCount);
 
     const hitlName = `${STEM}-dyn-hitl`;
     names.push(hitlName);
-    const printed: string[] = [];
-    const logSpy = spyOn(console, "log").mockImplementation((...args: unknown[]) => {
-      printed.push(args.map(String).join(" "));
-    });
-    try {
-      const hitl = await harnessBuilder(
-        ["--name", hitlName, ...sameFamily, "--reviewer", "openai-codex/gpt-6.1-sol", "--hitl"],
-        judgeSeats,
-      );
-      expect(hitl).toMatchObject({ move: "end", ending: "exam" });
-      expect(
-        printed.some((line) => line.includes("accept.ts") && line.includes("--admit-judge --freeze")),
-      ).toBe(true);
-    } finally {
-      logSpy.mockRestore();
-    }
+    const hitl = await harnessBuilder(["--name", hitlName, ...crossFamily, "--hitl"], makeSeats(judgedExam));
+    expect(hitl).toMatchObject({ move: "end", ending: "exam" });
+    expect(of(hitlName, "contract.frozen")).toEqual([]);
+    expect(of(hitlName, "checker.read").at(-1)?.faults).toEqual([
+      containing("--admit check-product"),
+      containing("--admit-judge"),
+    ]);
   });
 
   it("hands over a harness's links as links, and leaves nothing where the copy is not the harness", async () => {

@@ -26,7 +26,7 @@ import {
 } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitOutput } from "#src/meta/git.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { checkPlaces, fleetPlaces, hostsFor, namedPlaces, type Place } from "#tools/runs/host-config.ts";
 import * as ts from "typescript5";
@@ -476,7 +476,6 @@ function buildPoolTasks(opts: {
 }
 
 async function dispatchRemaining(opts: {
-  readonly args: CommandArgs;
   readonly root: string;
   readonly pool: ReturnType<typeof workersFor>;
   readonly afterSchema: readonly PendingItem[];
@@ -492,7 +491,7 @@ async function dispatchRemaining(opts: {
   readonly seconds: number;
   readonly deadline: number;
   readonly record: (item: TargetItem, killed: VerdictMap) => void;
-}): Promise<number> {
+}): Promise<{ readonly unrun: number; readonly fatal: string | null }> {
   const needed = new Set(opts.afterSchema.flatMap(({ rest }) => rest));
   const covSuites = new Map(
     [...opts.allSuites.entries()].filter(([name]) => needed.has(name) && !opts.localQualified.has(name)),
@@ -552,7 +551,7 @@ async function dispatchRemaining(opts: {
     mode: opts.mode,
     record: opts.record,
   });
-  if (tasks.length === 0) return 0;
+  if (tasks.length === 0) return { unrun: 0, fatal: null };
   const byId = new Map(opts.afterSchema.map(({ item }) => [item.mutant.id, item] as const));
   const finalStayLocal = localSlots > 0 && tasks.length <= localSlots;
   const finalWorkers = pickWorkers(finalStayLocal ? "local" : "fleet");
@@ -576,9 +575,61 @@ async function dispatchRemaining(opts: {
       }
     },
   });
-  if (refused.length >= (finalStayLocal ? 1 : opts.pool.places.length)) opts.args.die(refused.join("\n"));
+  if (refused.length >= (finalStayLocal ? 1 : opts.pool.places.length)) {
+    return { unrun, fatal: refused.join("\n") };
+  }
   for (const why of refused) console.error(`${why}; it takes no mutants`);
-  return unrun;
+  return { unrun, fatal: null };
+}
+
+const TYPE_ERROR_RE = /error TS(\d+):/gu;
+const UNUSED_TS_CODES = new Set(["6133", "6196"]);
+
+function hasRealTypeError(output: string): boolean {
+  for (const [, code] of output.matchAll(TYPE_ERROR_RE)) {
+    if (code !== undefined && !UNUSED_TS_CODES.has(code)) return true;
+  }
+  return false;
+}
+
+const isSurvivor = (killed: VerdictMap): boolean => {
+  const verdicts = Object.values(killed);
+  return verdicts.length > 0 && verdicts.every((one) => one === false);
+};
+
+async function typecheckSurvivors(
+  root: string,
+  clone: string,
+  originals: ReadonlyMap<string, string>,
+  survivors: readonly { readonly item: TargetItem; readonly killed: VerdictMap }[],
+): Promise<readonly { readonly item: TargetItem; readonly killed: VerdictMap }[]> {
+  if (survivors.length === 0 || !existsSync(join(root, "tsconfig.json"))) return survivors;
+  const check = () =>
+    Bun.spawnSync([capturedExecPath, "check"], {
+      cwd: clone,
+      env: { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  try {
+    await cloneTree(root, clone);
+    linkModules(root, clone, "local");
+    if (check().exitCode !== 0) return survivors;
+    return survivors.map(({ item, killed }) => {
+      const orig = originals.get(item.mutant.file);
+      if (orig === undefined) return { item, killed };
+      const full = join(clone, item.mutant.file);
+      writeFileSync(full, orig.slice(0, item.mutant.start) + item.mutant.text + orig.slice(item.mutant.end));
+      const ran = check();
+      writeFileSync(full, orig);
+      const out = `${ran.stdout.toString()}${ran.stderr.toString()}`;
+      return ran.exitCode !== 0 && hasRealTypeError(out)
+        ? { item, killed: { ...killed, typecheck: true } }
+        : { item, killed };
+    });
+  } finally {
+    rmSync(clone, { recursive: true, force: true });
+  }
 }
 
 async function runMutants(args: CommandArgs, root: string, files: readonly string[]): Promise<void> {
@@ -599,17 +650,18 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
     const known = hostsFor(root);
     if (known.length > 0) runtimeProcess.env.ANA_HOSTS = JSON.stringify(known);
   }
-  const pool = workersFor(
-    args,
-    root,
-    args.value("clones") ?? specs[0]?.out ?? join(root, ".ana-mutate"),
-    originals,
-  );
+  const clonePrefix = args.value("clones") ?? specs[0]?.out ?? join(root, ".ana-mutate");
+  const pool = workersFor(args, root, clonePrefix, originals);
   let read = 0;
-  const record = (item: TargetItem, killed: VerdictMap) => {
+  const pendingSurvivors: { readonly item: TargetItem; readonly killed: VerdictMap }[] = [];
+  const writeRow = (item: TargetItem, killed: VerdictMap) => {
     const { id, file, line, label } = item.mutant;
     appendFileSync(item.out, `${JSON.stringify({ id, file, line, label, killed })}\n`);
     read += 1;
+  };
+  const record = (item: TargetItem, killed: VerdictMap) => {
+    if (isSurvivor(killed)) pendingSurvivors.push({ item, killed });
+    else writeRow(item, killed);
   };
   const localCount = pool.workers.filter((seat) => !isAway(seat)).length;
   const useSchemata = prune && stopAtKill && localCount > 0 && Date.now() < deadline;
@@ -629,11 +681,10 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
         durations: new Map<string, number>(),
       };
   const afterSchema = splitAfterSchema(todo, schema.priorById, mode, record);
-  const left =
+  const { unrun: left, fatal } =
     afterSchema.length === 0
-      ? 0
+      ? { unrun: 0, fatal: null }
       : await dispatchRemaining({
-          args,
           root,
           pool,
           afterSchema,
@@ -650,6 +701,9 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
           deadline,
           record,
         });
+  const checked = await typecheckSurvivors(root, `${clonePrefix}.typecheck`, originals, pendingSurvivors);
+  for (const { item, killed } of checked) writeRow(item, killed);
+  if (fatal !== null) args.die(fatal);
   console.log(`${String(read)} mutants run, ${String(heldBefore)} held before`);
   if (left > 0) {
     const why =

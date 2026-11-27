@@ -29,6 +29,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { draftCommand } from "../tools/eval/draft.ts";
+import type { DraftAuditCase, DraftAuditFinding } from "../src/audit/draft-audit.ts";
+import type { Reader } from "../src/audit/auditor.ts";
 import { taskContentDigest } from "../src/audit/probe.ts";
 import { campaignLog, openCampaign, packNamed } from "../tools/campaign/campaign.ts";
 import { draftReading, stagedExamOf, stageExam } from "../tools/campaign/exam.ts";
@@ -54,6 +56,23 @@ const SOLVER = "claude/claude-opus-5-5";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-")));
 const STEM = `test-draft-${String(runtimeProcess.pid)}`;
 const campaigns: string[] = [];
+
+const referee =
+  (audit: (target: DraftAuditCase, reader: Reader) => DraftAuditFinding) =>
+  async (reader: Reader, target: DraftAuditCase): Promise<DraftAuditFinding> => {
+    const result = audit(target, reader);
+    append(target.log, "referee.draft", {
+      session: target.session,
+      pass: target.pass ?? 1,
+      ...keyIfDefined("revision", target.revision),
+      verdict: result.verdict,
+      findings: result.findings,
+      summary: result.summary,
+      probeRows: result.probes,
+      ...keyIfDefined("error", result.error),
+    });
+    return result;
+  };
 
 const SILENT = SOUND;
 const withTools = (tools: readonly string[]): Draft => ({
@@ -810,10 +829,7 @@ describe.concurrent("campaign draft lifecycle", () => {
       draftCommand(
         [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
         putting(SOUND),
-        async () => {
-          append(campaignLog(name), "referee.draft", { session: "d-1", pass: 1, verdict: "skipped", error });
-          return { verdict: "skipped", findings: [], summary: error, probes: [], error };
-        },
+        referee(() => ({ verdict: "skipped", findings: [], summary: error, probes: [], error })),
       );
     const [refused, limited] = [`${STEM}-audit-refused`, `${STEM}-audit-limited`];
     await Promise.all([
@@ -871,7 +887,7 @@ describe.concurrent("campaign draft lifecycle", () => {
         // the second hole passes replay and audit 2 flags it; its repeat is blocked by replay past
         // `MAX_DRAFT_AUDITS`; SOUND stands.
         putting(holeOne, holeOne, holeTwo, holeTwo, SOUND),
-        async (_reader, target) => {
+        referee((target) => {
           replayCalls.push({
             pass: target.pass,
             verifiedFixed: target.verifiedFixed,
@@ -884,7 +900,7 @@ describe.concurrent("campaign draft lifecycle", () => {
             summary: `${hole} vacuous`,
             probes: [probeRow(hole)],
           };
-        },
+        }),
       ),
       draftCommand(
         [
@@ -895,7 +911,7 @@ describe.concurrent("campaign draft lifecycle", () => {
           "high",
         ],
         putting(SOUND, SOUND, SOUND, SOUND),
-        async (reader, target) => {
+        referee((target, reader) => {
           seenPasses.push({ effort: reader.effort, pass: target.pass, prior: target.priorFindings });
           return {
             verdict: "defects",
@@ -903,7 +919,7 @@ describe.concurrent("campaign draft lifecycle", () => {
             summary: "vacuous check",
             probes: [],
           };
-        },
+        }),
       ),
       (async () => {
         const name = `${STEM}-audit-sound`;
@@ -911,10 +927,10 @@ describe.concurrent("campaign draft lifecycle", () => {
         await draftCommand(
           [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
           putting(SOUND),
-          async () => {
+          referee(() => {
             calls += 1;
             return { verdict: "sound", findings: [], summary: "sound", probes: [] };
-          },
+          }),
         );
         expect(calls).toBe(1);
         expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
@@ -999,10 +1015,10 @@ describe.concurrent("campaign draft lifecycle", () => {
     await draftCommand(
       [...restartArgs, "--session", "d-2", "--tries", "2"],
       putting(holeTwo, SOUND),
-      async () => {
+      referee(() => {
         restartAudits += 1;
         return { verdict: "sound", findings: [], summary: "should not run", probes: [] };
-      },
+      }),
     );
     expect(restartAudits).toBe(0);
     expect(draftOf(read(restartLog))).toEqual(SOUND);
@@ -1026,12 +1042,11 @@ describe.concurrent("campaign draft lifecycle", () => {
         probeRows: [],
       });
     }
-    await draftCommand([...unverifiedArgs, "--session", "d-2", "--tries", "1"], putting(SOUND), async () => ({
-      verdict: "sound",
-      findings: [],
-      summary: "should not run",
-      probes: [],
-    }));
+    await draftCommand(
+      [...unverifiedArgs, "--session", "d-2", "--tries", "1"],
+      putting(SOUND),
+      referee(() => ({ verdict: "sound", findings: [], summary: "should not run", probes: [] })),
+    );
     expect(draftOf(read(unverifiedLog))).toBeNull();
 
     const rewriteName = `${STEM}-audit-unverified-pass`;
@@ -1113,7 +1128,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     const deletedRun = await draftCommand(
       [...opened(deletedName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "4"],
       putting(fourExamples, reorderedFour, holeOne, SOUND),
-      async () => {
+      referee(() => {
         deletedAuditCalls += 1;
         return {
           verdict: "defects",
@@ -1121,7 +1136,7 @@ describe.concurrent("campaign draft lifecycle", () => {
           summary: "vacuous on ex-004",
           probes: [probeFour],
         };
-      },
+      }),
     );
     expect(deletedRun).toMatchObject({ ended: "finished", puts: 4 });
     expect(deletedAuditCalls).toBe(1);

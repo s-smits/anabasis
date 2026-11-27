@@ -66,64 +66,57 @@ type DraftSeen = NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
 
 /** Replays prior defect probes at no model cost before spending an audit pass, and still replays
  *  them past `MAX_DRAFT_AUDITS`. */
-function draftAuditGate(given: {
-  readonly session: string;
-  readonly prompt: string;
-  readonly log: string;
-  readonly auditor: DraftAuditor | null;
-  readonly reader: Reader | null;
-}) {
-  const seeded = persistedDraftDefects(read(given.log, TRACE_KINDS));
-  let audits = seeded.audits;
-  const priorReviews = [...seeded.prior];
-  return async (seen: DraftSeen): Promise<readonly string[]> => {
-    const verifiedFixed: string[] = [];
-    const unverified: string[] = [];
-    for (const prior of priorReviews) {
-      const replay = await replayDraftProbes(prior, {
-        contract: seen.contract,
-        verify: seen.verify,
-        tasks: seen.tasks,
-        controls: seen.controls,
-      });
-      if (replay.stillBroken.length > 0) return replay.stillBroken;
-      verifiedFixed.push(...replay.verifiedFixed);
-      unverified.push(...replay.unverified);
-    }
-    const cap = unverified.length > 0 ? MAX_DRAFT_AUDITS + 1 : MAX_DRAFT_AUDITS;
-    if (audits >= cap) {
-      return unverified.map(
-        (finding) => `${finding} (prior defect probe could not be verified fixed after the audit cap)`,
-      );
-    }
-    if (given.auditor === null || given.reader === null) return [];
-    const review = await given.auditor(given.reader, {
-      session: given.session,
-      pass: audits + 1,
-      prompt: given.prompt,
+async function auditDraft(
+  given: {
+    readonly session: string;
+    readonly prompt: string;
+    readonly log: string;
+    readonly auditor: DraftAuditor | null;
+    readonly reader: Reader | null;
+  },
+  seen: DraftSeen,
+): Promise<readonly string[]> {
+  const { audits, prior } = persistedDraftDefects(read(given.log, TRACE_KINDS));
+  const verifiedFixed: string[] = [];
+  const unverified: string[] = [];
+  for (const review of prior) {
+    const replay = await replayDraftProbes(review, {
       contract: seen.contract,
-      checks: seen.checks,
       verify: seen.verify,
       tasks: seen.tasks,
       controls: seen.controls,
-      notes: seen.reading.notes,
-      priorFindings: unverified,
-      verifiedFixed,
-      log: given.log,
     });
-    if (review.verdict === "skipped") {
-      return review.error === undefined
-        ? [`independent check audit recorded no verdict (${review.summary}); submit the draft again to retry`]
-        : [];
-    }
-    if (review.verdict !== "defects" || review.findings.length === 0) {
-      priorReviews.length = 0;
-      return [];
-    }
-    audits += 1;
-    priorReviews.push(review);
-    return review.findings.map(formatDraftFinding);
-  };
+    if (replay.stillBroken.length > 0) return replay.stillBroken;
+    verifiedFixed.push(...replay.verifiedFixed);
+    unverified.push(...replay.unverified);
+  }
+  const cap = unverified.length > 0 ? MAX_DRAFT_AUDITS + 1 : MAX_DRAFT_AUDITS;
+  if (audits >= cap) {
+    return unverified.map(
+      (finding) => `${finding} (prior defect probe could not be verified fixed after the audit cap)`,
+    );
+  }
+  if (given.auditor === null || given.reader === null) return [];
+  const review = await given.auditor(given.reader, {
+    session: given.session,
+    pass: audits + 1,
+    prompt: given.prompt,
+    contract: seen.contract,
+    checks: seen.checks,
+    verify: seen.verify,
+    tasks: seen.tasks,
+    controls: seen.controls,
+    notes: seen.reading.notes,
+    priorFindings: unverified,
+    verifiedFixed,
+    log: given.log,
+  });
+  if (review.verdict === "skipped" && review.error === undefined) {
+    return [
+      `independent check audit recorded no verdict (${review.summary}); submit the draft again to retry`,
+    ];
+  }
+  return review.verdict === "defects" ? review.findings.map(formatDraftFinding) : [];
 }
 
 function draftAuditReader(
@@ -170,7 +163,7 @@ export async function draftCommand(
   const { wallSeconds, modelTurns } = setting.named.limits;
   /** The last entry is the accepted draft's reading. */
   const readings: (DraftSeen | undefined)[] = [];
-  const auditClean = draftAuditGate({ session: id, prompt, log, auditor, reader: auditReader });
+  const gate = { session: id, prompt, log, auditor, reader: auditReader };
   const model = modelNamed(examiner);
   const forkPlan = seatForkPlan(log, "draft", model, values);
   const models = hostSession({
@@ -190,7 +183,7 @@ export async function draftCommand(
       reading: async (draft, home) => {
         const { faults, read: seen } = await draftReading(dirname(log), draft, Number(values.jobs), home);
         readings.push(seen);
-        return faults.length > 0 || seen === undefined ? faults : await auditClean(seen);
+        return faults.length > 0 || seen === undefined ? faults : await auditDraft(gate, seen);
       },
       model,
       // SAFETY: effort is a pi thinking level; unsupported values are rejected by the backend.

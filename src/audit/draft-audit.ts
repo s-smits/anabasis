@@ -140,14 +140,27 @@ function refusal(
 ): string | null {
   if (args.verdict === "sound") {
     if (args.findings.length > 0) return "a sound verdict carries no defect findings";
-    if (
-      objective !== undefined &&
-      !rows.some((row) => {
+    if (objective !== undefined) {
+      const moved = rows.some((row) => {
         const [before, after] = [objectiveOf(row.original), objectiveOf(row.changed)];
         return conclusive(row) && before !== null && after !== null && after !== before;
-      })
-    ) {
-      return "sound on an exam with an objective requires at least one passing probe whose perturbation changes the objective value";
+      });
+      if (!moved) {
+        return "sound on an exam with an objective requires at least one passing probe whose perturbation changes the objective value";
+      }
+      const codeItems = objective.items ?? [];
+      if (codeItems.length > 1) {
+        const untouched = codeItems.filter(
+          ({ id }) =>
+            !rows.some((row) => {
+              const [before, after] = [ownScore(row.original, id), ownScore(row.changed, id)];
+              return conclusive(row) && before !== undefined && after !== undefined && after !== before;
+            }),
+        );
+        if (untouched.length > 0) {
+          return `sound on a multi-item code rubric requires a passing probe that changes each code item; untouched: ${untouched.map(({ id }) => id).join(", ")}`;
+        }
+      }
     }
     return null;
   }

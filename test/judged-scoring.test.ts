@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  informative,
   JUDGE_STEP,
   judgedGain,
   judgedPairs,
@@ -118,5 +119,22 @@ describe("judged points", () => {
       judge: 2,
       step: 0.4,
     });
+  });
+
+  it("treats all-tied judged pairs as non-informative while keeping split or unjudged pairs open", () => {
+    const allValid: Paired = {
+      task: "t-tie",
+      fresh: [true],
+      old: [true],
+      objective: { direction: "higher", scale: "unit", fresh: [0.8], old: [0.8] },
+    };
+    const tied = { ...allValid, judged: { weights: { code: 9, judge: 1 }, votes: [vote(0, 0)] } };
+    const missingVote = { ...allValid, judged: { weights: { code: 9, judge: 1 }, votes: [] } };
+    const split = { ...allValid, judged: { weights: { code: 9, judge: 1 }, votes: [vote(0.5, 0)] } };
+    const holisticSplit = { ...allValid, judged: { weights: { code: 9, judge: 1 }, votes: [vote(0, -1)] } };
+    expect(informative(tied, "old", new Set(), new Map([["t-tie", 0.8]]))).toBe(false);
+    expect(informative(missingVote, "old", new Set(), new Map([["t-tie", 0.8]]))).toBe(true);
+    expect(informative(split, "old", new Set(), new Map([["t-tie", 0.8]]))).toBe(true);
+    expect(informative(holisticSplit, "old", new Set(), new Map([["t-tie", 0.8]]))).toBe(true);
   });
 });

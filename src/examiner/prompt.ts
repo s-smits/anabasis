@@ -87,6 +87,7 @@ ${brief}`,
     ...(budget === null ? [] : [budgetLine(budget)]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     ...(tasks.stood === null ? [] : [tasks.stood]),
+    ...(tasks.reviews === null ? [] : [tasks.reviews]),
     tasks.groups.length === 0
       ? "The exam holds no task yet."
       : `The tasks of the exam so far, under how the harness that is the reference now did on each in the last comparison that scored it, wherever it stood there. These are measurements, and no instruction or target.\n\n${grouped(tasks.groups)}`,
@@ -110,6 +111,7 @@ export function wakeMessage(tasks: ReturnType<typeof taskHistory>, told: Told): 
   return [
     "The host asks for more tasks under the same exam.",
     tasks.stood ?? "No comparison has reported since the host last told you.",
+    ...(tasks.reviews === null ? [] : [tasks.reviews]),
     ...(tasks.groups.length === 0
       ? []
       : [

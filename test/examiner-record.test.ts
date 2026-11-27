@@ -479,7 +479,7 @@ describe("a wake", () => {
     expect(lines).toEqual(taskHistory(log.events, [fixture("run")]).groups.flatMap((group) => group.lines));
     expect(lines[0]).toEndWith("; ruled at fault on an answer to it: check-unit");
     const quiet = taskHistory(log.events, tasks, log.events.length);
-    expect(quiet).toEqual({ stood: null, groups: [], promoted: null, refused: [] });
+    expect(quiet).toEqual({ stood: null, reviews: null, groups: [], promoted: null, refused: [] });
   });
 });
 
@@ -494,6 +494,7 @@ describe("a resumed comparison at a wake", () => {
     log.reported("b-1", ["h1", "h2"], ["run"]);
     expect(taskHistory(log.events, [fixture("run")], since)).toEqual({
       stood: null,
+      reviews: null,
       groups: [],
       promoted: null,
       refused: [],

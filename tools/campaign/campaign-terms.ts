@@ -10,20 +10,12 @@ import { supplyRun, tasksToAskFor } from "#src/campaign/scheduler.ts";
 import { comparisonsOf, cutShort, type Plan } from "#src/campaign/state.ts";
 import { type ScheduledAction, short } from "#src/campaign/move.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, TERMS } from "#src/campaign/opening.ts";
-import { ANSWERED, type ControlSignal } from "#src/campaign/signal.ts";
+import type { ControlSignal } from "#src/campaign/signal.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { hasJudge } from "#src/kernel/contract.ts";
-import {
-  append,
-  CALL_KINDS,
-  eachEvent,
-  eventsOf,
-  type LogEvent,
-  read,
-  TRACE_KINDS,
-} from "#src/kernel/log.ts";
+import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { latestBuilt, PATIENCE, referenceOf } from "#src/kernel/reports.ts";
 import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -546,17 +538,8 @@ export function comparisonOf(decided: CompareMove, turn: Turn) {
 }
 
 function readForTurn(log: string): LogEvent[] {
-  const events: LogEvent[] = [];
-  let worded = false;
-  eachEvent(
-    log,
-    (event) => {
-      events.push(event);
-      worded ||= event.kind === "campaign.word" && ANSWERED.some((word) => word === event.data.word);
-    },
-    CALL_KINDS,
-  );
-  return worded ? read(log) : events;
+  const events = read(log, CALL_KINDS);
+  return events.some(({ kind }) => kind === "campaign.word") ? read(log) : events;
 }
 
 export function turnOf(source: TurnSource): Turn {

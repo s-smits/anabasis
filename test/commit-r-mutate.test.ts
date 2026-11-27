@@ -963,4 +963,45 @@ describe("nightly mutation suite selection", () => {
       "src/has space.ts": [1],
     });
   });
+
+  it("marks surviving real type errors killed by typecheck while leaving TS6133-only mutants survived", () => {
+    const tree = join(root, "typecheck-tree");
+    mkdirSync(tree, { recursive: true });
+    writeFileSync(
+      join(tree, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { strict: true, noUnusedLocals: true, noEmit: true },
+        exclude: ["*.test.ts"],
+      }),
+    );
+    writeFileSync(
+      join(tree, "a.ts"),
+      [
+        "export function narrowed(x: number | null): number {",
+        "  if (x === null) return 0;",
+        "  return x + 1;",
+        "}",
+        "export function unusedLocal(): number {",
+        "  const flag = true;",
+        "  if (flag) return 1;",
+        "  return 2;",
+        "}",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(tree, "a.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { narrowed } from "./a.ts";\nit("passes on non-null", () => expect(narrowed(1)).toBe(2));\n',
+    );
+    const suites = join(root, "typecheck-suites.json");
+    writeFileSync(suites, JSON.stringify({ t: ["a.test.ts"] }));
+    const out = join(root, "typecheck-out.jsonl");
+    const run = runScript("run", tree, "a.ts", "--out", out, "--suites", suites, "--jobs", "1");
+    expect(run.exitCode).toBe(0);
+    const rows = rowsOf(out);
+    const narrowedDelete = rows.find((row) => row.line === 2 && row.label === "delete if");
+    const unusedDelete = rows.find((row) => row.line === 7 && row.label === "delete if");
+    expect(narrowedDelete?.killed.typecheck).toBe(true);
+    expect(unusedDelete?.killed.t).toBe(false);
+    expect(unusedDelete?.killed.typecheck).toBeUndefined();
+  }, 60_000);
 });

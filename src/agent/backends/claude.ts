@@ -439,7 +439,7 @@ async function readMessages(
     const next = await heard(key, session);
     if (next.done === true) throw new Error("Claude Code ended the query without a result");
     const message = next.value;
-    if ("session_id" in message && isString(message.session_id)) session.sdkSessionId = message.session_id;
+    if (isString(message.session_id)) session.sdkSessionId = message.session_id;
     if (message.type === "assistant" && message.parent_tool_use_id === null) take(message, model, turn);
     else if (message.type === "system" && message.subtype === "compact_boundary") {
       const { pre_tokens: tokensBefore, duration_ms: ms } = message.compact_metadata;

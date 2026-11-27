@@ -524,7 +524,7 @@ export function practiceDue(
   const count = releases.length;
   const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   let nonFrontier = 0;
-  if (count > 0) {
+  if (count !== 0) {
     const beforeSince = events.slice(0, since + 1);
     const heldAtSince = new Set(taskSets(beforeSince).held);
     const frontierAtSince = new Set(poolOf(beforeSince).practiceFrontier);

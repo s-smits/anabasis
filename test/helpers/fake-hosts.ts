@@ -194,11 +194,8 @@ export function fakeNice(root: string): void {
 export const startsOf = (recorded: readonly { tool: string; args: string[] }[]): number =>
   recorded.filter(({ tool, args }) => tool === "nice" && args[1] === "19").length;
 
-export async function reapKeepers(out: string): Promise<number> {
+export function reapKeepers(out: string): number {
   const pids = [...out.matchAll(/kept by pid (\d+)/gu)].map(([, pid]) => Number(pid));
-  for (const pid of pids) {
-    for (let look = 0; look < 100 && processAnswers(pid); look += 1) await Bun.sleep(100);
-    if (processAnswers(pid)) runtimeProcess.kill(pid, "SIGKILL");
-  }
+  for (const pid of pids) if (processAnswers(pid)) runtimeProcess.kill(pid, "SIGKILL");
   return pids.length;
 }

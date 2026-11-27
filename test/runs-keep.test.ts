@@ -442,7 +442,11 @@ const log = ${JSON.stringify(log)};
 if (process.argv.includes("--dry-run")) opened(log, flagsOf(process.argv.slice(2)), "scripted");
 else {
   // It finishes a solve only once paused by a word, however long a loaded host takes to write one.
-  while (!readFileSync(log, "utf8").includes("campaign.word")) await Bun.sleep(100);
+  const until = Date.now() + 60_000;
+  while (!readFileSync(log, "utf8").includes("campaign.word")) {
+    if (Date.now() > until) process.exit(1);
+    await Bun.sleep(100);
+  }
   appendFileSync(log, JSON.stringify({ at: new Date().toISOString(), kind: "solve.finished", data: { solve: "s-1" } }) + "\\n");
   await Bun.sleep(3000);
 }
@@ -528,7 +532,7 @@ describe.concurrent("a keeper handing off to a revised exam's successor", () => 
       'import { keep } from "REPOSITORY/tools/runs/keep.ts"; await keep(["sample", "--here"]); process.exit();',
       { ANA_LOGINS: "", CLAUDE_CODE_OAUTH_TOKEN: "a" },
     );
-    return { starts: startsOf(made.recorded()), keepers: await reapKeepers(result.out) };
+    return { starts: startsOf(made.recorded()), keepers: reapKeepers(result.out) };
   }
 
   it("starts and keeps the successor while it has moves left, and leaves one with none unstarted", async () => {

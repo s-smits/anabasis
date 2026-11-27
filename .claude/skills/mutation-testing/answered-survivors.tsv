@@ -1,4 +1,5 @@
 path	label	source	kind	reason
+tools/oxlint/staged-slop.ts	delete if	if (staged.length === 0) return new Map();	equivalent	with nothing staged changedLines runs but its result is mapped over the empty staged list, so the Map is empty either way; the guard only skips work
 tools/runs/pulse.ts	=== -> !==	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	presentation	advisory watch filter only chooses which runs pulse prints; no decision reads it
 tools/runs/pulse.ts	- -> +	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	presentation	advisory recency of closed runs in pulse output; no decision reads it
 tools/runs/pulse.ts	0 -> 1	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	equivalent	missing log has no mtime and readLog returns null so the run is dropped whatever age is computed

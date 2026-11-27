@@ -17,7 +17,13 @@ afterAll(() => {
   for (const each of sleepers) each.kill();
 });
 function sleeper(cwd = ".") {
-  const child = capturedSpawn(["sleep", "60"], { detached: true, cwd });
+  const child = capturedSpawn(["sleep", "60"], {
+    detached: true,
+    cwd,
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  });
   sleepers.push(child);
   return child;
 }
@@ -271,7 +277,7 @@ describe("going on with a run that may already be written or kept", () => {
         [`${KEY}3`]: "c",
       },
     );
-    return { code: result.code, starts: startsOf(made.recorded()), keepers: await reapKeepers(result.out) };
+    return { code: result.code, starts: startsOf(made.recorded()), keepers: reapKeepers(result.out) };
   }
 
   it("starts no second writer, and leaves one keeper only on a live run that names a login with another to move to", async () => {

@@ -9,7 +9,7 @@ import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { unaudited } from "#src/campaign/scheduler.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
-import { read } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { nonRetryableProvider } from "#src/kernel/solve.ts";
 import {
   type DraftAuditCase,
@@ -62,6 +62,30 @@ const OPTIONS = {
 
 type DraftSeen = NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
 
+function persistedDefects(events: readonly LogEvent[]): {
+  readonly audits: number;
+  readonly prior: DraftAuditFinding[];
+} {
+  const logged = eventsOf(events, "referee.draft").filter(
+    ({ event: { data } }) => !isString(data.revision) && data.verdict === "defects",
+  );
+  const prior: DraftAuditFinding[] = [];
+  for (const {
+    event: { data },
+  } of logged) {
+    if (!Array.isArray(data.findings) || data.findings.length === 0) continue;
+    prior.push({
+      verdict: "defects",
+      // SAFETY: `referee.draft` findings and probeRows are written by `reviewDraft` in `src/audit/draft-audit.ts`.
+      findings: data.findings as DraftAuditFinding["findings"],
+      summary: isString(data.summary) ? data.summary : "",
+      // SAFETY: as above.
+      probes: Array.isArray(data.probeRows) ? (data.probeRows as DraftAuditFinding["probes"]) : [],
+    });
+  }
+  return { audits: logged.length, prior };
+}
+
 /** Replays prior defect probes at no model cost before spending an audit pass, and still replays
  *  them past `MAX_DRAFT_AUDITS`. */
 function draftAuditGate(given: {
@@ -71,8 +95,9 @@ function draftAuditGate(given: {
   readonly auditor: DraftAuditor | null;
   readonly reader: Reader | null;
 }) {
-  let audits = 0;
-  const priorReviews: DraftAuditFinding[] = [];
+  const seeded = persistedDefects(read(given.log, TRACE_KINDS));
+  let audits = seeded.audits;
+  const priorReviews = [...seeded.prior];
   return async (seen: DraftSeen): Promise<readonly string[]> => {
     const verifiedFixed: string[] = [];
     const unverified: string[] = [];
@@ -87,11 +112,15 @@ function draftAuditGate(given: {
       verifiedFixed.push(...replay.verifiedFixed);
       unverified.push(...replay.unverified);
     }
-    if (audits >= MAX_DRAFT_AUDITS || given.auditor === null || given.reader === null) return [];
-    audits += 1;
+    if (audits >= MAX_DRAFT_AUDITS) {
+      return unverified.map(
+        (finding) => `${finding} (prior defect probe could not be verified fixed after the audit cap)`,
+      );
+    }
+    if (given.auditor === null || given.reader === null) return [];
     const review = await given.auditor(given.reader, {
       session: given.session,
-      pass: audits,
+      pass: audits + 1,
       prompt: given.prompt,
       contract: seen.contract,
       checks: seen.checks,
@@ -107,6 +136,7 @@ function draftAuditGate(given: {
       priorReviews.length = 0;
       return [];
     }
+    audits += 1;
     priorReviews.push(review);
     return review.findings.map(formatDraftFinding);
   };

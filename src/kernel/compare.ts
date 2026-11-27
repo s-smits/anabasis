@@ -222,6 +222,15 @@ export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
   return { direction, ...keyIfDefined("scale", scale === "unit" ? "unit" : undefined) };
 }
 
+function judgedOpen(pair: Paired): boolean {
+  if (pair.judged === undefined) return false;
+  const expected = Math.min(pair.old.filter(Boolean).length, pair.fresh.filter(Boolean).length);
+  return (
+    pair.judged.votes.length < expected ||
+    pair.judged.votes.some(({ judge, holistic }) => judge !== 0 || holistic !== 0)
+  );
+}
+
 export function informative(
   pair: Paired,
   side: "old" | "fresh",
@@ -230,7 +239,7 @@ export function informative(
 ): boolean {
   const valid = pair[side].filter(Boolean).length;
   if (valid === 0) return knownValidAnswers.has(pair.task);
-  if (valid < pair[side].length || pair.judged !== undefined) return true;
+  if (valid < pair[side].length || judgedOpen(pair)) return true;
   const other = pair.objective?.[side === "old" ? "fresh" : "old"] ?? [];
   return gapAgainst(pair, side, [...other, bests.get(pair.task) ?? null]);
 }

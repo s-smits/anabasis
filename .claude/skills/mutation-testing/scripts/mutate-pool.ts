@@ -57,6 +57,7 @@ function pullRemoteBatch(
   pending: PoolTask[],
   opts: {
     readonly cap: number;
+    readonly activeHosts: number;
     readonly doneKeys: ReadonlySet<string>;
     readonly doneQualify: ReadonlySet<string>;
     readonly badSuites: ReadonlySet<string>;
@@ -81,8 +82,9 @@ function pullRemoteBatch(
   const ranked = [...groups.entries()]
     .map(([key, group]) => ({ group, score: group.weight * (opts.doneQualify.has(key) ? 1.5 : 1) }))
     .toSorted((a, b) => b.score - a.score);
-  const maxItems = Math.max(1, Math.min(opts.cap, Math.max(16, Math.ceil(eligibleCount / 2))));
-  const minItems = Math.min(maxItems, Math.max(8, Math.min(24, Math.ceil(eligibleCount / 4))));
+  const share = Math.max(2, Math.ceil(eligibleCount / Math.max(1, opts.activeHosts)));
+  const maxItems = Math.max(1, Math.min(opts.cap, share));
+  const minItems = Math.min(maxItems, Math.max(2, Math.min(12, Math.ceil(share / 2))));
   const batch: PoolTask[] = [];
   const chosen = new Set<string>();
   let totalMs = 0;
@@ -100,6 +102,39 @@ function pullRemoteBatch(
   pending.length = 0;
   pending.push(...rest);
   return batch;
+}
+
+function pullRemoteHedge(
+  inFlight: ReadonlyMap<string, PoolTask>,
+  inFlightHost: ReadonlyMap<string, string>,
+  opts: {
+    readonly hostKey: string;
+    readonly cap: number;
+    readonly doneKeys: ReadonlySet<string>;
+    readonly hedged: Set<string>;
+    readonly badSuites: ReadonlySet<string>;
+    readonly order: (plan: BatchPlan) => BatchPlan;
+  },
+): PoolTask[] {
+  const byOwner = new Map<string, { tasks: PoolTask[]; weight: number }>();
+  for (const [key, task] of inFlight) {
+    const owner = inFlightHost.get(key);
+    if (owner === undefined || owner === opts.hostKey) continue;
+    if (opts.doneKeys.has(key) || opts.hedged.has(key)) continue;
+    if (task.plan.active.some((suite) => opts.badSuites.has(suite))) continue;
+    const cur = byOwner.get(owner) ?? { tasks: [], weight: 0 };
+    cur.tasks.push({ ...task, plan: opts.order(task.plan) });
+    cur.weight += task.weightMs;
+    byOwner.set(owner, cur);
+  }
+  const donor = [...byOwner.values()].toSorted(
+    (a, b) => b.weight - a.weight || b.tasks.length - a.tasks.length,
+  )[0];
+  if (donor === undefined || donor.tasks.length < 2) return [];
+  const take = Math.min(opts.cap, Math.max(1, Math.floor(donor.tasks.length / 2)));
+  const stolen = donor.tasks.toSorted((a, b) => b.weightMs - a.weightMs).slice(0, take);
+  for (const task of stolen) opts.hedged.add(task.key);
+  return stolen;
 }
 
 async function settleProcs(procs: ReadonlySet<ActiveProc>, graceMs: number): Promise<void> {
@@ -134,6 +169,7 @@ export async function runFleetPool(opts: {
   );
   const doneKeys = new Set<string>();
   const inFlight = new Map<string, PoolTask>();
+  const inFlightHost = new Map<string, string>();
   const hedged = new Set<string>();
   const retired = new Set<Place>();
   const refused = new Map<Place, string>();
@@ -160,6 +196,7 @@ export async function runFleetPool(opts: {
     if (doneKeys.has(task.key)) return;
     doneKeys.add(task.key);
     inFlight.delete(task.key);
+    inFlightHost.delete(task.key);
     stats.set(host, (stats.get(host) ?? 0) + 1);
     for (const [suite, out] of Object.entries(killed)) {
       if (out !== true && out !== false) continue;
@@ -240,7 +277,10 @@ export async function runFleetPool(opts: {
       const { task, wasHedged } = pulled;
       if (doneKeys.has(task.key)) continue;
       if (mode === "local") localInFlight += 1;
-      else inFlight.set(task.key, task);
+      else {
+        inFlight.set(task.key, task);
+        inFlightHost.set(task.key, hostKey);
+      }
       try {
         const runnablePending =
           mode === "local"
@@ -295,9 +335,42 @@ export async function runFleetPool(opts: {
         finishTask(task, outcome.killed, hostKey);
       } finally {
         if (mode === "local") localInFlight -= 1;
-        else inFlight.delete(task.key);
+        else {
+          inFlight.delete(task.key);
+          inFlightHost.delete(task.key);
+        }
       }
     }
+  };
+
+  const remoteHosts = new Set(remoteSeats.map((seat) => seat.place));
+  const activeHostCount = () =>
+    (localSeats.length > 0 && !localSeats.every((seat) => retired.has(seat.place)) ? 1 : 0) +
+    [...remoteHosts].filter((place) => !retired.has(place)).length;
+
+  const nextRemoteBatch = (
+    hostKey: string,
+    doneQualify: ReadonlySet<string>,
+    badSuites: ReadonlySet<string>,
+  ) => {
+    const fresh = pullRemoteBatch(pending, {
+      cap: opts.batchCap,
+      activeHosts: activeHostCount(),
+      doneKeys,
+      doneQualify,
+      badSuites,
+      order: orderPlan,
+    });
+    if (fresh.length > 0 || inFlight.size === 0) return { batch: fresh, wasHedged: false };
+    const stolen = pullRemoteHedge(inFlight, inFlightHost, {
+      hostKey,
+      cap: opts.batchCap,
+      doneKeys,
+      hedged,
+      badSuites,
+      order: orderPlan,
+    });
+    return { batch: stolen, wasHedged: stolen.length > 0 };
   };
 
   const runRemoteBatchSeat = async (seat: FastWorker): Promise<void> => {
@@ -308,13 +381,7 @@ export async function runFleetPool(opts: {
     let consecutiveDrops = 0;
     let totalDrops = 0;
     while (!doneAll() && !retired.has(seat.place)) {
-      const batch = pullRemoteBatch(pending, {
-        cap: opts.batchCap,
-        doneKeys,
-        doneQualify,
-        badSuites,
-        order: orderPlan,
-      });
+      const { batch, wasHedged } = nextRemoteBatch(hostKey, doneQualify, badSuites);
       if (batch.length === 0) {
         if (inFlight.size > 0 || localInFlight > 0) {
           await Bun.sleep(40);
@@ -327,8 +394,10 @@ export async function runFleetPool(opts: {
         return;
       }
       const byId = new Map(batch.map((task) => [task.plan.mutant.id, task] as const));
-      for (const task of batch) {
-        if (!doneKeys.has(task.key)) inFlight.set(task.key, task);
+      for (const task of wasHedged ? [] : batch) {
+        if (doneKeys.has(task.key)) continue;
+        inFlight.set(task.key, task);
+        inFlightHost.set(task.key, hostKey);
       }
       const needQualify = [...new Set(batch.flatMap((task) => task.plan.active))].filter(
         (name) => !doneQualify.has(name),
@@ -354,8 +423,15 @@ export async function runFleetPool(opts: {
         const task = byId.get(row.id);
         if (task !== undefined) finishTask(task, row.killed, hostKey);
       }
-      for (const task of batch) inFlight.delete(task.key);
-      const missing = batch.filter((task) => !doneKeys.has(task.key));
+      for (const task of batch) {
+        if (wasHedged) {
+          hedged.delete(task.key);
+        } else {
+          inFlight.delete(task.key);
+          inFlightHost.delete(task.key);
+        }
+      }
+      const missing = wasHedged ? [] : batch.filter((task) => !doneKeys.has(task.key));
       if (doneAll()) return;
       if (got.refused !== null) {
         const { suite: badSuite, why } = got.refused;

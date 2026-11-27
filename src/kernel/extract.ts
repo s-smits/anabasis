@@ -2,7 +2,7 @@ import { asRecord, isString } from "../meta/json-shape.ts";
 import { capturedJsonParse, parseJsonAs } from "../meta/json-runtime.ts";
 import { delimiter } from "../meta/path.ts";
 import { decodeOutput, runSync } from "../meta/subprocess.ts";
-import { zipImages } from "../meta/zip.ts";
+import { zipMembers } from "../meta/zip.ts";
 import { toolchainPathDirs } from "../sandbox/policy.ts";
 import { type AnswerFile, DELIVERABLES } from "./answer-files.ts";
 import EXTRACT_PY from "./extract.py" with { type: "text" };
@@ -28,7 +28,6 @@ export interface Extracted {
     | "binary";
   readonly text: string;
   readonly formulas: Formulas | null;
-  readonly notes: readonly string[];
   readonly fault: string | null;
 }
 
@@ -59,7 +58,7 @@ const lastLine = (text: string): string => text.trim().split(/\r?\n/u).at(-1)?.t
 function pyExtract(
   mode: "xlsx" | "docx" | "pptx" | "sqlite",
   bytes: Buffer,
-): Pick<Extracted, "text" | "formulas" | "notes"> {
+): Pick<Extracted, "text" | "formulas"> {
   const ran = runSync(
     [
       toolBin("python3"),
@@ -84,7 +83,7 @@ function pyExtract(
           : `python3 extractor timed out (${ran.signal})`;
     throw new Error(why);
   }
-  return parseJsonAs<Pick<Extracted, "text" | "formulas" | "notes">>(decodeOutput(ran.stdout));
+  return parseJsonAs<Pick<Extracted, "text" | "formulas">>(decodeOutput(ran.stdout));
 }
 
 function notebookOf(text: string): string {
@@ -97,13 +96,7 @@ function notebookOf(text: string): string {
         ? row.outputs
             .map((out) => {
               const item = asRecord(out);
-              const data = asRecord(item?.data);
-              const body = joinedText(item?.text) || joinedText(data?.["text/plain"]);
-              const visual = ["image/png", "image/jpeg", "image/svg+xml"].flatMap((mime) => {
-                const raw = joinedText(data?.[mime]);
-                return raw === "" ? [] : [`[${mime} output, ${String(raw.length)} chars]`];
-              });
-              return [body, ...visual].filter((part) => part !== "").join("\n");
+              return joinedText(item?.text) || joinedText(asRecord(item?.data)?.["text/plain"]);
             })
             .join("")
         : "";
@@ -128,8 +121,7 @@ function pdfOf(bytes: Buffer): Pick<Extracted, "text" | "fault"> {
 export function extract(file: AnswerFile): Extracted {
   const { path } = file;
   const members = new Map((file.entries ?? []).map((entry) => [entry.path, entry.text]));
-  const notes: readonly string[] = [];
-  const base = { path, formulas: null, notes, fault: null };
+  const base = { path, formulas: null, fault: null };
   const bytes = Buffer.from(file.base64, "base64");
   const lower = path.toLowerCase();
   const zipLike = members.size > 0 || isZip(bytes);
@@ -173,12 +165,12 @@ export function extract(file: AnswerFile): Extracted {
   }
 }
 
-const NOTEBOOK_IMAGES = [
-  ["image/png", "png"],
-  ["image/jpeg", "jpg"],
-  ["image/webp", "webp"],
-  ["image/gif", "gif"],
-] as const;
+const IMAGE_EXT = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+} as const;
 
 const joinedText = (value: unknown): string =>
   Array.isArray(value) ? value.filter(isString).join("") : isString(value) ? value : "";
@@ -186,25 +178,27 @@ const joinedText = (value: unknown): string =>
 function notebookImages(filePath: string, text: string): { readonly path: string; readonly bytes: Buffer }[] {
   try {
     const cells = asRecord(capturedJsonParse(text))?.cells;
-    if (!Array.isArray(cells)) return [];
-    return cells.flatMap((cell, cellAt) => {
-      const outputs = asRecord(cell)?.outputs;
-      if (!Array.isArray(outputs)) return [];
-      return outputs.flatMap((out, outAt) => {
-        const data = asRecord(asRecord(out)?.data);
-        return NOTEBOOK_IMAGES.flatMap(([mime, ext]) => {
-          const raw = joinedText(data?.[mime]).trim();
-          return raw === ""
-            ? []
-            : [
-                {
-                  path: `${filePath}#cell-${String(cellAt)}-out-${String(outAt)}.${ext}`,
-                  bytes: Buffer.from(raw, "base64"),
-                },
-              ];
-        });
-      });
-    });
+    return Array.isArray(cells)
+      ? cells.flatMap((cell, i) => {
+          const outputs = asRecord(cell)?.outputs;
+          return Array.isArray(outputs)
+            ? outputs.flatMap((out, j) => {
+                const data = asRecord(asRecord(out)?.data);
+                return Object.entries(IMAGE_EXT).flatMap(([mime, ext]) => {
+                  const raw = joinedText(data?.[mime]).trim();
+                  return raw === ""
+                    ? []
+                    : [
+                        {
+                          path: `${filePath}#cell-${String(i)}-out-${String(j)}.${ext}`,
+                          bytes: Buffer.from(raw, "base64"),
+                        },
+                      ];
+                });
+              })
+            : [];
+        })
+      : [];
   } catch {
     return [];
   }
@@ -213,10 +207,9 @@ function notebookImages(filePath: string, text: string): { readonly path: string
 export function answerImages(file: AnswerFile): { readonly path: string; readonly bytes: Buffer }[] {
   const bytes = Buffer.from(file.base64, "base64");
   if (isZip(bytes)) {
-    return zipImages(bytes, DELIVERABLES.bytes).map(({ path, data }) => ({
-      path: `${file.path}#${path}`,
-      bytes: data,
-    }));
+    return zipMembers(bytes, DELIVERABLES.bytes)
+      .members.filter(({ path }) => Bun.file(path).type in IMAGE_EXT)
+      .map(({ path, data }) => ({ path: `${file.path}#${path}`, bytes: data }));
   }
   if (file.text !== undefined) {
     return file.path.toLowerCase().endsWith(".ipynb") ? notebookImages(file.path, file.text) : [];
@@ -228,7 +221,7 @@ export function headOf(extracted: Extracted): string[] {
   const bytes = Buffer.byteLength(extracted.text);
   const words = extracted.text.split(/\s+/u).filter((word) => word !== "");
   const numeric = words.filter((word) => /\d/u.test(word)).length;
-  const { formulas, notes, fault } = extracted;
+  const { formulas, fault } = extracted;
   return [
     `${extracted.path} (${extracted.kind}, ${String(bytes)} bytes extracted, ${String(words.length)} words, prose to numeric ${numeric === 0 ? "all prose" : (words.length / numeric - 1).toFixed(2)})`,
     ...(formulas === null
@@ -236,7 +229,6 @@ export function headOf(extracted: Extracted): string[] {
       : [
           `formulas: ${String(formulas.cachedEvaluated)} evaluated, ${String(formulas.uncachedFormula)} uncached, ${String(formulas.formulaError)} errors, ${String(formulas.zeroRefFormulaCount)} without a reference`,
         ]),
-    ...notes,
     ...(fault === null ? [] : [`extraction fault: ${fault}`]),
   ];
 }

@@ -729,6 +729,11 @@ describe("Examiner review projection and search (read_reviews)", () => {
     expect(readReviews(log.events, { task: "graded" })).toContain(
       "judge-gap=0.3333 holistic-gap=1 (opposed)",
     );
+    expect(
+      readReviews(log.events, { task: "graded" })
+        .split("\n")
+        .filter((line) => line.startsWith("  - holistic: ")),
+    ).toEqual(["  - holistic: tie, swap-consistent", "  - holistic: gap=1, swap-consistent"]);
     expect(readReviews(log.events, { task: "halfzero" })).toContain("holistic-gap=1 (tie)");
     expect(readReviews(log.events, { task: "halfzero" })).toContain(
       "clarity: tie, swap-consistent, holistic=tie",

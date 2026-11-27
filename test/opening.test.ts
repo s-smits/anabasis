@@ -71,6 +71,19 @@ describe("what a campaign runs by", () => {
     expect(carriedAfter("repair")?.tunedThisEpoch).toBe(false);
   });
 
+  it("reads no parent from a successor opening missing any field that names its parent", () => {
+    const full = { campaign: "a", revised: "h", kind: "tune", carried: {} };
+    const parentWithout = (drop: string) =>
+      openingOf([
+        event("campaign.opened", {
+          ...opened.data,
+          parent: Object.fromEntries(Object.entries(full).filter(([key]) => key !== drop)),
+        }),
+      ])?.parent ?? null;
+    expect(["campaign", "revised", "kind", "carried"].map(parentWithout)).toEqual([null, null, null, null]);
+    expect(parentWithout("none")?.campaign).toBe("a");
+  });
+
   it("plans the operator's cap of promotions as its opening keeps it, and none where lifted or unnamed", () => {
     const capped = (promotions: string) =>
       event("campaign.opened", { ...opened.data, terms: { promotions } });

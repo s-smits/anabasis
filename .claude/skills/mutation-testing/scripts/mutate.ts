@@ -582,16 +582,6 @@ async function dispatchRemaining(opts: {
   return { unrun, fatal: null };
 }
 
-const TYPE_ERROR_RE = /error TS(\d+):/gu;
-const UNUSED_TS_CODES = new Set(["6133", "6196"]);
-
-function hasRealTypeError(output: string): boolean {
-  for (const [, code] of output.matchAll(TYPE_ERROR_RE)) {
-    if (code !== undefined && !UNUSED_TS_CODES.has(code)) return true;
-  }
-  return false;
-}
-
 const isSurvivor = (killed: VerdictMap): boolean => {
   const verdicts = Object.values(killed);
   return verdicts.length > 0 && verdicts.every((one) => one === false);
@@ -605,27 +595,27 @@ async function typecheckSurvivors(
 ): Promise<readonly { readonly item: TargetItem; readonly killed: VerdictMap }[]> {
   if (survivors.length === 0 || !existsSync(join(root, "tsconfig.json"))) return survivors;
   const check = () =>
-    Bun.spawnSync([capturedExecPath, "check"], {
+    Bun.spawnSync([capturedExecPath, "check", "--noUnusedLocals=false", "--noUnusedParameters=false"], {
       cwd: clone,
       env: { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+      stdout: "ignore",
+      stderr: "ignore",
+    }).exitCode !== 0;
   try {
     await cloneTree(root, clone);
     linkModules(root, clone, "local");
-    if (check().exitCode !== 0) return survivors;
+    if (check()) {
+      console.error("bun check fails on the unmutated tree, so survivors stay unscreened");
+      return survivors;
+    }
     return survivors.map(({ item, killed }) => {
       const orig = originals.get(item.mutant.file);
       if (orig === undefined) return { item, killed };
       const full = join(clone, item.mutant.file);
       writeFileSync(full, orig.slice(0, item.mutant.start) + item.mutant.text + orig.slice(item.mutant.end));
-      const ran = check();
+      const rejected = check();
       writeFileSync(full, orig);
-      const out = `${ran.stdout.toString()}${ran.stderr.toString()}`;
-      return ran.exitCode !== 0 && hasRealTypeError(out)
-        ? { item, killed: { ...killed, typecheck: true } }
-        : { item, killed };
+      return rejected ? { item, killed: { ...killed, typecheck: true } } : { item, killed };
     });
   } finally {
     rmSync(clone, { recursive: true, force: true });

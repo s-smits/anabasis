@@ -1338,6 +1338,27 @@ export const scores = {
     expect(ghostRes.accepted).toBe(false);
     expect(ghostRes.message).toContain("earned Referee witness on missing-task-hash could not be loaded");
 
+    const lateSeed = await seedCampaign({ name: "camp-late-witness", attended: true });
+    const lateRes = await revisionRunner({
+      log: lateSeed.log,
+      parentBundle: lateSeed.bundle,
+      packages: lateSeed.packages,
+      auditor: SOUND_AUDIT,
+    })({ session: "x-1", kind: "tune", why: "reweight", candidate: validTuneCandidate });
+    const lateHash = /--candidate\s+([a-f0-9]+)/u.exec(lateRes.message)?.[1] ?? "";
+    append(lateSeed.log, "verdict", { solve: "s-ghost", task: "missing-task-hash", kind: "fail" });
+    append(lateSeed.log, FINDING, {
+      solve: "s-ghost",
+      task: "ex-999",
+      ruling: "earned",
+      check: "check-strict",
+      reason: "bad",
+    });
+    await expect(freezeCandidate(lateSeed.log, lateHash, async () => lateSeed.packages())).rejects.toThrow(
+      "could not be loaded",
+    );
+    expect(eventsOf(read(lateSeed.log), REVISED)).toHaveLength(0);
+
     const unseatedSeed = await seedCampaign({ name: "camp-unseated", reviewer: null });
     expect(
       await revisionRunner({

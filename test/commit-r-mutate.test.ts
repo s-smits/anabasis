@@ -964,7 +964,7 @@ describe("nightly mutation suite selection", () => {
     });
   });
 
-  it("marks surviving real type errors killed by typecheck while leaving TS6133-only mutants survived", () => {
+  it("marks surviving real type errors killed by typecheck under an agent session's output format, while leaving TS6133-only mutants survived", () => {
     const tree = join(root, "typecheck-tree");
     mkdirSync(tree, { recursive: true });
     writeFileSync(
@@ -995,7 +995,10 @@ describe("nightly mutation suite selection", () => {
     const suites = join(root, "typecheck-suites.json");
     writeFileSync(suites, JSON.stringify({ t: ["a.test.ts"] }));
     const out = join(root, "typecheck-out.jsonl");
-    const run = runScript("run", tree, "a.ts", "--out", out, "--suites", suites, "--jobs", "1");
+    const run = Bun.spawnSync(
+      [capturedExecPath, SCRIPT, "run", tree, "a.ts", "--out", out, "--suites", suites, "--jobs", "1"],
+      { ...localPipe(), env: { ...localPipe().env, CLAUDECODE: "1" } },
+    );
     expect(run.exitCode).toBe(0);
     const rows = rowsOf(out);
     const narrowedDelete = rows.find((row) => row.line === 2 && row.label === "delete if");

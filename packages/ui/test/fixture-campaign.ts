@@ -26,13 +26,11 @@ import { keyIfDefined } from "../../../src/meta/optional-key.ts";
 import { join, resolve } from "../../../src/meta/path.ts";
 import type { Ruling } from "../../../src/audit/auditor.ts";
 import type { Query, Tier } from "../src/models.ts";
-import { campaignAnswer } from "../src/server/campaign.ts";
-import { campaignsAnswer } from "../src/server/campaigns.ts";
+import { campaignAnswer, campaignsAnswer } from "../src/server/campaigns.ts";
 import type { Reading } from "../src/server/context.ts";
 import { harnessAnswer, harnessDiffAnswer, harnessFileAnswer } from "../src/server/harness.ts";
 import { eventAnswer, logAnswer } from "../src/server/log.ts";
-import { moveAnswer } from "../src/server/move.ts";
-import { solveAnswer } from "../src/server/solve.ts";
+import { moveAnswer, solveAnswer } from "../src/server/move.ts";
 import { taskAnswer, tasksAnswer } from "../src/server/tasks.ts";
 
 /** What the server must never show in the default tier. */

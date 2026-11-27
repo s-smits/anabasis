@@ -19,13 +19,11 @@ import {
   type Tier,
   TOKEN_HEADER,
 } from "../models.ts";
-import { campaignAnswer } from "./campaign.ts";
-import { campaignsAnswer, readAll } from "./campaigns.ts";
+import { campaignAnswer, campaignsAnswer, readAll } from "./campaigns.ts";
 import { type Handler, type Reading, type Trees, Unanswerable } from "./context.ts";
 import { harnessAnswer, harnessDiffAnswer, harnessFileAnswer } from "./harness.ts";
 import { eventAnswer, logAnswer } from "./log.ts";
-import { moveAnswer } from "./move.ts";
-import { solveAnswer } from "./solve.ts";
+import { moveAnswer, solveAnswer } from "./move.ts";
 import { taskAnswer, tasksAnswer } from "./tasks.ts";
 import { capturedJsonStringify } from "../../../../src/meta/json-runtime.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";

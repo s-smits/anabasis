@@ -69,8 +69,6 @@ packages/ui/src/mount.ts	1
 packages/ui/src/poll.ts	1
 packages/ui/src/route.ts	13
 packages/ui/src/server/api.ts	7
-packages/ui/src/server/campaign.ts	1
-packages/ui/src/server/campaigns.ts	2
 packages/ui/src/server/context.ts	3
 packages/ui/src/server/folds.ts	2
 packages/ui/src/server/harness.ts	10
@@ -79,16 +77,12 @@ packages/ui/src/server/log.ts	6
 packages/ui/src/server/logs.ts	7
 packages/ui/src/server/move.ts	9
 packages/ui/src/server/moves.ts	10
-packages/ui/src/server/reading.ts	5
-packages/ui/src/server/solve.ts	2
 packages/ui/src/server/tasks.ts	2
 packages/ui/src/server/trace.ts	7
 packages/ui/src/server/withheld.ts	3
 packages/ui/src/shell.tsx	11
 packages/ui/src/spelling.ts	2
 packages/ui/src/views/campaign-data.ts	8
-packages/ui/src/views/campaign-harnesses.tsx	5
-packages/ui/src/views/campaign.tsx	6
 packages/ui/src/views/controls.tsx	1
 packages/ui/src/views/drill.tsx	11
 packages/ui/src/views/file-inspector.tsx	4
@@ -98,10 +92,7 @@ packages/ui/src/views/held.ts	3
 packages/ui/src/views/inspector.tsx	11
 packages/ui/src/views/late.ts	2
 packages/ui/src/views/log.tsx	2
-packages/ui/src/views/moves-comparison.tsx	6
 packages/ui/src/views/moves-list.tsx	8
-packages/ui/src/views/moves-session.tsx	3
-packages/ui/src/views/moves.tsx	3
 packages/ui/src/views/outcome.ts	1
 packages/ui/src/views/solve-rows.tsx	5
 packages/ui/src/views/solve.tsx	9

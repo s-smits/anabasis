@@ -34,3 +34,5 @@ src/examiner/write.ts	swap ?:	system: systemPrompt(request.contract.objective, r
 src/examiner/write.ts	=== -> !==	system: systemPrompt(request.contract.objective, request.revise === undefined ? "fixed" : "revisable"),	presentation	selects system-prompt wording that only reaches the Examiner; the revision tools are gated on request.revise separately
 src/examiner/prompt.ts	=== -> !==	...(tasks.reviews === null ? [] : [tasks.reviews]),	presentation	adds or drops the reviews line in the Examiner's opening and wake messages only
 src/examiner/prompt.ts	swap ?:	...(tasks.reviews === null ? [] : [tasks.reviews]),	presentation	adds or drops the reviews line in the Examiner's opening and wake messages only
+tools/runs/pulse.ts	&& -> ||	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	presentation	advisory watch filter only chooses which runs pulse prints; no decision reads it
+tools/runs/pulse.ts	?? -> &&	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	presentation	advisory recency of closed runs in pulse output; no decision reads it

@@ -288,7 +288,8 @@ async function lead(
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
-  if (left.move === "end" && left.ending !== "revise") {
+  if (left.move === "end") {
+    if (left.ending === "revise") return null;
     ended(log, read(log), left);
     if (left.ending !== "environment" && values.handover !== undefined) {
       await closeCommand([...packOf(values), "--to", values.handover]);
@@ -303,21 +304,20 @@ async function handoffRevision(
   values: Values,
   decided: Extract<ScheduledAction, { move: "end" }>,
   {
+    name,
     paid,
     remaining,
     seats,
-    hasCampaign,
   }: {
+    readonly name: string;
     readonly paid: "paid" | "scripted";
     readonly remaining: number;
     readonly seats: Seats;
-    readonly hasCampaign: boolean;
   },
 ): Promise<ScheduledAction> {
-  const name = values.name ?? "";
   const next = await openSuccessor(log, remaining);
   console.log(`${name}: opened successor campaign ${next.name} at ${next.log}`);
-  if (values.handover !== undefined && hasCampaign) {
+  if (values.handover !== undefined) {
     await closeCommand([...packOf(values), "--to", values.handover]);
   }
   if (remaining <= 0) return decided;
@@ -484,10 +484,10 @@ export async function harnessBuilder(
       if (values["dry-run"]) return decided;
       if (decided.ending === "revise") {
         return await handoffRevision(log, args, values, decided, {
+          name,
           paid,
           remaining: most - made,
           seats,
-          hasCampaign: campaign !== null,
         });
       }
       ended(log, events, decided);
@@ -511,7 +511,7 @@ export async function harnessBuilder(
       const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
       const left = await lead(context, decided);
       [made, { opening }] = [context.used, context];
-      if (left !== null && !(left.move === "end" && left.ending === "revise")) return left;
+      if (left !== null) return left;
       continue;
     }
     if (decided.move === "promote" && opening.attended) {

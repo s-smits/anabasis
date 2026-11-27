@@ -91,7 +91,7 @@ const turnsIn = (events: readonly LogEvent[]): number =>
 
 const successorOf = (events: readonly LogEvent[]): string | null => {
   const next = eventsOf(events, "campaign.ended").at(-1)?.event.data.successor;
-  return isString(next) && next !== "" ? next : null;
+  return isString(next) ? next : null;
 };
 
 export function turnOf(state: RunState, now: number, waitMs: number): Turn {

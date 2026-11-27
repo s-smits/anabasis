@@ -22,7 +22,7 @@ import {
 const UNNAMED: Recorded = {
   solver: null,
   minutes: 30,
-  modelTurns: 40,
+  modelTurns: 20,
   target: 24,
   solves: 2,
 };

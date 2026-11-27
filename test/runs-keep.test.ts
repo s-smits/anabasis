@@ -377,13 +377,13 @@ describe("a keeper's looks, scripted", () => {
     const said: string[] = [];
     let failOnce = true;
     const events: LogEvent[] = [event(ENDED, { ending: "revise", successor: "sample-rev2" })];
-    const look = keeperOf("sample", async () => ["2", "3"], WAIT_MS, {
+    const look = keeperOf("sample", async () => ["3", "2"], WAIT_MS, {
       events: () => events,
       stands: (ev, now) => stateOf(ev, { writing: false, kept: false }, now),
       last: () => ({ login: "2", flags: [`--builder=${OPUS}`] }),
       fleet: () => Promise.resolve({ live: [], unasked: [] }),
       read: (wanted) =>
-        Promise.resolve([read("2", 10), read("3", 10)].filter((r) => wanted.includes(r.login))),
+        Promise.resolve([read("3", 10), read("2", 50)].filter((r) => wanted.includes(r.login))),
       checkStart: () => Promise.resolve(),
       stop: () => Promise.resolve(),
       start: () => Promise.resolve(true),
@@ -407,7 +407,7 @@ describe("a keeper's looks, scripted", () => {
 
     const noSuccessor = scripted();
     noSuccessor.state.open = false;
-    noSuccessor.state.events = [event(ENDED, { ending: "revise" })];
+    noSuccessor.state.events = [event(ENDED, { ending: "revise", successor: "sample-rev2" })];
     expect(await noSuccessor.look(NOW)).toBe(true);
     expect(noSuccessor.state.said.at(-1)).toContain("ended on revise: kept no longer");
   });

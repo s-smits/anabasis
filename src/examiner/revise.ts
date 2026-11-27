@@ -227,7 +227,9 @@ export function defectSolvesFor(events: readonly LogEvent[], check: string): str
   const verdicts = verdictsOf(events);
   const reported = new Set(lastReports(events, "all").map(({ session }) => session));
   const solveComp = new Map(
-    solvesIn(events).map(({ id, start }) => [id, isString(start.comparison) ? start.comparison : null]),
+    solvesIn(events).flatMap(({ id, start }) =>
+      isString(start.comparison) ? [[id, start.comparison] as const] : [],
+    ),
   );
   const matched = new Set<string>();
   for (const {
@@ -235,8 +237,8 @@ export function defectSolvesFor(events: readonly LogEvent[], check: string): str
   } of eventsOf(events, "referee.finding")) {
     const solve = isString(data.solve) ? data.solve : null;
     if (solve === null || stands.get(solve) !== "check-defect") continue;
-    const comp = solveComp.get(solve) ?? null;
-    if (comp !== null && !reported.has(comp)) continue;
+    const comp = solveComp.get(solve);
+    if (comp !== undefined && !reported.has(comp)) continue;
     const verdict = verdicts.get(solve);
     if (verdict?.task == null || verdict.answer === undefined) continue;
     const blocking = verdict.checker?.kind === "fail" ? verdict.checker.blocking : [];
@@ -257,7 +259,7 @@ function hasPendingPromotion(events: readonly LogEvent[]): boolean {
       report?.reading === "step" &&
       fresh !== reference &&
       fresh !== starter &&
-      (reference === null ? old === starter : old === reference),
+      old === (reference ?? starter),
   );
 }
 

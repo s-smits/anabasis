@@ -74,10 +74,12 @@ function withMergedToolchain<T>(
   run: (sourceHome: string | undefined) => Promise<T>,
 ): Promise<T> {
   const parentTools = join(parentBundle, TOOL_TREE_DIR);
-  const homeTools = examinerHome === undefined ? null : join(examinerHome, TOOL_TREE_DIR);
   const hasParent = existsSync(parentTools);
-  const hasHome = homeTools !== null && existsSync(homeTools);
-  if (!hasParent && !hasHome) return run(undefined);
+  const home =
+    examinerHome !== undefined && existsSync(join(examinerHome, TOOL_TREE_DIR))
+      ? { dir: examinerHome, tools: join(examinerHome, TOOL_TREE_DIR) }
+      : null;
+  if (!hasParent && home === null) return run(undefined);
   const scratch = mkdtempSync(join(tmpdir(), "ana-rev-tools-"));
   const target = join(scratch, TOOL_TREE_DIR);
   return Promise.try(async () => {
@@ -85,9 +87,9 @@ function withMergedToolchain<T>(
       cpSync(parentTools, target, { recursive: true, verbatimSymlinks: true });
       rmSync(join(target, HOST_TOOLS_FILE), { force: true });
     }
-    if (hasHome && homeTools !== null && examinerHome !== undefined) {
-      cpSync(homeTools, target, { recursive: true, verbatimSymlinks: true });
-      refuseNamingHome(target, examinerHome, TOOL_TREE_DIR);
+    if (home !== null) {
+      cpSync(home.tools, target, { recursive: true, verbatimSymlinks: true });
+      refuseNamingHome(target, home.dir, TOOL_TREE_DIR);
     }
     return await run(scratch);
   }).finally(() => {
@@ -403,7 +405,7 @@ export function revisionRunner(config: {
     const refusal = gate(events);
     if (refusal !== null) return { accepted: false, message: `Refused: ${refusal}` };
     if (parent === null || frozen === null) {
-      return { accepted: false, message: "Refused: parent exam is missing or unfrozen." };
+      throw new Error("parent exam is missing or unfrozen");
     }
     const checked = await withMergedToolchain(config.parentBundle, home, (sourceHome) =>
       validateCandidate({
@@ -483,6 +485,9 @@ export async function freezeCandidate(
   candidate: string,
   packages: ReadonlyMap<string, Task>,
 ): Promise<{ readonly name: string; readonly log: string }> {
+  if (!/^[a-f0-9]{16}$/u.test(candidate)) {
+    throw new Error(`invalid candidate hash ${JSON.stringify(candidate)}`);
+  }
   const file = join(dirname(log), "revisions", `${candidate}.json`);
   if (!existsSync(file)) throw new Error(`no staged revision candidate at ${file}`);
   const payload = parseJsonAs<PendingCandidate>(readFileSync(file, "utf8"));

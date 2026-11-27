@@ -46,7 +46,7 @@ export function sizeLines(tasks: number, level: number): string[] {
   const rate = power(equalMargins(tasks, 0), 0.5, level);
   const rated = rate > 0 && rate < 0.0005 ? "under 0.1%" : `${String(Math.round(1000 * rate) / 10)}%`;
   return [
-    `${scored}; at --level ${String(level)} the smallest results that read a step are ${said}, each task won or lost by as many pairs`,
+    `${scored}; at --level ${String(level)} the smallest results that read a step at equal margins are ${said}, each task won or lost by as many pairs`,
     `were no task to tie, one reading at --level ${String(level)} would detect four times in five a harness that wins ${String(Math.round(100 * share))}% of the tasks, and fewer untied tasks need a larger share`,
     `one reading at these margins reads a step between equal harnesses ${rated} of the time where no task ties: the level is a per-comparison level`,
   ];

@@ -512,6 +512,15 @@ describe("a campaign against its bars", () => {
       "- Climb: 3 promotions, 1 confirmed (milestone: 6) (on the tasks written after alone, a step 0, a step for the starter 0, no step 0, too few 1); 1 failed starter confirmation, 1 pending confirmation.",
     );
     expect(barLines([opened])[0]).toContain("0 promotions, 0 confirmed");
+    const [withReverts] = barLines([
+      opened,
+      reported("g-1", "S", "h1"),
+      promotedTo("h1", "S"),
+      againstStarter("g-2", "h1", 5),
+      event("harness.reverted", { harness: "S", from: "h1" }),
+      promotedTo("h2", "S"),
+    ]);
+    expect(withReverts).toContain("- Climb: 2 promotions (1 reverted), 0 confirmed");
   });
 
   it("counts every A/A of the campaign, keeps those too small and each direction apart, and bounds the one-sided rate exactly", () => {
@@ -763,7 +772,7 @@ describe("a campaign against its bars", () => {
     expect(epochs.at(-1)).toMatchObject({ reference: "h1", confirmed: true, reverted: true });
     expect(nextAction(reverted, plan).move).toBe("build");
     expect(stopRule(reverted)).toMatchObject({ sinceStep: 1, stop: false });
-    expect(barLines(reverted)[0]).toContain("2 promotions, 1 confirmed");
+    expect(barLines(reverted)[0]).toContain("2 promotions (1 reverted), 1 confirmed");
     // Downstream readers that count harness.promoted never conflate a revert with a promotion,
     // and the Examiner's record distinguishes a revert from a promotion.
     expect(reverted.filter(({ kind }) => kind === "harness.promoted")).toHaveLength(2);

@@ -520,6 +520,7 @@ export function barLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsFrom(events, reports, controls);
   const pairsOf = pairLookup(events);
   const climbed = epochs.filter(({ nth, reverted }) => nth > 1 && reverted !== true);
+  const revertedCount = epochs.filter(({ reverted }) => reverted === true).length;
   const confirmed = climbed.filter((epoch) => epoch.confirmed === true);
   const unread = climbed.filter(({ starter_tally: tally }) => tally === null).length;
   const confirmedSessions = new Set(confirmed.map((epoch) => epoch.starter_read));
@@ -536,8 +537,9 @@ export function barLines(events: readonly LogEvent[]): string[] {
     tied === 0
       ? ""
       : ` ${String(tied)} of them tied every task (identical reference outcomes across rollouts, unpowered).`;
+  const revertedNote = revertedCount === 0 ? "" : ` (${String(revertedCount)} reverted)`;
   return [
-    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
+    `- Climb: ${plural(climbed.length, "promotion")}${revertedNote}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
     `- Honesty: ${plural(controls.length, "A/A control")}; ${controlCounts(controls)}${fallbackNote}.${tiedNote} Observational; the bar pools a release's.`,
     starterNoiseLine([...splits.bySession.values()], splits.judgedCount),
     repeatLine(reports, pairsOf),

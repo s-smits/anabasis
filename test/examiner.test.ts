@@ -675,7 +675,12 @@ describe("a session that writes tasks", () => {
     expect(solvesIn(read(s.log))).toEqual([]);
     expect(s.of(EXAM_FINISHED)[0]).not.toHaveProperty("hostSeconds");
     const mode = writing({ ...s.request, id: "x-2", verify }, undefined);
-    expect(mode.tools.map(({ name }) => name)).toEqual([PROPOSE, "read_example", "try_answer"]);
+    expect(mode.tools.map(({ name }) => name)).toEqual([
+      PROPOSE,
+      "read_example",
+      "read_reviews",
+      "try_answer",
+    ]);
     expect(mode.tools[0]?.description).toContain("No solver is put to it there.");
     for (const unsaid of [
       "try_task",

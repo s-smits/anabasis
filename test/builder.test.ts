@@ -1675,6 +1675,39 @@ describe.concurrent("what crosses to the Builder", () => {
       billed: 0.5,
     });
     append(log, "exam.finished", { session: "x-1", ended: "finished", note: null });
+    append(log, "referee.call", {
+      reader: `judge-${kept.check}:clarity:ab`,
+      tool: "record_vote",
+      isError: false,
+      args: { better: "A", reason: kept.reason },
+    });
+    append(log, "referee.pair", {
+      comparison: "g-1",
+      task: "x-h1",
+      solve: "g-1-h1-fresh",
+      old: "g-1-h1-old",
+      reader: `judge-${kept.check}`,
+      readers: [`judge-${kept.check}:clarity:ab`],
+      judge: 1,
+      holistic: 1,
+      criteria: { clarity: 1, holistic: 1 },
+      disagreed: [],
+    });
+    append(log, "referee.draft", {
+      session: "d-1",
+      pass: 1,
+      verdict: "defects",
+      summary: kept.reason,
+      findings: [{ kind: "vacuous-pass", task: "x-h1", check: kept.check, probe: 1, reason: kept.reason }],
+      probeRows: [
+        {
+          id: 1,
+          original: { kind: "pass" },
+          changed: { kind: "pass" },
+          changes: [{ path: "$.answer", value: kept.hidden }],
+        },
+      ],
+    });
     append(log, "comparison.reported", {
       session: "g-1",
       old: s.digest,

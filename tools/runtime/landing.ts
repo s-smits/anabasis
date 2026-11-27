@@ -9,7 +9,7 @@ import { hold, holderOf, release } from "#src/meta/holder.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
 import { benchesForRoot, checkPlaces, namedPlaces, type Place } from "../runs/host-config.ts";
 import { git, lines, type Proof, short } from "./gate.ts";
-import { beneath, chainAbove, openPulls, type Pull, stackStart } from "./pulls.ts";
+import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
 
 /** What a holder says of itself in the lock, after its record, and whether a newer one may end it. */
 interface Claim {
@@ -82,8 +82,8 @@ export function sayingPulls(
 
 /** The lock's note for a landing of `target` (`#<pull request> <kind>`, `+` after the number where
  *  `--auto` may land above it), and which held landings it ends: one that does not merge or follow
- *  the top, writes no more than it, and lands part of what it proves (from `--from`, or from
- *  `stackStart`). The chain is read only once a holder is found. */
+ *  the top, writes no more than it, and lands part of what it proves (from `--from`, or the whole
+ *  chain). The chain is read only once a holder is found. */
 export function claimOf(
   root: string,
   target: number,
@@ -103,7 +103,7 @@ export function claimOf(
         const top = named !== undefined && mode.auto ? (chainAbove(open, named).at(-1) ?? named) : named;
         const pulls = top === undefined ? [] : [...beneath(open, top), top];
         const from = pulls.findIndex((pull) => pull.number === mode.from);
-        const proved = pulls.slice(mode.from === null ? stackStart(root, pulls) : Math.max(from, 0));
+        const proved = pulls.slice(Math.max(from, 0));
         chain = proved.map((pull) => `#${String(pull.number)}`);
       }
       return chain.includes(number);

@@ -1907,22 +1907,20 @@ export const scores = {
       'note === "exact:" + String(hidden.target)',
       String.raw`note.trim().replace(/\s+/g, "") === "exact:" + String(hidden.target)`,
     );
-    const repairSession = seat("write", [
-      call("read_exam", {}),
-      call("revise_exam", {
-        kind: "repair",
-        why: "allow whitespace after colon in note.txt",
-        check: "check-strict",
-        evaluator: fixedEvaluator,
-      }),
-      finish,
-    ]);
-    const successorBuilder = seat("write", [finish]);
-    const handoverDir = join(tempDir("ana-rev-handover-"), "out");
     let examineCalls = 0;
-    const ended = await harnessBuilder(
-      ["--name", name, "--moves", "2", "--practice", "0", "--handover", handoverDir],
-      {
+    const repairing = (): NonNullable<Parameters<typeof harnessBuilder>[1]> => {
+      const repairSession = seat("write", [
+        call("read_exam", {}),
+        call("revise_exam", {
+          kind: "repair",
+          why: "allow whitespace after colon in note.txt",
+          check: "check-strict",
+          evaluator: fixedEvaluator,
+        }),
+        finish,
+      ]);
+      const successorBuilder = seat("write", [finish]);
+      return {
         seated: () => ({
           builder: { model: successorBuilder.request.model, models: successorBuilder.request.models },
           setting: "scripted",
@@ -1938,7 +1936,15 @@ export const scores = {
           );
         },
         audit: SOUND_AUDIT,
-      },
+      };
+    };
+    const handoverDir = join(tempDir("ana-rev-handover-"), "out");
+    const spent = `${name}-spent`;
+    ROOTS.push(join(campRoot, spent), join(campRoot, successorName(spent)));
+    cpSync(dir, join(campRoot, spent), { recursive: true });
+    const ended = await harnessBuilder(
+      ["--name", name, "--moves", "2", "--practice", "0", "--handover", handoverDir],
+      repairing(),
     );
     const eventsA = read(log);
     expect(eventsOf(eventsA, "exam.finished").at(-1)?.event.data.crash).toBeNull();
@@ -1958,6 +1964,14 @@ export const scores = {
     expect(openingOf(eventsB)?.parent?.carried.tunedThisEpoch).toBe(false);
     expect(eventsOf(eventsB, "contract.frozen")).toHaveLength(1);
     expect(replayed(logB)).toContain(`from ${name} (repair)`);
+
+    const spentB = join(campRoot, successorName(spent), LOG_FILE);
+    expect(
+      await harnessBuilder(["--name", spent, "--moves", "1", "--practice", "0"], repairing()),
+    ).toMatchObject({ move: "end", ending: "revise" });
+    expect(examineCalls).toBe(3);
+    expect(eventsOf(read(spentB), "build.started")).toHaveLength(0);
+    expect(openingOf(read(spentB))?.parent?.campaign).toBe(spent);
 
     const noReviseFlagName = `test-no-revise-flag-${String(runtimeProcess.pid)}`;
     const noReviseDir = join(campRoot, noReviseFlagName);

@@ -994,6 +994,50 @@ describe.concurrent("which host runs a task", () => {
     expect(calls(sb.hostHome("fake-linux")).length).toBe(2);
   });
 
+  it("tries a chunk's places under all least busy first, breaking a tie by load rank, whatever the load rank says", async () => {
+    const sb = makeCase({ copySource: true });
+    mkdirSync(join(sb.source, "test"), { recursive: true });
+    writeFileSync(join(sb.source, "test/a.test.ts"), "");
+    const places = ["fake-mac", "fake-linux", "fake-peer"] as const;
+    const hosts = JSON.stringify(
+      places.map((ssh) => ({ name: ssh, ssh, tree: "~/anabasis", bun: "~/.bun/bin/bun", checks: 4 })),
+    );
+    const localQueue = sb.queueOf("local");
+    mkdirSync(localQueue, { recursive: true });
+    symlinkSync(String(runtimeProcess.pid), join(localQueue, "slot-1"));
+    const rows: readonly {
+      readonly busy: readonly number[];
+      readonly load: readonly number[];
+      readonly takes: (typeof places)[number];
+    }[] = [
+      { busy: [0, 1, 2], load: [0.4, 0, 0], takes: "fake-mac" },
+      { busy: [2, 0, 1], load: [0, 0.4, 0], takes: "fake-linux" },
+      { busy: [1, 2, 0], load: [0, 0, 0.4], takes: "fake-peer" },
+      { busy: [2, 1, 0], load: [0, 0, 0.4], takes: "fake-peer" },
+      { busy: [1, 1, 3], load: [0.2, 0, 0], takes: "fake-linux" },
+      { busy: [0, 0, 2], load: [0, 0.2, 0], takes: "fake-mac" },
+    ];
+    const taken: string[] = [];
+    for (const { busy, load } of rows) {
+      const before = places.map((place) => calls(sb.hostHome(place)).length);
+      for (const [at, place] of places.entries()) {
+        const queue = sb.queueOf(place);
+        rmSync(queue, { recursive: true, force: true });
+        mkdirSync(queue, { recursive: true });
+        for (let k = 1; k <= (busy[at] ?? 0); k++) {
+          symlinkSync(String(runtimeProcess.pid), join(queue, `slot-${String(k)}`));
+        }
+        sb.loaded(place, 4, 4 * (load[at] ?? 0));
+      }
+      const result = await sb.run(["test", "test/a.test.ts"], { ANA_CHECK_HOST: "all", ANA_HOSTS: hosts });
+      expect(result.status, result.stderr).toBe(0);
+      taken.push(
+        places.filter((place, at) => calls(sb.hostHome(place)).length > (before[at] ?? 0)).join(","),
+      );
+    }
+    expect(taken).toEqual(rows.map(({ takes }) => takes));
+  });
+
   it("keeps load-ranked slot-2 ahead of a hot host's slot-1 under auto", async () => {
     const sb = makeCase({ copySource: true });
     const hosts = JSON.stringify([

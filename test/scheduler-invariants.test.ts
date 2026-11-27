@@ -358,15 +358,32 @@ describe("scheduler decision boundaries", () => {
     expect(nextAction(notScoredStarter, PLAN)).toMatchObject({ move: "compare", fresh: "starter" });
 
     expect(practiceDue([CHECKED, ...manyHeld("t", 8)], null, 0.1)).toBeNull();
+    const confirmedStarter = compared("g-s", "h-1", STARTER, "no-step", {
+      level: 0.1,
+      versions: ["n-0", "n-1", "n-2", "n-3"],
+      scored: { differences: [-1, -1, -1, -1] },
+    });
     const afterPromoTasks = [
       CHECKED,
       ...manyHeld("t", 12),
       checkpoint("b-1", "h-1"),
+      ...compared("g-0", STARTER, "h-1", "step", { level: 0.1 }),
       promotedH1(),
       ...manyHeld("n", 10),
     ];
-    expect(practiceDue(afterPromoTasks, 3, 0.1)?.to).toBe(3);
-    const alreadyOneReleased = [...afterPromoTasks, released("n-0")];
+    expect(practiceDue(afterPromoTasks, 3, 0.1)).toBeNull();
+    const failedStarterPendingRevert = [
+      ...afterPromoTasks,
+      ...compared("g-fail", "h-1", STARTER, "no-step", {
+        level: 0.1,
+        versions: ["n-0", "n-1", "n-2", "n-3"],
+        scored: { differences: [1, -1, 1, -1] },
+      }),
+    ];
+    expect(practiceDue(failedStarterPendingRevert, 3, 0.1)).toBeNull();
+    const afterConfirmedPromo = [...afterPromoTasks, ...confirmedStarter];
+    expect(practiceDue(afterConfirmedPromo, 3, 0.1)?.to).toBe(3);
+    const alreadyOneReleased = [...afterConfirmedPromo, released("n-0")];
     expect(practiceDue(alreadyOneReleased, 3, 0.1)?.to).toBe(3);
   });
 
@@ -427,12 +444,21 @@ describe("scheduler decision boundaries", () => {
     ];
     expect(practiceDue(dupReport, 2, 0.1)).toBeNull();
 
+    const confirmedH1 = [
+      ...compared("g-0", STARTER, "h-1", "step", { level: 0.1 }),
+      promotedH1(),
+      ...manyHeld("n", 7),
+      ...compared("g-s", "h-1", STARTER, "no-step", {
+        level: 0.1,
+        versions: ["n-0", "n-1", "n-2", "n-3"],
+        scored: { differences: [-1, -1, -1, -1] },
+      }),
+    ];
     const nonFrontierRelease = [
       CHECKED,
       ...manyHeld("t", 2),
       checkpoint("b-1", "h-1"),
-      promotedH1(),
-      ...manyHeld("n", 7),
+      ...confirmedH1,
       ...compared("g-1", "h-1", "h-2", "no-step", { versions: ["n-0"] }),
       released("t-0"),
     ];
@@ -441,21 +467,14 @@ describe("scheduler decision boundaries", () => {
       CHECKED,
       ...manyHeld("t", 2),
       checkpoint("b-1", "h-1"),
-      promotedH1(),
-      ...manyHeld("n", 7),
+      ...confirmedH1,
       ...compared("g-1", "h-1", "h-2", "no-step", { versions: ["n-0"] }),
       ...manyHeld("m", 2),
       released("m-0"),
     ];
     expect(practiceDue(postSinceNewRelease, 3, 0.1)?.to).toBe(3);
 
-    const postPromoSevenNew = [
-      CHECKED,
-      ...manyHeld("t", 8),
-      checkpoint("b-1", "h-1"),
-      promotedH1(),
-      ...manyHeld("n", 7),
-    ];
+    const postPromoSevenNew = [CHECKED, ...manyHeld("t", 8), checkpoint("b-1", "h-1"), ...confirmedH1];
     expect(practiceDue(postPromoSevenNew, 3, 0.1)?.to).toBe(1);
     const afterReleaseBaseline = [
       CHECKED,

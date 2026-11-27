@@ -369,6 +369,7 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     expect(of(name, OPENED).at(-1)).toMatchObject({ attended: true });
 
     const asked = Promise.withResolvers<void>();
+    const releasedBeforePromo = of(name, "task.state").filter(({ state }) => state === "released").length;
     const next = await harnessBuilder([...flags, "--no-hitl", "--moves", "3"], {
       seated: (campaign, given) => ({
         ...seats.seated(campaign, given),
@@ -388,9 +389,9 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
     expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 10, ended: "supplied" }]);
-    expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted" });
-
-    const after = await harnessBuilder([...flags, "--moves", "1"], seats);
+    expect(of(name, "task.state").filter(({ state }) => state === "released")).toHaveLength(
+      releasedBeforePromo,
+    );
     const { tasks, retained } = of(name, "comparison.started").at(-1) ?? {};
     const [scored = 0, beside = 0] = [tasks, retained].map((set) => (Array.isArray(set) ? set.length : 0));
     expect(beside).toBe(Math.ceil((scored - beside) / 3));
@@ -404,7 +405,7 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
       reading: "no-step",
       valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 3, fresh: 3 } },
     });
-    expect(after).toMatchObject({ move: "revert", harness: first?.starter });
+    expect(next).toMatchObject({ move: "revert", harness: first?.starter });
     expect(strayed).toEqual([]);
 
     const pack = ["--name", name];

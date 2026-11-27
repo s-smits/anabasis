@@ -1326,8 +1326,8 @@ describe.concurrent("the slots", () => {
       mkdirSync(join(queue, "slot-1", "99999999"), { recursive: true });
       rmSync(join(queue, "slot-2"), { recursive: true, force: true });
       symlinkSync("99999999", join(queue, "slot-2"));
-      const third = await slots.started("third", { ANA_CHECK_HOST: "m1" });
-      const fourth = await slots.started("fourth", { ANA_CHECK_HOST: "m1" });
+      const third = await slots.started("third", { ANA_CHECK_HOST: "m1", ANA_RUNNER_QUEUE_WAIT: "0" });
+      const fourth = await slots.started("fourth", { ANA_CHECK_HOST: "m1", ANA_RUNNER_QUEUE_WAIT: "0" });
       expect(heldIn(queue).length).toBe(2);
       await slots.finish(third);
       await slots.finish(fourth);

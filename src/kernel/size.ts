@@ -22,8 +22,8 @@ function equalMargins(wins: number, losses: number): number[] {
 
 export function smallestSteps(tasks: number, level: number): Result[] {
   const results: Result[] = [];
-  let [wins, losses] = [0, 0];
-  while (wins + losses <= tasks) {
+  let [wins, losses] = [1, 0];
+  for (let total = 1; total <= tasks; total += 1) {
     if (isSignificant(equalMargins(wins, losses), level)) {
       results.push({ wins, losses });
       losses += 1;

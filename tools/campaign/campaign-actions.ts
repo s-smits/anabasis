@@ -80,7 +80,7 @@ export interface CampaignContext {
   readonly paid: "paid" | "scripted";
   readonly maxMoves: number;
   used: number;
-  readonly began?: number;
+  readonly began: number;
   failed: { readonly move: string; readonly why: string } | null;
   examining?: { readonly session: string; readonly done: Promise<void> } | null;
   releasing?: Promise<boolean>;
@@ -176,13 +176,13 @@ async function runAction(
     if (context.used >= context.maxMoves) return halt(spent);
     if (context.failed !== null) return text("The campaign has been stopped by the host.");
     const { host } = context.seats;
-    await waitPaused(context.log, context.began ?? 0, context.campaign.limits.wallSeconds, {
+    await waitPaused(context.log, context.began, context.campaign.limits.wallSeconds, {
       host,
       signal,
       within: (work) => bench.within(work),
     });
     if (aborted()) return text("The campaign has been stopped by the host.");
-    if (boundedPause(read(context.log), context.began ?? 0)) {
+    if (boundedPause(read(context.log), context.began)) {
       return halt("The campaign reached its operator pause point; no further action may start.");
     }
     const { turn, decided } = actionTurn(context);

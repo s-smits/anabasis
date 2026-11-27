@@ -414,7 +414,9 @@ function noRoom(ground: Ground): Move | null {
           why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has finished writing tasks for it since: tasks are written for each new reference`,
         };
   }
-  const starterOwed = side === "fresh" && epochsOf(events).at(-1)?.starter_tally === null;
+  const lastEpoch = epochsOf(events).at(-1);
+  const starterOwed =
+    side === "fresh" && lastEpoch?.starter_tally === null && lastEpoch.reference !== "starter";
   const why =
     room === "too-hard"
       ? `comparison ${last.id} showed no improvement and neither harness produced a valid answer: generating replacement tasks`

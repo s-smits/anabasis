@@ -209,6 +209,7 @@ describe.concurrent("the host's practice release", () => {
       paid: "scripted",
       maxMoves: 12,
       used: 0,
+      began: 0,
       failed: null,
     };
   };

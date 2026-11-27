@@ -153,10 +153,11 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     const state = hands.stands(events, now);
     const turn = turnOf(state, now, waitMs);
     if (turn === "done") {
-      if (state.kind === "ended") hands.say(`${name} ended on ${state.ending}: kept no longer`);
-      else if (state.kind === "stopped" && state.pause !== undefined) {
-        hands.say(`${name} paused (${state.pause.why}): kept no longer`);
-      }
+      hands.say(
+        state.kind === "ended"
+          ? `${name} ended on ${state.ending}: kept no longer`
+          : `${name} paused (${state.kind === "stopped" && state.pause !== undefined ? state.pause.why : "a pause"}): kept no longer`,
+      );
       return true;
     }
     if (turn === "watch") {

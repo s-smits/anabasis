@@ -246,20 +246,18 @@ async function probeReading(
               field !== undefined && answerFormatFault(given.contract.answerFormat, field.answer) === null;
             const filled = fieldsOf(run.answer, "$", "filled");
             const record = asRecord(run.answer);
-            const props =
+            const absent =
               record === null
                 ? []
-                : Object.entries(asRecord(asRecord(given.contract.answerFormat)?.properties) ?? {});
-            const absent = props.flatMap(([key, prop]) => {
-              if (record === null || Object.hasOwn(record, key)) return [];
-              const base = doNothingAnswer(prop, given.contract.answerFormat);
-              const alt = otherLeaf(base, "filled");
-              const make = (value: JsonValue): Field => ({
-                path: `$.${key}`,
-                answer: { ...record, [key]: value },
-              });
-              return [alt !== undefined && formed(make(alt)) ? make(alt) : make(base)];
-            });
+                : Object.entries(asRecord(asRecord(given.contract.answerFormat)?.properties) ?? {}).flatMap(
+                    ([key, prop]) => {
+                      if (Object.hasOwn(record, key)) return [];
+                      const alt = otherLeaf(doNothingAnswer(prop, given.contract.answerFormat), "filled");
+                      return alt === undefined
+                        ? []
+                        : [{ path: `$.${key}`, answer: { ...record, [key]: alt } }];
+                    },
+                  );
             return [
               ...fieldsOf(run.answer, "$", "emptied").map((field, at) =>
                 formed(field) ? field : filled[at],

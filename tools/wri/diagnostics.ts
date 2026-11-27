@@ -319,9 +319,7 @@ function writeRefusalFindings(log: Index): string[] {
           )
           .join(", ")}`;
   const probeNote =
-    substantive.size < refused.size
-      ? ` (${String(substantive.size)}/${String(refused.size)} with content >${String(PROBE_CONTENT_MAX)} chars)`
-      : "";
+    substantive.size < refused.size ? ` (${String(substantive.size)}/${String(refused.size)} non-probe)` : "";
   return [
     warn(
       "honesty",

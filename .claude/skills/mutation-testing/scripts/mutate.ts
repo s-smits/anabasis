@@ -10,20 +10,33 @@
  * prints surviving IDs, then the unread ones a rerun must bring to a verdict.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { gitMaybe } from "#src/meta/git.ts";
-import { join } from "#src/meta/path.ts";
+import {
+  appendFileSync,
+  cloneFile,
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "#src/meta/filesystem.ts";
+import { gitMaybe, gitOutput } from "#src/meta/git.ts";
+import { dirname, join } from "#src/meta/path.ts";
+import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { checkPlaces, fleetPlaces, namedPlaces, type Place } from "#tools/runs/host-config.ts";
 import * as ts from "typescript5";
 import {
   BATCH_FILE,
-  cloneTree,
   type FastWorker,
   isAway,
-  linkModules,
   measureCoverage,
   routed,
+  spawnsSubprocess,
   type VerdictMap,
 } from "./mutate-exec.ts";
 import { type PoolTask, runFleetPool, UNKNOWN_SUITE_MS } from "./mutate-pool.ts";
@@ -156,6 +169,83 @@ const linesOf = (path: string) =>
   existsSync(path) ? readFileSync(path, "utf8").split("\n").filter(Boolean) : [];
 
 const STAMP_FILE = ".ana-clone-stamp";
+
+function cloneGitTree(root: string, dest: string): boolean {
+  if (gitMaybe(root, "rev-parse", "--show-prefix") !== "") return false;
+  let listed: string;
+  try {
+    listed = gitOutput(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard");
+  } catch {
+    return false;
+  }
+  const made = new Set<string>();
+  for (const rel of listed.split("\0")) {
+    if (rel === "" || rel.startsWith(".ana-mutate") || rel.includes("/.ana-mutate")) continue;
+    const src = join(root, rel);
+    let stat: ReturnType<typeof lstatSync>;
+    try {
+      stat = lstatSync(src);
+    } catch {
+      continue;
+    }
+    const dst = join(dest, rel);
+    const parent = dirname(dst);
+    if (!made.has(parent)) {
+      mkdirSync(parent, { recursive: true });
+      made.add(parent);
+    }
+    if (stat.isSymbolicLink()) symlinkSync(readlinkSync(src), dst);
+    else if (stat.isFile()) cloneFile(src, dst);
+  }
+  const objects = gitMaybe(root, "rev-parse", "--path-format=absolute", "--git-path", "objects");
+  if (objects === null || gitMaybe(dest, "init", "-q") === null) return false;
+  mkdirSync(join(dest, ".git", "objects", "info"), { recursive: true });
+  writeFileSync(join(dest, ".git", "objects", "info", "alternates"), `${objects}\n`);
+  const head = gitMaybe(root, "rev-parse", "-q", "--verify", "HEAD^{commit}");
+  if (head !== null) writeFileSync(join(dest, ".git", "HEAD"), `${head}\n`);
+  const index = gitMaybe(root, "rev-parse", "--path-format=absolute", "--git-path", "index");
+  if (index !== null && existsSync(index)) cloneFile(index, join(dest, ".git", "index"));
+  const common = gitMaybe(root, "rev-parse", "--path-format=absolute", "--git-common-dir");
+  if (common !== null) {
+    for (const name of ["packed-refs", "shallow"]) {
+      const src = join(common, name);
+      if (existsSync(src)) cloneFile(src, join(dest, ".git", name));
+    }
+    const refs = join(common, "refs");
+    if (existsSync(refs)) cpSync(refs, join(dest, ".git", "refs"), { recursive: true, force: true });
+  }
+  return true;
+}
+
+async function cloneTree(root: string, dest: string): Promise<void> {
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(dest, { recursive: true });
+  if (cloneGitTree(root, dest)) return;
+  const entries = readdirSync(root).filter(
+    (name) => name !== "node_modules" && !name.startsWith(".ana-wall-probe-"),
+  );
+  if (runtimeProcess.platform === "darwin" && entries.length > 0) {
+    const cow = Bun.spawn(["cp", "-cRp", ...entries.map((name) => join(root, name)), dest], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    if ((await cow.exited) === 0) return;
+    rmSync(dest, { recursive: true, force: true });
+    mkdirSync(dest, { recursive: true });
+  }
+  for (const name of entries) cpSync(join(root, name), join(dest, name), { recursive: true, force: true });
+}
+
+function linkModules(root: string, clone: string, placement: "local" | "remote"): void {
+  for (const rel of ["node_modules", join("packages", "ui", "node_modules")]) {
+    const src = join(root, rel);
+    const dst = join(clone, rel);
+    if (placement === "local" && existsSync(src) && existsSync(dirname(dst)) && !existsSync(dst)) {
+      symlinkSync(src, dst);
+    }
+    if (placement === "remote" && existsSync(dst)) rmSync(dst, { recursive: true, force: true });
+  }
+}
 
 function loadSpecs(args: CommandArgs, files: readonly string[]): readonly OwnerSpec[] {
   const planPath = args.value("plan");
@@ -363,7 +453,16 @@ function buildPoolTasks(opts: {
     if (active.length === 0) {
       opts.record(item, finalizeRow(item.suites, opts.priorById.get(item.mutant.id), {}, opts.mode));
     } else {
-      const weightMs = active.reduce((sum, name) => sum + (opts.durations.get(name) ?? UNKNOWN_SUITE_MS), 0);
+      const [first, ...restSuites] = active;
+      const tailFactor = opts.mode === "stop-at-kill" ? 0.25 : 1;
+      const weightMs =
+        first === undefined
+          ? 0
+          : (opts.durations.get(first) ?? UNKNOWN_SUITE_MS) +
+            restSuites.reduce(
+              (sum, name) => sum + (opts.durations.get(name) ?? UNKNOWN_SUITE_MS) * tailFactor,
+              0,
+            );
       tasks.push({ key: item.mutant.id, plan: { mutant: item.mutant, active }, weightMs });
     }
   }
@@ -396,13 +495,27 @@ async function dispatchRemaining(opts: {
     }),
   );
   const covSuites = new Map(
-    [...opts.allSuites.entries()].filter(([name]) => leadNeeded.has(name) && !opts.localQualified.has(name)),
+    [...opts.allSuites.entries()].filter(
+      ([name, paths]) =>
+        leadNeeded.has(name) && !opts.localQualified.has(name) && !spawnsSubprocess(opts.root, paths),
+    ),
   );
   const runCov =
     opts.prune && (opts.afterSchema.length >= 5 || (opts.cacheDir !== null && existsSync(opts.cacheDir)));
   const localSlots = opts.pool.workers[0]?.local === true ? (opts.pool.places[0]?.slots ?? 1) : 0;
+  const pickWorkers = (scope: "local" | "fleet") => {
+    if (scope === "local") return opts.pool.workers.slice(0, localSlots);
+    if (opts.batchCap <= 1) return opts.pool.workers;
+    const local = opts.pool.workers.filter((seat) => !isAway(seat));
+    const remote = [
+      ...new Map(
+        opts.pool.workers.filter(isAway).map((seat) => [seat.place.remote ?? "remote", seat] as const),
+      ).values(),
+    ];
+    return [...local, ...remote];
+  };
   const stayLocal = localSlots > 0 && opts.afterSchema.length <= localSlots;
-  const activeWorkers = stayLocal ? opts.pool.workers.slice(0, localSlots) : opts.pool.workers;
+  const activeWorkers = pickWorkers(stayLocal ? "local" : "fleet");
   const [cov] = await Promise.all([
     runCov
       ? measureCoverage(opts.root, covSuites, [...opts.originals.keys()], {
@@ -431,7 +544,7 @@ async function dispatchRemaining(opts: {
   if (tasks.length === 0) return 0;
   const byId = new Map(opts.afterSchema.map(({ item }) => [item.mutant.id, item] as const));
   const finalStayLocal = localSlots > 0 && tasks.length <= localSlots;
-  const finalWorkers = finalStayLocal ? opts.pool.workers.slice(0, localSlots) : opts.pool.workers;
+  const finalWorkers = pickWorkers(finalStayLocal ? "local" : "fleet");
   if (!finalStayLocal && stayLocal) await opts.pool.prepare(finalWorkers);
   const { refused, unrun } = await runFleetPool({
     activeWorkers: finalWorkers,

@@ -1,17 +1,14 @@
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { availableParallelism, tmpdir } from "#src/meta/os.ts";
 import { dirname, isAbsolute, join, relative } from "#src/meta/path.ts";
-import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
+import { capturedExecPath } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
 import { checkHost, NO_VERDICT, type Place, placeEnv } from "#tools/runs/host-config.ts";
 import { PER_TEST_WALL_MS } from "#tools/runtime/test-suite.ts";
@@ -48,6 +45,9 @@ export const routed = ({ remote }: Place): boolean =>
   remote !== undefined || !["", "here"].includes(checkHost()?.trim() ?? "");
 
 export const isAway = (worker: FastWorker): boolean => !worker.local && routed(worker.place);
+
+const explicitPath = (path: string): string =>
+  isAbsolute(path) || path.startsWith("./") || path.startsWith("../") ? path : `./${path}`;
 
 function suiteTimeoutSeconds(capSeconds: number, durationMs: number | undefined): number {
   if (durationMs === undefined) return capSeconds;
@@ -175,7 +175,7 @@ async function spawnVerdict(
       "--bail",
       `--max-concurrency=${String(away ? 4 : localConc)}`,
       `--timeout=${String(PER_TEST_WALL_MS)}`,
-      ...paths,
+      ...paths.map(explicitPath),
     ],
     {
       cwd: worker.clone,
@@ -391,7 +391,7 @@ for (const { mutant } of cfg.plans) {
 }
 async function spawnTest(dir, paths, conc, timeoutSec) {
   const run = Bun.spawn(
-    [process.execPath, "test", "--bail", "--max-concurrency=" + String(conc), "--timeout=" + String(cfg.perTestWall), ...paths],
+    [process.execPath, "test", "--bail", "--max-concurrency=" + String(conc), "--timeout=" + String(cfg.perTestWall), ...paths.map((p) => (p.startsWith("/") || p.startsWith("./") || p.startsWith("../") ? p : "./" + p))],
     {
       cwd: dir,
       env: { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
@@ -603,7 +603,7 @@ export async function runBatch(
   writeFileSync(driverPath, source);
   const batchSeconds = Math.min(3600, opts.seconds * Math.max(1, plans.length) + 60);
   try {
-    const run = Bun.spawn(["bun", "test", BATCH_FILE], {
+    const run = Bun.spawn(["bun", "test", explicitPath(BATCH_FILE)], {
       cwd: worker.clone,
       env: { ...Bun.env, ...placeEnv(worker.place), ANA_RUNNER_WALL: String(batchSeconds) },
       stdout: "pipe",
@@ -649,36 +649,7 @@ export async function runBatch(
   }
 }
 
-export async function cloneTree(root: string, dest: string): Promise<void> {
-  rmSync(dest, { recursive: true, force: true });
-  mkdirSync(dest, { recursive: true });
-  const entries = readdirSync(root).filter(
-    (name) => name !== "node_modules" && !name.startsWith(".ana-wall-probe-"),
-  );
-  if (runtimeProcess.platform === "darwin" && entries.length > 0) {
-    const cow = Bun.spawn(["cp", "-cRp", ...entries.map((name) => join(root, name)), dest], {
-      stdout: "ignore",
-      stderr: "ignore",
-    });
-    if ((await cow.exited) === 0) return;
-    rmSync(dest, { recursive: true, force: true });
-    mkdirSync(dest, { recursive: true });
-  }
-  for (const name of entries) cpSync(join(root, name), join(dest, name), { recursive: true, force: true });
-}
-
-export function linkModules(root: string, clone: string, placement: "local" | "remote"): void {
-  const rootModules = join(root, "node_modules");
-  const cloneModules = join(clone, "node_modules");
-  if (placement === "local" && existsSync(rootModules) && !existsSync(cloneModules)) {
-    symlinkSync(rootModules, cloneModules);
-  }
-  if (placement === "remote" && existsSync(cloneModules)) {
-    rmSync(cloneModules, { recursive: true, force: true });
-  }
-}
-
-function spawnsSubprocess(root: string, paths: readonly string[]): boolean {
+export function spawnsSubprocess(root: string, paths: readonly string[]): boolean {
   const hasSub = (rel: string) => {
     const full = join(root, rel);
     return existsSync(full) && SUBPROCESS_RE.test(readFileSync(full, "utf8"));
@@ -729,7 +700,7 @@ export async function measureCoverage(
   const cache = opts.cacheDir;
   if (cache !== null) mkdirSync(cache, { recursive: true });
   const queue = [...suites.entries()];
-  const maxConc = Math.min(4, Math.max(2, Math.floor(availableParallelism() / 3)));
+  const maxConc = 2;
   let seq = 0;
   const runOne = async ([name, paths]: readonly [string, readonly string[]]) => {
     const key = cacheKey(name);
@@ -759,7 +730,7 @@ export async function measureCoverage(
         `--max-concurrency=${String(maxConc)}`,
         `--timeout=${String(PER_TEST_WALL_MS)}`,
         ...covArgs,
-        ...paths,
+        ...paths.map(explicitPath),
       ],
       {
         cwd: root,
@@ -787,7 +758,7 @@ export async function measureCoverage(
     }
   };
   try {
-    const slots = Math.min(Math.max(2, Math.floor(availableParallelism() / 3)), queue.length);
+    const slots = Math.min(Math.max(2, Math.floor(availableParallelism() / 2)), queue.length);
     await Promise.all(
       Array.from({ length: slots }, async () => {
         for (let next = queue.shift(); next !== undefined; next = queue.shift()) await runOne(next);

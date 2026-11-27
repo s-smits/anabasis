@@ -29,7 +29,7 @@ import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
+import { asError, errorMessage } from "#src/meta/runtime-values.ts";
 import { waitOut } from "#src/solver/run.ts";
 import { acceptCommand } from "../eval/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
@@ -83,7 +83,7 @@ type Made = Extract<
  * failure the campaign goes on from, bounded by the crash rule (`crashedRun`), not an environment's
  * ending.
  */
-async function goesOn(log: string, from: number, error: unknown, host: Seats["host"]): Promise<boolean> {
+async function goesOn(log: string, from: number, error: Error, host: Seats["host"]): Promise<boolean> {
   if (await waitOut(log, error, host?.sleep)) return true;
   const events = read(log);
   const crashed = events.slice(from).some((event) => sessionEnded(event) && event.data.ended === "crashed");
@@ -238,7 +238,9 @@ async function converse(
       campaignTools(context, named.move === "examine" ? "starts-examiner" : "starts-nothing"),
     );
   } catch (error) {
-    if (context.failed === null && (await goesOn(log, turn.events.length, error, seats.host))) return null;
+    if (context.failed === null && (await goesOn(log, turn.events.length, asError(error), seats.host))) {
+      return null;
+    }
     append(log, ENDED, { ending: "environment", why: errorMessage(error), move: "build" });
     throw error;
   }
@@ -344,7 +346,7 @@ async function runMade(decided: Made, turn: Turn, log: string, from: number): Pr
     }
     return true;
   } catch (error) {
-    if (await goesOn(log, from, error, turn.seats.host)) return false;
+    if (await goesOn(log, from, asError(error), turn.seats.host)) return false;
     if (read(log).length > from) {
       append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
     }

@@ -164,6 +164,21 @@ describe("what a pass costs a host", () => {
       alarms: [{ name: "BILLING RESIDUAL", lane: 19, detail: "billed $25.00 (+14%)" }],
     });
     expect(third.said.join("\n")).not.toContain("BILLING RESIDUAL");
+
+    const endedEvents: readonly LogEvent[] = [
+      ...events,
+      { at: AT, kind: "campaign.ended", data: { ending: "exam", why: "3 faults" } },
+    ];
+    const dead = pulse(run, endedEvents, { writing: false, kept: false }, undefined, {
+      now: Date.parse(AT),
+      alarms: [],
+    });
+    expect(dead.said.join("\n")).toContain("campaign ended (exam): 3 faults");
+    const deadAgain = pulse(run, endedEvents, { writing: false, kept: false }, dead.seen, {
+      now: Date.parse(AT),
+      alarms: [],
+    });
+    expect(deadAgain.said).toEqual([]);
   });
 });
 

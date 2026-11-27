@@ -19,7 +19,8 @@ import {
   draftFaults,
   draftOf,
   EVALUATOR_SCHEMA,
-  RUBRIC_ITEM_SCHEMA,
+  type RubricLane,
+  rubricItemSchema,
   TASK_FIELDS,
   TEXT_FILES,
 } from "./draft.ts";
@@ -48,56 +49,61 @@ const CONTROL_ADD = {
   files: TEXT_FILES,
 };
 
-const REVISE_PARAMETERS = Type.Object({
-  kind: Type.Union([Type.Literal("tune"), Type.Literal("repair")], {
-    description:
-      '"tune" refines rubric items/weights, code scores, or adds checks/tools at a settled boundary; "repair" fixes a check with an effective Referee check-defect ruling.',
-  }),
-  why: Type.String({ minLength: 1, description: "Concise domain reason for the revision." }),
-  check: Type.Optional(
-    Type.String({
-      pattern: "^check-[a-z0-9-]+$",
-      description: 'Required when kind is "repair": the check id ruled check-defect.',
-    }),
-  ),
-  checks: Type.Optional(
-    Type.Array(CHECK_ITEM_SCHEMA, {
-      minItems: 1,
+const reviseParameters = (lane: RubricLane) =>
+  Type.Object({
+    kind: Type.Union([Type.Literal("tune"), Type.Literal("repair")], {
       description:
-        "Optional full check list preserving every inherited check's id, rule and assertion, while adding new checks or verifier tools. Omit to keep checks unchanged.",
+        '"tune" refines rubric items/weights, code scores, or adds checks/tools at a settled boundary; "repair" fixes a check with an effective Referee check-defect ruling.',
     }),
-  ),
-  evaluator: Type.Optional(EVALUATOR_SCHEMA),
-  objective_items: Type.Optional(
-    Type.Array(RUBRIC_ITEM_SCHEMA, {
-      minItems: 1,
-      description:
-        "Updated weighted [0, 1] rubric items (reweight, edit, add, or remove code/judge items). Omit to keep current objective items unchanged.",
-    }),
-  ),
-  objective_tools: Type.Optional(
-    Type.Array(Type.String({ minLength: 1 }), {
-      description: "Updated verifier tool ids used by objective/scores. Omit to keep unchanged.",
-    }),
-  ),
-  add_tasks: Type.Optional(
-    Type.Array(Type.Object(TASK_FIELDS), {
-      description: "Optional new example tasks appended after the inherited examples.",
-    }),
-  ),
-  add_accept_controls: Type.Optional(
-    Type.Array(Type.Object(CONTROL_ADD), {
-      description: "Optional new accept controls appended after the inherited accept controls.",
-    }),
-  ),
-  add_reject_controls: Type.Optional(
-    Type.Array(Type.Object({ ...CONTROL_ADD, check: Type.String({ minLength: 1 }) }), {
-      description: "Optional new reject controls appended after the inherited reject controls.",
-    }),
-  ),
-});
+    why: Type.String({ minLength: 1, description: "Concise domain reason for the revision." }),
+    check: Type.Optional(
+      Type.String({
+        pattern: "^check-[a-z0-9-]+$",
+        description: 'Required when kind is "repair": the check id ruled check-defect.',
+      }),
+    ),
+    checks: Type.Optional(
+      Type.Array(CHECK_ITEM_SCHEMA, {
+        minItems: 1,
+        description:
+          "Optional full check list preserving every inherited check's id, rule and assertion, while adding new checks or verifier tools. Omit to keep checks unchanged.",
+      }),
+    ),
+    evaluator: Type.Optional(EVALUATOR_SCHEMA),
+    objective_items: Type.Optional(
+      Type.Array(rubricItemSchema(lane), {
+        minItems: 1,
+        description:
+          lane === "judged"
+            ? "Updated weighted [0, 1] rubric items (reweight, edit, add, or remove code/judge items). Omit to keep current objective items unchanged."
+            : "Updated weighted [0, 1] deterministic code rubric items (reweight, edit, add, or remove code items). Omit to keep current objective items unchanged.",
+      }),
+    ),
+    objective_tools: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Updated verifier tool ids used by objective/scores. Omit to keep unchanged.",
+      }),
+    ),
+    add_tasks: Type.Optional(
+      Type.Array(Type.Object(TASK_FIELDS), {
+        description: "Optional new example tasks appended after the inherited examples.",
+      }),
+    ),
+    add_accept_controls: Type.Optional(
+      Type.Array(Type.Object(CONTROL_ADD), {
+        description: "Optional new accept controls appended after the inherited accept controls.",
+      }),
+    ),
+    add_reject_controls: Type.Optional(
+      Type.Array(Type.Object({ ...CONTROL_ADD, check: Type.String({ minLength: 1 }) }), {
+        description: "Optional new reject controls appended after the inherited reject controls.",
+      }),
+    ),
+  });
+const REVISE_PARAMETERS_JUDGED = reviseParameters("judged");
+const REVISE_PARAMETERS_CODE = reviseParameters("code-only");
 
-type ReviseArgs = Static<typeof REVISE_PARAMETERS>;
+type ReviseArgs = Static<typeof REVISE_PARAMETERS_JUDGED>;
 
 export function candidateDraft(parent: Draft, args: ReviseArgs): Draft {
   const checks =
@@ -112,10 +118,10 @@ export function candidateDraft(parent: Draft, args: ReviseArgs): Draft {
   const rubric: readonly RubricItem[] | undefined =
     args.objective_items === undefined
       ? parent.objective?.items
-      : args.objective_items.map(({ id, weight, kind, criterion }) =>
-          kind === "judge"
-            ? { id, weight, kind, criterion: criterion ?? "" }
-            : { id, weight, ...keyIfDefined("kind", kind) },
+      : args.objective_items.map((item) =>
+          item.kind === "judge"
+            ? { id: item.id, weight: item.weight, kind: item.kind, criterion: item.criterion ?? "" }
+            : { id: item.id, weight: item.weight, ...keyIfDefined("kind", item.kind) },
         );
   const objective: Objective | undefined =
     parent.objective === undefined
@@ -363,14 +369,15 @@ export function reviseTool(
     revised: boolean;
   },
   runRevise: ReviseRunner,
+  lane: RubricLane = "judged",
 ): AgentTool {
   const filed = desk.home === undefined ? "" : ` ${FROM_FILE}`;
   return tool(
     fromHome(desk.home, {
       name: "revise_exam",
       description: `Propose a mid-campaign revision to the exam (kind "tune" for rubric/score/check refinement at settled boundaries, or "repair" for a check with an effective Referee check-defect ruling). Domain, scope, rules, conventions, answer format, objective quantity/direction/scale, inherited check assertions, and existing examples/controls stay fixed. Validated against readChecker, historical adjudicated witnesses, and an adversarial Referee audit before handing off to a successor campaign.${filed}`,
-      parameters: REVISE_PARAMETERS,
-      execute: async (args) => {
+      parameters: lane === "judged" ? REVISE_PARAMETERS_JUDGED : REVISE_PARAMETERS_CODE,
+      execute: async (args: ReviseArgs) => {
         const events = read(desk.request.log, TRACE_KINDS);
         const parent = draftOf(events);
         if (parent === null) return text("Refused: campaign holds no drafted exam.");

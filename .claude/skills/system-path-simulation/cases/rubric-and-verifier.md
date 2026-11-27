@@ -1,6 +1,6 @@
 # Rubric items and the pairwise judge
 
-A contract's objective may carry rubric items of two kinds: `code` items, which the verifier scores in the offline sandbox, and `judge` items, which the stateless pairwise judge (`src/audit/judge.ts`) votes on between two valid answers. The Examiner always sees both kinds during `d-1` and decides whether the domain needs `judge` items. Judging runs only when the contract has a judge item and judging is admitted (automatically on unattended cross-family openings, or via `tools/eval/accept.ts --admit-judge` under `--hitl`); every other exam calls no judge and spends nothing on one. This guide names the cheapest tier that settles each question about that path.
+A contract's objective may carry rubric items of two kinds: `code` items, which the verifier scores in the offline sandbox, and `judge` items, which the stateless pairwise judge (`src/audit/judge.ts`) votes on between two valid answers. When a cross-family reviewer is seated, the Examiner sees both kinds during `d-1` and decides dynamically whether the domain needs `judge` items; on same-family openings (`rubricLaneOf` = `"code-only"`), `draft_exam` keeps the rubric deterministic code-only and refuses `judge` items before audit. Judging runs only when the contract has a judge item and judging is admitted (automatically on unattended cross-family openings, or via `tools/eval/accept.ts --admit-judge` under `--hitl`); every other exam calls no judge and spends nothing on one. This guide names the cheapest tier that settles each question about that path.
 
 ## What each tier can settle
 
@@ -19,7 +19,7 @@ A scripted rehearsal reaches the judged path only on a seed whose contract carri
 - **Order bias.** A judge that always prefers the answer shown first must read no step: every pair is judged in both orders, and the passes cancel (`test/judge.test.ts`).
 - **Missing vote.** A pair without a vote stops the comparison before its report; running it again resumes from the log and judges only what is left (`judgingLeft`).
 - **Cap during judging.** A cap reached between pairs marks the comparison capped, and it reads not-scored rather than scoring a partial set.
-- **Same-family reviewer.** If Examiner drafts judged items on a same-family opening, admission leaves the exam unfrozen (`ending: "exam"`) before solve 1 until resumed with a cross-family `--reviewer`, and paid judged comparisons refuse same-family reviewers (`comparedOn` / `assertCrossFamily`).
+- **Same-family reviewer.** On a same-family opening, `draft_exam` and `revise_exam` refuse `kind: "judge"` items inside the session before audit (`draftFaults` / `revisionRefusal`), and paid judged comparisons refuse same-family reviewers (`comparedOn` / `assertCrossFamily`).
 - **Hidden values.** Criterion votes see a task's hidden values beside the task; the holistic vote sees neither the hidden values nor the criteria (`test/judge.test.ts`).
 - **Pool closure.** Under a judge, no task closes as easy on code saturation (`poolOf`), since judged room lies above a full code score.
 

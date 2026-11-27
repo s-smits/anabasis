@@ -2,6 +2,7 @@ import { type Static, Type } from "typebox";
 import {
   answerFormatFault,
   codeObjective,
+  hasJudge,
   type Objective,
   type RubricItem,
   rubricFaults,
@@ -57,12 +58,15 @@ export interface Draft {
   readonly reject: readonly (DraftControl & { readonly check: string })[];
 }
 
+export type RubricLane = "judged" | "code-only";
+
 interface DraftingTerms {
   readonly limits: { readonly wallSeconds: number; readonly turns: number; readonly puts: number };
   readonly id: string;
   readonly log: string;
   readonly prompt: string;
   readonly budget: SolveBudget;
+  readonly lane?: RubricLane;
   readonly reading: (draft: Draft, home?: string) => Promise<readonly string[]>;
 }
 
@@ -125,12 +129,19 @@ export const EVALUATOR_SCHEMA = Type.Union([
   Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
   Type.Object({ from_file: Type.String({ minLength: 1 }) }),
 ]);
-export const RUBRIC_ITEM_SCHEMA = Type.Object({
+const RUBRIC_ITEM_JUDGED = Type.Object({
   id: Type.String({ pattern: "^[a-z][a-z0-9-]*$" }),
   weight: Type.Number({ exclusiveMinimum: 0 }),
   kind: Type.Optional(Type.Union([Type.Literal("code"), Type.Literal("judge")])),
   criterion: Type.Optional(Type.String({ minLength: 1 })),
 });
+const RUBRIC_ITEM_CODE = Type.Object({
+  id: Type.String({ pattern: "^[a-z][a-z0-9-]*$" }),
+  weight: Type.Number({ exclusiveMinimum: 0 }),
+  kind: Type.Optional(Type.Literal("code")),
+});
+export const rubricItemSchema = (lane: RubricLane) =>
+  lane === "judged" ? RUBRIC_ITEM_JUDGED : RUBRIC_ITEM_CODE;
 const OBJECTIVE_FIELDS = {
   quantity: Type.Optional(
     Type.String({
@@ -180,41 +191,49 @@ const DRAFT_COMMON = {
 };
 const OBJECTIVE_DESCRIPTION =
   "A quantity with its direction, as the system prompt says, or empty where the exam has none.";
-const DRAFT_PARAMETERS = Type.Object({
-  ...DRAFT_COMMON,
-  objective: Type.Object(
-    {
-      ...OBJECTIVE_FIELDS,
-      items: Type.Optional(
-        Type.Array(RUBRIC_ITEM_SCHEMA, {
-          minItems: 1,
-          description:
-            'Weighted `[0, 1]` rubric items (`direction: "higher"`). Code items map via `scores[id](request, runtime) => number` in `[0, 1]`; optional `kind: "judge"` items take a one-line `criterion` (20-220 chars, never id `"holistic"`, at most 4) scored by swapped pairwise judging when qualitative substance cannot be checked in code.',
-        }),
-      ),
-    },
-    { description: OBJECTIVE_DESCRIPTION },
-  ),
-  tasks: Type.Array(Type.Object(TASK_FIELDS)),
-});
-type DraftArgs = Static<typeof DRAFT_PARAMETERS>;
+const draftParameters = (lane: RubricLane) =>
+  Type.Object({
+    ...DRAFT_COMMON,
+    objective: Type.Object(
+      {
+        ...OBJECTIVE_FIELDS,
+        items: Type.Optional(
+          Type.Array(rubricItemSchema(lane), {
+            minItems: 1,
+            description:
+              lane === "judged"
+                ? 'Weighted `[0, 1]` rubric items (`direction: "higher"`). Code items map via `scores[id](request, runtime) => number` in `[0, 1]`; optional `kind: "judge"` items take a one-line `criterion` (20-220 chars, never id `"holistic"`, at most 4) scored by swapped pairwise judging when qualitative substance cannot be checked in code.'
+                : 'Weighted `[0, 1]` deterministic `code` rubric items (`direction: "higher"`), each mapped via `scores[id](request, runtime) => number` in `[0, 1]`.',
+          }),
+        ),
+      },
+      { description: OBJECTIVE_DESCRIPTION },
+    ),
+    tasks: Type.Array(Type.Object(TASK_FIELDS)),
+  });
+const DRAFT_PARAMETERS_JUDGED = draftParameters("judged");
+const DRAFT_PARAMETERS_CODE = draftParameters("code-only");
+type DraftArgs = Static<typeof DRAFT_PARAMETERS_JUDGED>;
 
 const FLOOR = `${String(GAP_FLOOR * 100)}%`;
 
 const LANE_CHOICE =
   'Choose the scoring lane the domain needs: use deterministic `code` items alone when quality is fully mechanical; use a minimal binary `valid` floor plus `kind: "judge"` items (one-line `criterion`, 20-220 chars, never id `"holistic"`, up to 4) for purely qualitative work; or pair graded `[0, 1]` `code` items with non-overlapping `kind: "judge"` items carrying substantial weight whenever both verifiable accuracy and deliverable quality, completeness, diagnostics, presentation and conclusions matter.';
+const LANE_CODE =
+  "Score the objective with deterministic `[0, 1]` `code` items in `scores` (or a single `objective` export): this campaign seats no cross-family judging reviewer, so express every measurable dimension—accuracy, diagnostics, completeness, structural quality and cross-file consistency—as smooth deterministic `[0, 1]` code scores.";
 
-const SYSTEM_PROMPT = [
-  "You are the Examiner. Draft the campaign's fixed exam from the operator's prompt: public rules, scope, conventions, answer format, checks, objective, example tasks and controls. Later sessions write further tasks under this frozen contract and cannot change it.",
-  `${TASK} Solvers receive public/task.json, public/resources/ and any public/files/, answer with answer.json matching answer_format, and pass validity when every check returns true. ${FAIR}`,
-  `Deliverables and mixed workspaces: solvers may write files under ${DELIVERABLES.folder}/ (up to ${String(DELIVERABLES.count)} files, ${String(DELIVERABLES.bytes)} bytes total), passed to checks, objectives and pairwise judging as request.files ({ path, base64, text, entries }). When the prompt asks for real work products (such as .xlsx, .docx, .pdf, .ipynb, .sqlite or .png files), let answer.json be a compact manifest/summary while deliverables/ holds the full work products. Likewise, public_input.files accepts { path, text }, { path, base64 } (use { "from_file": "<path>" } to embed binary files built in your shell), or { path, entries }, placed under public/files/.`,
-  `Harness comparisons score held-out tasks afresh on validity first, then on the objective between valid answers differing by at least ${FLOOR} of the larger measure (or ${FLOOR} on [0, 1] for rubric items). Ties leave the test, so an exam where every solve passes and ties separates nothing.`,
-  `Who solves and difficulty calibration:\n\n${REACH}`,
-  `Designing validity and the objective: hard-constraint domains separate harnesses on binary validity; multi-artifact analytical domains keep unambiguous structural/delivery/feasibility invariants as binary checks while the objective separates valid answers. Compute the objective via \`objective(request, runtime)\` or \`objective.items\` + \`scores\` mapping each code item to \`[0, 1]\`. ${LANE_CHOICE} Generate \`publicInput\` forward from exact \`hidden\` ground truth or mechanical invariants—never solve a task with a stronger model. Both \`objective\` and \`scores\` may read per-task rubric targets in \`request.hidden\`. Give every code rubric item smooth partial credit on \`[0, 1]\` (exact near 1, penalising wrong or hedged claims toward 0; avoid 0/1 cliffs and saturating presence checks). For judged items, focus criteria on full requirement coverage, formal diagnostics and method justification, clear presentation and visuals, and explicit quantitative findings or recommendations.`,
-  `Rules, scope and conventions: the host enforces \`answer_format\` JSON Schema before checks run, so focus rules and checks on coupled domain invariants, artifact format and computation integrity, and executable behaviour while keeping surface formatting lenient. Any numeric or size bound in \`answer_format\` is a public rule and belongs in scope. Cite authoritative domain standards without restating their procedures or tables. ${UNHELD} Draft a broad scope covering every grade and regime (never listing planted faults). Honour every computable requirement in the operator's prompt at full strength.`,
-  `Check program: one offline TypeScript module exporting \`checks\` (and \`objective\` or \`scores\` when declared) with no imports, network, clock or randomness. Each function takes \`(request, runtime)\` where \`request\` holds \`publicTask\`, \`artifact\`, \`hidden\` and \`files\`. Declare needed host or \`.toolchain/\` binaries (such as \`python3\`) in \`tools\` and call \`await runtime.tools.run({ toolId, args, files, stdin })\`. Checks must finish well under ${String(PER_CHECK_MS / 60_000)} minutes, throw rather than catching computation errors into \`false\`/\`0\`, hold stated bounds with small float epsilon (1e-9), and verify properties rather than comparing against a fixed reference answer.`,
-  `Examples and controls: supply at least ${plural(EXAMPLES, "distinct example task")} (either all carry hidden values or none), one accept control per example (beating naive baselines by at least ${FLOOR} when an objective exists), and at least one format-valid reject control per check. Empty/minimal format-valid answers must fail every task. draft_exam validates the whole draft and returns any faults; a fault-free draft becomes the campaign's fixed exam.`,
-].join("\n\n");
+const systemPromptOf = (lane: RubricLane): string =>
+  [
+    "You are the Examiner. Draft the campaign's fixed exam from the operator's prompt: public rules, scope, conventions, answer format, checks, objective, example tasks and controls. Later sessions write further tasks under this frozen contract and cannot change it.",
+    `${TASK} Solvers receive public/task.json, public/resources/ and any public/files/, answer with answer.json matching answer_format, and pass validity when every check returns true. ${FAIR}`,
+    `Deliverables and mixed workspaces: solvers may write files under ${DELIVERABLES.folder}/ (up to ${String(DELIVERABLES.count)} files, ${String(DELIVERABLES.bytes)} bytes total), passed to ${lane === "judged" ? "checks, objectives and pairwise judging" : "checks and objectives"} as request.files ({ path, base64, text, entries }). When the prompt asks for real work products (such as .xlsx, .docx, .pdf, .ipynb, .sqlite or .png files), let answer.json be a compact manifest/summary while deliverables/ holds the full work products. Likewise, public_input.files accepts { path, text }, { path, base64 } (use { "from_file": "<path>" } to embed binary files built in your shell), or { path, entries }, placed under public/files/.`,
+    `Harness comparisons score held-out tasks afresh on validity first, then on the objective between valid answers differing by at least ${FLOOR} of the larger measure (or ${FLOOR} on [0, 1] for rubric items). Ties leave the test, so an exam where every solve passes and ties separates nothing.`,
+    `Who solves and difficulty calibration:\n\n${REACH}`,
+    `Designing validity and the objective: hard-constraint domains separate harnesses on binary validity; multi-artifact analytical domains keep unambiguous structural/delivery/feasibility invariants as binary checks while the objective separates valid answers. Compute the objective via \`objective(request, runtime)\` or \`objective.items\` + \`scores\` mapping each code item to \`[0, 1]\`. ${lane === "judged" ? LANE_CHOICE : LANE_CODE} Generate \`publicInput\` forward from exact \`hidden\` ground truth or mechanical invariants—never solve a task with a stronger model. Both \`objective\` and \`scores\` may read per-task rubric targets in \`request.hidden\`. Give every code rubric item smooth partial credit on \`[0, 1]\` (exact near 1, penalising wrong or hedged claims toward 0; avoid 0/1 cliffs and saturating presence checks).${lane === "judged" ? " For judged items, focus criteria on full requirement coverage, formal diagnostics and method justification, clear presentation and visuals, and explicit quantitative findings or recommendations." : ""}`,
+    `Rules, scope and conventions: the host enforces \`answer_format\` JSON Schema before checks run, so focus rules and checks on coupled domain invariants, artifact format and computation integrity, and executable behaviour while keeping surface formatting lenient. Any numeric or size bound in \`answer_format\` is a public rule and belongs in scope. Cite authoritative domain standards without restating their procedures or tables. ${UNHELD} Draft a broad scope covering every grade and regime (never listing planted faults). Honour every computable requirement in the operator's prompt at full strength.`,
+    `Check program: one offline TypeScript module exporting \`checks\` (and \`objective\` or \`scores\` when declared) with no imports, network, clock or randomness. Each function takes \`(request, runtime)\` where \`request\` holds \`publicTask\`, \`artifact\`, \`hidden\` and \`files\`. Declare needed host or \`.toolchain/\` binaries (such as \`python3\`) in \`tools\` and call \`await runtime.tools.run({ toolId, args, files, stdin })\`. Checks must finish well under ${String(PER_CHECK_MS / 60_000)} minutes, throw rather than catching computation errors into \`false\`/\`0\`, hold stated bounds with small float epsilon (1e-9), and verify properties rather than comparing against a fixed reference answer.`,
+    `Examples and controls: supply at least ${plural(EXAMPLES, "distinct example task")} (either all carry hidden values or none), one accept control per example (beating naive baselines by at least ${FLOOR} when an objective exists), and at least one format-valid reject control per check. Empty/minimal format-valid answers must fail every task. draft_exam validates the whole draft and returns any faults; a fault-free draft becomes the campaign's fixed exam.`,
+  ].join("\n\n");
 
 const NAMING = [
   "$ref",
@@ -378,7 +397,7 @@ function evaluatorFaults(draft: Draft): string[] {
   ];
 }
 
-export function draftFaults(draft: Draft): string[] {
+export function draftFaults(draft: Draft, lane: RubricLane = "judged"): string[] {
   if (asRecord(draft.answerFormat)?.type !== "object") {
     return [
       "the answer format is not a JSON Schema of type object: a solver's answer is one JSON object, which the schema describes",
@@ -391,6 +410,11 @@ export function draftFaults(draft: Draft): string[] {
   return [
     ...evaluatorFaults(draft),
     ...rubricFaults(draft.objective, checkIds),
+    ...(lane === "code-only" && hasJudge(draft.objective)
+      ? [
+          'kind: "judge" rubric items require a cross-family judging reviewer; this campaign seats none, so express every objective item as a deterministic code item in scores',
+        ]
+      : []),
     ...(again === undefined ? [] : [`${again} is named twice: an id names one rule or one check`]),
     ...draft.rules.flatMap(({ id }) => {
       const checked = draft.checks.filter((check) => check.rule === id).length;
@@ -428,10 +452,10 @@ function draftedFrom(args: DraftArgs): Draft {
   const { quantity, direction, items, tools } = args.objective;
   const rubric: readonly RubricItem[] | undefined =
     items !== undefined && items.length > 0
-      ? items.map(({ id, weight, kind, criterion }) =>
-          kind === "judge"
-            ? { id, weight, kind, criterion: criterion ?? "" }
-            : { id, weight, ...keyIfDefined("kind", kind) },
+      ? items.map((item) =>
+          item.kind === "judge"
+            ? { id: item.id, weight: item.weight, kind: item.kind, criterion: item.criterion ?? "" }
+            : { id: item.id, weight: item.weight, ...keyIfDefined("kind", item.kind) },
         )
       : undefined;
   const objective: Objective | undefined =
@@ -494,6 +518,7 @@ export function drafting(
   home?: string,
 ) {
   const { limits } = terms;
+  const lane: RubricLane = terms.lane ?? "judged";
   const kind = "draft";
   const desk = { tries: 0, stands: false };
   const none = `This session can put no further ${kind}. Call finish.`;
@@ -501,8 +526,8 @@ export function drafting(
     fromHome(home, {
       name: "draft_exam",
       description: `Put a whole draft of the exam to the host's reading, as the system prompt says.${home === undefined ? "" : ` ${FROM_FILE}`}`,
-      parameters: DRAFT_PARAMETERS,
-      execute: async (args) => {
+      parameters: lane === "judged" ? DRAFT_PARAMETERS_JUDGED : DRAFT_PARAMETERS_CODE,
+      execute: async (args: DraftArgs) => {
         if (desk.tries >= limits.puts) throw new Error(none);
         const draft = draftedFrom(args);
         const seen = capturedJsonStringify(draft);
@@ -513,7 +538,7 @@ export function drafting(
             : [
                 "the objective is a quantity with its direction, or neither: this draft gives one of the two",
               ]),
-          ...draftFaults(draft),
+          ...draftFaults(draft, lane),
         ];
         if (unformed.length === 0) desk.tries += 1;
         const faults =
@@ -541,7 +566,7 @@ export function drafting(
   );
   return {
     kind,
-    system: SYSTEM_PROMPT,
+    system: systemPromptOf(lane),
     opening: `The operator's prompt:\n\n${terms.prompt}\n\n${budgetLine(terms.budget)}\n\nThis session has ${plural(Math.round(limits.wallSeconds / 60), "minute")}, ${plural(limits.turns, "turn")} and ${plural(limits.puts, kind)}.`,
     started: {
       limits: { wallSeconds: limits.wallSeconds, turns: limits.turns, tries: limits.puts },

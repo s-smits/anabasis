@@ -358,6 +358,9 @@ function formatStateChanges(
   return lines;
 }
 
+const freshFrom = (events: readonly LogEvent[], before: Seen | undefined): number =>
+  before?.lines ?? (events.at(-1)?.kind === ENDED ? events.length - 1 : events.length);
+
 export function pulse(
   run: Run,
   log: readonly LogEvent[],
@@ -372,7 +375,7 @@ export function pulse(
   const stand = standing(run, log);
   const state = stateOf(log, life, now, stand.begun);
   const open = life.writing;
-  const from = before?.lines ?? log.length;
+  const from = freshFrom(log, before);
   const events = formatEventLines(run.name, log, from, under);
   const lines = [...troubles(log, from), ...formatStateChanges(before, state, stand, open, now)];
   const triggers = formatTriggeredAlarms(before?.triggers, alarms);
@@ -445,7 +448,7 @@ function readersOf(
     store,
     log: run.path,
     size,
-    fresh: events.slice(before?.lines ?? events.length),
+    fresh: events.slice(freshFrom(events, before)),
     owed: before?.moments,
     said: before?.said,
     files,
@@ -478,10 +481,7 @@ async function look(
           life.kept ||
           before?.open === true ||
           (before?.moments?.length ?? 0) > 0 ||
-          (before === undefined &&
-            !unlaunchedSeed(run) &&
-            Date.now() - (fileStat(run.path)?.mtimeMs ?? 0) < RECENT_MS &&
-            readEvents(run.path, (k) => k.endsWith(".call") || k === "verdict").at(-1)?.kind !== ENDED),
+          (before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),
     )
     .flatMap((each) => {
       const read = readLog(each.run.path);
@@ -492,7 +492,7 @@ async function look(
     const asks = chosen.map(({ run, before, events, size }) => ({
       log: run.path,
       size,
-      fresh: events.slice(before?.lines ?? events.length),
+      fresh: events.slice(freshFrom(events, before)),
       owed: before?.moments,
     }));
     await startPass(store, asks, { tree });

@@ -362,7 +362,7 @@ export function practiceTool(bench: Bench): AgentTool {
           try {
             return [await practise(bench, task, ran, kill)];
           } catch (error) {
-            if (kill.aborted && error === kill.reason) {
+            if (error === kill.reason) {
               unstarted += 1;
               return [];
             }

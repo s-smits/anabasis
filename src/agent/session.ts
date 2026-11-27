@@ -221,7 +221,6 @@ export async function runAgent(seat: AgentSpec): Promise<AgentRun> {
       },
     });
     seat.steer?.(async (content) => {
-      if (shutdown.aborted || frame.over() || frame.thrown !== null) return;
       await conversation
         .submit({ type: "input", content, whenBusy: "steer", whenIdle: "reject" }, BACKGROUND_CONTEXT)
         .catch(() => undefined);

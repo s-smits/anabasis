@@ -65,6 +65,7 @@ const ZERO_USAGE = {
   costBasis: "list",
 };
 const EMPTY_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+const STALL_MS = 60_000;
 
 const root = mkdtempSync(join(tmpdir(), "ana-claude-backend-"));
 const executable = join(root, "claude");
@@ -183,7 +184,11 @@ function sandbox(
       } = {},
     ) => {
       const target = extra.model ?? provider.getModels().find((entry) => entry.id === haiku.id) ?? haiku;
-      return provider
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const stalled = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`the turn stalled past ${String(STALL_MS)} ms`)), STALL_MS);
+      });
+      const result = provider
         .streamSimple(target, ctx(messages), {
           ...keyIfDefined("sessionId", "sessionId" in extra ? extra.sessionId : id),
           ...keyIfDefined("apiKey", "apiKey" in extra ? extra.apiKey : "token"),
@@ -191,6 +196,7 @@ function sandbox(
           ...keyIfDefined("reasoning", extra.reasoning),
         })
         .result();
+      return Promise.race([result, stalled]).finally(() => clearTimeout(timer));
     },
   };
 }
@@ -332,11 +338,21 @@ describe.concurrent("Claude turn protocol and provider error mapping", () => {
         "read",
         "read",
       ]);
-      expect((await box.turn([OPENING, first, ...answered(first)])).stopReason).toBe("stop");
+      const second = await box.turn([OPENING, first, ...answered(first)]);
+      expect(second.stopReason).toBe("stop");
+      box.replay(TEXT);
+      const done: Message = { role: "user", content: "Done", timestamp: 0 };
+      expect((await box.turn([OPENING, first, ...answered(first), second, done])).stopReason).toBe("stop");
       expect(box.launches()).toBe(1);
-      expect(asRecord(box.launched().stdin.find((l) => l.type === "user")?.message)?.content).toBe(
-        "Read the three files.",
-      );
+      expect(
+        box
+          .launched()
+          .stdin.filter((line) => line.type === "user")
+          .map((line) => [line.priority ?? null, asRecord(line.message)?.content]),
+      ).toEqual([
+        [null, "Read the three files."],
+        [null, "Done"],
+      ]);
     } finally {
       box.shutdown.abort();
     }
@@ -374,6 +390,40 @@ describe.concurrent("Claude turn protocol and provider error mapping", () => {
       ]);
     } finally {
       steered.shutdown.abort();
+    }
+
+    const oneTool = (text: string) =>
+      text
+        .split("\n")
+        .filter(
+          (line) =>
+            !/"index":[23]\b|toolu_01NGPi3nrvstMqcxUMzqUBzc|toolu_01JCvqboLqcpnctFBRKBBszp/u.test(line),
+        )
+        .join("\n");
+    const single = sandbox({}, "claude", PARALLEL, oneTool);
+    try {
+      const first = await single.turn([OPENING]);
+      expect(answered(first)).toHaveLength(1);
+      single.replay(TEXT);
+      const steer: Message = { role: "user", content: "Steer alone", timestamp: 0 };
+      const second = await single.turn([OPENING, first, ...answered(first), steer]);
+      expect(second.stopReason).toBe("stop");
+      const done: Message = { role: "user", content: "Done", timestamp: 0 };
+      expect((await single.turn([OPENING, first, ...answered(first), steer, second, done])).stopReason).toBe(
+        "stop",
+      );
+      expect(
+        single
+          .launched()
+          .stdin.filter((line) => line.type === "user")
+          .map((line) => [line.priority ?? null, asRecord(line.message)?.content]),
+      ).toEqual([
+        [null, "Read the three files."],
+        ["next", "Steer alone"],
+        [null, "Done"],
+      ]);
+    } finally {
+      single.shutdown.abort();
     }
 
     const compact = JSON.stringify({
@@ -445,6 +495,11 @@ describe.concurrent("Claude pre-turn guards, interrupts, and quiet timeouts", ()
         timestamp: 0,
       };
       expect((await box.turn([OPENING, prior])).errorMessage).toContain("no live Claude Code query");
+      expect((await box.turn([])).errorMessage).toContain("no user message to open the query with");
+      const image = { type: "image", data: "", mimeType: "image/png" } as const;
+      expect((await box.turn([{ role: "user", content: [image], timestamp: 0 }])).errorMessage).toContain(
+        "opens a query on text alone",
+      );
       expect(
         (
           await box.turn([

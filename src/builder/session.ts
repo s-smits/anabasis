@@ -395,7 +395,6 @@ async function converse(
     over: () => bench.note !== null || bench.fatal !== null,
     next: async () => {
       await bench.practising;
-      if (bench.note !== null || bench.fatal !== null) return null;
       const harness = await harnessNow(bench);
       const practice =
         isString(harness) && hasPractice(bench, read(log, TRACE_KINDS), harness) ? "counted" : "uncounted";

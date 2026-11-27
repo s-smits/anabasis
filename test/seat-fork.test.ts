@@ -90,6 +90,7 @@ describe("seatForkPlan and applyContinuation", () => {
       [{ "wrap-turns": "x-2" }, "expected <session>:<turn>"],
       [{ "wrap-turns": ":1" }, "expected <session>:<turn>"],
       [{ "wrap-turns": "x-2:" }, "expected <session>:<turn>"],
+      [{ "wrap-turns": "a:1" }, "no exam turns recorded for session a"],
     ];
     for (const [flags, message] of badInputs) {
       expect(() => seatForkPlan(log, "exam", claudeModel, flags)).toThrow(message);
@@ -220,6 +221,7 @@ describe("seatForkPlan and applyContinuation", () => {
     expect(wrapped.continuation?.text).toContain("SIMULATION WRAPPED PRIOR CONTEXT");
     expect(wrapped.continuation?.text).toContain("Planning first draft.");
     expect(wrapped.continuation?.text).toContain("[call bash (ok)]");
+    expect(wrapped.continuation?.text).toContain("result: gen.py");
     expect(wrapped.continuation?.text).toContain("Drafting task 2.");
     expect(wrapped.continuation?.text).not.toContain("Should not appear.");
     expect(wrapped.continuation?.text).not.toContain("later-turn-call");
@@ -229,6 +231,9 @@ describe("seatForkPlan and applyContinuation", () => {
     expect(allThree.continuation?.text).toContain("Should not appear.");
     expect(() => seatForkPlan(log, "exam", claudeModel, { "wrap-turns": "x-2:4" })).toThrow("fewer than 4");
     expect(() => seatForkPlan(log, "exam", claudeModel, { "wrap-turns": "x-2:5" })).toThrow("fewer than 5");
+    expect(() => seatForkPlan(log, "exam", claudeModel, { "fork-from": "x-2" })).toThrow(
+      "--wrap-turns x-2:<turn>",
+    );
   });
 
   it("applies fork, wrap, and nudge continuations cleanly to an opening message", () => {

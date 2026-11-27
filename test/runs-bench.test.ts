@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
@@ -180,6 +180,7 @@ describe("runs bench", () => {
     ]);
     await bench(["--store", store]);
     expect(completedBenchPairs(store)).toEqual([]);
+    expect(readFileSync(join(store, "scored", "ref-a1.txt"), "utf8")).toStartWith("all 2\n");
     await expect(bench(["--bench", "no-such-bench"])).rejects.toThrow("no benchmark no-such-bench");
   });
 

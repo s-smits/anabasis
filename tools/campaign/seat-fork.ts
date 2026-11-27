@@ -45,8 +45,7 @@ function seedSource(log: string, flag: string): string {
   if (!basename(folder).startsWith("sim-") || !existsSync(seedFile)) {
     throw new Error(`${flag} is only allowed on a simulation seed (sim-<what> with ${SEED_FILE})`);
   }
-  const parsed = parseJsonAs<{ from?: string }>(readFileSync(seedFile, "utf8"));
-  return isString(parsed.from) ? parsed.from : folder;
+  return parseJsonAs<{ readonly from: string }>(readFileSync(seedFile, "utf8")).from;
 }
 
 function parsePositiveInt(raw: string, flag: string): number {
@@ -57,10 +56,7 @@ function parsePositiveInt(raw: string, flag: string): number {
   return value;
 }
 
-function sourceLogs(log: string, fromDir: string): readonly string[] {
-  const sourceLog = join(fromDir, LOG_FILE);
-  return sourceLog === log || !existsSync(sourceLog) ? [log] : [log, sourceLog];
-}
+const sourceLogs = (log: string, fromDir: string): readonly string[] => [log, join(fromDir, LOG_FILE)];
 
 function defaultTurnCap(
   events: readonly LogEvent[],
@@ -72,8 +68,7 @@ function defaultTurnCap(
     ({ kind, data }) => kind === `${seat}.started` && data.session !== session && data.conversation === root,
   );
   if (!shared && root === session) return undefined;
-  const lastTurn = traceOf(events, seat, session).turns.at(-1)?.turn ?? null;
-  return lastTurn !== null && lastTurn >= 1 ? lastTurn : undefined;
+  return traceOf(events, seat, session).turns.at(-1)?.turn ?? undefined;
 }
 
 function resolveSessionTurn(
@@ -103,13 +98,13 @@ function resolveTranscript(
   target: string,
   requestedTurn: number | undefined,
 ): { readonly transcript: string; readonly upToTurn?: number | undefined } {
-  if ((target.includes("/") || target.endsWith(".jsonl")) && existsSync(target)) {
+  if (target.includes("/") && existsSync(target)) {
     return { transcript: target, ...keyIfDefined("upToTurn", requestedTurn) };
   }
   if (!isSafePathSegment(target)) {
     throw new Error(`--fork-from ${target}: name a session id or an existing .jsonl transcript path`);
   }
-  const roots = [dirname(log), ...(fromDir === dirname(log) ? [] : [fromDir])];
+  const roots = [dirname(log), fromDir];
   const findFile = (name: string) =>
     roots
       .map((dir) => join(dir, CLAUDE_SESSIONS_DIR, `${name}.jsonl`))
@@ -120,7 +115,7 @@ function resolveTranscript(
     const started = events.find(({ kind, data }) => kind === `${seat}.started` && data.session === target);
     if (started === undefined) continue;
     const root = isString(started.data.conversation) ? started.data.conversation : target;
-    const found = findFile(target) ?? (root === target ? undefined : findFile(root));
+    const found = findFile(target) ?? findFile(root);
     if (found !== undefined) {
       return {
         transcript: found,
@@ -149,16 +144,10 @@ function formatWrapped(
   calls: readonly Call[],
   nudge: string | undefined,
 ): string {
-  const callsByTurn = new Map<number, Call[]>();
-  for (const call of calls) {
-    if (call.turn === null) continue;
-    const list = callsByTurn.get(call.turn);
-    if (list === undefined) callsByTurn.set(call.turn, [call]);
-    else list.push(call);
-  }
+  const callsByTurn = Map.groupBy(calls, ({ turn }) => turn);
   const sections = turns.map((turn, index) => {
     const body = boundText(turn.text || "(no text)", WRAP_TURN_TEXT_BYTES).text;
-    const turnCalls = turn.turn === null ? [] : (callsByTurn.get(turn.turn) ?? []);
+    const turnCalls = callsByTurn.get(turn.turn) ?? [];
     return [`--- Turn ${String(index + 1)} ---`, body, ...turnCalls.map(formatCall)].join("\n");
   });
   const header = `[SIMULATION WRAPPED PRIOR CONTEXT — reconstructed from recorded log turns 1..${String(count)} of ${session}; truncated to log trace bounds, not a native SDK transcript fork]`;

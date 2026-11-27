@@ -1504,7 +1504,9 @@ export const scores = {
         lineageTasks: [],
       },
     });
-    expect(() => replayed(badParentLog)).toThrow("disagrees with successor opening");
+    expect(() => replayed(badParentLog)).toThrow(
+      /exam\.revised \(tune\/[0-9a-f]+\) disagrees with successor opening \(tune\/wrong-hash\)/u,
+    );
     const revHashA = eventsOf(eventsA, REVISED).at(-1)?.event.data.draftHash ?? "";
     append(badParentLog, OPENED, {
       project: "demo",

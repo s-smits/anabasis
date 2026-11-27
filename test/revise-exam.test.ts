@@ -534,6 +534,7 @@ describe("empirical witnesses, adversarial audit cap, and successor A -> B hando
     });
     expect(weakRes.accepted).toBe(false);
     expect(weakRes.message).toMatch(/failed checker validation|failed historical witness/u);
+    expect(weakRes.message).not.toContain("s-earned");
 
     const unfixedRepair = candidateDraft(PARENT_DRAFT, {
       kind: "repair",
@@ -550,6 +551,7 @@ describe("empirical witnesses, adversarial audit cap, and successor A -> B hando
     });
     expect(unfixedRes.accepted).toBe(false);
     expect(unfixedRes.message).toContain("did not clear any check-defect witness");
+    expect(unfixedRes.message).not.toContain("s-defect");
 
     const fixedEvaluator = PARENT_EVALUATOR.replace(
       'note === "exact:" + String(hidden.target)',

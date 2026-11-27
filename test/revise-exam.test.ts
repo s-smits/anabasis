@@ -10,6 +10,7 @@ import { candidateDraft, revisionFaults, revisionRefusal } from "../src/examiner
 import { examine } from "../src/examiner/session.ts";
 import { writeStarter } from "../src/harness/starter.ts";
 import { keepAnswerFiles, textFiles } from "../src/kernel/answer-files.ts";
+import { conditionId } from "../src/kernel/condition.ts";
 import { contentOf } from "../src/kernel/history.ts";
 import { append, eventsOf, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { endedOf, latestBuilt, promoted } from "../src/kernel/reports.ts";
@@ -29,6 +30,7 @@ import { keyIfDefined, keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { REPO } from "../tools/campaign/campaign.ts";
 import { draftReading } from "../tools/campaign/exam.ts";
 import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
@@ -48,7 +50,7 @@ import { lastLaunch, writeReceipt } from "../tools/runs/receipt.ts";
 import { replayed } from "../tools/runs/replay.ts";
 import { EVENT_FORMATTERS, triggerOf } from "../tools/runs/summary.ts";
 import { gamingRows } from "../tools/wri/gaming.ts";
-import { call, finish, seat, sweep } from "./helpers/examiner-seat.ts";
+import { call, condition, finish, seat, sweep } from "./helpers/examiner-seat.ts";
 
 setDefaultTimeout(120_000);
 
@@ -246,10 +248,13 @@ function recordHistoricalWitnesses(
   const earnedEvenFiles = keepAnswerFiles(log, textFiles([{ path: NOTE_FILE, text: "exact:10" }]));
   const defectFiles = keepAnswerFiles(log, textFiles([{ path: NOTE_FILE, text: "exact: 10\n" }]));
   append(log, "comparison.started", { session: "g-1", old: "starter", fresh: "h1", starter: "starter" });
-  append(log, "solve.started", { solve: "s-earned-strict", comparison: "g-1", task: taskVersion0 });
+  const cond = condition(taskVersion0, "starter");
+  const cid = conditionId(cond);
+  append(log, "condition.recorded", { id: cid, condition: requireJsonValue(cond) });
+  append(log, "solve.started", { solve: "s-earned-strict", comparison: "g-1", condition: cid });
   append(log, "verdict", {
     solve: "s-earned-strict",
-    task: taskVersion0,
+    task: "ex-001",
     answer: { n: 8, score: 5, detail: 5 },
     files: earnedStrictFiles.map((f) => ({ ...f })),
     kind: "fail",
@@ -262,10 +267,10 @@ function recordHistoricalWitnesses(
     check: "check-strict",
     reason: "wrong target n=8",
   });
-  append(log, "solve.started", { solve: "s-earned-even", comparison: "g-1", task: taskVersion0 });
+  append(log, "solve.started", { solve: "s-earned-even", comparison: "g-1" });
   append(log, "verdict", {
     solve: "s-earned-even",
-    task: taskVersion0,
+    task: "ex-001",
     answer: { n: 11, score: 5, detail: 5 },
     files: earnedEvenFiles.map((f) => ({ ...f })),
     kind: "fail",
@@ -279,10 +284,10 @@ function recordHistoricalWitnesses(
     reason: "odd integer n=11",
   });
   if (opts?.includeDefect !== false) {
-    append(log, "solve.started", { solve: "s-defect-strict", comparison: "g-1", task: taskVersion0 });
+    append(log, "solve.started", { solve: "s-defect-strict", comparison: "g-1", condition: cid });
     append(log, "verdict", {
       solve: "s-defect-strict",
-      task: taskVersion0,
+      task: "ex-001",
       answer: { n: 10, score: 9, detail: 8 },
       files: defectFiles.map((f) => ({ ...f })),
       kind: "fail",

@@ -5,6 +5,7 @@ import { join } from "../src/meta/path.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import {
   bench,
+  completedBenchPairs,
   defaultBenchLabel,
   heldAs,
   type Plan,
@@ -13,7 +14,6 @@ import {
   stepsOf,
   walk,
 } from "../tools/runs/bench.ts";
-import { completedBenchPairs } from "../tools/runs/bench-scores.ts";
 
 const scratch: string[] = [];
 const HOSTS = JSON.stringify([

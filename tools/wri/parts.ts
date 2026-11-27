@@ -8,8 +8,7 @@
  * (`writtenIn`, `trajectory.ts`), and each solve's first call that ran or named one of those
  * programs. It assigns no kind to a win: where the two sides part is the lane's reading.
  */
-import type { LogEvent } from "#src/kernel/log.ts";
-import { read } from "#src/kernel/log.ts";
+import { type LogEvent, read } from "#src/kernel/log.ts";
 import { ranUnder } from "#src/kernel/solves.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";

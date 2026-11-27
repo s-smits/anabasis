@@ -11,6 +11,7 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import { examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { taskSets, taskStates } from "#src/kernel/task.ts";
@@ -27,6 +28,7 @@ import {
   REPO,
   stayAwake,
 } from "../campaign/campaign.ts";
+import { type RevisionAuditor, revisionRunner } from "../campaign/revise.ts";
 import { FORK_OPTIONS, seatForkPlan } from "../campaign/seat-fork.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
@@ -36,6 +38,9 @@ const EXAMINE_OPTIONS = {
   session: { type: "string" },
   examiner: { type: "string" },
   "examiner-effort": { type: "string", default: "high" },
+  reviewer: { type: "string" },
+  "reviewer-effort": { type: "string" },
+  revise: { type: "boolean" },
   tasks: { type: "string", default: "12" },
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
@@ -52,8 +57,9 @@ export async function examineCommand(
   args: readonly string[],
   session: Session<"write"> = examine,
   kill?: AbortSignal,
+  audit?: RevisionAuditor | null,
 ): Promise<void> {
-  const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS });
+  const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS, allowNegative: true });
   const { session: id, examiner } = values;
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
   if (kill?.aborted === true) throw new Error(`session ${id} was stopped before it began`);
@@ -63,9 +69,22 @@ export async function examineCommand(
   // Verifier brief rows and pack brief rows share one order.
   const declared = readBrief(campaign.checks).truthChecks;
   const sofar = read(campaign.log);
+  const opening = openingOf(sofar);
   const before = taskStates(sofar);
   const model = modelNamed(examiner);
   const forkPlan = seatForkPlan(campaign.log, "exam", model, values);
+  const canRevise = values.revise ?? opening?.revise ?? true;
+  const defaultAuditor = session === examine ? undefined : null;
+  const auditor = audit === undefined ? defaultAuditor : audit;
+  const revise = canRevise
+    ? revisionRunner({
+        log: campaign.log,
+        parentBundle: campaign.bundle,
+        packages: campaign.packages,
+        reviewer: { model: values.reviewer, effort: values["reviewer-effort"] },
+        auditor,
+      })
+    : undefined;
   const models =
     forkPlan.fork === undefined
       ? campaign.examiner
@@ -109,6 +128,7 @@ export async function examineCommand(
       wanted: Number(values.tasks),
       models,
       log: campaign.log,
+      ...keyIfDefined("revise", revise),
       ...keyIfDefined("continuation", forkPlan.continuation),
       ...keyIfDefined("kill", kill),
     },

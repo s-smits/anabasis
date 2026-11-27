@@ -7,6 +7,7 @@
  *
  *   bun tools/campaign/prepare.ts --name <campaign> --practice 6
  */
+import { openingOf } from "#src/campaign/opening.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { feasibleOf } from "#src/examiner/write.ts";
 import { textFiles } from "#src/kernel/answer-files.ts";
@@ -39,6 +40,7 @@ const OPTIONS = {
 
 /** Tasks no gate has read, including one a killed command proposed and left before its gate. */
 export function ungated(campaign: Pick<Campaign, "tasks" | "pack">, events: readonly LogEvent[]) {
+  if (openingOf(events)?.parent !== null) return [];
   const gated = admissionsOf(events);
   return campaign.tasks.map(campaign.pack).filter((task) => !gated.has(taskVersion(task)));
 }

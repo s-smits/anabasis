@@ -3,7 +3,7 @@ import type { Control } from "../kernel/acceptance.ts";
 import type { AnswerFile } from "../kernel/answer-files.ts";
 import { GAP_FLOOR, gainOver } from "../kernel/compare.ts";
 import { codeObjective, type Contract } from "../kernel/contract.ts";
-import { append } from "../kernel/log.ts";
+import { append, eventsOf, type LogEvent } from "../kernel/log.ts";
 import {
   blockingOf,
   objectiveOf,
@@ -42,6 +42,7 @@ import {
 export interface DraftAuditCase {
   readonly session: string;
   readonly pass?: number;
+  readonly revision?: string;
   readonly prompt: string;
   readonly contract: Contract;
   readonly checks: string;
@@ -70,6 +71,32 @@ export interface DraftAuditFinding {
   readonly summary: string;
   readonly probes: readonly DraftProbeRow[];
   readonly error?: string;
+}
+
+export function persistedDraftDefects(
+  events: readonly LogEvent[],
+  revision?: string,
+): { readonly audits: number; readonly prior: DraftAuditFinding[] } {
+  const logged = eventsOf(events, "referee.draft").filter(
+    ({ event: { data } }) =>
+      data.verdict === "defects" &&
+      (revision === undefined ? !isString(data.revision) : data.revision === revision),
+  );
+  const prior: DraftAuditFinding[] = [];
+  for (const {
+    event: { data },
+  } of logged) {
+    if (!Array.isArray(data.findings) || data.findings.length === 0) continue;
+    prior.push({
+      verdict: "defects",
+      // SAFETY: `referee.draft` findings and probeRows are written by `reviewDraft` below.
+      findings: data.findings as DraftAuditFinding["findings"],
+      summary: isString(data.summary) ? data.summary : "",
+      // SAFETY: as above.
+      probes: Array.isArray(data.probeRows) ? (data.probeRows as DraftAuditFinding["probes"]) : [],
+    });
+  }
+  return { audits: logged.length, prior };
 }
 
 const TURN_LIMIT = 24;
@@ -308,6 +335,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
         append(target.log, "referee.draft.refused", {
           session: target.session,
           ...keyIfDefined("pass", target.pass),
+          ...keyIfDefined("revision", target.revision),
           ruling: args.verdict,
           why: problem,
           reason: boundText(args.summary, REASON_DISPLAY_BYTES).shown,
@@ -369,6 +397,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
   append(target.log, "referee.draft", {
     session: target.session,
     pass,
+    ...keyIfDefined("revision", target.revision),
     verdict: result.verdict,
     findings: result.findings,
     summary: result.summary,

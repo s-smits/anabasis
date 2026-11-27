@@ -13,6 +13,7 @@ export interface Plan {
   readonly admits: readonly string[];
   readonly left: { readonly dollars: number; readonly reserve: number } | null;
   readonly promotions: number | null;
+  readonly canRevise?: boolean;
 }
 
 interface Compared {

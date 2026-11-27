@@ -1,6 +1,6 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
-import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
+import { eventsOf, isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import { INTERRUPTED, poolOf, evalHeadroom } from "../kernel/reports.ts";
 import { nonRetryableProvider } from "../kernel/solve.ts";
 import { taskSets } from "../kernel/task.ts";
@@ -24,6 +24,7 @@ const ROWS: readonly {
   readonly move: (ground: Ground) => (Move & { readonly code?: string }) | null;
 }[] = [
   { code: "stop", move: stop },
+  { code: "revised", move: revised },
   { code: "exam", move: exam },
   {
     code: "bound",
@@ -177,6 +178,13 @@ function stop({ events, plan }: Ground): Move | null {
   };
 }
 
+function revised({ events }: Ground): Move | null {
+  const entry = eventsOf(events, "exam.revised").at(-1)?.event.data;
+  if (entry === undefined) return null;
+  const why = isString(entry.why) ? entry.why : "exam revised for successor campaign";
+  return end("revise", why);
+}
+
 function exam(ground: Ground): Move | null {
   const { events, plan, supply, refused } = ground;
   if (plan.prompted && draftOf(events) === null) return bound(ground) ?? drafting(events);
@@ -262,6 +270,13 @@ function bound(ground: Ground): Move | null {
     );
   }
   if (read?.report.reading === "check-defects") {
+    if (plan.canRevise === true) {
+      return examine(
+        ground,
+        "tasks",
+        `comparison ${read.id} stopped on check defects: Examiner may repair the check via revise_exam`,
+      );
+    }
     return end(
       "exam",
       `comparison ${read.id} stopped on its check defects: the check program needs its author before more is spent`,

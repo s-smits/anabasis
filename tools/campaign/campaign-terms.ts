@@ -35,6 +35,7 @@ import { PACK_OPTIONS, projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
 import { PRACTICE, prepareCommand, ungated } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
+import type { RevisionAuditor } from "./revise.ts";
 import {
   type Campaign,
   COMPARISON_OPTIONS,
@@ -51,6 +52,7 @@ export interface Seats {
   readonly seated: Seated;
   readonly examine?: Session<"write"> | undefined;
   readonly draft?: Session<"draft"> | undefined;
+  readonly audit?: RevisionAuditor | null | undefined;
   readonly host?: Host | undefined;
   readonly prepare?: typeof prepareCommand | undefined;
   readonly unreviewed?: boolean | undefined;
@@ -104,6 +106,7 @@ const OPTIONS = {
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
   hitl: { type: "boolean" },
+  revise: { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, effort: "high" } as const;
@@ -145,6 +148,7 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   loaded: "start solves without waiting for the host's load",
   "dry-run": "print the table's advice and make no move",
   hitl: "the operator in the loop: freezing, admitting and promoting wait for the operator's word; kept until --no-hitl",
+  revise: "allow mid-campaign exam revisions via revise_exam (default on; --no-revise disables)",
   "past-stop": "the operator's reason to go on past the stop rule, logged",
 };
 
@@ -306,6 +310,17 @@ function persistOpening(
     ),
     ...keyIfDefined("attended", opening.attended || undefined),
     ...keyIfDefined("judged", opening.judged || undefined),
+    ...keyIfDefined("revise", opening.revise ? undefined : false),
+    ...keyIfDefined(
+      "parent",
+      opening.parent === null
+        ? undefined
+        : {
+            ...opening.parent,
+            carried: { ...opening.parent.carried },
+            lineageTasks: [...opening.parent.lineageTasks],
+          },
+    ),
     ...keyIfDefined("prompt", opening.prompt ?? undefined),
     ...keyIfDefined("solver", opening.solver === null ? undefined : { ...opening.solver }),
     terms: { ...opening.terms },
@@ -353,6 +368,7 @@ export function opened(
     reviewer: seatOf(values.reviewer, values["reviewer-effort"], was?.seats.reviewer),
   };
   const attended = values.hitl ?? was?.attended ?? false;
+  const revise = values.revise ?? was?.revise ?? true;
   const crossFamily =
     resolvedSeats.reviewer !== null && crossFamilyVendors(resolvedSeats.reviewer.model, solver.model);
   const judged = !attended && crossFamily;
@@ -363,6 +379,8 @@ export function opened(
     seats: resolvedSeats,
     attended,
     judged,
+    revise,
+    parent: was?.parent ?? null,
     prompt,
     solver,
     terms: resolveTerms(events, was, values),
@@ -436,8 +454,16 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
   ];
   const wanting = tasksToAskFor(turn.events, turn.plan);
   const tasks = wanting > 0 ? String(wanting) : undefined;
+  const reviewer = kind === "write" ? sharedOf(turn).reviewer : [];
+  const reviseFlag = kind === "write" && !opening.revise ? ["--no-revise"] : [];
   return {
-    args: [...packOf(values), ...seat, ...(kind === "draft" ? [] : flag("tasks", tasks))],
+    args: [
+      ...packOf(values),
+      ...seat,
+      ...reviewer,
+      ...reviseFlag,
+      ...(kind === "draft" ? [] : flag("tasks", tasks)),
+    ],
     tasks,
   };
 }

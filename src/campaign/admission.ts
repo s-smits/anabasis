@@ -133,7 +133,12 @@ export function stopRule(events: readonly LogEvent[]) {
   );
   const epochAt = activePromotionAt(events);
   const epoch = moves.filter(({ index }) => index > epochAt);
-  const sinceStep = epoch.length - 1 - epoch.findLastIndex(({ step }) => step);
+  const lastStep = epoch.findLastIndex(({ step }) => step);
+  const carried =
+    epochAt === -1 && lastStep === -1
+      ? asRecord(asRecord(eventsOf(events, "campaign.opened").at(-1)?.event.data.parent)?.carried)?.sinceStep
+      : undefined;
+  const sinceStep = epoch.length - 1 - lastStep + (isNumber(carried) ? carried : 0);
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 

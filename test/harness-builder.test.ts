@@ -802,6 +802,41 @@ describe.concurrent("a campaign's recovery from throws and pauses", () => {
     expect(drafts).toBe(1);
     expect(sleeps).toHaveLength(2);
   });
+
+  it("exits cleanly on a reached bounded pause when the external waiter is gone instead of starting another move", async () => {
+    const name = `${STEM}-bounded-pause`;
+    const flags = [...seeded(name, SMALL), "--practice", "2", "--target", "5", "--level", "0.125"];
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    let now = Date.now();
+    let prepares = 0;
+    const ended = await harnessBuilder([...flags, "--moves", "5"], {
+      seated: answering([], GRADED_SMALL),
+      host: {
+        load: () => 0,
+        cores: 1,
+        waitMs: 1,
+        now: () => now,
+        sleep: async () => {
+          now += 200_000;
+        },
+      },
+      prepare: async () => {
+        prepares += 1;
+        append(log, "campaign.word", {
+          word: "pause",
+          why: "runs pause --after reported",
+          after: "reported",
+          base: 0,
+        });
+        append(log, "comparison.started", { session: "g-1", old: "s", fresh: "h1", starter: "s" });
+        append(log, "comparison.reported", { session: "g-1", old: "s", fresh: "h1", reading: "no-step" });
+        return 1;
+      },
+    });
+    expect(prepares).toBe(1);
+    expect(ended.move).not.toBe("end");
+    expect(of(name, "campaign.ended")).toEqual([]);
+  });
 });
 
 describe("a comparison's packet for a person", () => {

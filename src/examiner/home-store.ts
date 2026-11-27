@@ -16,7 +16,7 @@ import {
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
-import { dirname, join, relative, resolve } from "../meta/path.ts";
+import { join, relative, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
 import { runtimeProcess } from "../meta/process.ts";
@@ -66,7 +66,6 @@ function storeBlob(objectsDir: string, source: string): string {
   const temp = `${blob}.${String(runtimeProcess.pid)}.tmp`;
   try {
     copyBlob(source, temp);
-    chmodSync(temp, 0o644);
     renameSync(temp, blob);
   } finally {
     rmSync(temp, { force: true });
@@ -75,11 +74,10 @@ function storeBlob(objectsDir: string, source: string): string {
 }
 
 function walkHome(root: string, prefix: string, objectsDir: string, out: HomeEntry[]): void {
-  const dir = prefix === "" ? root : join(root, prefix);
-  const names = readdirSync(dir).toSorted(compareCodeUnits);
+  const names = readdirSync(join(root, prefix)).toSorted(compareCodeUnits);
   for (const name of names) {
     if (isPrivateName(name)) continue;
-    const rel = prefix === "" ? name : `${prefix}/${name}`;
+    const rel = join(prefix, name);
     const full = join(root, rel);
     const stat = lstatSync(full);
     if (stat.isSymbolicLink()) {
@@ -121,18 +119,15 @@ export function hasHomeSnapshot(storeDir: string, sessionId: string): boolean {
 }
 
 function validEntry(entry: unknown): HomeEntry {
-  const row = isRecord(entry) ? entry : null;
-  if (row === null || !isString(row.path) || row.path === "" || !isString(row.kind)) {
-    throw new Error("invalid examiner home snapshot entry");
-  }
-  if (row.kind === "dir") return { path: row.path, kind: "dir" };
-  if (row.kind === "symlink" && isString(row.target)) {
-    return { path: row.path, kind: "symlink", target: row.target };
-  }
+  const row = isRecord(entry) ? entry : {};
+  const { path } = row;
+  if (!isString(path)) throw new Error("invalid examiner home snapshot entry");
+  if (row.kind === "dir") return { path, kind: "dir" };
+  if (row.kind === "symlink" && isString(row.target)) return { path, kind: "symlink", target: row.target };
   if (row.kind === "file" && isString(row.sha256) && HASH.test(row.sha256) && isNumber(row.mode)) {
-    return { path: row.path, kind: "file", sha256: row.sha256, mode: row.mode & 0o777 };
+    return { path, kind: "file", sha256: row.sha256, mode: row.mode & 0o777 };
   }
-  throw new Error(`invalid examiner home snapshot entry for ${row.path}`);
+  throw new Error(`invalid examiner home snapshot entry for ${path}`);
 }
 
 function traversesSymlink(path: string, symlinks: ReadonlySet<string>): boolean {
@@ -149,7 +144,7 @@ export function restoreHome(storeDir: string, sessionId: string, targetDir: stri
   if (!Array.isArray(raw.entries)) throw new Error(`${sessionId}: invalid examiner home manifest`);
   const objectsDir = join(storeDir, OBJECTS);
   const root = resolve(targetDir);
-  mkdirSync(root, { recursive: true });
+  mkdirSync(root);
   const symlinks = new Set<string>();
   for (const item of raw.entries) {
     const entry = validEntry(item);
@@ -162,15 +157,13 @@ export function restoreHome(storeDir: string, sessionId: string, targetDir: stri
       throw new Error(`${sessionId}: examiner home entry traverses symlink: ${entry.path}`);
     }
     if (entry.kind === "dir") {
-      mkdirSync(dest, { recursive: true });
+      mkdirSync(dest);
     } else if (entry.kind === "symlink") {
-      mkdirSync(dirname(dest), { recursive: true });
       symlinkSync(entry.target, dest);
       symlinks.add(rel);
     } else {
       const blob = join(objectsDir, entry.sha256);
       if (!existsSync(blob)) throw new Error(`${sessionId}: missing examiner home blob ${entry.sha256}`);
-      mkdirSync(dirname(dest), { recursive: true });
       copyBlob(blob, dest);
       chmodSync(dest, entry.mode);
     }

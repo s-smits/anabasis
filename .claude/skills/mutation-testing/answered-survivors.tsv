@@ -15,3 +15,12 @@ src/agent/backends/claude-transcript.ts	1 -> 2	atTurn > 1 ? `fork at turn ${Stri
 src/agent/backends/claude.ts	&& -> ||	if ("session_id" in message && isString(message.session_id)) session.sdkSessionId = message.session_id;	equivalent	an absent property reads as undefined, so isString is false either way
 tools/runtime/router/run.ts	?? -> &&	const named = queues.map(({ item }) => item?.ssh ?? "local").join(" or ");	presentation	names the queues only in wait and refusal text
 tools/runtime/router/run.ts	20000 -> 20001	const LEAST_CHUNK_MS = 20_000;	equivalent	one millisecond on the chunk floor never changes chunking at test-timing granularity
+src/examiner/reviews.ts	0 -> 1	const num = (value: unknown): number => (isNumber(value) ? value : 0);	equivalent	judge.ts:245-250 always records all four extract counts as numbers, so the zero fallback is never read
+src/examiner/reviews.ts	> -> >=	if (prior === undefined || rank > prior.rank) latestComp.set(task, { comparison, rank });	equivalent	rank is the reportedOrder index of one comparison, so equal rank stores the identical value again
+src/examiner/home-store.ts	delete if	if (existsSync(blob)) return digest;	equivalent	performance-only: the blob is content-addressed, so recopying and atomically renaming writes identical bytes
+src/examiner/revise.ts	0 -> 1	minimum: 0,	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
+src/examiner/revise.ts	1 -> 2	minItems: 1,	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
+src/examiner/revise.ts	swap ?:	lane === "judged"	presentation	lane-dependent objective_items description the Examiner reads, kept byte-identical as a seat-visible input
+src/examiner/revise.ts	=== -> !==	lane === "judged"	presentation	lane-dependent objective_items description the Examiner reads, kept byte-identical as a seat-visible input
+src/examiner/revise.ts	1 -> 2	Type.Array(Type.String({ minLength: 1 }), {	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
+src/examiner/revise.ts	1 -> 2	Type.Array(Type.Object({ ...CONTROL_ADD, check: Type.String({ minLength: 1 }) }), {	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input

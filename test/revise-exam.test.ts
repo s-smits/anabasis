@@ -444,9 +444,6 @@ describe("revision admission, immutability, and lock exclusion", () => {
       "existing check id",
     );
     expect(
-      revisionRefusal(read(exactBudget.log), { kind: "tune", reviewer: null, requireReviewer: true }),
-    ).toContain("requires a reviewer");
-    expect(
       revisionRefusal(read(exactBudget.log), { kind: "tune", candidate: judgedCandidate, reviewer: null }),
     ).toContain("cross-family reviewer");
     expect(

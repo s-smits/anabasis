@@ -23,6 +23,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
+import { errorMessage } from "../src/meta/runtime-values.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { codeOf } from "../tools/campaign/campaign.ts";
 import { atCommit } from "../tools/runs/code.ts";
@@ -361,32 +362,43 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
     }
 
     const invalidManifests: readonly [string, unknown, string][] = [
-      ["bad-array", { session: "bad-array", entries: "nope" }, "invalid examiner home manifest"],
+      ["bad-array", { session: "bad-array", entries: "nope" }, "bad-array: invalid examiner home manifest"],
       ["bad-null", { session: "bad-null", entries: [null] }, "invalid examiner home snapshot entry"],
       [
         "bad-empty",
         { session: "bad-empty", entries: [{ path: "", kind: "dir" }] },
-        "invalid examiner home snapshot entry",
+        "bad-empty: examiner home entry escapes target: ",
+      ],
+      [
+        "bad-kind",
+        { session: "bad-kind", entries: [{ path: "a", kind: "socket" }] },
+        "invalid examiner home snapshot entry for a",
       ],
       [
         "bad-sym",
         { session: "bad-sym", entries: [{ path: "a", kind: "symlink" }] },
-        "invalid examiner home snapshot entry",
+        "invalid examiner home snapshot entry for a",
       ],
       [
         "bad-hash",
         { session: "bad-hash", entries: [{ path: "a", kind: "file", sha256: "short", mode: 0o644 }] },
-        "invalid examiner home snapshot entry",
+        "invalid examiner home snapshot entry for a",
       ],
       [
         "bad-mode",
         { session: "bad-mode", entries: [{ path: "a", kind: "file", sha256: "a".repeat(64), mode: "644" }] },
-        "invalid examiner home snapshot entry",
+        "invalid examiner home snapshot entry for a",
       ],
     ];
     for (const [id, payload, message] of invalidManifests) {
       writeFileSync(join(store, `${id}.json`), JSON.stringify(payload));
-      expect(() => restoreHome(store, id, join(root, `out-${id}`))).toThrow(message);
+      let thrown = "";
+      try {
+        restoreHome(store, id, join(root, `out-${id}`));
+      } catch (error) {
+        thrown = errorMessage(error);
+      }
+      expect(thrown).toBe(message);
     }
   });
 });

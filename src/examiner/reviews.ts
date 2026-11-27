@@ -3,6 +3,7 @@ import { lastReports } from "../kernel/reports.ts";
 import { ranUnder, solvesIn, standsOf } from "../kernel/solves.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 
 interface ReviewQuery {
@@ -47,7 +48,7 @@ export const REVIEW_EVENT_KINDS: ReadonlySet<EventKind> = new Set([
   "solve.started",
 ]);
 
-const [DEFAULT_LIMIT, MAX_LIMIT, MAX_PAGE_BYTES, REASON_BYTES] = [10, 20, 8 * 1024, 600];
+const [DEFAULT_LIMIT, MAX_PAGE_BYTES, REASON_BYTES] = [10, 8 * 1024, 600];
 const HOLISTIC = "holistic";
 const REUSE_PREFIX = /^reused\b/u;
 
@@ -68,12 +69,12 @@ function reportedOrder(events: readonly LogEvent[]): Map<string, number> {
 }
 
 function pairKind(harnessOf: ReadonlyMap<string, string>, data: JsonObject): "cross" | "mirror" {
-  const [solve, old] = [str(data.solve), str(data.old)];
-  if (solve === null || old === null) return "cross";
-  if (solve === old) return "mirror";
-  const [left, right] = [harnessOf.get(solve), harnessOf.get(old)];
-  return left !== undefined && left === right ? "mirror" : "cross";
+  const left = harnessOf.get(str(data.solve) ?? "");
+  return left !== undefined && left === harnessOf.get(str(data.old) ?? "") ? "mirror" : "cross";
 }
+
+const scoresOf = (data: JsonObject) =>
+  isNumber(data.judge) && isNumber(data.holistic) ? { judge: data.judge, holistic: data.holistic } : null;
 
 function voteCallsOf(events: readonly LogEvent[]): Map<string, VoteCall> {
   const calls = new Map<string, VoteCall>();
@@ -90,15 +91,13 @@ function voteCallsOf(events: readonly LogEvent[]): Map<string, VoteCall> {
   return calls;
 }
 
-function relation(score: number | null, holistic: number | null): "aligned" | "opposed" | "tie" | null {
-  if (score === null || holistic === null) return null;
+function relation(score: number, holistic: number): "aligned" | "opposed" | "tie" {
   if (score === 0 || holistic === 0) return "tie";
   return Math.sign(score) === Math.sign(holistic) ? "aligned" : "opposed";
 }
 
-function probeLine(raw: unknown): { readonly id: number | null; readonly text: string } | null {
-  const row = asRecord(raw);
-  if (row === null) return null;
+function probeLine(raw: unknown): { readonly id: number | null; readonly text: string } {
+  const row = asRecord(raw) ?? {};
   const [before, after, moved, id] = [
     str(asRecord(row.original)?.kind) ?? "?",
     str(asRecord(row.changed)?.kind) ?? "?",
@@ -149,12 +148,8 @@ function projectPair(
   kind: "cross" | "mirror",
   calls: ReadonlyMap<string, VoteCall>,
 ): ProjectedReview {
-  const [task, judge, holistic] = [
-    str(data.task) ?? "unknown",
-    isNumber(data.judge) ? data.judge : null,
-    isNumber(data.holistic) ? data.holistic : null,
-  ];
-  const complete = judge !== null && holistic !== null;
+  const task = str(data.task) ?? "unknown";
+  const scores = scoresOf(data);
   const criteria = asRecord(data.criteria) ?? {};
   const disagreed = new Set(strings(data.disagreed));
   const byCriterion = new Map<string, string[]>();
@@ -168,7 +163,8 @@ function projectPair(
   let missingReasons = false;
   for (const item of items) {
     const score = isNumber(criteria[item]) ? criteria[item] : null;
-    const vsHolistic = item === HOLISTIC ? null : relation(score, holistic);
+    const vsHolistic =
+      item === HOLISTIC || score === null || scores === null ? null : relation(score, scores.holistic);
     if (vsHolistic === "opposed") opposed.push(item);
     const formatted = formatCriterion({
       item,
@@ -181,10 +177,10 @@ function projectPair(
     missingReasons ||= formatted.missing;
     itemLines.push(...formatted.lines);
   }
-  const pairRel = relation(judge, holistic);
-  const status = complete
-    ? `judge-gap=${fmt(Math.abs(judge))} holistic-gap=${fmt(Math.abs(holistic))}${pairRel === null ? "" : ` (${pairRel})`}`
-    : "incomplete";
+  const status =
+    scores === null
+      ? "incomplete"
+      : `judge-gap=${fmt(Math.abs(scores.judge))} holistic-gap=${fmt(Math.abs(scores.holistic))} (${relation(scores.judge, scores.holistic)})`;
   return {
     source: "pair",
     task,
@@ -192,7 +188,7 @@ function projectPair(
     items,
     checks: [],
     outcomes: [
-      complete ? "complete" : "incomplete",
+      scores === null ? "incomplete" : "complete",
       kind,
       ...(disagreed.size > 0 ? ["disagreed"] : []),
       ...(opposed.length > 0 ? ["holistic-oppose"] : []),
@@ -226,10 +222,9 @@ function projectFinding(
     reused || REUSE_PREFIX.test(rawReason)
       ? `reused ${ruling}${check === null ? "" : ` on ${check}`} in ${comparison}`
       : boundText(rawReason, REASON_BYTES).shown;
-  const probes = (Array.isArray(data.probeRows) ? data.probeRows : []).flatMap((row) => {
-    const line = probeLine(row);
-    return line === null ? [] : [`  ${line.text}`];
-  });
+  const probes = (Array.isArray(data.probeRows) ? data.probeRows : []).map(
+    (row) => `  ${probeLine(row).text}`,
+  );
   const meta = [
     `ruling=${ruling}`,
     ...(standing === ruling ? [] : [`standing=${standing}`]),
@@ -265,13 +260,12 @@ function projectDraft(data: JsonObject): ProjectedReview {
   const probeById = new Map(
     rawProbes.flatMap((raw) => {
       const parsed = probeLine(raw);
-      return parsed !== null && parsed.id !== null ? [[parsed.id, parsed.text] as const] : [];
+      return parsed.id === null ? [] : [[parsed.id, parsed.text] as const];
     }),
   );
   const [tasks, checks, items] = [new Set<string>(), new Set<string>(), new Set<string>()];
   const findings = (Array.isArray(data.findings) ? data.findings : []).flatMap((raw) => {
-    const one = asRecord(raw);
-    if (one === null) return [];
+    const one = asRecord(raw) ?? {};
     const parts = [str(one.kind) ?? "defect"];
     for (const [label, value, bucket] of [
       ["task", str(one.task), tasks],
@@ -299,62 +293,50 @@ function projectDraft(data: JsonObject): ProjectedReview {
 }
 
 function findingContext(events: readonly LogEvent[], reported: ReadonlyMap<string, number>) {
-  const solveComp = new Map<string, string | null>(
-    solvesIn(events).map(({ id, start }) => [id, isString(start.comparison) ? start.comparison : null]),
-  );
+  const comparisonOf = new Map(solvesIn(events).map(({ id, start }) => [id, str(start.comparison)]));
+  const placed = (data: JsonObject) => {
+    const solve = str(data.solve) ?? "";
+    const comparison = comparisonOf.get(solve);
+    return comparison === undefined || (comparison !== null && !reported.has(comparison))
+      ? null
+      : { solve, comparison: comparison ?? "practice", from: str(data.reusedFrom) };
+  };
   const reuseCounts = new Map<string, number>();
   for (const {
     event: { data },
   } of eventsOf(events, FINDING)) {
-    const [solve, from] = [str(data.solve), str(data.reusedFrom)];
-    if (solve === null || from === null) continue;
-    const comp = solveComp.get(solve);
-    if (comp === undefined) continue;
-    if (comp === null || reported.has(comp)) {
-      reuseCounts.set(from, (reuseCounts.get(from) ?? 0) + 1);
-    }
+    const from = placed(data)?.from ?? null;
+    if (from !== null) reuseCounts.set(from, (reuseCounts.get(from) ?? 0) + 1);
   }
-  return { solveComp, stands: standsOf(events), reuseCounts, seenPrimary: new Set<string>() };
+  return { placed, stands: standsOf(events), reuseCounts, seenPrimary: new Set<string>() };
 }
 
-function projectReviews(events: readonly LogEvent[], source: ReviewQuery["source"]): ProjectedReview[] {
+function projectReviews(events: readonly LogEvent[]): ProjectedReview[] {
   const reported = reportedOrder(events);
-  const pairs =
-    source === undefined || source === "pair"
-      ? { harnessOf: harnessMap(events), calls: voteCallsOf(events) }
-      : null;
-  const findings = source === undefined || source === "finding" ? findingContext(events, reported) : null;
-  const kinds: EventKind[] = [
-    ...(pairs === null ? [] : [PAIR]),
-    ...(findings === null ? [] : [FINDING]),
-    ...(source === undefined || source === "draft" ? [DRAFT] : []),
+  const [harnessOf, calls, findings] = [
+    harnessMap(events),
+    voteCallsOf(events),
+    findingContext(events, reported),
   ];
-  return eventsOf(events, kinds)
+  return eventsOf(events, [PAIR, FINDING, DRAFT])
     .flatMap(({ event: { kind, data } }): ProjectedReview[] => {
       if (kind === DRAFT) return [projectDraft(data)];
-      if (kind === PAIR && pairs !== null) {
-        const comparison = str(data.comparison);
-        return comparison !== null && reported.has(comparison)
-          ? [projectPair(data, comparison, pairKind(pairs.harnessOf, data), pairs.calls)]
+      if (kind === PAIR) {
+        const comparison = str(data.comparison) ?? "";
+        return reported.has(comparison)
+          ? [projectPair(data, comparison, pairKind(harnessOf, data), calls)]
           : [];
       }
-      if (findings === null) return [];
-      const [solve, from] = [str(data.solve), str(data.reusedFrom)];
-      if (solve === null) return [];
-      const comp = findings.solveComp.get(solve);
-      if (comp === undefined) return [];
-      if (comp !== null && !reported.has(comp)) return [];
-      if (from !== null && findings.seenPrimary.has(from)) return [];
-      if (from === null) findings.seenPrimary.add(solve);
-      return [
-        projectFinding(data, comp ?? "practice", findings.stands, findings.reuseCounts.get(solve) ?? 0),
-      ];
+      const at = findings.placed(data);
+      if (at === null || (at.from !== null && findings.seenPrimary.has(at.from))) return [];
+      if (at.from === null) findings.seenPrimary.add(at.solve);
+      return [projectFinding(data, at.comparison, findings.stands, findings.reuseCounts.get(at.solve) ?? 0)];
     })
     .toReversed();
 }
 
 export function reviewInventoryLine(events: readonly LogEvent[]): string | null {
-  const entries = projectReviews(events, undefined);
+  const entries = projectReviews(events);
   if (entries.length === 0) return null;
   let [pairs, disagreed, opposed, findings, defects, earned, drafts] = [0, 0, 0, 0, 0, 0, 0];
   for (const entry of entries) {
@@ -395,6 +377,7 @@ export function reviewInventoryLine(events: readonly LogEvent[]): string | null 
 }
 
 function matchesQuery(entry: ProjectedReview, filter: ReviewQuery, needle: string | null): boolean {
+  if (filter.source !== undefined && entry.source !== filter.source) return false;
   if (filter.task !== undefined && !entry.task.split(",").includes(filter.task)) return false;
   if (filter.comparison !== undefined && entry.comparison !== filter.comparison) return false;
   if (filter.item !== undefined && !entry.items.includes(filter.item)) return false;
@@ -405,13 +388,12 @@ function matchesQuery(entry: ProjectedReview, filter: ReviewQuery, needle: strin
 
 function summariseTaskPairs(rows: readonly JsonObject[]): string {
   const byPair = new Map<string, JsonObject>();
-  for (const [at, row] of rows.entries()) {
-    const key = isString(row.solve) && isString(row.old) ? `${row.solve}\u0000${row.old}` : String(at);
-    const prev = byPair.get(key);
-    if (prev === undefined || (isNumber(row.judge) && isNumber(row.holistic))) byPair.set(key, row);
+  for (const row of rows) {
+    const key = capturedJsonStringify([row.solve, row.old]);
+    if (!byPair.has(key) || scoresOf(row) !== null) byPair.set(key, row);
   }
   const unique = [...byPair.values()];
-  let [done, splits, votes, disagreed, faults, truncated] = [0, 0, 0, 0, 0, 0];
+  let [done, votes, disagreed, faults, truncated, tied] = [0, 0, 0, 0, 0, true];
   const opposed = new Set<string>();
   for (const row of unique) {
     const ext = asRecord(row.extracts);
@@ -419,19 +401,21 @@ function summariseTaskPairs(rows: readonly JsonObject[]): string {
       faults += num(ext.faults);
       truncated += num(ext.truncated);
     }
-    const holistic = isNumber(row.holistic) ? row.holistic : null;
-    if (!isNumber(row.judge) || holistic === null) continue;
+    const scores = scoresOf(row);
+    if (scores === null) continue;
     done += 1;
-    if (row.judge !== 0 || holistic !== 0) splits += 1;
+    tied &&= scores.judge === 0 && scores.holistic === 0;
     const criteria = asRecord(row.criteria) ?? {};
     votes += Object.keys(criteria).length;
     disagreed += strings(row.disagreed).length;
     for (const [id, score] of Object.entries(criteria)) {
-      if (id !== HOLISTIC && isNumber(score) && relation(score, holistic) === "opposed") opposed.add(id);
+      if (id !== HOLISTIC && isNumber(score) && relation(score, scores.holistic) === "opposed") {
+        opposed.add(id);
+      }
     }
   }
   return [
-    `reviews ${String(done)}/${String(unique.length)} pairs${done > 0 && splits === 0 ? " (all tied)" : ""}`,
+    `reviews ${String(done)}/${String(unique.length)} pairs${done > 0 && tied ? " (all tied)" : ""}`,
     ...(votes > 0 ? [`swap-disagreed ${String(disagreed)}/${String(votes)}`] : []),
     ...(opposed.size > 0 ? [`holistic opposed ${[...opposed].join(", ")}`] : []),
     ...(faults > 0 || truncated > 0 ? [`extracts ${String(faults)}f/${String(truncated)}t`] : []),
@@ -446,10 +430,9 @@ export function reviewSummariesByTask(events: readonly LogEvent[]): Map<string, 
   for (const {
     event: { data },
   } of eventsOf(events, PAIR)) {
-    const [comparison, task] = [str(data.comparison), str(data.task)];
-    const rank = comparison === null ? undefined : reported.get(comparison);
-    if (comparison === null || task === null || rank === undefined) continue;
-    if (pairKind(harnessOf, data) !== "cross") continue;
+    const [comparison, task] = [str(data.comparison) ?? "", str(data.task) ?? ""];
+    const rank = reported.get(comparison);
+    if (rank === undefined || pairKind(harnessOf, data) !== "cross") continue;
     const prior = latestComp.get(task);
     if (prior === undefined || rank > prior.rank) latestComp.set(task, { comparison, rank });
     const key = `${comparison}\u0000${task}`;
@@ -483,7 +466,7 @@ export function readReviews(events: readonly LogEvent[], query: ReviewQuery = {}
     }
     offset = parsed;
   }
-  const matched = projectReviews(events, query.source).filter((entry) => matchesQuery(entry, query, needle));
+  const matched = projectReviews(events).filter((entry) => matchesQuery(entry, query, needle));
   if (matched.length === 0) {
     const active = Object.entries(query)
       .filter(([key, value]) => key !== "cursor" && key !== "limit" && value !== undefined && value !== "")
@@ -492,10 +475,7 @@ export function readReviews(events: readonly LogEvent[], query: ReviewQuery = {}
       ? "No reported review records exist yet."
       : `No review records match (${active.join(", ")}).`;
   }
-  const cap = Math.max(
-    1,
-    Math.min(isNumber(query.limit) ? Math.floor(query.limit) : DEFAULT_LIMIT, MAX_LIMIT),
-  );
+  const cap = query.limit ?? DEFAULT_LIMIT;
   const page: ProjectedReview[] = [];
   let bytes = 0;
   for (const entry of matched.slice(offset, offset + cap)) {

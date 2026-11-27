@@ -284,6 +284,19 @@ describe.concurrent("the host's practice release", () => {
     expect(moveOf(toEnd)).toBe("end");
     expect(await releasePendingPractice(toEnd, "before end")).toBe(false);
     expect([released(toEnd), toEnd.used]).toEqual([2, 0]);
+
+    const failedCtx = await owing(`${STEM}-release-failed`);
+    failedCtx.failed = { move: "compare", why: "crashed" };
+    expect(await releasePendingPractice(failedCtx, "after failure")).toBe(false);
+    const cappedCtx = await owing(`${STEM}-release-capped`);
+    cappedCtx.used = cappedCtx.maxMoves;
+    expect(await releasePendingPractice(cappedCtx, "at move cap")).toBe(false);
+    const abortedCtx = await owing(`${STEM}-release-aborted`);
+    // SAFETY: `releaseOnce` reads only `bench?.halt.signal.aborted` before returning false on abort.
+    const haltedBench = { halt: new AbortController() } as Parameters<typeof releasePendingPractice>[2];
+    haltedBench?.halt.abort();
+    expect(await releasePendingPractice(abortedCtx, "while halted", haltedBench)).toBe(false);
+    expect([released(failedCtx), released(cappedCtx), released(abortedCtx)]).toEqual([2, 2, 2]);
   });
 });
 

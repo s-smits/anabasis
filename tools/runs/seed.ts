@@ -183,10 +183,9 @@ function copyClaudeSessions(
   }
   if (before !== undefined) {
     names.add(before);
-    const cutEvent = tail
-      .map((line) => asRecord(capturedJsonParse(line)))
-      .find((event) => SESSION_STARTS.has(event?.kind) && asRecord(event?.data)?.session === before);
-    const parent = asRecord(cutEvent?.data)?.conversation;
+    const [cutLine] = tail;
+    const cutEvent = cutLine === undefined ? null : asRecord(capturedJsonParse(cutLine));
+    const parent = SESSION_STARTS.has(cutEvent?.kind) ? asRecord(cutEvent?.data)?.conversation : undefined;
     if (isString(parent)) names.add(parent);
   }
   const destDir = join(to, CLAUDE_SESSIONS_DIR);
@@ -226,7 +225,9 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
     // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
     const events = read(join(to, LOG_FILE));
     for (const { kind, data } of events) {
-      if (kind === "build.started" && isString(data.session)) copy(join("memory", data.session));
+      if (kind === "build.started" && isString(data.session) && isSafePathSegment(data.session)) {
+        copy(join("memory", data.session));
+      }
     }
     const tail = lines.slice(kept);
     const { examinerHome, examinerHomeFrom } = restoreExaminerHome(from, to, events, tail);

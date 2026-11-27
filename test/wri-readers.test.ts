@@ -49,7 +49,11 @@ import { transferRows } from "../tools/wri/transfer.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 import { wriCampaign } from "./helpers/wri-campaign.ts";
 
-const [SOLVE_STARTED, SOLVE_FINISHED] = ["solve.started", "solve.finished"] as const;
+const [SOLVE_STARTED, SOLVE_FINISHED, SOLVE_CALL] = [
+  "solve.started",
+  "solve.finished",
+  "solve.call",
+] as const;
 const EXAM_DRAFTED = "exam.drafted";
 const events = wriCampaign((tag) => `secret ${tag}`);
 const { rows, triggers } = overview(events);
@@ -1726,21 +1730,66 @@ describe("the findings ledger", () => {
       `[WARN] honesty (lane 19): solver write/edit permission refusals: 2/60 solves hit EPERM/EACCES; by harness: starter ${starterDigest.slice(0, 8)} 2/20 (10.0%)`,
     );
 
-    const withProbeLog: LogEvent[] = envAbortedLog.map((ev) =>
-      ev.kind === "solve.call" && ev.data.solve === "st-0"
-        ? { ...ev, data: { ...ev.data, args: { path: "/tmp/probe/dummy", content: "" } } }
-        : ev.kind === "solve.call" && ev.data.solve === "st-1"
-          ? {
-              ...ev,
-              data: {
-                ...ev.data,
-                args: { path: "/tmp/probe/out.py", content: "import sys\nprint(12345)\n" },
-              },
-            }
-          : ev,
-    );
+    const withProbeLog: LogEvent[] = [
+      ...envAbortedLog.map((ev) =>
+        ev.kind === SOLVE_CALL && ev.data.solve === "st-0"
+          ? { ...ev, data: { ...ev.data, args: { path: "/tmp/probe/dummy", content: "123456789012" } } }
+          : ev.kind === SOLVE_CALL && ev.data.solve === "st-1"
+            ? {
+                ...ev,
+                data: {
+                  ...ev.data,
+                  args: { path: "/tmp/probe/out.py", content: "1234567890123" },
+                },
+              }
+            : ev,
+      ),
+      {
+        at,
+        kind: SOLVE_CALL,
+        data: { solve: "bu-0", tool: "write", isError: false, text: "EPERM: ignored ok" },
+      },
+      {
+        at,
+        kind: SOLVE_CALL,
+        data: { solve: "bu-1", tool: "bash", isError: true, text: "EPERM: bash refusal" },
+      },
+      {
+        at,
+        kind: "build.call",
+        data: { session: "b-1", tool: "write", isError: true, text: "EPERM: build refusal" },
+      },
+      {
+        at,
+        kind: "solve.turn",
+        data: { solve: "bu-2", turn: 1, text: "EPERM: mentioned in prose" },
+      },
+    ];
     expect(diagnosticRows(withProbeLog, join(tmpdir(), "nonexistent-states-dir")).join("\n")).toContain(
       `[WARN] honesty (lane 19): solver write/edit permission refusals: 2/60 solves hit EPERM/EACCES (1/2 non-probe); by harness: starter ${starterDigest.slice(0, 8)} 2/20 (10.0%)`,
+    );
+
+    const nonJudgedLog: LogEvent[] = [
+      {
+        at,
+        kind: EXAM_DRAFTED,
+        data: {
+          session: "d-1",
+          draft: {
+            objective: {
+              quantity: "score",
+              direction: "higher",
+              scale: "unit",
+              items: [{ id: "m", weight: 1 }],
+            },
+          },
+        },
+      },
+      { at, kind: COMPARISON_STARTED, data: { session: "g-1", old: "s", fresh: "h", starter: "s" } },
+      { at, kind: COMPARISON_REPORTED, data: { session: "g-1", reading: "no-step", differences: [] } },
+    ];
+    expect(diagnosticRows(nonJudgedLog, join(tmpdir(), "nonexistent-states-dir")).join("\n")).not.toContain(
+      "unexercised judged lane",
     );
 
     const completedPairLog: LogEvent[] = [

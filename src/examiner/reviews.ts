@@ -451,7 +451,7 @@ export function reviewSummariesByTask(events: readonly LogEvent[]): Map<string, 
     if (comparison === null || task === null || rank === undefined) continue;
     if (pairKind(harnessOf, data) !== "cross") continue;
     const prior = latestComp.get(task);
-    if (prior === undefined || rank >= prior.rank) latestComp.set(task, { comparison, rank });
+    if (prior === undefined || rank > prior.rank) latestComp.set(task, { comparison, rank });
     const key = `${comparison}\u0000${task}`;
     rowsByKey.set(key, [...(rowsByKey.get(key) ?? []), data]);
   }

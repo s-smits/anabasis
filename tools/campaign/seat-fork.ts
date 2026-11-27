@@ -62,11 +62,6 @@ function sourceLogs(log: string, fromDir: string): readonly string[] {
   return sourceLog === log || !existsSync(sourceLog) ? [log] : [log, sourceLog];
 }
 
-function conversationRoot(events: readonly LogEvent[], seat: SeatKind, session: string): string | null {
-  const started = events.find(({ kind, data }) => kind === `${seat}.started` && data.session === session);
-  return started !== undefined && isString(started.data.conversation) ? started.data.conversation : null;
-}
-
 function defaultTurnCap(
   events: readonly LogEvent[],
   seat: SeatKind,
@@ -122,9 +117,9 @@ function resolveTranscript(
   const logs = sourceLogs(log, fromDir).toReversed();
   for (const candidateLog of logs) {
     const events = read(candidateLog);
-    const hasSession = events.some(({ kind, data }) => kind === `${seat}.started` && data.session === target);
-    if (!hasSession) continue;
-    const root = conversationRoot(events, seat, target) ?? target;
+    const started = events.find(({ kind, data }) => kind === `${seat}.started` && data.session === target);
+    if (started === undefined) continue;
+    const root = isString(started.data.conversation) ? started.data.conversation : target;
     const found = findFile(target) ?? (root === target ? undefined : findFile(root));
     if (found !== undefined) {
       return {

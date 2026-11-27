@@ -43,6 +43,7 @@ const CONTRACT: Contract = {
 };
 const STRONG = "the strong memo";
 const WEAK = "the weak memo";
+const VIEW_IMAGE = "view_image";
 const scratch = mkdtempSync(join(tmpdir(), "ana-judge-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 let logs = 0;
@@ -231,7 +232,7 @@ describe("the pairwise judge", () => {
     );
     expect(pairPrompts.every((shown) => shown.includes("Include every reconciliation table."))).toBe(true);
     expect(pairPrompts.every((shown) => shown.includes(mid))).toBe(true);
-    expect(pairPrompts.some((shown) => shown.includes("view_image"))).toBe(false);
+    expect(pairPrompts.some((shown) => shown.includes(VIEW_IMAGE))).toBe(false);
     expect(Math.max(...pairPrompts.map((shown) => Buffer.byteLength(answerA(shown))))).toBeLessThan(96_500);
   });
 
@@ -255,21 +256,21 @@ describe("the pairwise judge", () => {
       const shown = JSON.stringify(context);
       const hasImageBlock = shown.includes('"type":"image"');
       const answer = answerA(shown).includes("report.docx#word/media/chart.png") ? "A" : "B";
-      if (!askedMissing && shown.includes("view_image")) {
+      if (!askedMissing && shown.includes(VIEW_IMAGE)) {
         askedMissing = true;
-        return fauxAssistantMessage(fauxToolCall("view_image", { answer, path: "no-such.png" }), {
+        return fauxAssistantMessage(fauxToolCall(VIEW_IMAGE, { answer, path: "no-such.png" }), {
           stopReason: "toolUse",
         });
       }
-      if (!askedOverflow && shown.includes("view_image")) {
+      if (!askedOverflow && shown.includes(VIEW_IMAGE)) {
         askedOverflow = true;
-        return fauxAssistantMessage(fauxToolCall("view_image", { answer, path: "extra-fifth.png" }), {
+        return fauxAssistantMessage(fauxToolCall(VIEW_IMAGE, { answer, path: "extra-fifth.png" }), {
           stopReason: "toolUse",
         });
       }
-      if (!hasImageBlock && shown.includes("view_image")) {
+      if (!hasImageBlock && shown.includes(VIEW_IMAGE)) {
         return fauxAssistantMessage(
-          fauxToolCall("view_image", { answer, path: "report.docx#word/media/chart.png" }),
+          fauxToolCall(VIEW_IMAGE, { answer, path: "report.docx#word/media/chart.png" }),
           { stopReason: "toolUse" },
         );
       }
@@ -324,11 +325,55 @@ describe("the pairwise judge", () => {
     expect(pair).toMatchObject({ judge: 1, holistic: 1 });
     const viewErrors = events
       .filter(
-        ({ kind, data }) => kind === "referee.call" && data.tool === "view_image" && data.isError === true,
+        ({ kind, data }) => kind === "referee.call" && data.tool === VIEW_IMAGE && data.isError === true,
       )
       .map(({ data }) => (isString(data.text) ? data.text : ""));
     expect(viewErrors.some((msg) => msg.includes("has no viewable image no-such.png"))).toBe(true);
     expect(viewErrors.some((msg) => msg.includes("has no viewable image extra-fifth.png"))).toBe(true);
     expect(sawImage).toEqual([true, true, true, true]);
+
+    const singleLog = join(scratch, `judged-vision-one-${String(++logs)}.jsonl`);
+    const singleFile = keepAnswerFiles(singleLog, [{ path: "solo.png", base64: png1x1 }]);
+    append(singleLog, "verdict", {
+      solve: "s-one",
+      task: TASK.taskId,
+      kind: "pass",
+      answer: { note: "ok" },
+      files: singleFile.map((file) => ({ ...file })),
+    });
+    append(singleLog, "verdict", {
+      solve: "s-none",
+      task: TASK.taskId,
+      kind: "pass",
+      answer: { note: "ok" },
+    });
+    const singleSaw: boolean[] = [];
+    faux.setResponses(
+      Array.from({ length: 8 }, () => (context: TranscriptContext) => {
+        const shown = JSON.stringify(context);
+        if (!shown.includes('"type":"image"') && shown.includes(VIEW_IMAGE)) {
+          const answer = answerA(shown).includes("solo.png") ? "A" : "B";
+          return fauxAssistantMessage(fauxToolCall(VIEW_IMAGE, { answer, path: "solo.png" }), {
+            stopReason: "toolUse",
+          });
+        }
+        singleSaw.push(shown.includes('"type":"image"'));
+        return fauxAssistantMessage(fauxToolCall("record_vote", { better: "neither", reason: "one img" }), {
+          stopReason: "toolUse",
+        });
+      }),
+    );
+    await judgePair(
+      { model: faux.getModel(), effort: "medium", models: () => models },
+      {
+        log: singleLog,
+        comparison: "g-one",
+        task: TASK,
+        contract: oneItem,
+        first: "s-one",
+        second: "s-none",
+      },
+    );
+    expect(singleSaw).toEqual([true, true, true, true]);
   });
 });

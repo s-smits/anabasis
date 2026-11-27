@@ -2281,6 +2281,8 @@ describe("harness file checks and practice task mentions", () => {
     expect(seen[3]).toContain("embedded images: report.docx#word/media/chart.png");
     expect(seen[4]).toContain("report.docx#word/media/chart.png");
     const calls = s.of(BUILD_CALL).filter(({ tool: name }) => name === READ_TRACE);
+    expect(calls[0]?.text).toStartWith("plot.png (binary,");
+    expect(calls[3]?.text).toStartWith("report.docx#word/media/chart.png\n");
     expect(calls[4]?.isError).toBe(true);
     expect(calls[4]?.text).toContain("delivered no file absent.png");
     expect(calls[5]?.isError).toBe(true);

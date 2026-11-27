@@ -50,23 +50,15 @@ export function changedLinesInDiff(diff: string): Map<string, Set<number>> {
   let lines: Set<number> | undefined;
   let sawMinus = false;
   let oldLeft = 0;
-  let newLeft = 0;
   for (const row of diff.split("\n")) {
     if (row.startsWith("diff --git ")) {
       sawMinus = false;
       oldLeft = 0;
-      newLeft = 0;
       continue;
     }
-    if (oldLeft > 0 || newLeft > 0) {
-      if (row.startsWith("-") && oldLeft > 0) {
-        oldLeft -= 1;
-        continue;
-      }
-      if (row.startsWith("+") && newLeft > 0) {
-        newLeft -= 1;
-        continue;
-      }
+    if (row.startsWith("-") && oldLeft > 0) {
+      oldLeft -= 1;
+      continue;
     }
     if (row.startsWith("--- ")) {
       sawMinus = true;
@@ -89,7 +81,6 @@ export function changedLinesInDiff(diff: string): Map<string, Set<number>> {
     oldLeft = Number(hunk[1] ?? 1);
     const start = Number(hunk[2]);
     const count = Number(hunk[3] ?? 1);
-    newLeft = count;
     for (let line = start; line < start + count; line += 1) lines.add(line);
   }
   return changed;

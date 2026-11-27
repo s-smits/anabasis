@@ -732,7 +732,43 @@ const PROMPTED: Parameters<typeof nextAction>[1] = {
 
 describe.concurrent("campaign draft lifecycle", () => {
   it("ends the campaign after three failed drafts across two sessions", async () => {
-    await expect(draftCommand([])).rejects.toThrow("name --name, --session and --examiner");
+    for (const missingArgs of [
+      [],
+      ["--name", `${STEM}-m`],
+      ["--name", `${STEM}-m`, "--session", "d-1"],
+      ["--session", "d-1", "--examiner", SOLVER],
+    ]) {
+      await expect(draftCommand(missingArgs)).rejects.toThrow("name --name, --session and --examiner");
+    }
+    const unprompted = `${STEM}-no-prompt`;
+    campaigns.push(unprompted);
+    mkdirSync(dirname(campaignLog(unprompted)), { recursive: true });
+    append(campaignLog(unprompted), "campaign.opened", { solver: { model: SOLVER, effort: "high" } });
+    await expect(
+      draftCommand(["--name", unprompted, "--session", "d-1", "--examiner", SOLVER], putting(SOUND)),
+    ).rejects.toThrow("did not open from a prompt");
+
+    const scriptedWithRev = `${STEM}-scripted-rev`;
+    const seenLimits: number[] = [];
+    await draftCommand(
+      [
+        ...opened(scriptedWithRev, false, { model: SOLVER, effort: "medium" }),
+        "--session",
+        "d-1",
+        "--minutes",
+        "2",
+      ],
+      (request) => {
+        seenLimits.push(request.limits.wallSeconds);
+        return putting(SOUND)(request);
+      },
+    );
+    expect(seenLimits).toEqual([120]);
+    const scriptedEvents = read(campaignLog(scriptedWithRev));
+    expect(draftOf(scriptedEvents)).toEqual(SOUND);
+    expect(scriptedEvents.filter(({ kind }) => kind === "referee.draft")).toHaveLength(0);
+    expect(scriptedEvents.filter(({ kind }) => kind === "contract.frozen")).toHaveLength(1);
+
     const name = `${STEM}-spent`;
     const flags = opened(name);
     const wrong: Draft = {

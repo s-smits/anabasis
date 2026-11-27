@@ -260,6 +260,36 @@ describe("the campaign's executing Bun and opening guards", () => {
     );
     expect(() => wordCommand(["--name", ledName, "--stop", "x", "--budget", "5"])).toThrow("one word");
     expect(() => wordCommand(["--name", ledName, "--cause", "the host was loaded"])).toThrow();
+
+    await expect(harnessBuilder([], { seated: answering([], GRADED_SMALL) })).rejects.toThrow(
+      "name --name, the campaign",
+    );
+    for (const badMoves of ["-1", "abc"]) {
+      await expect(
+        harnessBuilder([...seeded(`${STEM}-bad-moves-${badMoves}`, SMALL), `--moves=${badMoves}`], {
+          seated: answering([], GRADED_SMALL),
+        }),
+      ).rejects.toThrow("the moves to make are a number");
+    }
+
+    const judgedFreezeLog = join(root, "terms", "judged-freeze", LOG_FILE);
+    mkdirSync(join(root, "terms", "judged-freeze"), { recursive: true });
+    append(judgedFreezeLog, "exam.drafted", {
+      session: "d-1",
+      draft: {
+        objective: {
+          quantity: "quality",
+          direction: "higher",
+          scale: "unit",
+          items: [
+            { id: "clarity", weight: 1, kind: "judge", criterion: "Clear structure and complete steps." },
+          ],
+        },
+      },
+    });
+    expect(() => opened(judgedFreezeLog, termFlags("--reviewer", model), "paid")).not.toThrow();
+    append(judgedFreezeLog, "contract.frozen", { contract: "c", checks: "k" });
+    expect(() => opened(judgedFreezeLog, termFlags("--reviewer", model), "paid")).toThrow(/its own family/u);
   });
 
   it("ends open build, exam, and draft sessions as killed before its first move, and never twice", async () => {

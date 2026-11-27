@@ -42,15 +42,26 @@ function makeSeed(name: string, originEvents: readonly string[], withTranscript:
 describe("seatForkPlan and applyContinuation", () => {
   it("refuses fork, wrap, and nudge flags outside a sim-* seed", () => {
     const live = join(root, "real-run");
-    mkdirSync(live, { recursive: true });
-    const log = join(live, "log.jsonl");
-    writeFileSync(log, "");
-    expect(seatForkPlan(log, "exam", claudeModel, {})).toEqual({});
-    expect(() => seatForkPlan(log, "exam", claudeModel, { nudge: "try harder" })).toThrow("simulation seed");
-    expect(() => seatForkPlan(log, "exam", claudeModel, { "wrap-turns": "x-1:1" })).toThrow(
-      "simulation seed",
-    );
-    expect(() => seatForkPlan(log, "exam", claudeModel, { "fork-from": "x-1" })).toThrow("simulation seed");
+    const simNoSeed = join(root, "sim-no-seed");
+    const liveWithSeed = join(root, "real-with-seed");
+    for (const dir of [live, simNoSeed, liveWithSeed]) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "log.jsonl"), "");
+    }
+    writeFileSync(join(liveWithSeed, SEED_FILE), JSON.stringify({ from: liveWithSeed, events: 0, of: 0 }));
+    for (const dir of [live, simNoSeed, liveWithSeed]) {
+      const log = join(dir, "log.jsonl");
+      expect(seatForkPlan(log, "exam", claudeModel, {})).toEqual({});
+      expect(() => seatForkPlan(log, "exam", claudeModel, { nudge: "try harder" })).toThrow(
+        /--nudge is only allowed on a simulation seed/u,
+      );
+      expect(() => seatForkPlan(log, "exam", claudeModel, { "wrap-turns": "x-1:1" })).toThrow(
+        /--wrap-turns is only allowed on a simulation seed/u,
+      );
+      expect(() => seatForkPlan(log, "exam", claudeModel, { "fork-from": "x-1" })).toThrow(
+        /--fork-from is only allowed on a simulation seed/u,
+      );
+    }
   });
 
   it("enforces mutual exclusions, non-Claude refusal, and fail-closed missing-transcript refusal", () => {
@@ -117,11 +128,45 @@ describe("seatForkPlan and applyContinuation", () => {
 
     const unshared = makeSeed(
       "sim-unshared",
-      [line("exam.started", { session: "x-1" }), line("exam.turn", { session: "x-1", turn: 1, text: "t1" })],
+      [
+        line("exam.started", { session: "x-1" }),
+        line("exam.turn", { session: "x-1", turn: 1, text: "t1" }),
+        line("exam.started", { session: "x-other" }),
+        line("exam.turn", { session: "x-other", turn: 1, text: "other" }),
+      ],
       "yes",
     );
     expect(seatForkPlan(unshared.log, "exam", claudeModel, { "fork-from": "x-1" }).fork).toEqual({
       transcript: join(unshared.origin, CLAUDE_SESSIONS_DIR, "x-1.jsonl"),
+    });
+
+    const sharedOneTurn = makeSeed(
+      "sim-one-turn-shared",
+      [
+        line("exam.started", { session: "x-1" }),
+        line("exam.turn", { session: "x-1", turn: 1, text: "t1" }),
+        line("exam.started", { session: "x-2", conversation: "x-1" }),
+      ],
+      "yes",
+    );
+    expect(seatForkPlan(sharedOneTurn.log, "exam", claudeModel, { "fork-from": "x-1" }).fork).toEqual({
+      transcript: join(sharedOneTurn.origin, CLAUDE_SESSIONS_DIR, "x-1.jsonl"),
+      upToTurn: 1,
+    });
+    expect(
+      seatForkPlan(sharedOneTurn.log, "exam", claudeModel, { "fork-from": "x-2", "at-turn": "1" }).fork,
+    ).toEqual({
+      transcript: join(sharedOneTurn.origin, CLAUDE_SESSIONS_DIR, "x-1.jsonl"),
+      upToTurn: 1,
+    });
+
+    const directOnly = makeSeed("sim-direct-only", [], "yes");
+    rmSync(join(directOnly.origin, "log.jsonl"));
+    expect(
+      seatForkPlan(directOnly.log, "exam", claudeModel, { "fork-from": "x-1", "at-turn": "2" }).fork,
+    ).toEqual({
+      transcript: join(directOnly.origin, CLAUDE_SESSIONS_DIR, "x-1.jsonl"),
+      upToTurn: 2,
     });
 
     const forX2 = seatForkPlan(log, "exam", claudeModel, {
@@ -180,6 +225,9 @@ describe("seatForkPlan and applyContinuation", () => {
     expect(wrapped.continuation?.text).not.toContain("later-turn-call");
     expect(wrapped.continuation?.text).toContain("Now try non-uniform bounds.");
 
+    const allThree = seatForkPlan(log, "exam", claudeModel, { "wrap-turns": "x-2:3" });
+    expect(allThree.continuation?.text).toContain("Should not appear.");
+    expect(() => seatForkPlan(log, "exam", claudeModel, { "wrap-turns": "x-2:4" })).toThrow("fewer than 4");
     expect(() => seatForkPlan(log, "exam", claudeModel, { "wrap-turns": "x-2:5" })).toThrow("fewer than 5");
   });
 

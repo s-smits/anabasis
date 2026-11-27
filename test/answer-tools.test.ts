@@ -17,6 +17,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import {
   capturedFiles,
+  fileRowBytes,
   keepAnswerFiles,
   manifestOf,
   readAnswerFiles,
@@ -162,6 +163,7 @@ describe("submit", () => {
     expect(s.desk.submitted).toEqual({ span: 5 });
   });
   it("refuses paths leaving the folder even in a malformed capture or manifest", () => {
+    expect(capturedFiles([{ path: "a".repeat(255), base64: "eA==" }])).toHaveLength(1);
     for (const path of [
       "../answer.json",
       "/answer.json",
@@ -170,10 +172,17 @@ describe("submit", () => {
       String.raw`a\b`,
       ".",
       "a/./b",
+      "a".repeat(256),
     ]) {
       expect(() => capturedFiles([{ path, base64: "eA==" }])).toThrow();
       expect(() => manifestOf([{ path, bytes: 1, sha256: "a".repeat(64) }])).toThrow();
     }
+    expect(() => textFiles([{ path: "bad.bin", base64: "not-valid-base64!" }])).toThrow(
+      "invalid file base64",
+    );
+    expect(fileRowBytes({ path: "bad.xlsx", entries: [{ path: "a.xml", text: 123 }] })).toBeNull();
+    expect(fileRowBytes({ path: "bad.xlsx", entries: [{ path: 123, text: "x" }] })).toBeNull();
+    expect(fileRowBytes({ path: "bad.xlsx", entries: [{ path: "../esc.xml", text: "x" }] })).toBeNull();
   });
 
   it("gives a check the text members of an archive, within the inflated bound, and nothing of a damaged one", () => {

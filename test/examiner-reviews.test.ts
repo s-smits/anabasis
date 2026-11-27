@@ -16,6 +16,7 @@ const CANARY_FIND = "canary-find-text-4b2c";
 const CANARY_REPLACE = "canary-replace-text-7d1e";
 const HARNESS_OLD = "h-ref-canary-1111";
 const HARNESS_FRESH = "h-cand-canary-2222";
+const PAIR = "referee.pair" as const;
 
 function makeLog() {
   const events: LogEvent[] = [];
@@ -93,6 +94,18 @@ describe("Examiner review projection and search (read_reviews)", () => {
       tool: "record_vote",
       isError: false,
       args: { better: "A", reason: "Answer A states exact error bars and units." },
+    });
+    log.add("referee.call", {
+      reader: voteAb,
+      tool: "record_vote",
+      isError: true,
+      args: { better: "B", reason: "errored vote must be ignored" },
+    });
+    log.add("referee.call", {
+      reader: voteAb,
+      tool: "view_image",
+      isError: false,
+      args: { better: "B", reason: "non-vote tool must be ignored" },
     });
     log.add("referee.call", {
       reader: voteBa,
@@ -192,6 +205,23 @@ describe("Examiner review projection and search (read_reviews)", () => {
       reusedFrom: "s-fail-1",
       reason: "reused check-defect on check-units from earlier solve s-fail-1 in comparison c-1",
     });
+    log.add("referee.finding", {
+      solve: "s-open-2",
+      task: "t-2",
+      ruling: "check-defect",
+      check: "check-units",
+      reusedFrom: "s-fail-1",
+      reason: "reused in unreported c-open",
+    });
+    log.solve("s-orphan-reuse", "t-2", HARNESS_FRESH, "c-1", false);
+    log.add("referee.finding", {
+      solve: "s-orphan-reuse",
+      task: "t-2",
+      ruling: "earned",
+      check: "check-unseen-primary",
+      reusedFrom: "s-missing-primary",
+      reason: "reused earned from unseen primary",
+    });
     log.add("referee.draft", {
       session: "d-1",
       pass: 1,
@@ -227,9 +257,12 @@ describe("Examiner review projection and search (read_reviews)", () => {
     log.report("c-1", HARNESS_OLD, HARNESS_FRESH, ["v-t-1", "v-t-2"], { "s-fail-1": "earned" });
 
     const all = readReviews(log.events);
-    expect(all).toContain("Showing 1-6 of 6 matching review records");
+    expect(all).toContain("Showing 1-7 of 7 matching review records");
     expect(all).toContain("[pair] c-1 | task=t-1 | cross | judge-gap=1 holistic-gap=1 (opposed)");
     expect(all).toContain("Answer A states exact error bars and units.");
+    expect(all).not.toContain("errored vote must be ignored");
+    expect(all).not.toContain("non-vote tool must be ignored");
+    expect(all).toContain("check=check-unseen-primary");
     expect(all).toContain("extracts: 4 files (1 empty, 1 faults, 2 truncated)");
     expect(all).toContain("[pair] c-1 | task=t-1 | mirror |");
     expect(all).toContain("reason unavailable");
@@ -288,6 +321,12 @@ describe("Examiner review projection and search (read_reviews)", () => {
     expect(
       readReviews(log.events, { comparison: "c-1", item: "clarity", query: "sensitivity table" }),
     ).toContain("Showing 1-1 of 1");
+    expect(readReviews(log.events, { task: "t-2" })).toContain("Showing 1-2 of 2");
+    expect(readReviews(log.events, { task: "no-such-task" })).toContain("No review records match");
+    expect(readReviews(log.events, { comparison: "d-1" })).toContain("Showing 1-2 of 2");
+    expect(readReviews(log.events, { comparison: "no-such-comp" })).toContain("No review records match");
+    expect(readReviews(log.events, { item: "clarity" })).toContain("Showing 1-2 of 2");
+    expect(readReviews(log.events, { item: "no-such-item" })).toContain("No review records match");
   });
 
   it("is byte-identical under perturbations of stripped identifiers, raw probe payloads, and A/B arm mapping", () => {
@@ -456,7 +495,15 @@ describe("Examiner review projection and search (read_reviews)", () => {
       log.solve(`s-o-${task}`, task, HARNESS_OLD, "c-1");
       log.solve(`s-f-${task}`, task, HARNESS_FRESH, "c-1");
     }
-    log.add("referee.pair", {
+    log.add(PAIR, {
+      comparison: "c-1",
+      task: "graded",
+      solve: "s-f-graded",
+      old: "s-o-graded",
+      judge: null,
+      holistic: null,
+    });
+    log.add(PAIR, {
       comparison: "c-1",
       task: "graded",
       solve: "s-f-graded",
@@ -466,6 +513,38 @@ describe("Examiner review projection and search (read_reviews)", () => {
       criteria: { clarity: 1, holistic: -1 },
       disagreed: ["clarity"],
       extracts: { files: 2, empty: 0, faults: 1, truncated: 1 },
+    });
+    log.add(PAIR, {
+      comparison: "c-1",
+      task: "graded",
+      solve: "s-f-graded",
+      old: "s-o-graded",
+      judge: null,
+      holistic: null,
+    });
+    log.hold("inc");
+    log.solve("s-o-inc", "inc", HARNESS_OLD, "c-1");
+    log.solve("s-f-inc", "inc", HARNESS_FRESH, "c-1");
+    log.add(PAIR, {
+      comparison: "c-1",
+      task: "inc",
+      solve: "s-f-inc",
+      old: "s-o-inc",
+      judge: null,
+      holistic: null,
+    });
+    log.hold("halfzero");
+    log.solve("s-o-halfzero", "halfzero", HARNESS_OLD, "c-1");
+    log.solve("s-f-halfzero", "halfzero", HARNESS_FRESH, "c-1");
+    log.add(PAIR, {
+      comparison: "c-1",
+      task: "halfzero",
+      solve: "s-f-halfzero",
+      old: "s-o-halfzero",
+      judge: 0,
+      holistic: 1,
+      criteria: { clarity: 0, holistic: 1 },
+      disagreed: [],
     });
     log.add("referee.pair", {
       comparison: "c-1",
@@ -504,6 +583,12 @@ describe("Examiner review projection and search (read_reviews)", () => {
       "reviews 1/1 pairs, swap-disagreed 1/2, holistic opposed clarity, extracts 1f/1t",
     );
     expect(summaries.get("tied")).toBe("reviews 1/1 pairs (all tied), swap-disagreed 0/2");
+    expect(summaries.get("halfzero")).toBe("reviews 1/1 pairs, swap-disagreed 0/2");
+    expect(summaries.get("inc")).toBe("reviews 0/1 pairs");
+    expect(readReviews(log.events, { task: "halfzero" })).toContain("holistic-gap=1 (tie)");
+    expect(readReviews(log.events, { task: "halfzero" })).toContain(
+      "clarity: tie, swap-consistent, holistic=tie",
+    );
 
     const told = taskHistory(
       log.events,
@@ -514,7 +599,7 @@ describe("Examiner review projection and search (read_reviews)", () => {
     expect(allLines.find((line) => line.startsWith("tied "))).toContain("reviews 1/1 pairs (all tied)");
     expect(allLines.find((line) => line.startsWith("prac "))).toBe("prac (fixture)");
     expect(told.reviews).toBe(
-      "Reported reviews in read_reviews (newest first): 4 pairs (1 swap-disagreed, 1 holistic-opposed).",
+      "Reported reviews in read_reviews (newest first): 8 pairs (1 swap-disagreed, 1 holistic-opposed).",
     );
     expect(reviewInventoryLine([])).toBeNull();
   });

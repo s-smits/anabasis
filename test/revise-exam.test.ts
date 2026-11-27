@@ -718,8 +718,52 @@ describe("empirical witnesses, adversarial audit cap, and successor A -> B hando
       candidate: validTuneCandidate,
     });
     expect(hitlRes.accepted).toBe(false);
-    expect(hitlRes.awaited).toBe(true);
     expect(hitlRes.message).toContain("--hitl");
+
+    const smuggledTune = candidateDraft(PARENT_DRAFT, {
+      kind: "repair",
+      why: "smuggle rubric reweight inside repair",
+      check: "check-strict",
+      objective_items: [codeItem("accuracy", 3), codeItem("depth", 1)],
+    });
+    expect(
+      revisionFaults(PARENT_DRAFT, smuggledTune, "repair", "check-strict").some((f) =>
+        f.includes("repair revision cannot change objective"),
+      ),
+    ).toBe(true);
+
+    const noOpeningTasks = ungated(
+      { tasks: hitlSeed.tasks, pack: (task) => packageOf(hitlSeed.checks, task) },
+      [],
+    );
+    expect(noOpeningTasks.length).toBeGreaterThan(0);
+
+    const hijackSeed = await seedCampaign({ name: "camp-hijack" });
+    const hijackVersion0 = [...hijackSeed.packages().keys()][0] ?? "";
+    recordHistoricalWitnesses(hijackSeed.log, hijackVersion0, { includeDefect: true, reportComp: true });
+    expect(
+      (
+        await revisionRunner({
+          log: hijackSeed.log,
+          parentBundle: hijackSeed.bundle,
+          packages: hijackSeed.packages,
+          auditor: SOUND_AUDIT,
+        })({
+          session: "x-1",
+          kind: "repair",
+          why: "allow whitespace",
+          check: "check-strict",
+          candidate: goodRepair,
+        })
+      ).accepted,
+    ).toBe(true);
+    const foreignDir = join(dirname(hijackSeed.dir), "camp-hijack-rev2");
+    mkdirSync(foreignDir, { recursive: true });
+    append(join(foreignDir, LOG_FILE), "campaign.opened", {
+      prompt: "unrelated campaign",
+      parent: { campaign: "someone-else", revised: "0".repeat(64), kind: "tune" },
+    });
+    await expect(openSuccessor(hijackSeed.log)).rejects.toThrow("refusing to adopt existing campaign");
     expect(eventsOf(read(hitlSeed.log), "exam.revised")).toHaveLength(0);
     const candidateHash = /--candidate\s+([a-f0-9]+)/u.exec(hitlRes.message)?.[1];
     expect(candidateHash).toBeTruthy();

@@ -7,7 +7,16 @@ import { contentOf, writtenTasks } from "#src/kernel/history.ts";
 import { append, eventsOf, LOG_FILE, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { endedData, endedOf, latestBuilt, promoted } from "#src/kernel/reports.ts";
-import { cpSync, existsSync, mkdirSync } from "#src/meta/filesystem.ts";
+import {
+  closeSync,
+  cpSync,
+  existsSync,
+  lockExclusiveSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  rmSync,
+} from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
@@ -107,7 +116,15 @@ function lineageFrom(eventsA: readonly LogEvent[], nextDraft: Draft): string[] {
 }
 
 function copyTreeIfMissing(from: string, to: string): void {
-  if (existsSync(from) && !existsSync(to)) cpSync(from, to, COPY_OPTS);
+  if (!existsSync(from) || existsSync(to)) return;
+  const staging = `${to}.tmp-${crypto.randomUUID()}`;
+  try {
+    cpSync(from, staging, COPY_OPTS);
+    renameSync(staging, to);
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true });
+    if (!existsSync(to)) throw error;
+  }
 }
 
 function writeSuccessorOpening(
@@ -117,7 +134,14 @@ function writeSuccessorOpening(
   nameA: string,
   rev: ReturnType<typeof revisionEvent>,
 ): void {
-  if (eventsOf(eventsB, "campaign.opened").length === 0) {
+  if (eventsOf(eventsB, "campaign.opened").length > 0) {
+    const parent = openingOf(eventsB)?.parent;
+    if (parent?.campaign !== nameA || parent.revised !== rev.draftHash) {
+      throw new Error(
+        `refusing to adopt existing campaign at ${logB}: its opening does not match parent ${nameA} (${rev.draftHash.slice(0, 8)})`,
+      );
+    }
+  } else {
     const { answers: _answers, ...base } = eventsOf(eventsA, "campaign.opened").at(-1)?.event.data ?? {};
     append(logB, "campaign.opened", {
       ...base,
@@ -148,61 +172,67 @@ export async function openSuccessor(
   const dirB = join(dirname(dirA), nameB);
   const logB = join(dirB, LOG_FILE);
   mkdirSync(dirB, { recursive: true });
-  const eventsB = existsSync(logB) ? read(logB, TRACE_KINDS) : [];
-  writeSuccessorOpening(logB, eventsA, eventsB, nameA, rev);
-  copyTreeIfMissing(join(dirA, "examiner-home"), join(dirB, "examiner-home"));
-  copyTreeIfMissing(join(dirA, "memory"), join(dirB, "memory"));
-  copyTreeIfMissing(join(dirA, SEED_FILE), join(dirB, SEED_FILE));
-  const stagedTools = join(dirA, "revisions", "exams", hashJsonValue(rev.draft).slice(0, 16), "bundle");
-  const sourceHome = existsSync(stagedTools)
-    ? stagedTools
-    : existsSync(join(dirA, "examiner-home"))
-      ? join(dirA, "examiner-home")
-      : undefined;
-  stageExam(dirB, rev.draft, sourceHome);
-  if (eventsOf(eventsB, "exam.drafted").length === 0) {
-    append(logB, "exam.drafted", {
-      session: "rev",
-      from: { campaign: nameA, draftHash: rev.draftHash },
-      draft: rev.draftObj,
-    });
-  }
-  if (eventsOf(eventsB, "contract.frozen").length === 0) {
-    const { faults, read: seen } = await draftReading(dirB, rev.draft, 4);
-    if (faults.length > 0 || seen === undefined) {
-      throw new Error(`successor ${nameB} failed checker reading: ${faults.join("; ")}`);
+  const lockFd = openSync(join(dirB, ".successor.lock"), "a+");
+  lockExclusiveSync(lockFd);
+  try {
+    const eventsB = existsSync(logB) ? read(logB, TRACE_KINDS) : [];
+    writeSuccessorOpening(logB, eventsA, eventsB, nameA, rev);
+    copyTreeIfMissing(join(dirA, "examiner-home"), join(dirB, "examiner-home"));
+    copyTreeIfMissing(join(dirA, "memory"), join(dirB, "memory"));
+    copyTreeIfMissing(join(dirA, SEED_FILE), join(dirB, SEED_FILE));
+    const stagedTools = join(dirA, "revisions", "exams", hashJsonValue(rev.draft).slice(0, 16), "bundle");
+    const sourceHome = existsSync(stagedTools)
+      ? stagedTools
+      : existsSync(join(dirA, "examiner-home"))
+        ? join(dirA, "examiner-home")
+        : undefined;
+    stageExam(dirB, rev.draft, sourceHome);
+    if (eventsOf(eventsB, "exam.drafted").length === 0) {
+      append(logB, "exam.drafted", {
+        session: "rev",
+        from: { campaign: nameA, draftHash: rev.draftHash },
+        draft: rev.draftObj,
+      });
     }
-    keepReading(logB, seen.checker, seen.reading, {
-      admitted: new Set(),
-      authored: true,
-      judge: hasJudge(rev.draft.objective),
-      freeze: true,
-      despite: "",
-    });
-  }
-  const carriedHarness = promoted(eventsA) ?? latestBuilt(eventsA);
-  const harnessDir = carriedHarness === null ? null : join(dirA, "states", carriedHarness);
-  if (carriedHarness !== null && harnessDir !== null && existsSync(harnessDir)) {
-    const imported = await importHarness(logB, harnessDir, `carried from ${nameA} after exam revision`);
-    if (latestBuilt(read(logB, TRACE_KINDS)) !== imported.digest) {
-      append(logB, "build.checkpoint", { session: "rev", harness: imported.digest });
+    if (eventsOf(eventsB, "contract.frozen").length === 0) {
+      const { faults, read: seen } = await draftReading(dirB, rev.draft, 4);
+      if (faults.length > 0 || seen === undefined) {
+        throw new Error(`successor ${nameB} failed checker reading: ${faults.join("; ")}`);
+      }
+      keepReading(logB, seen.checker, seen.reading, {
+        admitted: new Set(),
+        authored: true,
+        judge: hasJudge(rev.draft.objective),
+        freeze: true,
+        despite: "",
+      });
     }
+    const carriedHarness = promoted(eventsA) ?? latestBuilt(eventsA);
+    const harnessDir = carriedHarness === null ? null : join(dirA, "states", carriedHarness);
+    if (carriedHarness !== null && harnessDir !== null && existsSync(harnessDir)) {
+      const imported = await importHarness(logB, harnessDir, `carried from ${nameA} after exam revision`);
+      if (latestBuilt(read(logB, TRACE_KINDS)) !== imported.digest) {
+        append(logB, "build.checkpoint", { session: "rev", harness: imported.digest });
+      }
+    }
+    const receiptA = lastLaunch(logA);
+    if (receiptA !== undefined && lastLaunch(logB) === undefined) {
+      const { session: _session, ...kept } = receiptA;
+      const renamed = rewriteNameFlag(receiptA.flags, nameA, nameB);
+      writeReceipt(logB, "run-1", {
+        ...kept,
+        at: new Date().toISOString(),
+        flags: remainingMoves === undefined ? renamed : rewriteMovesFlag(renamed, remainingMoves),
+      });
+    }
+    if (endedOf(eventsA)?.ending !== "revise") {
+      append(logA, "campaign.ended", {
+        ...endedData(eventsA, { ending: "revise", why: rev.why }),
+        successor: nameB,
+      });
+    }
+    return { name: nameB, log: logB };
+  } finally {
+    closeSync(lockFd);
   }
-  const receiptA = lastLaunch(logA);
-  if (receiptA !== undefined && lastLaunch(logB) === undefined) {
-    const { session: _session, ...kept } = receiptA;
-    const renamed = rewriteNameFlag(receiptA.flags, nameA, nameB);
-    writeReceipt(logB, "run-1", {
-      ...kept,
-      at: new Date().toISOString(),
-      flags: remainingMoves === undefined ? renamed : rewriteMovesFlag(renamed, remainingMoves),
-    });
-  }
-  if (endedOf(eventsA)?.ending !== "revise") {
-    append(logA, "campaign.ended", {
-      ...endedData(eventsA, { ending: "revise", why: rev.why }),
-      successor: nameB,
-    });
-  }
-  return { name: nameB, log: logB };
 }

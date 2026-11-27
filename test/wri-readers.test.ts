@@ -1726,6 +1726,20 @@ describe("the findings ledger", () => {
       `[WARN] honesty (lane 19): solver write/edit permission refusals: 2/60 solves hit EPERM/EACCES; by harness: starter ${starterDigest.slice(0, 8)} 2/20 (10.0%)`,
     );
 
+    const withProbeLog: LogEvent[] = envAbortedLog.map((ev) =>
+      ev.kind === "solve.call" && ev.data.solve === "st-0"
+        ? { ...ev, data: { ...ev.data, args: { path: "/Users/x/dummy", content: "" } } }
+        : ev.kind === "solve.call" && ev.data.solve === "st-1"
+          ? {
+              ...ev,
+              data: { ...ev.data, args: { path: "/Users/x/out.py", content: "import sys\nprint(12345)\n" } },
+            }
+          : ev,
+    );
+    expect(diagnosticRows(withProbeLog, join(tmpdir(), "nonexistent-states-dir")).join("\n")).toContain(
+      `[WARN] honesty (lane 19): solver write/edit permission refusals: 2/60 solves hit EPERM/EACCES (1/2 with content >12 chars); by harness: starter ${starterDigest.slice(0, 8)} 2/20 (10.0%)`,
+    );
+
     const completedPairLog: LogEvent[] = [
       ...envAbortedLog,
       { at, kind: "referee.pair", data: { comparison: "g-1", judge: 1, holistic: 1 } },

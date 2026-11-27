@@ -402,9 +402,18 @@ async function nightly(args: CommandArgs, rawTree: string): Promise<number> {
   const head = gitMaybe(tree, "rev-parse", "HEAD") ?? args.die(`${tree} is not a git tree`);
   const diffFlag = args.value("diff");
   if (diffFlag !== null && args.flag("full")) args.die("--diff and --full cannot be combined");
+  const resolvedFlag =
+    diffFlag === null
+      ? null
+      : gitMaybe(tree, "rev-parse", "--verify", "--end-of-options", `${diffFlag}^{commit}`);
+  if (diffFlag !== null && resolvedFlag === null) {
+    args.die(`--diff ${diffFlag}: not a reachable commit in ${tree}`);
+  }
   const donePath = join(state, "done.json");
   const done = readDone(donePath);
-  const requestedBase = args.flag("full") ? null : (diffFlag ?? defaultDiffBase(tree, head, done?.commit));
+  const requestedBase = args.flag("full")
+    ? null
+    : (resolvedFlag ?? defaultDiffBase(tree, head, done?.commit));
   const targets = requestedBase === null ? null : diffTargets(tree, requestedBase, head);
   if (diffFlag !== null && targets === null) {
     args.die(`--diff ${diffFlag}: not a reachable commit in ${tree}`);
@@ -442,7 +451,9 @@ async function nightly(args: CommandArgs, rawTree: string): Promise<number> {
       continue;
     }
     const prefix = stem(owner, diffBase);
-    const suiteMap = Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]] as const));
+    const suiteMap = Object.fromEntries(
+      suites.map((path) => [path.replace(/^test\//u, "").replace(/\.test\.ts$/u, ""), [path]] as const),
+    );
     writeFileSync(join(here, `${prefix}.suites.json`), JSON.stringify(suiteMap));
     const ids = diffMode ? (diffIds.get(owner) ?? []) : null;
     if (ids !== null) writeFileSync(join(here, `${prefix}.ids.txt`), `${ids.join("\n")}\n`);

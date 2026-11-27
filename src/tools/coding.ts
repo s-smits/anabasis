@@ -1,10 +1,11 @@
 import {
+  type BashToolInput,
   createBashTool,
   createEditTool,
   createReadTool,
   createWriteTool,
+  type ImageProcessor,
 } from "@earendil-works/pi-durable/tools";
-import type { BashToolInput, ImageProcessor } from "@earendil-works/pi-durable/tools";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { Type } from "typebox";
 import type { AgentTool } from "../agent/session.ts";

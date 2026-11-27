@@ -194,12 +194,13 @@ export function boundJsonPreview(value: JsonValue, path: string, extra: Map<stri
   return `${boundText(full, JSON_PREVIEW_BYTES).shown} (read full JSON via read_task_file: ${path})`;
 }
 
-function reusedRuling(
-  events: readonly LogEvent[],
-  solve: string,
-  taskId: string,
-  blocking: readonly string[],
-): { readonly finding: AuditFinding; readonly from: string } | null {
+function reusedRuling(given: {
+  readonly events: readonly LogEvent[];
+  readonly solve: string;
+  readonly taskId: string;
+  readonly blocking: readonly string[];
+}): { readonly finding: AuditFinding; readonly from: string } | null {
+  const { events, solve, taskId, blocking } = given;
   const solves = new Map(solvesIn(events).map((each) => [each.id, each] as const));
   const comp = solves.get(solve)?.start.comparison;
   if (!isString(comp)) return null;
@@ -241,13 +242,14 @@ function reusedRuling(
   return null;
 }
 
-function packet(
-  fail: RefereeCase,
-  verdict: LoggedVerdict,
-  accepted: ReturnType<typeof acceptedAnswers>[number] | undefined,
-  refusing: ReadonlyMap<string, Refusing>,
-  caseFiles: Map<string, string>,
-): string {
+function packet(given: {
+  readonly fail: RefereeCase;
+  readonly verdict: LoggedVerdict;
+  readonly accepted: ReturnType<typeof acceptedAnswers>[number] | undefined;
+  readonly refusing: ReadonlyMap<string, Refusing>;
+  readonly caseFiles: Map<string, string>;
+}): string {
+  const { fail, verdict, accepted, refusing, caseFiles } = given;
   const statements = new Map(fail.contract.rules.map((rule) => [rule.id, rule.statement]));
   const lines = [...refusing].map(
     ([id, { fields, rules }]) =>
@@ -320,12 +322,13 @@ export function checkProgramTool(checks: string) {
   );
 }
 
-function readTools(
-  checks: string,
-  files: readonly AnswerFile[],
-  publicInput: JsonValue,
-  caseFiles: ReadonlyMap<string, string>,
-) {
+function readTools(given: {
+  readonly checks: string;
+  readonly files: readonly AnswerFile[];
+  readonly publicInput: JsonValue;
+  readonly caseFiles: ReadonlyMap<string, string>;
+}) {
+  const { checks, files, publicInput, caseFiles } = given;
   const texts = fileTexts(files);
   const taskFiles = new Map([...caseFiles, ...taskFileTexts(publicInput)]);
   return [
@@ -351,12 +354,13 @@ function readTools(
   ];
 }
 
-function refusal(
-  refusing: ReadonlyMap<string, Refusing>,
-  answered: Pick<LoggedVerdict, "answer" | "files">,
-  rows: readonly ProbeRow[],
-  args: Static<typeof RULING_PARAMETERS>,
-): string | null {
+function refusal(given: {
+  readonly refusing: ReadonlyMap<string, Refusing>;
+  readonly answered: Pick<LoggedVerdict, "answer" | "files">;
+  readonly rows: readonly ProbeRow[];
+  readonly args: Static<typeof RULING_PARAMETERS>;
+}): string | null {
+  const { refusing, answered, rows, args } = given;
   if (args.ruling === "check-defect") {
     const check = args.check ?? "";
     if (!refusing.has(check)) {
@@ -397,20 +401,21 @@ function refusal(
     : `an earned ruling cites a probe that changed ${field} and moved a check that cites ${String(args.rule)} off its refusal; a probe that moved none shows nothing a verdict did not. Probe that field, or rule unclear`;
 }
 
-function rulingTool(
-  refusing: ReadonlyMap<string, Refusing>,
-  answered: Pick<LoggedVerdict, "answer" | "files">,
-  rows: readonly ProbeRow[],
-  found: AuditFinding[],
-  onRefused: (asked: Static<typeof RULING_PARAMETERS>, why: string) => void,
-) {
+function rulingTool(given: {
+  readonly refusing: ReadonlyMap<string, Refusing>;
+  readonly answered: Pick<LoggedVerdict, "answer" | "files">;
+  readonly rows: readonly ProbeRow[];
+  readonly found: AuditFinding[];
+  readonly onRefused: (asked: Static<typeof RULING_PARAMETERS>, why: string) => void;
+}) {
+  const { refusing, answered, rows, found, onRefused } = given;
   return tool({
     name: "record_ruling",
     description:
       "Record whether this fail counts, with the probes it rests on. The system prompt states the evidence each ruling needs.",
     parameters: RULING_PARAMETERS,
     execute: async (args) => {
-      const problem = refusal(refusing, answered, rows, args);
+      const problem = refusal({ refusing, answered, rows, args });
       if (problem !== null) {
         onRefused(args, problem);
         throw new Error(problem);
@@ -481,7 +486,9 @@ export async function auditRejection(reader: Reader, fail: RefereeCase): Promise
     verdict.fault === null ? await fail.verify(fail.task, verdict.answer, reader.kill, verdict.files) : null;
   const directHost = hostRuling(verdict, replay);
   const reused =
-    directHost === null ? reusedRuling(events, fail.solve, fail.task.taskId, verdict.blocking) : null;
+    directHost === null
+      ? reusedRuling({ events, solve: fail.solve, taskId: fail.task.taskId, blocking: verdict.blocking })
+      : null;
   const host = directHost ?? reused?.finding ?? null;
   const rows: ProbeRow[] = [];
   const found: AuditFinding[] = [];
@@ -496,7 +503,7 @@ export async function auditRejection(reader: Reader, fail: RefereeCase): Promise
       ]),
   );
   const caseFiles = new Map<string, string>();
-  const opening = host === null ? packet(fail, verdict, accepted, refusing, caseFiles) : "";
+  const opening = host === null ? packet({ fail, verdict, accepted, refusing, caseFiles }) : "";
   const meter =
     host === null
       ? await runAuditSession({
@@ -505,7 +512,12 @@ export async function auditRejection(reader: Reader, fail: RefereeCase): Promise
           system: SYSTEM_PROMPT,
           opening,
           tools: [
-            ...readTools(fail.checks, verdict.files, fail.task.publicInput, caseFiles),
+            ...readTools({
+              checks: fail.checks,
+              files: verdict.files,
+              publicInput: fail.task.publicInput,
+              caseFiles,
+            }),
             probeTool(
               formedOnly(fail.contract, async (task, answer, signal, files) =>
                 replay !== null && answer === verdict.answer && files === verdict.files
@@ -521,21 +533,26 @@ export async function auditRejection(reader: Reader, fail: RefereeCase): Promise
                 files: verdict.files,
               },
             ),
-            rulingTool(refusing, verdict, rows, found, (asked, why) =>
-              append(fail.log, "referee.refused", {
-                solve: fail.solve,
-                task: fail.task.taskId,
-                asked: {
-                  ruling: asked.ruling,
-                  ...keyIfDefined("check", asked.check),
-                  ...keyIfDefined("rule", asked.rule),
-                  ...keyIfDefined("field", asked.field),
-                  reason: asked.reason,
-                  probes: asked.probes,
-                },
-                why,
-              }),
-            ),
+            rulingTool({
+              refusing,
+              answered: verdict,
+              rows,
+              found,
+              onRefused: (asked, why) =>
+                append(fail.log, "referee.refused", {
+                  solve: fail.solve,
+                  task: fail.task.taskId,
+                  asked: {
+                    ruling: asked.ruling,
+                    ...keyIfDefined("check", asked.check),
+                    ...keyIfDefined("rule", asked.rule),
+                    ...keyIfDefined("field", asked.field),
+                    reason: asked.reason,
+                    probes: asked.probes,
+                  },
+                  why,
+                }),
+            }),
           ],
           log: fail.log,
           over: () => found.length > 0,

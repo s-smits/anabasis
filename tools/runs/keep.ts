@@ -20,7 +20,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { envRunsFile } from "./host-config.ts";
 import { GOES_ON, type RunState, runState } from "./state.ts";
-import { payerOf } from "./live.ts";
+import { type Live, payerOf } from "./live.ts";
 import {
   allowedLogins,
   atCap,
@@ -36,7 +36,6 @@ import {
   seatModels,
   startRefusal,
 } from "./logins.ts";
-import type { Live } from "./live.ts";
 import { checkStart, lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
 import { keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";

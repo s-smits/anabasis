@@ -5,8 +5,7 @@
  */
 import { capturedSpawn } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
-import type { Host } from "./host-config.ts";
-import { ownName } from "./host-config.ts";
+import { type Host, ownName } from "./host-config.ts";
 import { shellOn } from "./host-command.ts";
 
 interface Sample {

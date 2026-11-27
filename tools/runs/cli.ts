@@ -34,6 +34,11 @@ const EVERY = [
 ] as const;
 
 const verbOf = (run: Verb["run"], file: string, says: string): Verb => ({ run, file, says });
+const manage = () => import("./manage.ts");
+const moveMod = () => import("./move.ts");
+const pulseMod = () => import("./pulse.ts");
+const loginsMod = () => import("./logins.ts");
+const benchMod = () => import("./bench.ts");
 
 /** Every verb with its handler, usage-owning file and one-line description. Handlers load their
  *  module lazily, so one verb never parses another's. */
@@ -45,12 +50,12 @@ const GROUPS = {
       "start a measured campaign from a blank project, in a worktree of its own",
     ),
     launch: verbOf(
-      (a) => import("./manage.ts").then((m) => m.launch(a)),
+      (a) => manage().then((m) => m.launch(a)),
       "manage.ts",
       "start the campaign command under a new name, in this worktree",
     ),
     continue: verbOf(
-      (a) => import("./manage.ts").then((m) => m.continueRun(a)),
+      (a) => manage().then((m) => m.continueRun(a)),
       "manage.ts",
       "run a stopped campaign again from its log, on its kept flags",
     ),
@@ -60,17 +65,17 @@ const GROUPS = {
       "attach a keeper, which a run on a numbered login gets by itself, to go on across logins",
     ),
     pause: verbOf(
-      (a) => import("./manage.ts").then((m) => m.pause(a)),
+      (a) => manage().then((m) => m.pause(a)),
       "manage.ts",
       "stop a campaign at the next clean point after an event",
     ),
     move: verbOf(
-      (a) => import("./move.ts").then((m) => m.move(a)),
+      (a) => moveMod().then((m) => m.move(a)),
       "move.ts",
       "pause a campaign, take it to another machine and go on there",
     ),
     copy: verbOf(
-      (a) => import("./move.ts").then((m) => m.copy(a)),
+      (a) => moveMod().then((m) => m.copy(a)),
       "move.ts",
       "copy a stopped campaign whole to another worktree",
     ),
@@ -87,12 +92,12 @@ const GROUPS = {
   },
   reading: {
     status: verbOf(
-      (a) => import("./pulse.ts").then((m) => m.runsStatus(a)),
+      (a) => pulseMod().then((m) => m.runsStatus(a)),
       "pulse.ts",
       "one row a run on every host: tree, commit, login, comparisons, ending",
     ),
     pulse: verbOf(
-      (a) => import("./pulse.ts").then((m) => m.watch(a)),
+      (a) => pulseMod().then((m) => m.watch(a)),
       "pulse.ts",
       "what each run gained since the last look",
     ),
@@ -124,12 +129,12 @@ const GROUPS = {
   },
   "logins and hosts": {
     usage: verbOf(
-      (a) => import("./logins.ts").then((m) => m.logins(a)),
+      (a) => loginsMod().then((m) => m.logins(a)),
       "logins.ts",
       "each login's five-hour and weekly use, and its live runs",
     ),
     active: verbOf(
-      (a) => import("./logins.ts").then((m) => m.active(a)),
+      (a) => loginsMod().then((m) => m.active(a)),
       "logins.ts",
       "the runs and seats live on each login, by name",
     ),
@@ -151,7 +156,7 @@ const GROUPS = {
       "this machine's original campaigns, for the other hosts",
     ),
     fetch: verbOf(
-      (a) => import("./move.ts").then((m) => m.fetch(a)),
+      (a) => moveMod().then((m) => m.fetch(a)),
       "move.ts",
       "copy a campaign another machine holds into the archive, or the record of every one (--whole: the folders too)",
     ),
@@ -179,7 +184,7 @@ const GROUPS = {
       "run a round over a seed with a script in each model seat",
     ),
     bench: verbOf(
-      (a) => import("./bench.ts").then((m) => m.bench(a)),
+      (a) => benchMod().then((m) => m.bench(a)),
       "bench.ts",
       "roll a run's reference beside a bare solver on its outside benchmark, or score each finished read",
     ),
@@ -324,7 +329,7 @@ if (HELP.has(verb)) {
     // Evaluate `pause --eval` locally where `.env.runs` defines benchmarks; a remote host holding
     // the campaign only executes the pause.
     const { passed, reads } =
-      verb === "pause" ? (await import("./bench.ts")).evalOf(args) : { passed: args, reads: [] };
+      verb === "pause" ? (await benchMod()).evalOf(args) : { passed: args, reads: [] };
     const { here, away } = await routed(verb, passed);
     for (const [host, words] of away) {
       const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));
@@ -332,7 +337,7 @@ if (HELP.has(verb)) {
     }
     if (here !== null) await chosen.run(here);
     if ((runtimeProcess.exitCode ?? 0) === 0 && reads.length > 0) {
-      await (await import("./bench.ts")).readEach(reads);
+      await (await benchMod()).readEach(reads);
     }
   } catch (error) {
     if (!refusal(error)) throw error;

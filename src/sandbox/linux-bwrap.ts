@@ -3,10 +3,9 @@ import { homedir } from "../meta/os.ts";
 import { dirname, isAbsolute, join } from "../meta/path.ts";
 import { posixContainsPath } from "../meta/path-containment.ts";
 import type { OptionalEnvValues } from "../agent/backends/scrub-env.ts";
-import type { RuntimePlatform } from "../meta/runtime-values.ts";
+import { asError, type RuntimePlatform } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { runtimeProcess, capturedExecPath } from "../meta/process.ts";
-import { asError } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { surroundingSandbox, type WallSupport } from "./policy.ts";
 

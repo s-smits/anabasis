@@ -414,12 +414,13 @@ function noRoom(ground: Ground): Move | null {
           why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has finished writing tasks for it since: tasks are written for each new reference`,
         };
   }
+  const starterOwed = side === "fresh" && epochsOf(events).at(-1)?.starter_tally === null;
   const why =
     room === "too-hard"
       ? `comparison ${last.id} showed no improvement and neither harness produced a valid answer: generating replacement tasks`
       : side === "old"
         ? `comparison ${last.id} showed no improvement and no task was informative for the reference harness: generating new tasks`
-        : `harness ${short(reference ?? "")} is the current reference and comparison ${last.id} found no informative tasks for it: generating harder tasks with evaluation headroom`;
+        : `harness ${short(reference ?? "")} is the current reference${starterOwed ? " (starter confirmation owed)" : ""} and comparison ${last.id} found no informative tasks for it: generating harder tasks with evaluation headroom`;
   return examine(ground, "room", why);
 }
 

@@ -132,7 +132,7 @@ export function viewLines(name: string, campaign: Campaign, now: number, called:
 
 /**
  * The decision table on `events` under flag overrides, recorded opening terms and defaults; shared
- * with the UI server (`packages/ui/src/server/reading.ts`).
+ * with the UI server (`packages/ui/src/server/campaigns.ts`).
  */
 export function decidedOn(events: readonly LogEvent[], values: ViewFlags = {}): ScheduledAction {
   return nextAction(events, planOn(events, values));

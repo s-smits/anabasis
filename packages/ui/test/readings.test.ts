@@ -20,7 +20,7 @@ import { type AnswerOf, type Endpoint, type Query, type Tier, TOKEN_HEADER } fro
 import { handleApiRequest } from "../src/server/api.ts";
 import { campaignsFound } from "../src/server/logs.ts";
 import { steppedOf } from "../src/server/moves.ts";
-import { campaignReading, campaignRow, factsIn } from "../src/server/reading.ts";
+import { campaignReading, campaignRow, factsIn } from "../src/server/campaigns.ts";
 import { type Fixture, MARKERS, writeFixtureCampaign, writeLedCampaign } from "./fixture-campaign.ts";
 
 interface Copied {

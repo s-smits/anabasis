@@ -403,9 +403,9 @@ async function nightly(args: CommandArgs, rawTree: string): Promise<number> {
   const diffFlag = args.value("diff");
   if (diffFlag !== null && args.flag("full")) args.die("--diff and --full cannot be combined");
   const resolvedFlag =
-    diffFlag === null
+    diffFlag === null || diffFlag.startsWith("-")
       ? null
-      : gitMaybe(tree, "rev-parse", "--verify", "--end-of-options", `${diffFlag}^{commit}`);
+      : gitMaybe(tree, "rev-parse", "--verify", `${diffFlag}^{commit}`);
   if (diffFlag !== null && resolvedFlag === null) {
     args.die(`--diff ${diffFlag}: not a reachable commit in ${tree}`);
   }

@@ -273,7 +273,10 @@ export async function runFleetPool(opts: {
             console.error(`${hostKey} gave no verdict, so takes no more mutants`);
             return;
           }
-          const bad = mode === "local" ? refusedSuiteOf(outcome.why) : null;
+          const bad =
+            mode === "local" && outcome.suite !== undefined && task.plan.active.includes(outcome.suite)
+              ? outcome.suite
+              : null;
           if (bad !== null) {
             localBadSuites.add(bad);
             recordSkip(bad, outcome.why);

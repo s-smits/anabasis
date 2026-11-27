@@ -209,7 +209,7 @@ async function verdict(
 type KillOutcome =
   | { readonly kind: "ok"; readonly killed: VerdictMap }
   | { readonly kind: "elsewhere" }
-  | { readonly kind: "refused"; readonly why: string };
+  | { readonly kind: "refused"; readonly why: string; readonly suite?: string };
 
 async function runSoloRest(
   seat: FastWorker,
@@ -236,7 +236,7 @@ async function runSoloRest(
     if (out[name] === false || out[name] === true) continue;
     if (opts.beforeSuite !== undefined) {
       const why = await opts.beforeSuite(name);
-      if (why !== null) return { kind: "refused", why };
+      if (why !== null) return { kind: "refused", why, suite: name };
     }
     const timeoutSec = suiteTimeoutSeconds(opts.seconds, opts.durations.get(name));
     const said = await verdict(
@@ -275,12 +275,14 @@ export async function killsOf(
       original.slice(0, mutant.start) + mutant.text + original.slice(mutant.end),
     );
   const restore = () => writeFileSync(join(seat.clone, mutant.file), original);
-  const qualifyClean = async (names: readonly string[]): Promise<string | null> => {
+  const qualifyClean = async (
+    names: readonly string[],
+  ): Promise<{ readonly suite: string; readonly why: string } | null> => {
     if (opts.beforeSuite === undefined) return null;
     restore();
     for (const name of names) {
       const why = await opts.beforeSuite(name);
-      if (why !== null) return why;
+      if (why !== null) return { suite: name, why };
     }
     writeMutant();
     return null;
@@ -289,8 +291,8 @@ export async function killsOf(
   try {
     const [lead, ...rest] = active;
     if (!isAway(seat) && lead !== undefined && canCombineSuites(rest, opts.suites, opts.stopAtKill)) {
-      const leadWhy = await qualifyClean([lead]);
-      if (leadWhy !== null) return { kind: "refused", why: leadWhy };
+      const leadFail = await qualifyClean([lead]);
+      if (leadFail !== null) return { kind: "refused", why: leadFail.why, suite: leadFail.suite };
       const leadSaid = await verdict(
         seat,
         opts.suites.get(lead) ?? [],
@@ -305,8 +307,8 @@ export async function killsOf(
           killed: { [lead]: true, ...Object.fromEntries(rest.map((name) => [name, null] as const)) },
         };
       }
-      const restWhy = await qualifyClean(rest);
-      if (restWhy !== null) return { kind: "refused", why: restWhy };
+      const restFail = await qualifyClean(rest);
+      if (restFail !== null) return { kind: "refused", why: restFail.why, suite: restFail.suite };
       const paths = rest.flatMap((name) => opts.suites.get(name) ?? []);
       const batch = parseMultiFileBail(
         rest,
@@ -354,7 +356,10 @@ export async function killsOf(
       {},
       {
         ...opts,
-        beforeSuite: opts.beforeSuite === undefined ? undefined : (name) => qualifyClean([name]),
+        beforeSuite:
+          opts.beforeSuite === undefined
+            ? undefined
+            : (name) => qualifyClean([name]).then((fail) => fail?.why ?? null),
       },
     );
   } finally {

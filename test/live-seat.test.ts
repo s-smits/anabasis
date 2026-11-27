@@ -200,11 +200,11 @@ describe("live-seat draft visibility", () => {
       "claude/claude-opus-5-5",
     ]);
     expect(out).toContain("=== SYSTEM");
-    expect(out).toContain('kind: "judge"');
+    expect(out).toContain('"const": "code"');
     expect(out).toContain("=== OPENING");
     expect(out).toContain("=== TOOL draft_exam");
     expect(out).toContain("=== SCHEMA draft_exam");
-    expect(out).toContain('"criterion"');
+    expect(out).not.toContain('"criterion"');
     expect(read(log)).toHaveLength(1);
   });
 });

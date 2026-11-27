@@ -7,7 +7,7 @@ import { frozenChecker } from "../kernel/acceptance.ts";
 import { hasJudge, type Objective, type RubricItem } from "../kernel/contract.ts";
 import { eventsOf, isReferenceChange, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import { lastReports, promoted } from "../kernel/reports.ts";
-import { standsOf, verdictsOf } from "../kernel/solves.ts";
+import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -219,9 +219,7 @@ export function defectSolvesFor(events: readonly LogEvent[], check: string): str
   const verdicts = verdictsOf(events);
   const reported = new Set(lastReports(events, "all").map(({ session }) => session));
   const solveComp = new Map(
-    eventsOf(events, "solve.started").flatMap(({ event: { data } }) =>
-      isString(data.solve) ? [[data.solve, isString(data.comparison) ? data.comparison : null] as const] : [],
-    ),
+    solvesIn(events).map(({ id, start }) => [id, isString(start.comparison) ? start.comparison : null]),
   );
   const matched = new Set<string>();
   for (const {

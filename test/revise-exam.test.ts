@@ -662,6 +662,48 @@ describe("empirical witnesses, adversarial audit cap, and successor A -> B hando
       defectCleared: 1,
     });
 
+    const flipSeed = await seedCampaign({ name: "camp-repair-flip" });
+    const flipVersion0 = [...flipSeed.packages().keys()][0] ?? "";
+    recordHistoricalWitnesses(flipSeed.log, flipVersion0, { includeDefect: true, reportComp: true });
+    const flippedFiles = keepAnswerFiles(flipSeed.log, textFiles([{ path: NOTE_FILE, text: "exact: 10" }]));
+    append(flipSeed.log, "solve.started", { solve: "s-earned-contradictory", comparison: "g-1" });
+    append(flipSeed.log, "verdict", {
+      solve: "s-earned-contradictory",
+      task: "ex-001",
+      answer: { n: 10, score: 9, detail: 8 },
+      files: flippedFiles.map((f) => ({ ...f })),
+      kind: "fail",
+      blocking: ["check-strict"],
+    });
+    append(flipSeed.log, "referee.finding", {
+      solve: "s-earned-contradictory",
+      task: "ex-001",
+      ruling: "earned",
+      check: "check-strict",
+      reason: "earlier contradictory ruling on broken check",
+    });
+    const auditNotes: string[] = [];
+    const flipRunner = revisionRunner({
+      log: flipSeed.log,
+      parentBundle: flipSeed.bundle,
+      packages: flipSeed.packages,
+      auditor: async (_reader, target) => {
+        auditNotes.push(...target.notes);
+        return await SOUND_AUDIT(_reader, target);
+      },
+    });
+    const flipRes = await flipRunner({
+      session: "x-1",
+      kind: "repair",
+      why: "fix whitespace on check-strict",
+      check: "check-strict",
+      candidate: goodRepair,
+    });
+    expect(flipRes.accepted).toBe(true);
+    expect(
+      auditNotes.some((note) => note.includes("1 historical earned witness solely on repaired check")),
+    ).toBe(true);
+
     const hitlSeed = await seedCampaign({ name: "camp-hitl", attended: true });
     const hitlRunner = revisionRunner({
       log: hitlSeed.log,

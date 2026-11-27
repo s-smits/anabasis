@@ -28,29 +28,14 @@ export function successorName(name: string): string {
   return `${prefix}-rev${String(Number(raw) + 1)}`;
 }
 
-export function rewriteMovesFlag(flags: readonly string[], remaining: number): string[] {
-  if (!Number.isFinite(remaining)) return [...flags];
-  const value = String(Math.max(0, remaining));
+function rewriteFlag(flags: readonly string[], flag: string, value: string, match?: string): string[] {
   const out: string[] = [];
   for (let at = 0; at < flags.length; at += 1) {
     const word = flags[at] ?? "";
-    if (word.startsWith("--moves=")) out.push(`--moves=${value}`);
-    else if (word === "--moves") {
-      out.push("--moves", value);
-      at += 1;
-    } else out.push(word);
-  }
-  return out;
-}
-
-export function rewriteNameFlag(flags: readonly string[], from: string, to: string): string[] {
-  const out: string[] = [];
-  for (let at = 0; at < flags.length; at += 1) {
-    const word = flags[at] ?? "";
-    if (word === `--name=${from}`) {
-      out.push(`--name=${to}`);
-    } else if (word === "--name" && flags[at + 1] === from) {
-      out.push("--name", to);
+    if (match === undefined ? word.startsWith(`${flag}=`) : word === `${flag}=${match}`) {
+      out.push(`${flag}=${value}`);
+    } else if (word === flag && (match === undefined || flags[at + 1] === match)) {
+      out.push(flag, value);
       at += 1;
     } else {
       out.push(word);
@@ -58,6 +43,12 @@ export function rewriteNameFlag(flags: readonly string[], from: string, to: stri
   }
   return out;
 }
+
+export const rewriteMovesFlag = (flags: readonly string[], remaining: number): string[] =>
+  Number.isFinite(remaining) ? rewriteFlag(flags, "--moves", String(Math.max(0, remaining))) : [...flags];
+
+export const rewriteNameFlag = (flags: readonly string[], from: string, to: string): string[] =>
+  rewriteFlag(flags, "--name", to, from);
 
 function revisionEvent(events: readonly LogEvent[]): {
   readonly kind: RevisionKind;

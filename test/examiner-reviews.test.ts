@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { taskHistory } from "../src/examiner/record.ts";
-import { readReviews, reviewSummariesByTask } from "../src/examiner/reviews.ts";
+import { readReviews, reviewInventoryLine, reviewSummariesByTask } from "../src/examiner/reviews.ts";
 import { examine } from "../src/examiner/session.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
@@ -387,6 +387,7 @@ describe("Examiner review projection and search (read_reviews)", () => {
     }
     const page1 = readReviews(log.events, { source: "draft", limit: 2 });
     expect(page1).toContain("Showing 1-2 of 5 matching review records");
+    expect(page1.indexOf("[draft] d-5")).toBeLessThan(page1.indexOf("[draft] d-4"));
     const cursor = /next cursor: ([^\s\n]+)/u.exec(page1)?.[1];
     expect(cursor).toBeDefined();
     expect(cursor?.split(":")).toHaveLength(2);
@@ -402,6 +403,7 @@ describe("Examiner review projection and search (read_reviews)", () => {
     expect(readReviews(hiddenEvents, { source: "draft", limit: 2 })).toBe(page1);
     const page2 = readReviews(hiddenEvents, { source: "draft", limit: 2, cursor });
     expect(page2).toContain("Showing 3-4 of 5 matching review records");
+    expect(page2).toContain("[draft] d-3");
 
     expect(readReviews(log.events, { source: "draft", outcome: "defects", cursor })).toContain(
       "Cursor does not match the active filters",
@@ -499,6 +501,51 @@ describe("Examiner review projection and search (read_reviews)", () => {
     expect(allLines.find((line) => line.startsWith("graded "))).toContain("holistic opposed clarity");
     expect(allLines.find((line) => line.startsWith("tied "))).toContain("reviews 1/1 pairs (all tied)");
     expect(allLines.find((line) => line.startsWith("prac "))).toBe("prac (fixture)");
+    expect(told.reviews).toBe(
+      "Reported reviews in read_reviews (newest first): 4 pairs (1 swap-disagreed, 1 holistic-opposed).",
+    );
+    expect(reviewInventoryLine([])).toBeNull();
+  });
+
+  it("reports newest-first order, check-defects stops, and invariant review inventory", () => {
+    const log = makeLog();
+    log.hold("t-1");
+    log.solve("s-old", "t-1", HARNESS_OLD, "c-1", false);
+    log.add("referee.draft", {
+      session: "d-1",
+      pass: 1,
+      verdict: "sound",
+      summary: "ok",
+      findings: [],
+      probeRows: [],
+    });
+    log.add("referee.finding", {
+      solve: "s-old",
+      task: "t-1",
+      ruling: "check-defect",
+      check: "check-units",
+      reason: "Off by one.",
+    });
+    log.add("comparison.reported", {
+      session: "c-1",
+      reading: "check-defects",
+      old: HARNESS_OLD,
+      fresh: HARNESS_FRESH,
+      starter: HARNESS_OLD,
+      solves: 2,
+      setting: settingId(condition("any", "any")),
+      versions: ["v-t-1"],
+      aside: ["v-t-1"],
+      scored: { differences: [] },
+      noise: null,
+    });
+    const out = readReviews(log.events);
+    expect(out.indexOf("[finding] c-1")).toBeLessThan(out.indexOf("[draft] d-1"));
+    const told = taskHistory(log.events, [{ taskId: "t-1", family: "fixture" }]);
+    expect(told.stood).toContain("It stopped on check defects.");
+    expect(told.reviews).toBe(
+      "Reported reviews in read_reviews (newest first): 1 finding (1 check-defect), 1 draft audit.",
+    );
   });
 
   it("exposes read_reviews inside live Examiner writing sessions via REVIEW_EVENT_KINDS filtering", async () => {

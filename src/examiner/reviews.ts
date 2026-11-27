@@ -328,23 +328,68 @@ function projectReviews(events: readonly LogEvent[], source: ReviewQuery["source
     ...(findings === null ? [] : [FINDING]),
     ...(source === undefined || source === "draft" ? [DRAFT] : []),
   ];
-  return eventsOf(events, kinds).flatMap(({ event: { kind, data } }): ProjectedReview[] => {
-    if (kind === DRAFT) return [projectDraft(data)];
-    if (kind === PAIR && pairs !== null) {
-      const comparison = str(data.comparison);
-      return comparison !== null && reported.has(comparison)
-        ? [projectPair(data, comparison, pairKind(pairs.harnessOf, data), pairs.calls)]
-        : [];
+  return eventsOf(events, kinds)
+    .flatMap(({ event: { kind, data } }): ProjectedReview[] => {
+      if (kind === DRAFT) return [projectDraft(data)];
+      if (kind === PAIR && pairs !== null) {
+        const comparison = str(data.comparison);
+        return comparison !== null && reported.has(comparison)
+          ? [projectPair(data, comparison, pairKind(pairs.harnessOf, data), pairs.calls)]
+          : [];
+      }
+      if (findings === null) return [];
+      const [solve, from] = [str(data.solve), str(data.reusedFrom)];
+      if (solve === null || !findings.solveComp.has(solve)) return [];
+      const comp = findings.solveComp.get(solve) ?? null;
+      if (comp !== null && !reported.has(comp)) return [];
+      if (from !== null && findings.seenPrimary.has(from)) return [];
+      if (from === null) findings.seenPrimary.add(solve);
+      return [
+        projectFinding(data, comp ?? "practice", findings.stands, findings.reuseCounts.get(solve) ?? 0),
+      ];
+    })
+    .toReversed();
+}
+
+export function reviewInventoryLine(events: readonly LogEvent[]): string | null {
+  const entries = projectReviews(events, undefined);
+  if (entries.length === 0) return null;
+  let [pairs, disagreed, opposed, findings, defects, earned, drafts] = [0, 0, 0, 0, 0, 0, 0];
+  for (const entry of entries) {
+    if (entry.source === "pair") {
+      pairs += 1;
+      if (entry.outcomes.includes("disagreed")) disagreed += 1;
+      if (entry.outcomes.includes("holistic-oppose")) opposed += 1;
+    } else if (entry.source === "finding") {
+      findings += 1;
+      if (entry.outcomes.includes("check-defect")) defects += 1;
+      if (entry.outcomes.includes("earned")) earned += 1;
+    } else {
+      drafts += 1;
     }
-    if (findings === null) return [];
-    const [solve, from] = [str(data.solve), str(data.reusedFrom)];
-    if (solve === null || !findings.solveComp.has(solve)) return [];
-    const comp = findings.solveComp.get(solve) ?? null;
-    if (comp !== null && !reported.has(comp)) return [];
-    if (from !== null && findings.seenPrimary.has(from)) return [];
-    if (from === null) findings.seenPrimary.add(solve);
-    return [projectFinding(data, comp ?? "practice", findings.stands, findings.reuseCounts.get(solve) ?? 0)];
-  });
+  }
+  const detail = (parts: readonly string[]) => (parts.length === 0 ? "" : ` (${parts.join(", ")})`);
+  const count = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`;
+  const chunks = [
+    ...(pairs === 0
+      ? []
+      : [
+          `${count(pairs, "pair", "pairs")}${detail([
+            ...(disagreed === 0 ? [] : [`${String(disagreed)} swap-disagreed`]),
+            ...(opposed === 0 ? [] : [`${String(opposed)} holistic-opposed`]),
+          ])}`,
+        ]),
+    ...(findings === 0
+      ? []
+      : [
+          `${count(findings, "finding", "findings")}${detail([
+            ...(defects === 0 ? [] : [`${String(defects)} check-defect`]),
+            ...(earned === 0 ? [] : [`${String(earned)} earned`]),
+          ])}`,
+        ]),
+    ...(drafts === 0 ? [] : [count(drafts, "draft audit", "draft audits")]),
+  ];
+  return `Reported reviews in read_reviews (newest first): ${chunks.join(", ")}.`;
 }
 
 function matchesQuery(entry: ProjectedReview, filter: ReviewQuery, needle: string | null): boolean {

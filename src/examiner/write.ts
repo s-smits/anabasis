@@ -252,7 +252,7 @@ function reviewsTool(desk: Desk): AgentTool {
   return tool({
     name: "read_reviews",
     description:
-      "Search and read reported Reviewer outputs for this campaign: pairwise judge votes and reasons, rejection audit rulings and probe summaries, and draft audit history. Unfinished comparisons are omitted, and internal solve/harness identifiers and raw answer patches are stripped.",
+      "Search and read reported Reviewer outputs for this campaign (newest first): pairwise judge votes and reasons, rejection audit rulings and probe summaries, and draft audit history. Unfinished comparisons are omitted, and internal solve/harness identifiers and raw answer patches are stripped.",
     parameters: Type.Object({
       query: Type.Optional(
         Type.String({ description: "Case-insensitive text search across projected review records." }),

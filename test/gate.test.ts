@@ -11,6 +11,7 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -20,6 +21,7 @@ import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { runCaptured } from "../src/meta/subprocess.ts";
 import { holdAlone, sayingPulls } from "../tools/runtime/landing.ts";
+import { testsNear } from "../tools/runtime/gate.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
 
@@ -552,5 +554,23 @@ describe.concurrent("one landing of a clone at a time", () => {
       `4 of 4, pr3 ${"d".repeat(9)}: passed.`,
       "#1, #2, #3 onto main: 4 commits.",
     ]);
+  });
+});
+
+describe("the tests a change is near", () => {
+  it("names a test one import from the change, and not one two imports away", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "gate-near-")));
+    try {
+      mkdirSync(join(root, "test"));
+      mkdirSync(join(root, "src"));
+      writeFileSync(join(root, "test", "a.test.ts"), 'export { b } from "../src/b";\n');
+      writeFileSync(join(root, "src", "b.ts"), 'export { c as b } from "./c";\n');
+      writeFileSync(join(root, "src", "c.ts"), "export const c = 1;\n");
+      expect((await runCaptured(["git", "init", "-q"], { cwd: root })).exitCode).toBe(0);
+      expect(testsNear(root, new Set(["src/b.ts"]))).toEqual(["test/a.test.ts"]);
+      expect(testsNear(root, new Set(["src/c.ts"]))).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

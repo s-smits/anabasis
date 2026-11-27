@@ -239,3 +239,15 @@ describe.concurrent("starting a campaign", () => {
     expect(made.recorded().filter(({ tool, args }) => tool === "nice" && args.includes("19"))).toEqual([]);
   });
 });
+
+describe("a pause that reads benchmarks", () => {
+  it("reads --eval on the machine it is typed on, before the pause is routed", async () => {
+    const child = capturedSpawn([capturedExecPath, "tools/runs/cli.ts", "pause", "--eval"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [said, code] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+    expect(code).toBe(1);
+    expect(said).toContain("pause --eval names no run");
+  });
+});

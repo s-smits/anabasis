@@ -275,16 +275,11 @@ function takeSlotNumber(folder: string, number: number): Slot | null {
   return null;
 }
 
-async function slotAmong(
-  places: readonly Place[],
+async function waitForSlot<T>(
+  queues: readonly { readonly item: T; readonly folder: string; readonly count: number }[],
+  named: string,
   order: "ranked" | "least-busy" = "ranked",
-): Promise<{ place: Place; slot: Slot }> {
-  const queues = places.map((place) => {
-    const folder = slotFolder(place);
-    mkdirSync(folder, { recursive: true });
-    return { place, folder, count: slotCapacity(place) };
-  });
-  const named = queues.map(({ place }) => place?.ssh ?? "local").join(" or ");
+): Promise<{ item: T; slot: Slot }> {
   const limit = setting("ANA_RUNNER_QUEUE_WAIT", 2400);
   for (let waited = 0; ; waited++) {
     const ordered =
@@ -299,10 +294,10 @@ async function slotAmong(
             .toSorted((a, b) => a.share - b.share || a.index - b.index)
             .map(({ queue }) => queue)
         : queues;
-    for (const { place, folder, count } of ordered) {
+    for (const { item, folder, count } of ordered) {
       for (let number = 1; number <= count; number++) {
         const slot = takeSlotNumber(folder, number);
-        if (slot !== null) return { place, slot };
+        if (slot !== null) return { item, slot };
       }
     }
     if (waited >= limit) {
@@ -313,22 +308,27 @@ async function slotAmong(
   }
 }
 
+async function slotAmong(
+  places: readonly Place[],
+  order: "ranked" | "least-busy" = "ranked",
+): Promise<{ place: Place; slot: Slot }> {
+  const queues = places.map((item) => {
+    const folder = slotFolder(item);
+    mkdirSync(folder, { recursive: true });
+    return { item, folder, count: slotCapacity(item) };
+  });
+  const named = queues.map(({ item }) => item?.ssh ?? "local").join(" or ");
+  const { item: place, slot } = await waitForSlot(queues, named, order);
+  return { place, slot };
+}
+
 async function runLocalStatic(job: Job): Promise<number> {
   const folder = join(tmpdir(), "ana-runner", "local-static");
   mkdirSync(folder, { recursive: true });
-  const limit = setting("ANA_RUNNER_QUEUE_WAIT", 2400);
-  let slot: Slot | null = null;
-  for (let waited = 0; slot === null; waited++) {
-    for (let number = 1; number <= LOCAL_STATIC_SLOTS && slot === null; number++) {
-      slot = takeSlotNumber(folder, number);
-    }
-    if (slot !== null) break;
-    if (waited >= limit) {
-      throw new Refusal(`waited ${String(limit)}s for a slot on local-static; no task started`, EXIT.noSlot);
-    }
-    if (waited % 15 === 14) say(`waiting for a slot on local-static (${String(waited + 1)}s)`);
-    await Bun.sleep(1000);
-  }
+  const { slot } = await waitForSlot(
+    [{ item: undefined, folder, count: LOCAL_STATIC_SLOTS }],
+    "local-static",
+  );
   const release = (): void => {
     rmSync(slot.path, { recursive: true, force: true });
     heldByThisRunner.delete(dirname(slot.path));

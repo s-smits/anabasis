@@ -44,6 +44,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { keysIf } from "../src/meta/optional-key.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { storedZip } from "../src/meta/zip.ts";
 import type { AuditFinding } from "../src/audit/auditor.ts";
 import { publicResource, text, tool } from "../src/tools/answer.ts";
 import { openHarness } from "../src/harness/open.ts";
@@ -2200,5 +2201,89 @@ describe("harness file checks and practice task mentions", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("reads delivered images and embedded visuals via read_trace with vision gating, byte paging, and refusal on missing refs", async () => {
+    const png1x1 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const docx = storedZip([
+      {
+        path: "word/document.xml",
+        text: "<w:document><w:body><w:p><w:r><w:t>Summary</w:t></w:r></w:p></w:body></w:document>",
+      },
+      { path: "word/media/chart.png", text: Buffer.from(png1x1, "base64") },
+    ]).toString("base64");
+    const s = await setup([]);
+    const files = keepAnswerFiles(s.request.log, [
+      { path: "plot.png", base64: png1x1 },
+      { path: "report.docx", base64: docx },
+    ]);
+    const cond = recordCondition(s.request.log, {
+      contract: "c1",
+      harness: s.digest,
+      task: "v1",
+      model: "faux/faux-solver",
+      effort: "medium",
+      prices: { "faux/faux-solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+      runtime: {},
+      compaction: "off",
+      solverTools: s.digest,
+      verifierTools: "t1",
+      sandbox: "p1",
+      limits: LIMITS,
+      host: "h1",
+      side: "test",
+    });
+    append(s.request.log, SOLVE_STARTED, { solve: "s-vis", condition: cond, task: "t-1" });
+    append(s.request.log, "verdict", {
+      solve: "s-vis",
+      answer: { answer: "42" },
+      files: files.map((file) => ({ ...file })),
+      kind: "pass",
+    });
+    append(s.request.log, SOLVE_FINISHED, { solve: "s-vis", ending: { outcome: "pass" } });
+
+    const seen: string[] = [];
+    const fauxVision = fauxProvider({
+      models: [
+        {
+          id: "faux-vision-builder",
+          input: ["text", "image"],
+          contextWindow: 200_000,
+          cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+        },
+      ],
+    });
+    const steps = [
+      call(READ_TRACE, { solve: "s-vis", file: "plot.png" }),
+      call(READ_TRACE, { solve: "s-vis", file: "plot.png", from: 1 }),
+      call(READ_TRACE, { solve: "s-vis", file: "report.docx" }),
+      call(READ_TRACE, { solve: "s-vis", file: "report.docx#word/media/chart.png" }),
+      call(READ_TRACE, { solve: "s-vis", file: "absent.png" }),
+      call(READ_TRACE, { solve: "s-vis", file: "report.docx#no-such.png" }),
+      finish,
+    ];
+    fauxVision.setResponses(
+      steps.map(
+        (step): FauxResponseStep =>
+          (context) => {
+            seen.push(JSON.stringify(context));
+            return step;
+          },
+      ),
+    );
+    const models = createModels();
+    models.setProvider(fauxVision.provider);
+    await session({ ...s.request, model: fauxVision.getModel(), models: () => models }, s, s.walled);
+    expect(seen[1]).toContain('"type":"image"');
+    expect(seen[1]).toContain("plot.png");
+    expect(seen[2]).toContain("bytes 0 to 0 of 0");
+    expect(seen[3]).toContain("embedded images: report.docx#word/media/chart.png");
+    expect(seen[4]).toContain("report.docx#word/media/chart.png");
+    const calls = s.of(BUILD_CALL).filter(({ tool: name }) => name === READ_TRACE);
+    expect(calls[4]?.isError).toBe(true);
+    expect(calls[4]?.text).toContain("delivered no file absent.png");
+    expect(calls[5]?.isError).toBe(true);
+    expect(calls[5]?.text).toContain("has no viewable image report.docx#no-such.png");
   });
 });

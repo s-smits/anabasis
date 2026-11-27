@@ -148,6 +148,8 @@ describe("an operator's word", () => {
       event("build.finished", { session: "b-2", ended: "stopped" }, 1_500_000 + PAUSE_STOP_WINDOW_MS + 1000),
     ];
     expect(boundedPause(halted, 0)).toBe(true);
+    expect(boundedPause([...halted, word({ word: "continue" })], 0)).toBe(true);
+    expect(boundedPause([...halted, word({ word: "stop" })], 0)).toBe(false);
     expect(boundedPause([event("campaign.opened", {}), word({ word: "pause" })], 0)).toBe(false);
     expect(pauseSince(halted, 0)?.data.after).toBe("reported");
   });

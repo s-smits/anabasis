@@ -16,7 +16,7 @@ import {
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
-import { dirname, join, resolve } from "../meta/path.ts";
+import { dirname, join, relative, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
 import { runtimeProcess } from "../meta/process.ts";
@@ -137,11 +137,9 @@ function validEntry(entry: unknown): HomeEntry {
 }
 
 function traversesSymlink(path: string, symlinks: ReadonlySet<string>): boolean {
-  const parts = path.split("/");
   let prefix = "";
-  for (let index = 0; index < parts.length - 1; index += 1) {
-    const part = parts[index] ?? "";
-    prefix = index === 0 ? part : `${prefix}/${part}`;
+  for (const part of path.split("/")) {
+    prefix = prefix === "" ? part : `${prefix}/${part}`;
     if (symlinks.has(prefix)) return true;
   }
   return false;
@@ -160,7 +158,8 @@ export function restoreHome(storeDir: string, sessionId: string, targetDir: stri
     if (!containsPath(dest, root) || dest === root) {
       throw new Error(`${sessionId}: examiner home entry escapes target: ${entry.path}`);
     }
-    if (traversesSymlink(entry.path, symlinks)) {
+    const rel = relative(root, dest);
+    if (traversesSymlink(rel, symlinks)) {
       throw new Error(`${sessionId}: examiner home entry traverses symlink: ${entry.path}`);
     }
     if (entry.kind === "dir") {
@@ -168,7 +167,7 @@ export function restoreHome(storeDir: string, sessionId: string, targetDir: stri
     } else if (entry.kind === "symlink") {
       mkdirSync(dirname(dest), { recursive: true });
       symlinkSync(entry.target, dest);
-      symlinks.add(entry.path);
+      symlinks.add(rel);
     } else {
       const blob = join(objectsDir, entry.sha256);
       if (!existsSync(blob)) throw new Error(`${sessionId}: missing examiner home blob ${entry.sha256}`);

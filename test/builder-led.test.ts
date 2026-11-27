@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { supplyOf } from "../src/campaign/admission.ts";
+import { nextAction } from "../src/campaign/scheduler.ts";
 import { crashedRun } from "../src/campaign/state.ts";
 import { short } from "../src/campaign/move.ts";
 import { pendingSignals } from "../src/campaign/signal.ts";
@@ -23,7 +24,7 @@ import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { type CampaignContext, releasePendingPractice } from "../tools/campaign/campaign-actions.ts";
 import { openCampaign, packNamed } from "../tools/campaign/campaign.ts";
-import { flagsOf, opened, type Seats } from "../tools/campaign/campaign-terms.ts";
+import { flagsOf, opened, type Seats, turnOf } from "../tools/campaign/campaign-terms.ts";
 import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
 import { HOST } from "../tools/campaign/host.ts";
 import type { Seated } from "../tools/campaign/round.ts";
@@ -233,6 +234,56 @@ describe.concurrent("the host's practice release", () => {
     expect(released(twice)).toBe(4);
     expect(twice.used).toBe(1);
     expect(of(name, MOVED, true).filter(({ code }) => code === "practice")).toHaveLength(1);
+
+    const moveOf = (ctx: CampaignContext) => {
+      const turn = turnOf(ctx);
+      return nextAction(turn.events, turn.plan).move;
+    };
+    const toPromote = await owing(`${STEM}-release-promote`);
+    append(toPromote.log, "comparison.started", { session: "g-p", old: "s", fresh: "h1", starter: "s" });
+    append(toPromote.log, "comparison.reported", {
+      session: "g-p",
+      old: "s",
+      fresh: "h1",
+      starter: "s",
+      reading: "step",
+      versions: [],
+      scored: { wins: 5, losses: 0, ties: 0 },
+    });
+    expect(moveOf(toPromote)).toBe("promote");
+    expect(await releasePendingPractice(toPromote, "before promote")).toBe(false);
+    expect([released(toPromote), toPromote.used]).toEqual([2, 0]);
+
+    const toRevert = await owing(`${STEM}-release-revert`);
+    const baseStarter =
+      read(toRevert.log).find(({ kind }) => kind === COMPARED)?.data.starter ??
+      read(toRevert.log).find(({ kind }) => kind === OPENED)?.data.starter ??
+      "s";
+    append(toRevert.log, "harness.promoted", { harness: "h1", from: baseStarter });
+    append(toRevert.log, "comparison.started", {
+      session: "g-r",
+      old: "h1",
+      fresh: baseStarter,
+      starter: baseStarter,
+    });
+    append(toRevert.log, "comparison.reported", {
+      session: "g-r",
+      old: "h1",
+      fresh: baseStarter,
+      starter: baseStarter,
+      reading: "no-step",
+      versions: ["v-1"],
+      scored: { "v-1": 0 },
+    });
+    expect(moveOf(toRevert)).toBe("revert");
+    expect(await releasePendingPractice(toRevert, "before revert")).toBe(false);
+    expect([released(toRevert), toRevert.used]).toEqual([2, 0]);
+
+    const toEnd = await owing(`${STEM}-release-end`);
+    append(toEnd.log, "campaign.word", { word: "stop", why: "done" });
+    expect(moveOf(toEnd)).toBe("end");
+    expect(await releasePendingPractice(toEnd, "before end")).toBe(false);
+    expect([released(toEnd), toEnd.used]).toEqual([2, 0]);
   });
 });
 

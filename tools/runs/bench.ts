@@ -70,11 +70,12 @@ export function completedBenchPairs(store: string): { readonly label: string; re
     .filter((arm) => !isBaselineArmName(arm))
     .flatMap((label) => {
       const ownFiles = byArm.get(label) ?? [];
-      if (ownFiles.length === 0 || scoredCovers(join(store, "scored", `${label}.txt`), ownFiles.length)) {
+      const [first] = ownFiles;
+      if (first === undefined || scoredCovers(join(store, "scored", `${label}.txt`), ownFiles.length)) {
         return [];
       }
       const own = new Set(ownFiles);
-      const runtime = runtimeOfFile(join(root, label, ownFiles[0] ?? ""));
+      const runtime = runtimeOfFile(join(root, label, first));
       if (runtime === null || !sameRuntime(root, label, ownFiles, runtime)) return [];
       const baseline = baselineCandidates(byArm, label).find((candidate) => {
         const baseFiles = byArm.get(candidate) ?? [];

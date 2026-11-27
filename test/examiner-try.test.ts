@@ -68,6 +68,20 @@ describe("a value given from a file in the Examiner's home", () => {
     expect(filled).toMatchObject({ files });
     // SAFETY: the prepared arguments of a call whose arguments are a JSON object.
     expect(() => check(filled as JsonObject)).not.toThrow();
+
+    const rawBin = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
+    writeFileSync(join(home, "chart.png"), rawBin);
+    const withBase64 = prepared({
+      ...large,
+      answer: ANSWER,
+      files: [{ path: "chart.png", base64: { from_file: "chart.png" } }],
+    });
+    expect(withBase64).toMatchObject({
+      files: [{ path: "chart.png", base64: rawBin.toString("base64") }],
+    });
+    expect(prepared({ ...large, answer: { from_file: "task.json", extra: 1 } })).toMatchObject({
+      answer: { from_file: "task.json", extra: 1 },
+    });
     let refusal = "";
     try {
       prepared({ ...large, answer: ANSWER, files: { from_file: "misshapen.json" } });

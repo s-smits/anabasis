@@ -243,7 +243,7 @@ function starterSplits(events: readonly LogEvent[], reports: readonly Reported[]
     }
     const pairs = pairsReported(events, report, "fresh");
     if (pairs.length === 0) continue;
-    const flips = pairs.some(({ old, fresh }) => [...old, ...fresh].some((v, _, all) => v !== all[0]));
+    const flips = pairs.some(({ old, fresh }) => new Set([...old, ...fresh]).size > 1);
     bySession.set(
       report.session,
       controlOf(

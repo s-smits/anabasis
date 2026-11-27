@@ -107,7 +107,7 @@ export const PROGRAMS_OF = "programs-of:";
 
 export const LIMITS = {
   wallSeconds: 1800,
-  modelTurns: 40,
+  modelTurns: 20,
   turns: 24,
   shellDefaultSeconds: 300,
   shellMaxSeconds: 900,

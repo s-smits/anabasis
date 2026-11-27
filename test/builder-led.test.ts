@@ -22,8 +22,15 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CampaignContext, releasePendingPractice } from "../tools/campaign/campaign-actions.ts";
-import { openCampaign, packNamed } from "../tools/campaign/campaign.ts";
+import { session as runBuilderSession } from "../src/builder/session.ts";
+import { PRACTICE_FAULT } from "../src/builder/tools.ts";
+import { publicView } from "../src/solver/prompt.ts";
+import {
+  type CampaignContext,
+  campaignTools,
+  releasePendingPractice,
+} from "../tools/campaign/campaign-actions.ts";
+import { openCampaign, packNamed, starter } from "../tools/campaign/campaign.ts";
 import { flagsOf, opened, type Seats, turnOf } from "../tools/campaign/campaign-terms.ts";
 import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
 import { HOST } from "../tools/campaign/host.ts";
@@ -1243,5 +1250,98 @@ describe.concurrent("a campaign's endings", () => {
         ),
       ).count,
     ).toBe(3);
+  });
+
+  it("waits for background practice before compare, and refuses compare on a background host fault", async () => {
+    const runCompareCase = async (fault: boolean) => {
+      const name = `${STEM}-bg-compare-${fault ? "fault" : "ok"}`;
+      const flags = [...(await prepared(name)), ...FLAGS];
+      const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+      const values = flagsOf(flags);
+      const seats: Seats = { seated: winning() };
+      const campaign = await openCampaign(packNamed(values));
+      const context: CampaignContext = {
+        log,
+        values,
+        opening: opened(log, values, "scripted"),
+        seats,
+        held: seats.seated,
+        campaign,
+        paid: "scripted",
+        maxMoves: 6,
+        used: 0,
+        began: 0,
+        failed: null,
+      };
+      const base = await starter(campaign);
+      const packages = campaign.packages();
+      const tasks = taskSets(read(log)).released.flatMap((version) => {
+        const pkg = packages.get(version);
+        return pkg === undefined ? [] : [{ version, task: publicView(pkg) }];
+      });
+      const firstId = tasks[0]?.task.taskId ?? "";
+      const gate = Promise.withResolvers<void>();
+      let practiceDone = false;
+      const dir = mkdtempSync(join(root, `bg-cmp-${fault ? "f" : "o"}-`));
+      const home = join(dir, "home");
+      const host = join(dir, "host");
+      const run = () =>
+        runBuilderSession(
+          {
+            id: "b-bg",
+            parent: base.dir,
+            reference: base.dir,
+            states: campaign.states,
+            memory: campaign.memory,
+            tasks,
+            contract: campaign.contract,
+            resources: campaign.resources,
+            ...scripted([
+              ["practice", { tasks: [firstId] }],
+              {
+                wait: async () => {
+                  setTimeout(() => gate.resolve(), 40);
+                  return ["compare", {}];
+                },
+              },
+              FINISH_IDLE,
+            ]),
+            effort: "medium",
+            limits: { ...campaign.limits, practiceSolves: 2 },
+            solve: campaign.limits,
+            solver: { model: "faux/faux-solver", effort: "medium" },
+            log,
+            repoRoot: REPO,
+            practiceWaitSeconds: 0.02,
+            practise: async (task, harnessDir, digest, kill) => {
+              await gate.promise;
+              if (fault) throw new Error("host sandbox broke");
+              const pkg = packages.get(task.version);
+              if (pkg === undefined) throw new Error("missing task");
+              const res = await seats
+                .seated(campaign, { builder: undefined, reference: base.dir })
+                .solve(pkg, { dir: harnessDir, digest }, kill);
+              practiceDone = true;
+              return res;
+            },
+            campaign: campaignTools(context),
+          },
+          { home, host },
+          () => [],
+        );
+      if (fault) {
+        await expect(run()).rejects.toThrow("host sandbox broke");
+        expect(said(name, "compare")[0]).toContain(PRACTICE_FAULT);
+        expect(of(name, COMPARED)).toHaveLength(0);
+      } else {
+        await run();
+        expect(practiceDone).toBe(true);
+        const ev = logOf(name);
+        expect(ev.findLastIndex(({ kind }) => kind === "solve.finished")).toBeGreaterThan(-1);
+        expect(said(name, "practice")[0]).toStartWith("Practice is still running after 0.02 s.");
+      }
+    };
+    await runCompareCase(false);
+    await runCompareCase(true);
   });
 });

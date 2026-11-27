@@ -78,6 +78,7 @@ export interface AgentSpec {
   readonly onCompact?: () => void;
   readonly stops: readonly (AbortSignal | undefined)[];
   readonly spending?: (now: () => Promise<Spent>) => void;
+  readonly steer?: (send: (content: string) => Promise<void>) => void;
 }
 
 export interface AgentRun {
@@ -191,12 +192,11 @@ export async function runAgent(seat: AgentSpec): Promise<AgentRun> {
         env: () => seat.env,
         settings: {
           toolExecution: "sequential",
+          steeringMode: "all",
           retry: retryPolicy(seat.model.provider),
           compaction: compactionPolicy(seat.model),
         },
-        onReport: ({ error }) => {
-          frame.fail(error);
-        },
+        onReport: ({ error }) => frame.fail(error),
       },
       BACKGROUND_CONTEXT,
     );
@@ -219,6 +219,12 @@ export async function runAgent(seat: AgentSpec): Promise<AgentRun> {
       init: async (tx, id) => {
         (await tx.doc(ProviderDoc, id)).sessionId = seat.id;
       },
+    });
+    seat.steer?.(async (content) => {
+      if (shutdown.aborted || frame.over() || frame.thrown !== null) return;
+      await conversation
+        .submit({ type: "input", content, whenBusy: "steer", whenIdle: "reject" }, BACKGROUND_CONTEXT)
+        .catch(() => undefined);
     });
     if (!shutdown.aborted) {
       const input = await conversation.submit({ type: "input", content: seat.opening }, BACKGROUND_CONTEXT);
@@ -305,6 +311,7 @@ function sessionHooks(seat: AgentSpec, halt: () => void, meter: ReturnType<typeo
     }
   };
   return Object.assign(frame, {
+    over,
     before,
     committed: tools.committed,
     hooks: [

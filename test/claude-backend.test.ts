@@ -341,6 +341,41 @@ describe.concurrent("Claude turn protocol and provider error mapping", () => {
       box.shutdown.abort();
     }
 
+    const steered = sandbox({}, "claude", PARALLEL);
+    try {
+      const first = await steered.turn([OPENING]);
+      steered.replay(TEXT);
+      const second = await steered.turn([
+        OPENING,
+        first,
+        ...answered(first),
+        { role: "user", content: "Steer one", timestamp: 0 },
+        { role: "user", content: [{ type: "text", text: "Steer two" }], timestamp: 0 },
+      ]);
+      expect(second.stopReason).toBe("stop");
+      const third = await steered.turn([
+        OPENING,
+        first,
+        ...answered(first),
+        second,
+        { role: "user", content: "Final one", timestamp: 0 },
+        { role: "user", content: [{ type: "text", text: "Final two" }], timestamp: 0 },
+      ]);
+      expect(third.stopReason).toBe("stop");
+      expect(
+        steered
+          .launched()
+          .stdin.filter((line) => line.type === "user")
+          .map((line) => [line.priority ?? null, asRecord(line.message)?.content]),
+      ).toEqual([
+        [null, "Read the three files."],
+        ["next", "Steer one\n\nSteer two"],
+        [null, "Final one\n\nFinal two"],
+      ]);
+    } finally {
+      steered.shutdown.abort();
+    }
+
     const compact = JSON.stringify({
       type: "system",
       subtype: "compact_boundary",

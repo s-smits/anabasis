@@ -95,16 +95,7 @@ function withMergedToolchain<T>(
   });
 }
 
-async function verifyWitnesses(input: {
-  readonly log: string;
-  readonly events: readonly LogEvent[];
-  readonly packages: ReadonlyMap<string, Task>;
-  readonly verify: Verifier;
-  readonly kind: RevisionKind;
-  readonly check?: string | undefined;
-}): Promise<{ readonly faults: readonly string[]; readonly summary: WitnessSummary }> {
-  const { log, events, packages, verify, kind, check } = input;
-  const stands = standsOf(events);
+function witnessLoader(log: string, events: readonly LogEvent[], packages: ReadonlyMap<string, Task>) {
   const verdicts = verdictsOf(events);
   const solveVersion = new Map(ranUnder(events).map(({ id, under }) => [id, under.task]));
   const byTaskId = new Map<string, Task>([
@@ -113,85 +104,92 @@ async function verifyWitnesses(input: {
     ),
     ...[...packages.values()].map((entry) => [entry.taskId, entry] as const),
   ]);
-  const findingChecks = new Map<string, Set<string>>();
-  for (const {
-    event: { data },
-  } of eventsOf(events, "referee.finding")) {
-    if (!isString(data.solve) || !isString(data.check)) continue;
-    const set = findingChecks.get(data.solve) ?? new Set<string>();
-    set.add(data.check);
-    findingChecks.set(data.solve, set);
-  }
-  const loadWitness = (solve: string, label: string) => {
-    const verdict = verdicts.get(solve);
-    const version = solveVersion.get(solve);
-    const task =
-      (version === undefined ? undefined : packages.get(version)) ??
-      (verdict?.task === undefined || verdict.task === null
-        ? undefined
-        : (packages.get(verdict.task) ?? byTaskId.get(verdict.task)));
-    if (verdict === undefined || task === undefined || verdict.answer === undefined) {
-      const taskLabel = isString(verdict?.task) ? ` on ${verdict.task}` : "";
-      faults.push(`${label} witness${taskLabel} could not be loaded (missing task package or answer)`);
-      return null;
-    }
-    const files =
-      verdict.files === undefined || verdict.files.length === 0
-        ? undefined
-        : readAnswerFiles(log, verdict.files);
-    return { solve, verdict, task, answer: verdict.answer, files };
-  };
-  const faults: string[] = [];
-  const runWitnesses = async (ids: readonly string[], label: string) => {
-    const loaded = ids.flatMap((id) => {
+  return (ids: readonly string[], label: string, faults: string[], verify: Verifier) => {
+    const loaded = ids.flatMap((solve) => {
       try {
-        const witness = loadWitness(id, label);
-        return witness === null ? [] : [witness];
+        const verdict = verdicts.get(solve);
+        const version = solveVersion.get(solve);
+        const task =
+          (version === undefined ? undefined : packages.get(version)) ??
+          (verdict?.task === undefined || verdict.task === null
+            ? undefined
+            : (packages.get(verdict.task) ?? byTaskId.get(verdict.task)));
+        if (verdict === undefined || task === undefined || verdict.answer === undefined) {
+          const taskLabel = isString(verdict?.task) ? ` on ${verdict.task}` : "";
+          faults.push(`${label} witness${taskLabel} could not be loaded (missing task package or answer)`);
+          return [];
+        }
+        const files =
+          verdict.files === undefined || verdict.files.length === 0
+            ? undefined
+            : readAnswerFiles(log, verdict.files);
+        return [{ solve, verdict, task, answer: verdict.answer, files }];
       } catch (error) {
-        const taskId = verdicts.get(id)?.task;
+        const taskId = verdicts.get(solve)?.task;
         const taskLabel = isString(taskId) ? ` on ${taskId}` : "";
         faults.push(`${label} witness${taskLabel} files could not be read: ${errorMessage(error)}`);
         return [];
       }
     });
-    return await pooled(loaded, 4, async (witness) => ({
+    return pooled(loaded, 4, async (witness) => ({
       witness,
       result: await verify(witness.task, witness.answer, undefined, witness.files),
     }));
   };
-  const earnedIds = [...stands.entries()].flatMap(([id, ruling]) => (ruling === "earned" ? [id] : []));
-  const earnedResults = await runWitnesses(earnedIds, "earned");
-  let earnedRetained = 0;
+}
+
+async function verifyWitnesses(input: {
+  readonly log: string;
+  readonly events: readonly LogEvent[];
+  readonly packages: ReadonlyMap<string, Task>;
+  readonly verify: Verifier;
+  readonly kind: RevisionKind;
+  readonly check?: string | undefined;
+}): Promise<{
+  readonly faults: readonly string[];
+  readonly notes: readonly string[];
+  readonly summary: WitnessSummary;
+}> {
+  const { log, events, packages, verify, kind, check } = input;
+  const runWitnesses = witnessLoader(log, events, packages);
+  const faults: string[] = [];
+  const notes: string[] = [];
+  const earnedIds = [...standsOf(events).entries()].flatMap(([id, ruling]) =>
+    ruling === "earned" ? [id] : [],
+  );
+  const earnedResults = await runWitnesses(earnedIds, "earned", faults, verify);
+  let [earnedRetained, repairedCheckFlips] = [0, 0];
   for (const { witness, result } of earnedResults) {
     const origBlocking = witness.verdict.checker?.kind === "fail" ? witness.verdict.checker.blocking : [];
-    const onCheck =
-      check !== undefined &&
-      (origBlocking.includes(check) || (findingChecks.get(witness.solve)?.has(check) ?? false));
+    const untouched =
+      kind === "repair" && check !== undefined ? origBlocking.filter((id) => id !== check) : origBlocking;
+    const soleRepaired =
+      kind === "repair" && check !== undefined && origBlocking.length > 0 && untouched.length === 0;
+    if (soleRepaired) {
+      if (result.kind === "fail" && result.blocking.includes(check)) earnedRetained += 1;
+      else repairedCheckFlips += 1;
+      continue;
+    }
     if (result.kind !== "fail") {
       faults.push(`earned Referee witness on ${witness.task.taskId} no longer fails (got ${result.kind})`);
       continue;
     }
-    if (kind === "repair" && check !== undefined && onCheck && !result.blocking.includes(check)) {
+    if (untouched.length > 0 && !untouched.some((id) => result.blocking.includes(id))) {
       faults.push(
-        `earned Referee witness on ${witness.task.taskId} is no longer blocked by repaired check ${check}`,
-      );
-      continue;
-    }
-    if (
-      kind === "tune" &&
-      origBlocking.length > 0 &&
-      !origBlocking.some((id) => result.blocking.includes(id))
-    ) {
-      faults.push(
-        `earned Referee witness on ${witness.task.taskId} is no longer blocked by any original check (${origBlocking.join(", ")})`,
+        `earned Referee witness on ${witness.task.taskId} is no longer blocked by any untouched check (${untouched.join(", ")})`,
       );
       continue;
     }
     earnedRetained += 1;
   }
+  if (repairedCheckFlips > 0 && check !== undefined) {
+    notes.push(
+      `${String(repairedCheckFlips)} historical earned witness${repairedCheckFlips === 1 ? "" : "es"} solely on repaired check ${check} now pass; probe ${check} to verify it still enforces its published rule without over-relaxing.`,
+    );
+  }
   let [defectChecked, defectCleared] = [0, 0];
   if (kind === "repair" && check !== undefined) {
-    const defectResults = await runWitnesses(defectSolvesFor(events, check), "check-defect");
+    const defectResults = await runWitnesses(defectSolvesFor(events, check), "check-defect", faults, verify);
     defectChecked = defectResults.length;
     const uncleared: string[] = [];
     for (const { witness, result } of defectResults) {
@@ -220,6 +218,7 @@ async function verifyWitnesses(input: {
   }
   return {
     faults,
+    notes,
     summary: { earnedChecked: earnedResults.length, earnedRetained, defectChecked, defectCleared },
   };
 }
@@ -246,10 +245,11 @@ async function auditRevision(input: {
   readonly parentChecks: string;
   readonly prompt: string;
   readonly seen: NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
+  readonly extraNotes: readonly string[];
   readonly auditor: RevisionAuditor | null;
   readonly reader: Reader | null;
 }): Promise<string | null> {
-  const { log, session, parentChecks, prompt, seen, auditor, reader } = input;
+  const { log, session, parentChecks, prompt, seen, extraNotes, auditor, reader } = input;
   const seeded = persistedDraftDefects(read(log, TRACE_KINDS), parentChecks);
   const [verifiedFixed, unverified]: [string[], string[]] = [[], []];
   for (const prior of seeded.prior) {
@@ -283,7 +283,7 @@ async function auditRevision(input: {
     verify: seen.verify,
     tasks: seen.tasks,
     controls: seen.controls,
-    notes: seen.reading.notes,
+    notes: [...seen.reading.notes, ...extraNotes],
     priorFindings: unverified,
     verifiedFixed,
     log,
@@ -298,6 +298,54 @@ async function auditRevision(input: {
     ].join("\n");
   }
   return null;
+}
+
+async function validateCandidate(input: {
+  readonly log: string;
+  readonly events: readonly LogEvent[];
+  readonly candidate: Draft;
+  readonly kind: RevisionKind;
+  readonly check?: string | undefined;
+  readonly packages: ReadonlyMap<string, Task>;
+  readonly width: number;
+  readonly sourceHome?: string | undefined;
+}): Promise<
+  | { readonly ok: false; readonly message: string }
+  | {
+      readonly ok: true;
+      readonly seen: NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
+      readonly witnessed: Awaited<ReturnType<typeof verifyWitnesses>>;
+    }
+> {
+  const { log, events, candidate, kind, check, packages, width, sourceHome } = input;
+  const staged = await draftReading(join(dirname(log), "revisions"), candidate, width, sourceHome);
+  if (staged.faults.length > 0 || staged.read === undefined) {
+    return {
+      ok: false,
+      message: [
+        `Revision failed checker validation (${String(staged.faults.length)} faults):`,
+        ...staged.faults.map((fault) => `- ${fault}`),
+      ].join("\n"),
+    };
+  }
+  const witnessed = await verifyWitnesses({
+    log,
+    events,
+    packages,
+    verify: staged.read.verify,
+    kind,
+    check,
+  });
+  if (witnessed.faults.length > 0) {
+    return {
+      ok: false,
+      message: [
+        `Revision failed historical witness checks (${String(witnessed.faults.length)} faults):`,
+        ...witnessed.faults.map((fault) => `- ${fault}`),
+      ].join("\n"),
+    };
+  }
+  return { ok: true, seen: staged.read, witnessed };
 }
 
 export function revisionRunner(config: {
@@ -330,43 +378,27 @@ export function revisionRunner(config: {
     if (parent === null || frozen === null) {
       return { accepted: false, message: "Refused: parent exam is missing or unfrozen." };
     }
-    const revisionsDir = join(dirname(config.log), "revisions");
-    const staged = await withMergedToolchain(config.parentBundle, home, (sourceHome) =>
-      draftReading(revisionsDir, candidate, width, sourceHome),
+    const checked = await withMergedToolchain(config.parentBundle, home, (sourceHome) =>
+      validateCandidate({
+        log: config.log,
+        events,
+        candidate,
+        kind,
+        check,
+        packages: config.packages(),
+        width,
+        sourceHome,
+      }),
     );
-    if (staged.faults.length > 0 || staged.read === undefined) {
-      return {
-        accepted: false,
-        message: [
-          `Revision failed checker validation (${String(staged.faults.length)} faults):`,
-          ...staged.faults.map((fault) => `- ${fault}`),
-        ].join("\n"),
-      };
-    }
-    const seen = staged.read;
-    const witnessed = await verifyWitnesses({
-      log: config.log,
-      events,
-      packages: config.packages(),
-      verify: seen.verify,
-      kind,
-      check,
-    });
-    if (witnessed.faults.length > 0) {
-      return {
-        accepted: false,
-        message: [
-          `Revision failed historical witness checks (${String(witnessed.faults.length)} faults):`,
-          ...witnessed.faults.map((fault) => `- ${fault}`),
-        ].join("\n"),
-      };
-    }
+    if (!checked.ok) return { accepted: false, message: checked.message };
+    const { seen, witnessed } = checked;
     const audited = await auditRevision({
       log: config.log,
       session,
       parentChecks: frozen.checks,
       prompt: opening?.prompt ?? "",
       seen,
+      extraNotes: witnessed.notes,
       auditor,
       reader: revisionReader(config.reviewer ?? {}, opening),
     });
@@ -387,6 +419,7 @@ export function revisionRunner(config: {
       audit: { session, verdict: auditor === null ? "none" : "sound" },
       witnesses: witnessed.summary,
     };
+    const revisionsDir = join(dirname(config.log), "revisions");
     if (opening?.attended === true) {
       mkdirSync(revisionsDir, { recursive: true });
       const shortHash = draftHash.slice(0, 16);
@@ -454,31 +487,18 @@ export async function freezeCandidate(
     crossFamily: crossFamilyVendors,
   });
   if (refusal !== null) throw new Error(refusal);
-  const stagedBundle = join(
-    dirname(log),
-    "revisions",
-    "exams",
-    hashJsonValue(payload.draft).slice(0, 16),
-    "bundle",
-  );
-  const seen = await draftReading(
-    join(dirname(log), "revisions"),
-    payload.draft,
-    4,
-    existsSync(stagedBundle) ? stagedBundle : undefined,
-  );
-  if (seen.faults.length > 0 || seen.read === undefined) {
-    throw new Error(`candidate no longer passes checker reading: ${seen.faults.join("; ")}`);
-  }
-  const witnessed = await verifyWitnesses({
+  const stagedBundle = join(dirname(log), "revisions", "exams", actualHash.slice(0, 16), "bundle");
+  const checked = await validateCandidate({
     log,
     events,
-    packages,
-    verify: seen.read.verify,
+    candidate: payload.draft,
     kind: payload.kind,
     check: payload.check,
+    packages,
+    width: 4,
+    sourceHome: existsSync(stagedBundle) ? stagedBundle : undefined,
   });
-  if (witnessed.faults.length > 0) throw new Error(`witness faults: ${witnessed.faults.join("; ")}`);
+  if (!checked.ok) throw new Error(checked.message);
   append(log, "exam.revised", parseJsonAs<JsonObject>(capturedJsonStringify(payload)));
   return await openSuccessor(log);
 }

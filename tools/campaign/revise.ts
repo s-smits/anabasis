@@ -63,7 +63,7 @@ interface PendingCandidate {
   readonly draftHash: string;
   readonly checker: { readonly contract: string; readonly checks: string };
   readonly reading: { readonly faults: readonly string[]; readonly notes: readonly string[] };
-  readonly audit: { readonly session: string; readonly verdict: "sound" };
+  readonly audit: { readonly session: string; readonly verdict: "sound" | "none" };
   readonly witnesses: WitnessSummary;
 }
 
@@ -114,11 +114,14 @@ async function verifyWitnesses(input: {
     set.add(data.check);
     findingChecks.set(data.solve, set);
   }
-  const loadWitness = (solve: string) => {
+  const loadWitness = (solve: string, label: string) => {
     const verdict = verdicts.get(solve);
     const task =
       verdict?.task === undefined || verdict.task === null ? undefined : packages.get(verdict.task);
-    if (verdict === undefined || task === undefined || verdict.answer === undefined) return null;
+    if (verdict === undefined || task === undefined || verdict.answer === undefined) {
+      faults.push(`${label} witness ${solve} could not be loaded (missing task package or answer)`);
+      return null;
+    }
     const files =
       verdict.files === undefined || verdict.files.length === 0
         ? undefined
@@ -129,7 +132,7 @@ async function verifyWitnesses(input: {
   const runWitnesses = async (ids: readonly string[], label: string) => {
     const loaded = ids.flatMap((id) => {
       try {
-        const witness = loadWitness(id);
+        const witness = loadWitness(id, label);
         return witness === null ? [] : [witness];
       } catch (error) {
         faults.push(`${label} witness ${id} files could not be read: ${errorMessage(error)}`);
@@ -161,12 +164,23 @@ async function verifyWitnesses(input: {
       );
       continue;
     }
+    if (
+      kind === "tune" &&
+      origBlocking.length > 0 &&
+      !origBlocking.some((id) => result.blocking.includes(id))
+    ) {
+      faults.push(
+        `earned Referee witness ${witness.solve} (${witness.task.taskId}) is no longer blocked by any original check (${origBlocking.join(", ")})`,
+      );
+      continue;
+    }
     earnedRetained += 1;
   }
   let [defectChecked, defectCleared] = [0, 0];
   if (kind === "repair" && check !== undefined) {
     const defectResults = await runWitnesses(defectSolvesFor(events, check), "check-defect");
     defectChecked = defectResults.length;
+    const uncleared: string[] = [];
     for (const { witness, result } of defectResults) {
       if (result.kind === "faulty" || result.kind === "non-result") {
         faults.push(`check-defect witness ${witness.solve} faulted under candidate: ${result.reason}`);
@@ -178,9 +192,14 @@ async function verifyWitnesses(input: {
         ? result.kind === "pass"
         : result.kind === "pass" || (result.kind === "fail" && !result.blocking.includes(check));
       if (cleared) defectCleared += 1;
+      else uncleared.push(witness.solve);
     }
-    if (defectCleared === 0) {
+    if (defectChecked === 0 || defectCleared === 0) {
       faults.push(`repair candidate did not clear any check-defect witness for ${check}`);
+    } else if (uncleared.length > 0) {
+      faults.push(
+        `repair candidate left ${String(uncleared.length)}/${String(defectChecked)} check-defect witnesses uncleared for ${check}: ${uncleared.join(", ")}`,
+      );
     }
   }
   return {
@@ -349,7 +368,7 @@ export function revisionRunner(config: {
       draftHash,
       checker: seen.checker,
       reading: { faults: [...seen.reading.faults], notes: [...seen.reading.notes] },
-      audit: { session, verdict: "sound" },
+      audit: { session, verdict: auditor === null ? "none" : "sound" },
       witnesses: witnessed.summary,
     };
     if (opening?.attended === true) {
@@ -390,9 +409,26 @@ export async function freezeCandidate(
   const file = join(dirname(log), "revisions", `${candidate}.json`);
   if (!existsSync(file)) throw new Error(`no staged revision candidate at ${file}`);
   const payload = parseJsonAs<PendingCandidate>(readFileSync(file, "utf8"));
+  const actualHash = hashJsonValue(payload.draft);
+  if (actualHash !== payload.draftHash || !actualHash.startsWith(candidate)) {
+    throw new Error(`candidate ${candidate} hash mismatch (draft hashes to ${actualHash.slice(0, 16)})`);
+  }
   const events = read(log, TRACE_KINDS);
+  if (eventsOf(events, "exam.revised").at(-1)?.event.data.draftHash === payload.draftHash) {
+    return await openSuccessor(log);
+  }
   const parent = draftOf(events);
-  if (parent === null) throw new Error(`${log} holds no drafted exam`);
+  const frozen = frozenChecker(events);
+  if (parent === null || frozen === null) throw new Error(`${log} holds no frozen drafted exam`);
+  if (payload.parent.checks !== frozen.checks) {
+    throw new Error(`candidate parent checks ${payload.parent.checks} do not match frozen ${frozen.checks}`);
+  }
+  const auditedSound = eventsOf(events, "referee.draft").some(
+    ({ event: { data } }) => data.verdict === "sound" && data.revision === frozen.checks,
+  );
+  if (payload.audit.verdict !== "sound" || !auditedSound) {
+    throw new Error(`candidate ${candidate} has no logged sound adversarial audit for ${frozen.checks}`);
+  }
   const faults = revisionFaults(parent, payload.draft, payload.kind, payload.check);
   if (faults.length > 0) throw new Error(`candidate faults: ${faults.join("; ")}`);
   const refusal = revisionRefusal(events, {

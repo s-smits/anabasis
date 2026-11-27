@@ -37,7 +37,7 @@ import {
   startRefusal,
 } from "./logins.ts";
 import { checkStart, lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
-import { keepers, logEvents, Misused, processes, type Run, runNamed, writers } from "./registry.ts";
+import { flagOf, keepers, logEvents, Misused, processes, type Run, runNamed, writers } from "./registry.ts";
 import { stop } from "./stop.ts";
 
 export type Turn = "watch" | "move" | "continue" | "handoff" | "done";
@@ -303,8 +303,10 @@ async function keepGoing(
     start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),
     handoff: async (successor, login) => {
       const next = runNamed(successor);
+      const nextFlags = lastRun(next).flags;
+      if (flagOf(nextFlags, "--moves") === "0") return;
       if (writers(next, processes()).length === 0) {
-        await start(next, rerun(lastRun(next).flags, undefined), login, undefined);
+        await start(next, rerun(nextFlags, undefined), login, undefined);
       }
       if (keepers(next.name, processes()).length === 0) {
         leaveKeeper(next, named, waitHours);

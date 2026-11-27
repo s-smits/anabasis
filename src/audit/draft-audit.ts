@@ -77,16 +77,16 @@ export function persistedDraftDefects(
   events: readonly LogEvent[],
   revision?: string,
 ): { readonly audits: number; readonly prior: DraftAuditFinding[] } {
-  const logged = eventsOf(events, "referee.draft").filter(
+  const matched = eventsOf(events, "referee.draft").filter(
     ({ event: { data } }) =>
-      data.verdict === "defects" &&
+      (data.verdict === "defects" || data.verdict === "sound") &&
       (revision === undefined ? !isString(data.revision) : data.revision === revision),
   );
   const prior: DraftAuditFinding[] = [];
   for (const {
     event: { data },
-  } of logged) {
-    if (!Array.isArray(data.findings) || data.findings.length === 0) continue;
+  } of matched) {
+    if (data.verdict !== "defects" || !Array.isArray(data.findings) || data.findings.length === 0) continue;
     prior.push({
       verdict: "defects",
       // SAFETY: `referee.draft` findings and probeRows are written by `reviewDraft` below.
@@ -96,7 +96,7 @@ export function persistedDraftDefects(
       probes: Array.isArray(data.probeRows) ? (data.probeRows as DraftAuditFinding["probes"]) : [],
     });
   }
-  return { audits: logged.length, prior };
+  return { audits: matched.length, prior };
 }
 
 const TURN_LIMIT = 24;

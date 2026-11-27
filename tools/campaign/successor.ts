@@ -28,6 +28,21 @@ export function successorName(name: string): string {
   return `${prefix}-rev${String(Number(raw) + 1)}`;
 }
 
+export function rewriteMovesFlag(flags: readonly string[], remaining: number): string[] {
+  if (!Number.isFinite(remaining)) return [...flags];
+  const value = String(Math.max(0, remaining));
+  const out: string[] = [];
+  for (let at = 0; at < flags.length; at += 1) {
+    const word = flags[at] ?? "";
+    if (word.startsWith("--moves=")) out.push(`--moves=${value}`);
+    else if (word === "--moves") {
+      out.push("--moves", value);
+      at += 1;
+    } else out.push(word);
+  }
+  return out;
+}
+
 export function rewriteNameFlag(flags: readonly string[], from: string, to: string): string[] {
   const out: string[] = [];
   for (let at = 0; at < flags.length; at += 1) {
@@ -74,12 +89,16 @@ function revisionEvent(events: readonly LogEvent[]): {
 
 function carriedFrom(eventsA: readonly LogEvent[], kind: RevisionKind) {
   const prior = openingOf(eventsA)?.parent?.carried;
-  const attempts = epochsOf(eventsA).reduce((sum, epoch) => sum + epoch.falsePromotion.attempts, 0);
+  const epochs = epochsOf(eventsA);
+  const attempts = epochs.reduce((sum, epoch) => sum + epoch.falsePromotion.attempts, 0);
+  const tunedThisEpoch =
+    kind === "tune" ? true : epochs.length > 1 ? false : (prior?.tunedThisEpoch ?? false);
   return {
     spent: (prior?.spent ?? 0) + billedAll(eventsA),
     sinceStep: stopRule(eventsA).sinceStep,
     attempts: (prior?.attempts ?? 0) + attempts,
     tunes: (prior?.tunes ?? 0) + (kind === "tune" ? 1 : 0),
+    tunedThisEpoch,
   };
 }
 
@@ -126,7 +145,10 @@ function writeSuccessorOpening(
   }
 }
 
-export async function openSuccessor(logA: string): Promise<{ readonly name: string; readonly log: string }> {
+export async function openSuccessor(
+  logA: string,
+  remainingMoves?: number,
+): Promise<{ readonly name: string; readonly log: string }> {
   const eventsA = read(logA, TRACE_KINDS);
   const rev = revisionEvent(eventsA);
   const dirA = dirname(logA);
@@ -178,10 +200,11 @@ export async function openSuccessor(logA: string): Promise<{ readonly name: stri
   const receiptA = lastLaunch(logA);
   if (receiptA !== undefined && lastLaunch(logB) === undefined) {
     const { session: _session, ...kept } = receiptA;
+    const renamed = rewriteNameFlag(receiptA.flags, nameA, nameB);
     writeReceipt(logB, "run-1", {
       ...kept,
       at: new Date().toISOString(),
-      flags: rewriteNameFlag(receiptA.flags, nameA, nameB),
+      flags: remainingMoves === undefined ? renamed : rewriteMovesFlag(renamed, remainingMoves),
     });
   }
   if (endedOf(eventsA)?.ending !== "revise") {

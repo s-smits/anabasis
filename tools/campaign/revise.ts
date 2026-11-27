@@ -15,7 +15,8 @@ import { defectSolvesFor, type ReviseRunner, revisionFaults, revisionRefusal } f
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { readAnswerFiles } from "#src/kernel/answer-files.ts";
 import { append, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
-import { standsOf, verdictsOf } from "#src/kernel/solves.ts";
+import { proposalsOf } from "#src/kernel/history.ts";
+import { ranUnder, standsOf, verdictsOf } from "#src/kernel/solves.ts";
 import { HOST_TOOLS_FILE, type Task, type Verifier } from "#src/kernel/verify.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import {
@@ -105,6 +106,13 @@ async function verifyWitnesses(input: {
   const { log, events, packages, verify, kind, check } = input;
   const stands = standsOf(events);
   const verdicts = verdictsOf(events);
+  const solveVersion = new Map(ranUnder(events).map(({ id, under }) => [id, under.task]));
+  const byTaskId = new Map<string, Task>([
+    ...proposalsOf(events).flatMap((proposal) =>
+      proposal.task === null ? [] : [[proposal.task.taskId, proposal.task] as const],
+    ),
+    ...[...packages.values()].map((entry) => [entry.taskId, entry] as const),
+  ]);
   const findingChecks = new Map<string, Set<string>>();
   for (const {
     event: { data },
@@ -116,8 +124,12 @@ async function verifyWitnesses(input: {
   }
   const loadWitness = (solve: string, label: string) => {
     const verdict = verdicts.get(solve);
+    const version = solveVersion.get(solve);
     const task =
-      verdict?.task === undefined || verdict.task === null ? undefined : packages.get(verdict.task);
+      (version === undefined ? undefined : packages.get(version)) ??
+      (verdict?.task === undefined || verdict.task === null
+        ? undefined
+        : (packages.get(verdict.task) ?? byTaskId.get(verdict.task)));
     if (verdict === undefined || task === undefined || verdict.answer === undefined) {
       const taskLabel = isString(verdict?.task) ? ` on ${verdict.task}` : "";
       faults.push(`${label} witness${taskLabel} could not be loaded (missing task package or answer)`);

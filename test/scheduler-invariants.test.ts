@@ -406,7 +406,9 @@ describe("scheduler decision boundaries", () => {
       promotedH1(),
       examFin("x-1"),
     ];
-    expect(nextAction(freshSideNoRoom, PLAN)).toMatchObject({ move: "examine" });
+    const freshNext = nextAction(freshSideNoRoom, PLAN);
+    expect(freshNext.move).toBe("examine");
+    expect(freshNext.why).toContain("starter confirmation owed");
 
     const revertedWithRoom = [
       ...base,

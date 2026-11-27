@@ -172,11 +172,32 @@ const STAMP_FILE = ".ana-clone-stamp";
 
 function cloneGitTree(root: string, dest: string): boolean {
   if (gitMaybe(root, "rev-parse", "--show-prefix") !== "") return false;
+  const objects = gitMaybe(root, "rev-parse", "--path-format=absolute", "--git-path", "objects");
+  if (objects === null) return false;
   let listed: string;
   try {
     listed = gitOutput(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard");
   } catch {
     return false;
+  }
+  if (gitMaybe(dest, "init", "-q") === null) return false;
+  mkdirSync(join(dest, ".git", "objects", "info"), { recursive: true });
+  writeFileSync(join(dest, ".git", "objects", "info", "alternates"), `${objects}\n`);
+  const head = gitMaybe(root, "rev-parse", "-q", "--verify", "HEAD^{commit}");
+  if (head !== null) writeFileSync(join(dest, ".git", "HEAD"), `${head}\n`);
+  const index = gitMaybe(root, "rev-parse", "--path-format=absolute", "--git-path", "index");
+  if (index !== null && existsSync(index)) cloneFile(index, join(dest, ".git", "index"));
+  const refs = gitMaybe(root, "for-each-ref", "--format=%(objectname) %(refname)");
+  if (refs !== null && refs.length > 0) {
+    writeFileSync(
+      join(dest, ".git", "packed-refs"),
+      `# pack-refs with: peeled fully-peeled sorted \n${refs}\n`,
+    );
+  }
+  const common = gitMaybe(root, "rev-parse", "--path-format=absolute", "--git-common-dir");
+  if (common !== null) {
+    const shallow = join(common, "shallow");
+    if (existsSync(shallow)) cloneFile(shallow, join(dest, ".git", "shallow"));
   }
   const made = new Set<string>();
   for (const rel of listed.split("\0")) {
@@ -197,23 +218,6 @@ function cloneGitTree(root: string, dest: string): boolean {
     if (stat.isSymbolicLink()) symlinkSync(readlinkSync(src), dst);
     else if (stat.isFile()) cloneFile(src, dst);
   }
-  const objects = gitMaybe(root, "rev-parse", "--path-format=absolute", "--git-path", "objects");
-  if (objects === null || gitMaybe(dest, "init", "-q") === null) return false;
-  mkdirSync(join(dest, ".git", "objects", "info"), { recursive: true });
-  writeFileSync(join(dest, ".git", "objects", "info", "alternates"), `${objects}\n`);
-  const head = gitMaybe(root, "rev-parse", "-q", "--verify", "HEAD^{commit}");
-  if (head !== null) writeFileSync(join(dest, ".git", "HEAD"), `${head}\n`);
-  const index = gitMaybe(root, "rev-parse", "--path-format=absolute", "--git-path", "index");
-  if (index !== null && existsSync(index)) cloneFile(index, join(dest, ".git", "index"));
-  const common = gitMaybe(root, "rev-parse", "--path-format=absolute", "--git-common-dir");
-  if (common !== null) {
-    for (const name of ["packed-refs", "shallow"]) {
-      const src = join(common, name);
-      if (existsSync(src)) cloneFile(src, join(dest, ".git", name));
-    }
-    const refs = join(common, "refs");
-    if (existsSync(refs)) cpSync(refs, join(dest, ".git", "refs"), { recursive: true, force: true });
-  }
   return true;
 }
 
@@ -221,8 +225,11 @@ async function cloneTree(root: string, dest: string): Promise<void> {
   rmSync(dest, { recursive: true, force: true });
   mkdirSync(dest, { recursive: true });
   if (cloneGitTree(root, dest)) return;
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(dest, { recursive: true });
   const entries = readdirSync(root).filter(
-    (name) => name !== "node_modules" && !name.startsWith(".ana-wall-probe-"),
+    (name) =>
+      name !== "node_modules" && !name.startsWith(".ana-wall-probe-") && !name.startsWith(".ana-mutate"),
   );
   if (runtimeProcess.platform === "darwin" && entries.length > 0) {
     const cow = Bun.spawn(["cp", "-cRp", ...entries.map((name) => join(root, name)), dest], {

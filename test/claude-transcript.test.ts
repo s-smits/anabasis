@@ -1,18 +1,10 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import {
-  CLAUDE_PROJECT_DIR,
   resolveForkPoint,
   savePersistedTranscript,
   stageForkTranscript,
 } from "../src/agent/backends/claude-transcript.ts";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  utimesSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -42,7 +34,6 @@ const transcript = `${[
   }),
   row("attachment", "att-1"),
   row("progress", "prog-1"),
-  assistant("side-1", "msg_side", [{ type: "text", text: "side" }], { isSidechain: true }),
   row("assistant", "synth-1", {
     message: { id: "msg_synth", model: "<synthetic>", content: [{ type: "text", text: "x" }] },
   }),
@@ -79,7 +70,7 @@ describe.concurrent("Claude transcript fork point resolution and staging", () =>
     expect(() => resolveForkPoint(onlyOpen, 1)).toThrow("no earlier completed turn exists");
   });
 
-  it("stages uuid and default-complete forks and blocks mismatched, excluded, or unsafe transcript saves", () => {
+  it("stages uuid and default-complete forks and saves only the reported session's transcript under safe names", () => {
     const dir = mkdtempSync(join(root, "stage-"));
     const file = join(dir, "src.jsonl");
     writeFileSync(file, transcript);
@@ -121,42 +112,16 @@ describe.concurrent("Claude transcript fork point resolution and staging", () =>
     expect(savePersistedTranscript(join(dir, "empty"), { dir: join(dir, "out"), seat: "x-1" }, sid)).toBe(
       false,
     );
-    expect(
-      savePersistedTranscript(join(dir, "empty"), { dir: join(dir, "out"), seat: "x-1" }, undefined),
-    ).toBe(false);
     const otherSid = "22222222-2222-3333-4444-555555555555";
     expect(savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, otherSid)).toBe(
       false,
     );
-    expect(savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, sid, sid)).toBe(
-      false,
-    );
-    expect(
-      savePersistedTranscript(join(dir, "c1"), { dir: join(dir, "out"), seat: "x-1" }, undefined, sid),
-    ).toBe(false);
-
-    const multi = join(dir, "multi");
-    const project = join(multi, "projects", CLAUDE_PROJECT_DIR);
-    mkdirSync(project, { recursive: true });
-    const older = join(project, `${sid}.jsonl`);
-    const newer = join(project, `${otherSid}.jsonl`);
-    writeFileSync(older, "older\n");
-    writeFileSync(newer, "newer\n");
-    utimesSync(older, 1_700_000_000, 1_700_000_000);
-    utimesSync(newer, 1_700_000_500, 1_700_000_500);
     const out = join(dir, "saved");
-    expect(savePersistedTranscript(multi, { dir: out, seat: "x-new" }, undefined)).toBe(true);
-    expect(readFileSync(join(out, "x-new.jsonl"), "utf8")).toBe("newer\n");
-    expect(capturedJsonParse(readFileSync(join(out, "x-new.json"), "utf8"))).toEqual({
-      seat: "x-new",
-      sdkSessionId: otherSid,
-    });
-    const custom = join(project, "custom.jsonl");
-    writeFileSync(custom, "custom\n");
-    utimesSync(custom, 1_700_001_000, 1_700_001_000);
-    expect(savePersistedTranscript(multi, { dir: out, seat: "x-custom" }, undefined)).toBe(true);
-    expect(capturedJsonParse(readFileSync(join(out, "x-custom.json"), "utf8"))).toEqual({
-      seat: "x-custom",
+    expect(savePersistedTranscript(join(dir, "c1"), { dir: out, seat: "x-1" }, sid)).toBe(true);
+    expect(readFileSync(join(out, "x-1.jsonl"), "utf8")).toBe(transcript);
+    expect(capturedJsonParse(readFileSync(join(out, "x-1.json"), "utf8"))).toEqual({
+      seat: "x-1",
+      sdkSessionId: sid,
     });
   });
 });

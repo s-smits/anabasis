@@ -2,10 +2,8 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   renameSync,
-  statSync,
   writeFileSync,
 } from "../../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../../meta/json-runtime.ts";
@@ -63,15 +61,7 @@ function parseTranscript(jsonl: string): {
     if (sdkSessionId === undefined && isString(raw.sessionId) && UUID.test(raw.sessionId)) {
       sdkSessionId = raw.sessionId;
     }
-    if (
-      isString(raw.uuid) &&
-      isString(raw.type) &&
-      raw.isSidechain !== true &&
-      raw.teamName === undefined &&
-      raw.type !== "progress"
-    ) {
-      entries.push({ uuid: raw.uuid, type: raw.type, raw });
-    }
+    if (isString(raw.uuid) && isString(raw.type)) entries.push({ uuid: raw.uuid, type: raw.type, raw });
   }
   if (sdkSessionId === undefined) {
     throw new Error("the Claude transcript records no valid sessionId UUID");
@@ -215,58 +205,22 @@ export function stageForkTranscript(
   return { resume: sdkSessionId, ...keyIfDefined("resumeSessionAt", resumeSessionAt) };
 }
 
-function persistedSource(
-  projectDir: string,
-  sdkSessionId: string | undefined,
-  excludeSessionId: string | undefined,
-): {
-  readonly file: string;
-  readonly sdkSessionId: string | undefined;
-} | null {
-  if (!existsSync(projectDir)) return null;
-  if (sdkSessionId !== undefined) {
-    if (sdkSessionId === excludeSessionId || !isSafePathSegment(sdkSessionId)) return null;
-    const exact = join(projectDir, `${sdkSessionId}.jsonl`);
-    return existsSync(exact) ? { file: exact, sdkSessionId } : null;
-  }
-  const excludedFile = excludeSessionId === undefined ? undefined : `${excludeSessionId}.jsonl`;
-  const candidates = readdirSync(projectDir)
-    .filter((name) => name.endsWith(".jsonl") && name !== excludedFile)
-    .map((name) => {
-      const path = join(projectDir, name);
-      return { name, path, mtimeMs: statSync(path).mtimeMs };
-    })
-    .toSorted((left, right) => right.mtimeMs - left.mtimeMs);
-  const newest = candidates[0];
-  if (newest === undefined) return null;
-  const stem = newest.name.slice(0, -".jsonl".length);
-  return { file: newest.path, sdkSessionId: UUID.test(stem) ? stem : undefined };
-}
-
 export function savePersistedTranscript(
   configDir: string,
   persist: ClaudePersist,
-  sdkSessionId: string | undefined,
-  excludeSessionId?: string,
+  sdkSessionId: string,
 ): boolean {
-  if (!isSafePathSegment(persist.seat)) return false;
-  const found = persistedSource(
-    join(configDir, "projects", CLAUDE_PROJECT_DIR),
-    sdkSessionId,
-    excludeSessionId,
-  );
-  if (found === null) return false;
+  if (!isSafePathSegment(persist.seat) || !isSafePathSegment(sdkSessionId)) return false;
+  const source = join(configDir, "projects", CLAUDE_PROJECT_DIR, `${sdkSessionId}.jsonl`);
+  if (!existsSync(source)) return false;
   mkdirSync(persist.dir, { recursive: true });
   const target = join(persist.dir, `${persist.seat}.jsonl`);
   const temp = `${target}.${String(runtimeProcess.pid)}.tmp`;
-  copyFileSync(found.file, temp);
+  copyFileSync(source, temp);
   renameSync(temp, target);
   const meta = join(persist.dir, `${persist.seat}.json`);
   const metaTemp = `${meta}.${String(runtimeProcess.pid)}.tmp`;
-  writeFileSync(
-    metaTemp,
-    `${capturedJsonStringify({ seat: persist.seat, ...keyIfDefined("sdkSessionId", found.sdkSessionId) })}\n`,
-  );
+  writeFileSync(metaTemp, `${capturedJsonStringify({ seat: persist.seat, sdkSessionId })}\n`);
   renameSync(metaTemp, meta);
   return true;
 }

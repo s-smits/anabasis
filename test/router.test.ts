@@ -948,6 +948,13 @@ describe.concurrent("which host runs a task", () => {
     expect(sb.connections()).toEqual([]);
     expect(heldIn(sb.queueOf("local"))).toEqual([]);
     expect(heldIn(sb.queueOf("local-static"))).toEqual([]);
+    const staticQueue = sb.queueOf("local-static");
+    for (const slot of ["slot-1", "slot-2"]) {
+      rmSync(join(staticQueue, slot), { recursive: true, force: true });
+      symlinkSync(String(runtimeProcess.pid), join(staticQueue, slot));
+    }
+    const full = await sb.run(["run", "lint"], { ANA_CHECK_HOST: "all", ANA_RUNNER_QUEUE_WAIT: "0" });
+    expect(full.status).toBe(75);
     const bad = await sb.run(["run", "typecheck"], { ANA_CHECK_HOST: "all", ANA_HOSTS: "not json" });
     expect(bad.status).not.toBe(0);
   });
@@ -976,6 +983,14 @@ describe.concurrent("which host runs a task", () => {
     const single = await sb.run(["test", "test/a.test.ts"], { ANA_CHECK_HOST: "all", ANA_HOSTS: hosts });
     expect(single.status, single.stderr).toBe(0);
     expect(calls(sb.hostHome("fake-mac")).length).toBe(1);
+    expect(calls(sb.hostHome("fake-linux")).length).toBe(2);
+    rmSync(join(macQueue, "slot-2"));
+    const linuxQueue = sb.queueOf("fake-linux");
+    mkdirSync(linuxQueue, { recursive: true });
+    symlinkSync(String(runtimeProcess.pid), join(linuxQueue, "slot-2"));
+    const flipped = await sb.run(["test", "test/a.test.ts"], { ANA_CHECK_HOST: "all", ANA_HOSTS: hosts });
+    expect(flipped.status, flipped.stderr).toBe(0);
+    expect(calls(sb.hostHome("fake-mac")).length).toBe(2);
     expect(calls(sb.hostHome("fake-linux")).length).toBe(2);
   });
 

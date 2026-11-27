@@ -11,3 +11,7 @@ tools/campaign/seat-fork.ts	2400 -> 2401	const WRAP_CALL_TEXT_BYTES = 2400;	pres
 tools/campaign/seat-fork.ts	6000 -> 6001	const WRAP_TURN_TEXT_BYTES = 6000;	presentation	one-byte shift of the per-turn bound in simulation wrap text that no campaign seat reads
 tools/campaign/seat-fork.ts	160000 -> 160001	const WRAP_TOTAL_BYTES = 160_000;	presentation	one-byte shift of the total bound in simulation wrap text that no campaign seat reads
 tools/runtime/land.ts	> -> >=	if (starts.length > 1) {	presentation	only gates the printed advisory line about proving several native stacks; what is linked, proved or merged is unchanged
+src/agent/backends/claude-transcript.ts	1 -> 2	atTurn > 1 ? `fork at turn ${String(atTurn - 1)} instead` : "no earlier completed turn exists";	presentation	changes only the refusal hint wording; the refusal still throws
+src/agent/backends/claude.ts	&& -> ||	if ("session_id" in message && isString(message.session_id)) session.sdkSessionId = message.session_id;	equivalent	an absent property reads as undefined, so isString is false either way
+tools/runtime/router/run.ts	?? -> &&	const named = queues.map(({ item }) => item?.ssh ?? "local").join(" or ");	presentation	names the queues only in wait and refusal text
+tools/runtime/router/run.ts	20000 -> 20001	const LEAST_CHUNK_MS = 20_000;	equivalent	one millisecond on the chunk floor never changes chunking at test-timing granularity

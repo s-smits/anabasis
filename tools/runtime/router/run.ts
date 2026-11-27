@@ -329,18 +329,7 @@ async function runLocalStatic(job: Job): Promise<number> {
     [{ item: undefined, folder, count: LOCAL_STATIC_SLOTS }],
     "local-static",
   );
-  const release = (): void => {
-    rmSync(slot.path, { recursive: true, force: true });
-    heldByThisRunner.delete(dirname(slot.path));
-  };
-  try {
-    return await attached(
-      ["/bin/bash", "--norc", TASK_SCRIPT, "here", job.root, job.pin, String(job.wall), ...job.task],
-      release,
-    );
-  } finally {
-    release();
-  }
+  return (await inSlot(undefined, slot, job, () => snapshot(job.root))).status;
 }
 
 function snapshot(root: string): string {

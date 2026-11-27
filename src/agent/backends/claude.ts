@@ -96,7 +96,6 @@ interface Session {
   readonly provider: string;
   readonly configDir: string;
   readonly persist?: ClaudePersist | undefined;
-  readonly stagedForkId?: string | undefined;
   sdkSessionId?: string | undefined;
 }
 
@@ -326,7 +325,6 @@ function open(
     provider: model.provider,
     configDir,
     ...keyIfDefined("persist", claude.persist),
-    ...keyIfDefined("stagedForkId", staged?.resume),
   };
   sessions.set(key, session);
   claude.shutdown?.addEventListener("abort", () => close(key, session), {
@@ -422,10 +420,9 @@ async function readTurn(
 }
 
 function trySaveTranscript(session: Session): void {
-  if (session.persist === undefined) return;
-  if (session.stagedForkId !== undefined && session.sdkSessionId === undefined) return;
+  if (session.persist === undefined || session.sdkSessionId === undefined) return;
   try {
-    savePersistedTranscript(session.configDir, session.persist, session.sdkSessionId, session.stagedForkId);
+    savePersistedTranscript(session.configDir, session.persist, session.sdkSessionId);
   } catch (error) {
     warn(`Claude transcript save skipped for ${session.persist.seat}: ${errorMessage(error)}`);
   }

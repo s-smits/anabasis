@@ -101,26 +101,27 @@ export interface StarterRead {
 const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
 
 function epochSlices(events: readonly LogEvent[]) {
-  const bounds: { index: number; harness: string; reverted: boolean }[] = [
-    { index: 0, harness: "starter", reverted: false },
-  ];
-  const tasks: string[][] = [[]];
-  const sessions: Set<string>[] = [new Set()];
+  const sliceAt = (bound: { index: number; harness: string; reverted: boolean }) => {
+    const tasks: string[] = [];
+    return { ...bound, tasks, sessions: new Set<string>() };
+  };
+  let current = sliceAt({ index: 0, harness: "starter", reverted: false });
+  const slices = [current];
   for (const [at, { kind, data }] of events.entries()) {
     if (isReferenceChange(kind) && isString(data.harness)) {
-      bounds.push({ index: at, harness: data.harness, reverted: kind === "harness.reverted" });
-      tasks.push([]);
-      sessions.push(new Set());
+      current = sliceAt({ index: at, harness: data.harness, reverted: kind === "harness.reverted" });
+      slices.push(current);
     } else if (kind === "task.gate" && heldAtGate(data.outcome) && isString(data.version)) {
-      tasks.at(-1)?.push(data.version);
+      current.tasks.push(data.version);
     } else if (kind.startsWith("build.") && isString(data.session)) {
-      sessions.at(-1)?.add(data.session);
+      current.sessions.add(data.session);
     }
   }
-  return { bounds, tasks, sessions };
+  return slices;
 }
 
-export const tasksByEpoch = (events: readonly LogEvent[]): string[][] => epochSlices(events).tasks;
+export const tasksByEpoch = (events: readonly LogEvent[]): string[][] =>
+  epochSlices(events).map(({ tasks }) => tasks);
 
 export function starterIn(events: readonly LogEvent[]): string | null {
   const named = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
@@ -135,10 +136,10 @@ function epochsFrom(
   controls = controlsIn(events, reports),
 ): Epoch[] {
   const starter = starterIn(events);
-  const { bounds, tasks, sessions } = epochSlices(events);
+  const slices = epochSlices(events);
   const confirmedDigests = new Set<string>();
-  return bounds.map(({ index: from, harness: reference, reverted }, nth) => {
-    const next = bounds[nth + 1];
+  return slices.map(({ index: from, harness: reference, reverted, tasks, sessions }, nth) => {
+    const next = slices[nth + 1];
     const to = next?.index ?? null;
     const own = reports.filter(({ index }) => index >= from && (to === null || index < to));
     const comparisons = own.map(({ session, data }) => ({
@@ -158,8 +159,8 @@ function epochsFrom(
       from,
       to,
       promoted: next === undefined || next.reverted ? null : next.harness,
-      tasks: tasks[nth] ?? [],
-      sessions: sessions[nth]?.size ?? 0,
+      tasks,
+      sessions: sessions.size,
       comparisons,
       ...starterCheck,
       ...keysIf(reverted, () => ({ reverted: true })),

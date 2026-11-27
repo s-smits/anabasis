@@ -194,7 +194,7 @@ function survivorEntries(tree: string, commit: string, rows: readonly Row[]): Su
 }
 
 const ANSWERED = ".claude/skills/mutation-testing/answered-survivors.tsv";
-const ANSWER_KINDS = new Set(["equivalent", "presentation"]);
+const ANSWER_KINDS = new Set(["equivalent", "presentation", "unit-only"]);
 
 function answeredKeys(tree: string): Set<string> {
   const path = join(tree, ANSWERED);
@@ -205,7 +205,7 @@ function answeredKeys(tree: string): Set<string> {
       const [file = "", label = "", source = "", kind = "", reason = ""] = row.split("\t");
       if (!ANSWER_KINDS.has(kind) || reason.trim().split(/\s+/u).length < 3) {
         throw new Error(
-          `${ANSWERED}: "${row}" needs a kind (equivalent or presentation) and a reason a reviewer can check`,
+          `${ANSWERED}: "${row}" needs a kind (equivalent, presentation or unit-only) and a reason a reviewer can check`,
         );
       }
       return `${file}  ${label}  ${source}`;

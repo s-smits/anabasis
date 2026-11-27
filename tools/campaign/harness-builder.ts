@@ -23,19 +23,19 @@ import { endedData, endedOf } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
-import { mkdirSync, openSync, readFileSync } from "#src/meta/filesystem.ts";
+import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
-import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { asError, errorMessage } from "#src/meta/runtime-values.ts";
 import { waitOut } from "#src/solver/run.ts";
 import { acceptCommand } from "../eval/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../eval/draft.ts";
 import { examineCommand } from "../eval/examine.ts";
-import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
+import { hostPython, launchRun, nextRun, writeReceipt } from "../runs/receipt.ts";
 import { BUILDER, campaignOf, keepers, processes, standing, writers } from "../runs/registry.ts";
 import { campaignLog, LIMITS, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
 import { type CampaignContext, campaignTools, releasePendingPractice } from "./campaign-actions.ts";
@@ -325,7 +325,6 @@ async function handoffRevision(
   }
   if (remaining <= 0) return decided;
   const nextArgs = rewriteMovesFlag(rewriteNameFlag(args, name, next.name), remaining);
-  if (paid === "scripted") return await harnessBuilder(nextArgs, seats);
   if (writers(campaignOf(REPO, next.name), processes()).length > 0) {
     console.log(`${name}: successor ${next.name} already has a live writer`);
     return decided;
@@ -334,17 +333,12 @@ async function handoffRevision(
     console.log(`${name}: keeper will continue successor ${next.name}`);
     return decided;
   }
-  const out = join(dirname(next.log), `launch-${nextRun(next.log)}`);
-  const child = capturedSpawn([capturedExecPath, join(REPO, BUILDER), ...nextArgs], {
+  if (paid === "scripted") return await harnessBuilder(nextArgs, seats);
+  const { pid } = launchRun([capturedExecPath, join(REPO, BUILDER), ...nextArgs], next.log, {
     cwd: REPO,
     env: runtimeProcess.env,
-    detached: true,
-    stdin: "ignore",
-    stdout: openSync(`${out}.out`, "a"),
-    stderr: openSync(`${out}.err`, "a"),
   });
-  child.unref();
-  console.log(`${name}: handed off to successor ${next.name} (pid ${String(child.pid)})`);
+  console.log(`${name}: handed off to successor ${next.name} (pid ${String(pid)})`);
   return decided;
 }
 

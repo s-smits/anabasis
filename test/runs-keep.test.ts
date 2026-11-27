@@ -6,7 +6,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { seats } from "../tools/runs/fresh.ts";
-import { keeperOf, nextLogin, roomFor, type Turn, turnOf } from "../tools/runs/keep.ts";
+import { keeperActed, keeperOf, nextLogin, roomFor, type Turn, turnOf } from "../tools/runs/keep.ts";
 import { stateOf } from "../tools/runs/state.ts";
 import { billsLogin, fiveHourWith, type Reading } from "../tools/runs/logins.ts";
 import { WAIT_HOURS } from "../tools/runs/manage.ts";
@@ -15,6 +15,7 @@ import { fakeHosts } from "./helpers/fake-hosts.ts";
 const NOW = Date.parse("2026-10-15T12:00:00.000Z");
 const HOUR = 3_600_000;
 const OPUS = "claude/claude-opus-5-5";
+const ENDED = "campaign.ended" as const;
 const fixtures: string[] = [];
 
 afterAll(() => {
@@ -46,13 +47,14 @@ describe("the turn a keeper takes", () => {
       [[waited(2), event("exam.turn", { session: "x-1", stopReason: "toolUse" })], "open", "watch"],
       [[], "open", "watch"],
       [[event("build.started", { session: "b-1" })], "closed", "continue"],
-      [[event("campaign.ended", { ending: "environment" })], "closed", "continue"],
+      [[event(ENDED, { ending: "environment" })], "closed", "continue"],
     ] as const) {
       expect(turn(events, status === "open")).toBe(expected);
     }
     for (const ending of ["budget", "stop", "operator", "finished", "no-room"]) {
-      expect(turn([event("campaign.ended", { ending })], false)).toBe("done");
+      expect(turn([event(ENDED, { ending })], false)).toBe("done");
     }
+    expect(turn([event(ENDED, { ending: "revise", successor: "sample-rev2" })], false)).toBe("handoff");
     // A wait the launch before this one recorded is not this launch's to move, or the keeper that just
     // moved the run would move it again during its first calls.
     expect(turn([waited(2), event("exam.call", { session: "x-1" })], true, 1)).toBe("watch");
@@ -61,11 +63,11 @@ describe("the turn a keeper takes", () => {
   it("leaves a run that ended on its own terms whatever other keeper lives, and keeps one a login limit cut", () => {
     const kept = (events: readonly LogEvent[]) => stateOf(events, { writing: false, kept: true }, NOW);
     for (const ending of ["budget", "stop", "operator", "finished", "no-room", "exam"]) {
-      const state = kept([event("campaign.ended", { ending })]);
+      const state = kept([event(ENDED, { ending })]);
       expect(state).toEqual({ kind: "ended", ending });
       expect(turnOf(state, NOW, HOUR)).toBe("done");
     }
-    for (const events of [[waited(2)], [waited(2), event("campaign.ended", { ending: "environment" })]]) {
+    for (const events of [[waited(2)], [waited(2), event(ENDED, { ending: "environment" })]]) {
       expect(kept(events).kind).toBe("kept");
       expect(turnOf(kept(events), NOW, HOUR)).toBe("continue");
     }
@@ -257,7 +259,7 @@ describe("a keeper's looks, scripted", () => {
       dead.state.open = false;
       dead.state.otherKeeper = otherKeeper;
       dead.state.events = [
-        event("campaign.ended", {
+        event(ENDED, {
           ending: "environment",
           why: "3 sessions in a row crashed (disabled Claude subscription access)",
         }),
@@ -281,7 +283,7 @@ describe("a keeper's looks, scripted", () => {
     transient.state.open = false;
     transient.state.otherKeeper = true;
     transient.state.events = [
-      event("campaign.ended", {
+      event(ENDED, {
         ending: "environment",
         why: "3 sessions in a row crashed (fetch failed)",
       }),
@@ -312,7 +314,7 @@ describe("a keeper's looks, scripted", () => {
       stopReason: "error",
       error: "disabled Claude subscription access",
     });
-    const ended = (why: string) => event("campaign.ended", { ending: "environment", why });
+    const ended = (why: string) => event(ENDED, { ending: "environment", why });
     const run = async (events: LogEvent[], flags?: readonly string[], login: string | null = "2") => {
       const k = scripted(flags, login);
       k.state.open = false;
@@ -368,6 +370,46 @@ describe("a keeper's looks, scripted", () => {
       done: false,
       acted: ["start 3"],
     });
+  });
+
+  it("hands off to the successor campaign when a run ends on revise, retrying if handoff fails", async () => {
+    const handed: string[] = [];
+    const said: string[] = [];
+    let failOnce = true;
+    const events: LogEvent[] = [event(ENDED, { ending: "revise", successor: "sample-rev2" })];
+    const look = keeperOf("sample", async () => ["2", "3"], WAIT_MS, {
+      events: () => events,
+      stands: (ev, now) => stateOf(ev, { writing: false, kept: false }, now),
+      last: () => ({ login: "2", flags: [`--builder=${OPUS}`] }),
+      fleet: () => Promise.resolve({ live: [], unasked: [] }),
+      read: (wanted) =>
+        Promise.resolve([read("2", 10), read("3", 10)].filter((r) => wanted.includes(r.login))),
+      checkStart: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      start: () => Promise.resolve(true),
+      handoff: async (successor, login) => {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error("transient launch error");
+        }
+        handed.push(`${successor}@${login ?? "none"}`);
+      },
+      say: (line) => said.push(line),
+      env: { ANA_LOGIN_RUNS: "2" },
+    });
+    expect(await look(NOW)).toBe(false);
+    expect(handed).toEqual([]);
+    expect(await look(NOW + MINUTE)).toBe(true);
+    expect(handed).toEqual(["sample-rev2@2"]);
+    expect(said.some((line) => line.includes("handoff to sample-rev2 on login 2") && keeperActed(line))).toBe(
+      true,
+    );
+
+    const noSuccessor = scripted();
+    noSuccessor.state.open = false;
+    noSuccessor.state.events = [event(ENDED, { ending: "revise" })];
+    expect(await noSuccessor.look(NOW)).toBe(true);
+    expect(noSuccessor.state.said.at(-1)).toContain("ended on revise: kept no longer");
   });
 });
 

@@ -102,11 +102,35 @@ const CONTROL = {
   answer: Type.Unknown(),
   files: TEXT_FILES,
 };
-const TASK_FIELDS = {
+export const TASK_FIELDS = {
   family: Type.String({ pattern: "\\S" }),
   public_input: Type.Unknown(),
   hidden: Type.Unknown({ description: "Null when the task has none." }),
 };
+export const CHECK_ITEM_SCHEMA = Type.Object({
+  id: Type.String({ pattern: "^check-[a-z0-9-]+$" }),
+  rule: Type.String({ description: "The id of the one rule it enforces." }),
+  assertion: Type.String({
+    minLength: 1,
+    description: "The property it verifies, in a sentence a solver may read.",
+  }),
+  tools: Type.Optional(
+    Type.Array(Type.String({ minLength: 1 }), {
+      description:
+        "Installed programs this check invokes via `runtime.tools.run` (e.g. `python3`, `bash`, or a domain engine installed in the environment).",
+    }),
+  ),
+});
+export const EVALUATOR_SCHEMA = Type.Union([
+  Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
+  Type.Object({ from_file: Type.String({ minLength: 1 }) }),
+]);
+export const RUBRIC_ITEM_SCHEMA = Type.Object({
+  id: Type.String({ pattern: "^[a-z][a-z0-9-]*$" }),
+  weight: Type.Number({ exclusiveMinimum: 0 }),
+  kind: Type.Optional(Type.Union([Type.Literal("code"), Type.Literal("judge")])),
+  criterion: Type.Optional(Type.String({ minLength: 1 })),
+});
 const OBJECTIVE_FIELDS = {
   quantity: Type.Optional(
     Type.String({
@@ -147,27 +171,8 @@ const DRAFT_COMMON = {
   answer_format: Type.Unknown({
     description: "A JSON Schema of type object, which every answer follows.",
   }),
-  checks: Type.Array(
-    Type.Object({
-      id: Type.String({ pattern: "^check-[a-z0-9-]+$" }),
-      rule: Type.String({ description: "The id of the one rule it enforces." }),
-      assertion: Type.String({
-        minLength: 1,
-        description: "The property it verifies, in a sentence a solver may read.",
-      }),
-      tools: Type.Optional(
-        Type.Array(Type.String({ minLength: 1 }), {
-          description:
-            "Installed programs this check invokes via `runtime.tools.run` (e.g. `python3`, `bash`, or a domain engine installed in the environment).",
-        }),
-      ),
-    }),
-    { minItems: 1 },
-  ),
-  evaluator: Type.Union([
-    Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
-    Type.Object({ from_file: Type.String({ minLength: 1 }) }),
-  ]),
+  checks: Type.Array(CHECK_ITEM_SCHEMA, { minItems: 1 }),
+  evaluator: EVALUATOR_SCHEMA,
   accept_controls: Type.Array(Type.Object(CONTROL)),
   reject_controls: Type.Array(
     Type.Object({ ...CONTROL, check: Type.String({ description: "The check that must refuse it." }) }),
@@ -181,19 +186,11 @@ const DRAFT_PARAMETERS = Type.Object({
     {
       ...OBJECTIVE_FIELDS,
       items: Type.Optional(
-        Type.Array(
-          Type.Object({
-            id: Type.String({ pattern: "^[a-z][a-z0-9-]*$" }),
-            weight: Type.Number({ exclusiveMinimum: 0 }),
-            kind: Type.Optional(Type.Union([Type.Literal("code"), Type.Literal("judge")])),
-            criterion: Type.Optional(Type.String({ minLength: 1 })),
-          }),
-          {
-            minItems: 1,
-            description:
-              'Weighted `[0, 1]` rubric items (`direction: "higher"`). Code items map via `scores[id](request, runtime) => number` in `[0, 1]`; optional `kind: "judge"` items take a one-line `criterion` (20-220 chars, never id `"holistic"`, at most 4) scored by swapped pairwise judging when qualitative substance cannot be checked in code.',
-          },
-        ),
+        Type.Array(RUBRIC_ITEM_SCHEMA, {
+          minItems: 1,
+          description:
+            'Weighted `[0, 1]` rubric items (`direction: "higher"`). Code items map via `scores[id](request, runtime) => number` in `[0, 1]`; optional `kind: "judge"` items take a one-line `criterion` (20-220 chars, never id `"holistic"`, at most 4) scored by swapped pairwise judging when qualitative substance cannot be checked in code.',
+        }),
       ),
     },
     { description: OBJECTIVE_DESCRIPTION },

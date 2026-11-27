@@ -126,21 +126,24 @@ async function verifyWitnesses(input: {
     return { solve, verdict, task, answer: verdict.answer, files };
   };
   const faults: string[] = [];
+  const runWitnesses = async (ids: readonly string[], label: string) => {
+    const loaded = ids.flatMap((id) => {
+      try {
+        const witness = loadWitness(id);
+        return witness === null ? [] : [witness];
+      } catch (error) {
+        faults.push(`${label} witness ${id} files could not be read: ${errorMessage(error)}`);
+        return [];
+      }
+    });
+    return await pooled(loaded, 4, async (witness) => ({
+      witness,
+      result: await verify(witness.task, witness.answer, undefined, witness.files),
+    }));
+  };
   const earnedIds = [...stands.entries()].flatMap(([id, ruling]) => (ruling === "earned" ? [id] : []));
-  const earnedWitnesses = earnedIds.flatMap((id) => {
-    try {
-      const loaded = loadWitness(id);
-      return loaded === null ? [] : [loaded];
-    } catch (error) {
-      faults.push(`earned witness ${id} files could not be read: ${errorMessage(error)}`);
-      return [];
-    }
-  });
+  const earnedResults = await runWitnesses(earnedIds, "earned");
   let earnedRetained = 0;
-  const earnedResults = await pooled(earnedWitnesses, 4, async (witness) => ({
-    witness,
-    result: await verify(witness.task, witness.answer, undefined, witness.files),
-  }));
   for (const { witness, result } of earnedResults) {
     const origBlocking = witness.verdict.checker?.kind === "fail" ? witness.verdict.checker.blocking : [];
     const onCheck =
@@ -162,21 +165,8 @@ async function verifyWitnesses(input: {
   }
   let [defectChecked, defectCleared] = [0, 0];
   if (kind === "repair" && check !== undefined) {
-    const defectIds = defectSolvesFor(events, check);
-    const defectWitnesses = defectIds.flatMap((id) => {
-      try {
-        const loaded = loadWitness(id);
-        return loaded === null ? [] : [loaded];
-      } catch (error) {
-        faults.push(`check-defect witness ${id} files could not be read: ${errorMessage(error)}`);
-        return [];
-      }
-    });
-    defectChecked = defectWitnesses.length;
-    const defectResults = await pooled(defectWitnesses, 4, async (witness) => ({
-      witness,
-      result: await verify(witness.task, witness.answer, undefined, witness.files),
-    }));
+    const defectResults = await runWitnesses(defectSolvesFor(events, check), "check-defect");
+    defectChecked = defectResults.length;
     for (const { witness, result } of defectResults) {
       if (result.kind === "faulty" || result.kind === "non-result") {
         faults.push(`check-defect witness ${witness.solve} faulted under candidate: ${result.reason}`);
@@ -195,7 +185,7 @@ async function verifyWitnesses(input: {
   }
   return {
     faults,
-    summary: { earnedChecked: earnedWitnesses.length, earnedRetained, defectChecked, defectCleared },
+    summary: { earnedChecked: earnedResults.length, earnedRetained, defectChecked, defectCleared },
   };
 }
 
@@ -412,7 +402,19 @@ export async function freezeCandidate(
     crossFamily: crossFamilyVendors,
   });
   if (refusal !== null) throw new Error(refusal);
-  const seen = await draftReading(join(dirname(log), "revisions"), payload.draft, 4);
+  const stagedBundle = join(
+    dirname(log),
+    "revisions",
+    "exams",
+    hashJsonValue(payload.draft).slice(0, 16),
+    "bundle",
+  );
+  const seen = await draftReading(
+    join(dirname(log), "revisions"),
+    payload.draft,
+    4,
+    existsSync(stagedBundle) ? stagedBundle : undefined,
+  );
   if (seen.faults.length > 0 || seen.read === undefined) {
     throw new Error(`candidate no longer passes checker reading: ${seen.faults.join("; ")}`);
   }

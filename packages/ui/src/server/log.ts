@@ -61,7 +61,11 @@ const joined = (...parts: readonly (string | null)[]): string =>
   parts.filter((part): part is string => part !== null && part !== "").join(" · ");
 
 const checkerLine: LineFormatter = (data, kind) => {
-  const [checks, admitted, faults] = [many(data.checks), many(data.admitted), many(data.faults)];
+  const [checks, admitted, faults] = [
+    many(data.checks) ?? many(data.rows),
+    many(data.admitted),
+    many(data.faults),
+  ];
   return {
     group: "campaign",
     what: joined(
@@ -77,11 +81,13 @@ const EVENT_FORMATTERS = new Map<string, LineFormatter>(
   Object.entries({
     "campaign.opened": (data) => {
       const solver = text(isRecord(data.solver) ? data.solver.model : data.solver);
+      const parent = text(isRecord(data.parent) ? data.parent.campaign : null);
       return {
         group: "campaign",
         what: joined(
           "Campaign opened",
           text(data.project),
+          parent === null ? null : `from ${parent}`,
           solver === null ? null : `solver ${solver}`,
           isNumber(data.budget) ? `budget ${money(data.budget)}` : null,
         ),
@@ -104,9 +110,20 @@ const EVENT_FORMATTERS = new Map<string, LineFormatter>(
       group: "campaign",
       what: joined(`The operator's word: ${text(data.word) ?? "?"}`, text(data.why)),
     }),
-    "campaign.ended": (data) => ({
+    "campaign.ended": (data) => {
+      const ending = text(data.ending) ?? "?";
+      const successor = text(data.successor);
+      return {
+        group: "campaign",
+        what:
+          ending === "revise"
+            ? joined("Campaign ended: revise", successor === null ? null : `successor ${successor}`)
+            : joined(`Campaign ended: ${ending}`, text(data.why)),
+      };
+    },
+    "exam.revised": (data) => ({
       group: "campaign",
-      what: joined(`Campaign ended: ${text(data.ending) ?? "?"}`, text(data.why)),
+      what: joined(`Exam revised (${text(data.kind) ?? "?"})`, text(data.draftHash)?.slice(0, 12) ?? null),
     }),
     "campaign.waited": (data) => {
       const waitedFor = text(data.for);

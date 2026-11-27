@@ -537,7 +537,7 @@ export function barLines(events: readonly LogEvent[]): string[] {
     tied === 0
       ? ""
       : ` ${String(tied)} of them tied every task (identical reference outcomes across rollouts, unpowered).`;
-  const revertedNote = revertedCount === 0 ? "" : ` (${String(revertedCount)} reverted)`;
+  const revertedNote = revertedCount === 0 ? "" : ` (${plural(revertedCount, "revert")})`;
   return [
     `- Climb: ${plural(climbed.length, "promotion")}${revertedNote}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
     `- Honesty: ${plural(controls.length, "A/A control")}; ${controlCounts(controls)}${fallbackNote}.${tiedNote} Observational; the bar pools a release's.`,

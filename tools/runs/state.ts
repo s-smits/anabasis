@@ -63,19 +63,16 @@ function waitOf({ at, kind, data }: LogEvent): Wait | null {
 export function stateOf(events: readonly LogEvent[], life: Life, now: number, launched = 0): RunState {
   if (!life.writing) {
     const ending = endingOf(events);
-    if (ending === null) {
-      const pause = pauseSince(events, launched);
-      if (pause !== undefined) {
-        return {
-          kind: "stopped",
-          pause: { at: pause.at, why: isString(pause.data.why) ? pause.data.why : "a pause" },
-        };
-      }
+    const pause = ending === null ? pauseSince(events, launched) : undefined;
+    if (pause !== undefined) {
+      return {
+        kind: "stopped",
+        pause: { at: pause.at, why: isString(pause.data.why) ? pause.data.why : "a pause" },
+      };
     }
     if (life.kept && ending === GOES_ON) return { kind: "kept", ending };
     if (life.kept && ending === null) return { kind: "kept" };
-    if (ending !== null) return { kind: "ended", ending };
-    return { kind: "stopped" };
+    return ending === null ? { kind: "stopped" } : { kind: "ended", ending };
   }
   const ends = events.slice(launched).flatMap((event) => waitOf(event)?.until ?? []);
   const at = events.findLastIndex(

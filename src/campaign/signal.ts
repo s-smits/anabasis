@@ -110,15 +110,8 @@ export const boundedPause = (events: readonly LogEvent[], since: number): boolea
   latestReachedPause(events, since)?.bounded === true &&
   !pendingSignals(events).some(({ word }) => word === "stop");
 
-export function pauseSince(events: readonly LogEvent[], since: number): LogEvent | undefined {
-  const found = latestReachedPause(events, since);
-  if (found === null) return undefined;
-  const last = events.findLast(({ kind, data }) => !(kind === "build.finished" && data.ended === "stopped"));
-  const lastAt = Date.parse(last?.at ?? "");
-  return found.bounded && Number.isFinite(lastAt) && lastAt - found.reached >= PAUSE_STOP_WINDOW_MS
-    ? undefined
-    : found.event;
-}
+export const pauseSince = (events: readonly LogEvent[], since: number): LogEvent | undefined =>
+  latestReachedPause(events, since)?.event;
 
 export function paused(
   events: readonly LogEvent[],

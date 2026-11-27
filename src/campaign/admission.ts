@@ -14,6 +14,7 @@ import { ended, practiceRan, rejectionAside, solvesIn, standsOf } from "../kerne
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { openingOf } from "./opening.ts";
 
 export interface Supply {
   readonly held: number;
@@ -134,11 +135,8 @@ export function stopRule(events: readonly LogEvent[]) {
   const epochAt = activePromotionAt(events);
   const epoch = moves.filter(({ index }) => index > epochAt);
   const lastStep = epoch.findLastIndex(({ step }) => step);
-  const carried =
-    epochAt === -1 && lastStep === -1
-      ? asRecord(asRecord(eventsOf(events, "campaign.opened").at(-1)?.event.data.parent)?.carried)?.sinceStep
-      : undefined;
-  const sinceStep = epoch.length - 1 - lastStep + (isNumber(carried) ? carried : 0);
+  const carried = epochAt === -1 && lastStep === -1 ? (openingOf(events)?.parent?.carried.sinceStep ?? 0) : 0;
+  const sinceStep = epoch.length - 1 - lastStep + carried;
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 

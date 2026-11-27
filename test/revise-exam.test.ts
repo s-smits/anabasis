@@ -35,8 +35,14 @@ import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
 import { ungated } from "../tools/campaign/prepare.ts";
 import { freezeCandidate, type RevisionAuditor, revisionRunner } from "../tools/campaign/revise.ts";
 import { crossFamilyVendors } from "../tools/campaign/round.ts";
-import { openSuccessor, rewriteNameFlag, successorName } from "../tools/campaign/successor.ts";
+import {
+  openSuccessor,
+  rewriteMovesFlag,
+  rewriteNameFlag,
+  successorName,
+} from "../tools/campaign/successor.ts";
 import { keepReading } from "../tools/eval/accept.ts";
+import { examineCommand } from "../tools/eval/examine.ts";
 import { packageOf } from "../tools/m0/stored-sweep.ts";
 import { lastLaunch, writeReceipt } from "../tools/runs/receipt.ts";
 import { replayed } from "../tools/runs/replay.ts";
@@ -47,6 +53,7 @@ import { call, finish, seat, sweep } from "./helpers/examiner-seat.ts";
 setDefaultTimeout(120_000);
 
 const NOTE_FILE = "note.txt";
+const codeItem = (id: string, weight: number) => ({ id, weight, kind: "code" as const });
 const ROOTS: string[] = [];
 afterAll(() => {
   sweep();
@@ -131,12 +138,23 @@ const PARENT_DRAFT: Draft = {
   ],
 };
 
-const SOUND_AUDIT: RevisionAuditor = async () => ({
-  verdict: "sound",
-  findings: [],
-  summary: "sound",
-  probes: [],
-});
+const SOUND_AUDIT: RevisionAuditor = async (_reader, target) => {
+  append(target.log, "referee.draft", {
+    session: target.session,
+    ...keyIfDefined("pass", target.pass),
+    ...keyIfDefined("revision", target.revision),
+    verdict: "sound",
+    findings: [],
+    summary: "sound",
+    probeRows: [],
+  });
+  return {
+    verdict: "sound",
+    findings: [],
+    summary: "sound",
+    probes: [],
+  };
+};
 
 async function seedCampaign(opts?: {
   readonly name?: string;
@@ -465,6 +483,24 @@ describe("revision admission, immutability, and lock exclusion", () => {
       move: "end",
       ending: "exam",
     });
+    const afterTwoRepairs: LogEvent[] = [
+      ...base,
+      {
+        at: "2026-11-27T00:00:03Z",
+        kind: "exam.finished",
+        data: { session: "x-2", ended: "finished", held: ["v2"] },
+      },
+      {
+        at: "2026-11-27T00:00:04Z",
+        kind: "exam.finished",
+        data: { session: "x-3", ended: "finished", held: ["v3"] },
+      },
+    ];
+    expect(nextAction(afterTwoRepairs, { ...plan, canRevise: true })).toMatchObject({
+      code: "bound",
+      move: "end",
+      ending: "exam",
+    });
   });
 });
 
@@ -522,10 +558,7 @@ describe("empirical witnesses, adversarial audit cap, and successor A -> B hando
     const validTuneCandidate = candidateDraft(PARENT_DRAFT, {
       kind: "tune",
       why: "reweight rubric",
-      objective_items: [
-        { id: "accuracy", weight: 2, kind: "code" },
-        { id: "depth", weight: 1, kind: "code" },
-      ],
+      objective_items: [codeItem("accuracy", 2), codeItem("depth", 1)],
     });
     const skipSeed = await seedCampaign({ name: "camp-skip" });
     const skipRunner = revisionRunner({
@@ -641,10 +674,41 @@ describe("empirical witnesses, adversarial audit cap, and successor A -> B hando
     expect(eventsOf(read(hitlSeed.log), "exam.revised")).toHaveLength(0);
     const candidateHash = /--candidate\s+([a-f0-9]+)/u.exec(hitlRes.message)?.[1];
     expect(candidateHash).toBeTruthy();
+    const candidateFile = join(dirname(hitlSeed.log), "revisions", `${candidateHash ?? ""}.json`);
+    const originalCandidateText = readFileSync(candidateFile, "utf8");
+    writeFileSync(candidateFile, originalCandidateText.replace('"accuracy"', '"tampered"'));
+    await expect(freezeCandidate(hitlSeed.log, candidateHash ?? "", hitlSeed.packages())).rejects.toThrow(
+      "hash mismatch",
+    );
+    writeFileSync(candidateFile, originalCandidateText);
     const frozenNext = await freezeCandidate(hitlSeed.log, candidateHash ?? "", hitlSeed.packages());
     expect(frozenNext.name).toBe("camp-hitl-rev2");
+    expect(await freezeCandidate(hitlSeed.log, candidateHash ?? "", hitlSeed.packages())).toEqual(frozenNext);
     expect(eventsOf(read(hitlSeed.log), "exam.revised")).toHaveLength(1);
     expect(endedOf(read(hitlSeed.log))?.ending).toBe("revise");
+
+    const missingWitnessSeed = await seedCampaign({ name: "camp-missing-witness" });
+    append(missingWitnessSeed.log, "verdict", { solve: "s-ghost", task: "missing-task-hash", kind: "fail" });
+    append(missingWitnessSeed.log, "referee.finding", {
+      solve: "s-ghost",
+      task: "ex-999",
+      ruling: "earned",
+      check: "check-strict",
+      reason: "bad",
+    });
+    const ghostRes = await revisionRunner({
+      log: missingWitnessSeed.log,
+      parentBundle: missingWitnessSeed.bundle,
+      packages: missingWitnessSeed.packages,
+      auditor: SOUND_AUDIT,
+    })({
+      session: "x-1",
+      kind: "tune",
+      why: "reweight",
+      candidate: validTuneCandidate,
+    });
+    expect(ghostRes.accepted).toBe(false);
+    expect(ghostRes.message).toContain("could not be loaded");
   });
 
   it("opens successor B idempotently across crash prefixes, carries budget/stopRule/harness/lineage, and enforces 1 tune/epoch", async () => {
@@ -732,10 +796,7 @@ export const scores = {
   depth: ({ artifact }) => Math.min(1, Math.max(0, artifact.detail / 10)),
 };
 `,
-      objective_items: [
-        { id: "accuracy", weight: 3, kind: "code" },
-        { id: "depth", weight: 1, kind: "code" },
-      ],
+      objective_items: [codeItem("accuracy", 3), codeItem("depth", 1)],
       add_reject_controls: [
         {
           task: 0,
@@ -799,7 +860,30 @@ export const scores = {
 
     expect(ungated({ tasks: seed.tasks, pack: (task) => packageOf(seed.checks, task) }, eventsB)).toEqual([]);
 
+    expect(rewriteMovesFlag(["--name", "a", "--moves", "3"], 1)).toEqual(["--name", "a", "--moves", "1"]);
+    expect(rewriteMovesFlag(["--name=a", "--moves=3"], 0)).toEqual(["--name=a", "--moves=0"]);
     expect(revisionRefusal(eventsB, { kind: "tune" })).toContain("already opened from a rubric tune");
+    const repairChildLog = join(dirname(seed.dir), "lin-a-rev3", LOG_FILE);
+    mkdirSync(dirname(repairChildLog), { recursive: true });
+    for (const ev of eventsB) {
+      if (ev.kind === "campaign.opened") {
+        append(repairChildLog, "campaign.opened", {
+          ...ev.data,
+          parent: {
+            campaign: "lin-a-rev2",
+            revised: "deadbeef",
+            kind: "repair",
+            carried: { spent: 12.5, sinceStep: 1, attempts: 1, tunes: 1, tunedThisEpoch: true },
+            lineageTasks: [],
+          },
+        });
+      } else {
+        append(repairChildLog, ev.kind, ev.data);
+      }
+    }
+    expect(revisionRefusal(read(repairChildLog), { kind: "tune" })).toContain(
+      "already opened from a rubric tune",
+    );
     append(next1.log, "harness.promoted", { harness: "h-b1", from: "starter" });
     append(next1.log, "comparison.started", {
       session: "g-s",
@@ -1032,5 +1116,53 @@ export const scores = {
     expect(openingOf(eventsB)?.parent?.kind).toBe("repair");
     expect(eventsOf(eventsB, "contract.frozen")).toHaveLength(1);
     expect(replayed(logB)).toContain(`from ${name} (repair)`);
+
+    const noRevName = `test-rev-audit-guard-${String(runtimeProcess.pid)}`;
+    const noRevDir = join(campRoot, noRevName);
+    ROOTS.push(noRevDir);
+    rmSync(noRevDir, { recursive: true, force: true });
+    mkdirSync(noRevDir, { recursive: true });
+    const noRevLog = join(noRevDir, LOG_FILE);
+    append(noRevLog, "campaign.opened", {
+      project: "demo",
+      budget: { dollars: 50, reserve: 1 },
+      patience: 6,
+      seats: {
+        builder: { model: "claude/claude-opus-5-5", effort: "high" },
+        examiner: { model: "claude/claude-opus-5-5", effort: "high" },
+        reviewer: null,
+      },
+      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
+      prompt: "test domain",
+      terms: { level: "0.05", practice: "0" },
+    });
+    append(noRevLog, "exam.drafted", { session: "d-1", draft: draftObj });
+    const guardRead = await draftReading(noRevDir, PARENT_DRAFT, 4);
+    if (guardRead.read === undefined) throw new Error("expected guard reading");
+    keepReading(noRevLog, guardRead.read.checker, guardRead.read.reading, {
+      admitted: new Set(),
+      authored: true,
+      judge: false,
+      freeze: true,
+      despite: "",
+    });
+    const guardSeat = seat("write", [
+      call("revise_exam", {
+        kind: "tune",
+        why: "attempt without reviewer",
+        objective_items: [
+          { id: "accuracy", weight: 2, kind: "code" },
+          { id: "depth", weight: 1, kind: "code" },
+        ],
+      }),
+      finish,
+      finish,
+    ]);
+    await examineCommand(
+      ["--name", noRevName, "--session", "x-1", "--examiner", "claude/claude-opus-5-5"],
+      (request, wall) =>
+        examine({ ...request, model: guardSeat.request.model, models: guardSeat.request.models }, wall),
+    );
+    expect(eventsOf(read(noRevLog), "exam.revised")).toHaveLength(0);
   });
 });

@@ -293,7 +293,7 @@ export function revisionRefusal(
   ) {
     return "starter confirmation is owed for the promoted reference before tuning; only a check-defect repair is permitted";
   }
-  if (input.kind === "tune" && opening?.parent?.kind === "tune" && epochs.length === 1) {
+  if (input.kind === "tune" && opening?.parent?.carried.tunedThisEpoch === true && epochs.length === 1) {
     return "this epoch already opened from a rubric tune; earn a promotion before tuning again, or use repair for a check-defect";
   }
   if (input.kind === "repair") {

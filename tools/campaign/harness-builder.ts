@@ -36,7 +36,7 @@ import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../eval/draft.ts";
 import { examineCommand } from "../eval/examine.ts";
 import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
-import { BUILDER, keepers, standing } from "../runs/registry.ts";
+import { BUILDER, campaignOf, keepers, processes, standing, writers } from "../runs/registry.ts";
 import { campaignLog, LIMITS, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
 import { type CampaignContext, campaignTools, releasePendingPractice } from "./campaign-actions.ts";
 import {
@@ -67,7 +67,7 @@ import { gated as queued, HOST, waitCrashed, waitPaused } from "./host.ts";
 import { type Campaign, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
 import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
-import { openSuccessor, rewriteNameFlag } from "./successor.ts";
+import { openSuccessor, rewriteMovesFlag, rewriteNameFlag } from "./successor.ts";
 
 const ENDED = "campaign.ended";
 /** A conversation that ended whole, by its finish or at its own limits: what `idleOf` counts
@@ -297,21 +297,6 @@ async function lead(
   return left;
 }
 
-function rewriteMovesFlag(flags: readonly string[], remaining: number): string[] {
-  if (!Number.isFinite(remaining)) return [...flags];
-  const value = String(remaining);
-  const out: string[] = [];
-  for (let at = 0; at < flags.length; at += 1) {
-    const word = flags[at] ?? "";
-    if (word.startsWith("--moves=")) out.push(`--moves=${value}`);
-    else if (word === "--moves") {
-      out.push("--moves", value);
-      at += 1;
-    } else out.push(word);
-  }
-  return out;
-}
-
 async function handoffRevision(
   log: string,
   args: readonly string[],
@@ -330,7 +315,7 @@ async function handoffRevision(
   },
 ): Promise<ScheduledAction> {
   const name = values.name ?? "";
-  const next = await openSuccessor(log);
+  const next = await openSuccessor(log, remaining);
   console.log(`${name}: opened successor campaign ${next.name} at ${next.log}`);
   if (values.handover !== undefined && hasCampaign) {
     await closeCommand([...packOf(values), "--to", values.handover]);
@@ -338,6 +323,10 @@ async function handoffRevision(
   if (remaining <= 0) return decided;
   const nextArgs = rewriteMovesFlag(rewriteNameFlag(args, name, next.name), remaining);
   if (paid === "scripted") return await harnessBuilder(nextArgs, seats);
+  if (writers(campaignOf(REPO, next.name), processes()).length > 0) {
+    console.log(`${name}: successor ${next.name} already has a live writer`);
+    return decided;
+  }
   if (keepers(name).length > 0) {
     console.log(`${name}: keeper will continue successor ${next.name}`);
     return decided;

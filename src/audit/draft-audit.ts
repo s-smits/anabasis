@@ -176,18 +176,15 @@ function refusal(
       if (!moved) {
         return "sound on an exam with an objective requires at least one passing probe whose perturbation changes the objective value";
       }
-      const codeItems = objective.items ?? [];
-      if (codeItems.length > 1) {
-        const untouched = codeItems.filter(
-          ({ id }) =>
-            !rows.some((row) => {
-              const [before, after] = [ownScore(row.original, id), ownScore(row.changed, id)];
-              return conclusive(row) && before !== undefined && after !== undefined && after !== before;
-            }),
-        );
-        if (untouched.length > 0) {
-          return `sound on a multi-item code rubric requires a passing probe that changes each code item; untouched: ${untouched.map(({ id }) => id).join(", ")}`;
-        }
+      const untouched = (objective.items ?? []).filter(
+        ({ id }) =>
+          !rows.some((row) => {
+            const [before, after] = [ownScore(row.original, id), ownScore(row.changed, id)];
+            return conclusive(row) && before !== undefined && after !== undefined && after !== before;
+          }),
+      );
+      if (untouched.length > 0) {
+        return `sound on a multi-item code rubric requires a passing probe that changes each code item; untouched: ${untouched.map(({ id }) => id).join(", ")}`;
       }
     }
     return null;

@@ -487,7 +487,7 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);
   const opening = openingOf(events);
   const carried = opening?.parent?.carried.attempts ?? 0;
-  const carriedRisk = carried === 0 ? 0 : carried * Number(opening?.terms.level ?? 0.02);
+  const carriedRisk = carried === 0 ? 0 : carried * Number(opening?.terms.level);
   const total = Math.min(
     1,
     carriedRisk + epochs.reduce((sum, { falsePromotion }) => sum + falsePromotion.union, 0),

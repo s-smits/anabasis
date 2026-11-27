@@ -321,12 +321,9 @@ function changedFile(files: readonly AnswerFile[], change: ProbeRow["changes"][n
     each.path === inside ? { path: inside, text: parsed } : each,
   );
   const rawMembers = zipMembers(Buffer.from(file.base64, "base64"), DELIVERABLES.bytes).members;
-  const rebuiltZip =
-    rawMembers.length > 0
-      ? storedZip(
-          rawMembers.map(({ path, data }) => ({ path, text: path === inside ? parsed : data })),
-        ).toString("base64")
-      : storedZip(updatedEntries).toString("base64");
+  const rebuiltZip = storedZip(
+    rawMembers.map(({ path, data }) => ({ path, text: path === inside ? parsed : data })),
+  ).toString("base64");
   const { text: _staleText, ...rest } = file;
   return files.with(at, {
     ...rest,

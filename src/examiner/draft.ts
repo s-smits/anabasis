@@ -491,7 +491,7 @@ export const rejectFrom = (controls: DraftArgs["reject_controls"]): Draft["rejec
 
 function draftedFrom(args: DraftArgs): Draft {
   const { quantity, direction, items, tools } = args.objective;
-  const rubric = items !== undefined && items.length > 0 ? rubricFrom(items) : undefined;
+  const rubric = items === undefined ? undefined : rubricFrom(items);
   const objective: Objective | undefined =
     quantity !== undefined && direction !== undefined
       ? {

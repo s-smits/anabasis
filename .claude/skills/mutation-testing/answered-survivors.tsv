@@ -19,6 +19,8 @@ tools/runtime/router/run.ts	20000 -> 20001	const LEAST_CHUNK_MS = 20_000;	equiva
 src/examiner/reviews.ts	0 -> 1	const num = (value: unknown): number => (isNumber(value) ? value : 0);	equivalent	judge.ts:245-250 always records all four extract counts as numbers, so the zero fallback is never read
 src/examiner/reviews.ts	> -> >=	if (prior === undefined || rank > prior.rank) latestComp.set(task, { comparison, rank });	equivalent	rank is the reportedOrder index of one comparison, so equal rank stores the identical value again
 src/examiner/home-store.ts	delete if	if (existsSync(blob)) return digest;	equivalent	performance-only: the blob is content-addressed, so recopying and atomically renaming writes identical bytes
+src/examiner/reviews.ts	&& -> ||	isNumber(data.judge) && isNumber(data.holistic) ? { judge: data.judge, holistic: data.holistic } : null;	equivalent	bun check rejects the mutant: judge and holistic lose their number narrowing (TS2345 at reviews.ts:167 and :183)
+src/examiner/reviews.ts	|| -> &&	item === HOLISTIC || score === null || scores === null ? null : relation(score, scores.holistic);	equivalent	bun check rejects both mutants: score keeps null in relation(score, …) (TS2345), and the second also leaves scores possibly null (TS18047)
 src/examiner/revise.ts	0 -> 1	minimum: 0,	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
 src/examiner/revise.ts	1 -> 2	minItems: 1,	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
 src/examiner/revise.ts	swap ?:	lane === "judged"	presentation	lane-dependent objective_items description the Examiner reads, kept byte-identical as a seat-visible input

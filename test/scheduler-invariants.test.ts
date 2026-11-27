@@ -267,7 +267,7 @@ describe("scheduler decision boundaries", () => {
     expect(nextAction(shortWithPatienceSpent, PLAN)).toMatchObject({ move: "end", ending: "exam" });
   });
 
-  it("caps tasksToAskFor at 16 after promotion, pins enoughWrittenSince and interrupted post-promotion examine, and checks practiceDue bounds", () => {
+  it("caps tasksToAskFor at 24 after promotion, pins enoughWrittenSince and interrupted post-promotion examine, and checks practiceDue bounds", () => {
     const noTasks = [CHECKED];
     expect(
       tasksToAskFor(noTasks, { ...PLAN, wanted: { target: 24, level: 0.02, solves: 2 }, practice: 4 }),
@@ -291,7 +291,7 @@ describe("scheduler decision boundaries", () => {
     ];
     expect(
       tasksToAskFor(afterPromo, { ...PLAN, wanted: { target: 40, level: 0.02, solves: 2 }, practice: 4 }),
-    ).toBe(16);
+    ).toBe(24);
     expect(
       tasksToAskFor(afterPromo, { ...PLAN, wanted: { target: 8, level: 0.1, solves: 2 }, practice: 2 }),
     ).toBe(9);

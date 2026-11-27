@@ -115,10 +115,8 @@ function finalDefectPasses(
   }
   const unverified: DraftAuditPass[] = [];
   const replayed: DraftAuditPass[] = [];
-  for (const [session, rows] of Map.groupBy(passes, (row) => row.session)) {
-    const freezeAt = draftedBy.get(session);
-    if (freezeAt === undefined) continue;
-    const last = rows.findLast((row) => row.index < freezeAt);
+  for (const [session, freezeAt] of draftedBy) {
+    const last = passes.findLast((row) => row.session === session && row.index < freezeAt);
     if (last?.verdict !== "defects") continue;
     if (last.allFindingsProbed) replayed.push(last);
     else unverified.push(last);

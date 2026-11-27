@@ -6,6 +6,7 @@ tools/runs/seed.ts	delete if	if (made.examinerHomeFrom !== undefined) {	presenta
 tools/runs/seed.ts	!== -> ===	if (made.examinerHomeFrom !== undefined) {	presentation	selects which console line describes the Examiner home; seed contents unchanged
 tools/runs/seed.ts	delete if	} else if (!made.examinerHome) {	presentation	guards only the console line saying no Examiner home was restored
 tools/runs/seed.ts	drop !	} else if (!made.examinerHome) {	presentation	flips only whether the no-home console line prints; seed contents unchanged
+tools/campaign/campaign.ts	=== -> !==	webSearch: seat === "builder",	presentation	web search is a tool offered to the Builder and Examiner seats, a seat-visible input kept byte-identical
 tools/campaign/seat-fork.ts	800 -> 801	const WRAP_CALL_ARGS_BYTES = 800;	presentation	one-byte shift of the call-args bound in simulation wrap text that no campaign seat reads
 tools/campaign/seat-fork.ts	2400 -> 2401	const WRAP_CALL_TEXT_BYTES = 2400;	presentation	one-byte shift of the call-result bound in simulation wrap text that no campaign seat reads
 tools/campaign/seat-fork.ts	6000 -> 6001	const WRAP_TURN_TEXT_BYTES = 6000;	presentation	one-byte shift of the per-turn bound in simulation wrap text that no campaign seat reads
@@ -24,6 +25,8 @@ src/examiner/revise.ts	swap ?:	lane === "judged"	presentation	lane-dependent obj
 src/examiner/revise.ts	=== -> !==	lane === "judged"	presentation	lane-dependent objective_items description the Examiner reads, kept byte-identical as a seat-visible input
 src/examiner/revise.ts	1 -> 2	Type.Array(Type.String({ minLength: 1 }), {	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
 src/examiner/revise.ts	1 -> 2	Type.Array(Type.Object({ ...CONTROL_ADD, check: Type.String({ minLength: 1 }) }), {	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
+src/examiner/revise.ts	> -> >=	at > changedAt &&	equivalent	at is a comparison.started index and changedAt a harness.promoted or harness.reverted index or -1, so the two are never equal
+src/campaign/scheduler.ts	> -> >=	if (count > 0) {	equivalent	count is a length, so >= 0 always holds and the guarded block yields nonFrontier 0 on an empty releases list anyway; the guard only skips three folds over the log
 tools/campaign/successor.ts	4 -> 5	const { faults, read: seen } = await draftReading(dirB, rev.draft, 4);	equivalent	the width argument only sets how many checks run at once in pooled readChecker, never which ones run
 src/campaign/opening.ts	|| -> &&	!isString(rec.campaign) ||	equivalent	bun check rejects the mutant: campaign and revised lose their string narrowing (TS2322)
 src/campaign/opening.ts	|| -> &&	!isString(rec.revised) ||	equivalent	bun check rejects the mutant: campaign and revised lose their string narrowing (TS2322)
@@ -38,3 +41,4 @@ tools/runs/pulse.ts	?? -> &&	(before === undefined && onStatus(run, "closed", Da
 src/audit/judge.ts	96000 -> 96001	const ANSWER_BYTES = 96_000;	presentation	caps the answer text in the Referee's pair prompt, a seat-visible input kept byte-identical
 src/audit/judge.ts	32000 -> 32001	const TASK_JSON_BYTES = 32_000;	presentation	caps the task JSON in the Referee's pair prompt, a seat-visible input kept byte-identical
 src/audit/judge.ts	1 -> 2	path: Type.String({ minLength: 1 }),	presentation	view_image parameter schema the Referee reads, kept byte-identical as a seat-visible input
+tools/wri/components.ts	< -> <=	const last = passes.findLast((row) => row.session === session && row.index < freezeAt);	equivalent	row.index is a referee.draft event's index and freezeAt an exam.drafted event's index, so the two are never equal

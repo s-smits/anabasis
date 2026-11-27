@@ -7,8 +7,7 @@ import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../met
 import type { Plan } from "./state.ts";
 
 export type RevisionKind = "tune" | "repair";
-export const isRevisionKind = (value: unknown): value is RevisionKind =>
-  value === "tune" || value === "repair";
+const isRevisionKind = (value: unknown): value is RevisionKind => value === "tune" || value === "repair";
 
 export interface Seat {
   readonly model: string;

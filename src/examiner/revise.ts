@@ -234,6 +234,9 @@ function hasPendingPromotion(events: readonly LogEvent[]): boolean {
   );
 }
 
+export const tunedThisEpoch = (events: readonly LogEvent[]): boolean =>
+  openingOf(events)?.parent?.carried.tunedThisEpoch === true && epochsOf(events).length === 1;
+
 export function revisionRefusal(
   events: readonly LogEvent[],
   input: {
@@ -273,7 +276,7 @@ export function revisionRefusal(
   ) {
     return "starter confirmation is owed for the promoted reference before tuning; only a check-defect repair is permitted";
   }
-  if (input.kind === "tune" && opening?.parent?.carried.tunedThisEpoch === true && epochs.length === 1) {
+  if (input.kind === "tune" && tunedThisEpoch(events)) {
     return "this epoch already opened from a rubric tune; earn a promotion before tuning again, or use repair for a check-defect";
   }
   if (input.kind === "repair") {

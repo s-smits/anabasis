@@ -502,7 +502,7 @@ export async function harnessBuilder(
       const waited = await waitPaused(log, began, campaign?.limits.wallSeconds ?? LIMITS.wallSeconds, {
         host: seats.host,
       });
-      if (boundedPause(waited ? read(log) : events, began)) return decided;
+      if (boundedPause(read(log), began)) return decided;
       if (waited) continue;
     }
     if (decided.move === "build" || (decided.move === "examine" && decided.code !== "bound")) {

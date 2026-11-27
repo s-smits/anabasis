@@ -172,9 +172,10 @@ export function boundPublicInput(publicInput: JsonValue): JsonValue {
     if (row === null || !isString(row.path)) return entry;
     if (isString(row.base64)) {
       const bytes = fileRowBytes(row)?.length;
-      if (bytes === undefined) return entry;
       const { base64: _omitted, ...rest } = row;
-      return { ...rest, bytes, omittedBytes: bytes };
+      return bytes === undefined
+        ? { ...rest, omittedBytes: row.base64.length, invalidBase64: true }
+        : { ...rest, bytes, omittedBytes: bytes };
     }
     if (Array.isArray(row.entries)) {
       const { entries: _omitted, ...rest } = row;

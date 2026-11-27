@@ -366,6 +366,8 @@ async function converse(
     if (bench.halt.signal.aborted) throw new Error("The session has ended at a bound.");
   };
   const started = (await campaign?.start?.()) ?? "";
+  const withStatus = (...parts: string[]) =>
+    [...parts, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n");
   const sat = await runAgent({
     models: request.models,
     home: join(host, "model"),
@@ -374,10 +376,7 @@ async function converse(
     model,
     effort: request.effort,
     system: systemPrompt(bench.modePrompts, request.contract.objective),
-    opening: applyContinuation(
-      [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
-      request.continuation,
-    ),
+    opening: applyContinuation(withStatus(first, started), request.continuation),
     tools,
     ...keyIfDefined("env", env),
     trace: { log, of: "build" },
@@ -390,9 +389,7 @@ async function converse(
       const harness = await harnessNow(bench);
       const practice =
         isString(harness) && hasPractice(bench, read(log, TRACE_KINDS), harness) ? "counted" : "uncounted";
-      return [continuation(used(), limits, harness, bench.modePrompts, practice), campaign?.hook() ?? ""]
-        .filter((part) => part !== "")
-        .join("\n\n");
+      return withStatus(continuation(used(), limits, harness, bench.modePrompts, practice));
     },
     onTurn: () => {
       told = false;

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { printed } from "#skills/main/print.ts";
 import {
   existsSync,
   mkdirSync,
@@ -343,16 +344,17 @@ function writeReport(opts: {
   const heading = diffMode
     ? `# Nightly diff mutation at ${head.slice(0, 9)} (since ${diffBase.slice(0, 9)})`
     : `# Nightly mutation at ${head.slice(0, 9)}`;
-  const lines = [heading, "", "| owner | killed | survived | unread |", "| --- | --- | --- | --- |"];
   const now: Row[] = [];
   const before: Row[] = [];
+  const tableRows: string[][] = [];
   for (const owner of owners) {
     const rows = rowsOf(join(here, `${stem(owner, diffBase)}.jsonl`));
     now.push(...rows);
     if (!diffMode && prevFull !== null) before.push(...rowsOf(join(state, prevFull, `${slug(owner)}.jsonl`)));
     const count = (kind: string) => String(rows.filter((row) => verdictOf(row) === kind).length);
-    lines.push(`| \`${owner}\` | ${count("killed")} | ${count("survived")} | ${count("unread")} |`);
+    tableRows.push([`\`${owner}\``, count("killed"), count("survived"), count("unread")]);
   }
+  const lines = [heading, "", printed(["owner", "killed", "survived", "unread"], tableRows)];
   const added = diffMode
     ? survivorEntries(tree, head, now)
     : prevFull === null

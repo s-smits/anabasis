@@ -31,10 +31,10 @@ import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { packOf } from "#tools/runs/registry.ts";
 import { firstComparisonDelay } from "#tools/runs/view.ts";
-import { summed } from "#tools/wri/folds.ts";
-import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { campaignLogs, type Found, rehearsed } from "./logs.ts";
 import { MISSING } from "./print.ts";
+import { summed } from "./stats.ts";
+import { overloadOf, waitedMs, waitsOf } from "./time.ts";
 
 /** `draft.call` is kept for what a drafting session cut short had metered (`unfinished`,
  *  `src/kernel/trace.ts`). */

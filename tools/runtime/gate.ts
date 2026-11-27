@@ -14,6 +14,7 @@ import {
   readFileSync,
 } from "../../src/meta/filesystem.ts";
 import { sha256 } from "../../src/meta/digest.ts";
+import { repoRoot } from "../../src/meta/git.ts";
 import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
@@ -318,7 +319,7 @@ async function gate(argv: readonly string[]): Promise<number> {
     options: { static: { type: "boolean", default: false } },
   });
   const pass: Pass = values.static ? "static" : "whole";
-  const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
+  const root = repoRoot();
   for (const [name, args] of FIRST) {
     const code = await step(root, name, args);
     if (code !== 0) return code;

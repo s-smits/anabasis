@@ -11,6 +11,7 @@
  * pairs (`scored`, `isSignificant`, `detectable`, `carriedBy`).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { printed } from "#skills/main/print.ts";
 import {
   carriedBy,
   detectable,
@@ -144,21 +145,34 @@ function solvedIn(events: readonly LogEvent[]): Map<string, Solved> {
 /** The cost is the log's whole bill over the counted solves, the Referee's rulings included, so it
  *  runs a little over the solves' own; the time is a solve's wall, which a harness's own programs
  *  can fill. */
-function tableLines(
+function summaryTable(
   rows: readonly { system: System; own: Map<string, Solved>; billed: number; count: number }[],
-): string[] {
+): string {
   const minutes = (seconds: number | null) => (seconds === null ? "n/a" : `${(seconds / 60).toFixed(1)} min`);
-  return [
-    "| system | valid solves | average cost a solve (whole trial) | average time a solve | slowest solve | average model turns |",
-    "| --- | --- | --- | --- | --- | --- |",
-    ...rows.map(({ system, own, billed, count }) => {
+  return printed(
+    [
+      "system",
+      "valid solves",
+      "average cost a solve (whole trial)",
+      "average time a solve",
+      "slowest solve",
+      "average model turns",
+    ],
+    rows.map(({ system, own, billed, count }) => {
       const solves = [...own.values()];
       const valid = solves.flatMap((row) => row.valid);
       const seconds = solves.flatMap((row) => row.seconds).filter(isNumber);
       const turns = mean(solves.flatMap((row) => row.turns).filter(isNumber));
-      return `| ${system.name} | ${String(valid.filter(Boolean).length)} of ${String(valid.length)} | ${count === 0 ? "n/a" : dollars(billed / count)} | ${minutes(mean(seconds))} | ${minutes(seconds.length === 0 ? null : Math.max(...seconds))} | ${turns === null ? "n/a" : turns.toFixed(1)} |`;
+      return [
+        system.name,
+        `${String(valid.filter(Boolean).length)} of ${String(valid.length)}`,
+        count === 0 ? "n/a" : dollars(billed / count),
+        minutes(mean(seconds)),
+        minutes(seconds.length === 0 ? null : Math.max(...seconds)),
+        turns === null ? "n/a" : turns.toFixed(1),
+      ];
     }),
-  ];
+  );
 }
 
 function systemLines(system: System, digest: string, own: Map<string, Solved>): string[] {
@@ -320,7 +334,9 @@ async function main(args: CommandArgs): Promise<number> {
     reviewer: args.value("reviewer") ?? undefined,
     "reviewer-effort": args.value("reviewer-effort") ?? "high",
   };
-  if (!args.flag("read") && (!(cap > 0) || !Number.isFinite(cap) || reviewer.reviewer === undefined)) {
+  const readOnly = args.flag("read");
+  const solveCap = readOnly ? null : cap;
+  if (!readOnly && (solveCap === null || !(solveCap > 0) || reviewer.reviewer === undefined)) {
     return args.die(
       "name --cap, the dollars every system's solves may bill together, and --reviewer, the Referee",
     );
@@ -363,18 +379,18 @@ async function main(args: CommandArgs): Promise<number> {
         checkTrial(
           logged,
           { ...measured, harness: harness.digest, limits, contract },
-          args.flag("read") ? undefined : seat.setting,
+          readOnly ? undefined : seat.setting,
         );
         return logged;
       };
       return { system: measured, log, harness, seat, reviewers: reviewersNamed(campaign, reviewer), trial };
     }),
   );
-  if (!args.flag("read")) {
+  if (solveCap !== null) {
     const lock = join(out, ".solving");
     if (!hold(lock)) throw new Error(`another comparison is solving under ${seed}`);
     try {
-      await solveAll(opened, { source, seed, tasks, solves, cap });
+      await solveAll(opened, { source, seed, tasks, solves, cap: solveCap });
     } finally {
       release(lock);
     }
@@ -400,7 +416,7 @@ async function main(args: CommandArgs): Promise<number> {
     "",
     ...trials.flatMap(({ system, harness, own }) => systemLines(system, harness.digest, own)),
     "",
-    ...tableLines(trials),
+    summaryTable(trials),
     "",
     ...itself(baseline, old, at),
     ...trials.slice(1).flatMap(({ system, own }) => pairLines([baseline, old], [system, own], at)),
@@ -420,8 +436,8 @@ if (import.meta.main) {
         candidate: "list",
         tasks: "int",
         solves: "int",
-        cap: "text",
-        level: "text",
+        cap: "number",
+        level: "number",
         read: "flag",
         reviewer: "text",
         "reviewer-effort": "text",

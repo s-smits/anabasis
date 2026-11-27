@@ -4,6 +4,7 @@
  * with each one's first run in the window: `actions.ts [--hours 24]`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { ghOrThrow } from "#tools/runtime/pulls.ts";
@@ -37,7 +38,7 @@ if (import.meta.main) {
   await runCommand(
     { name: "actions", usage: "actions.ts [--hours 24]", options: { hours: "int" } },
     (args: CommandArgs) => {
-      const since = new Date(Date.now() - (args.int("hours") ?? 24) * 3_600_000).toISOString();
+      const since = new Date(Date.now() - (args.int("hours") ?? 24) * HOUR_MS).toISOString();
       const listed = ghOrThrow(runtimeProcess.cwd(), [
         "run",
         "list",

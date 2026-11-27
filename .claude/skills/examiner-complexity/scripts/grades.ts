@@ -17,7 +17,7 @@ import { solvesIn } from "#src/kernel/solves.ts";
 import { readFileSync } from "#src/meta/filesystem.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { logAcross } from "#tools/runs/snapshots.ts";
+import { namedLogs } from "#skills/main/logs.ts";
 
 const STATED = /^(\d): /u;
 
@@ -161,7 +161,7 @@ if (import.meta.main) {
             task === undefined || grade === undefined ? [] : [[task, grade] as const],
           ),
       );
-      const logs = await Promise.all(paths.map(async (named) => read(await logAcross(named))));
+      const logs = (await namedLogs(paths)).map(({ path }) => read(path));
       for (const line of gradeLines(grades, outcomesOf(logs))) console.log(line);
     },
   );

@@ -7,6 +7,8 @@
  * was practised, from `starterReads` and `familiesOf`, and audits each Builder's practice. It prints
  * tallies, percentages, session ids and counts, never family names, task text or raw objective values.
  */
+import { formatTally } from "#skills/main/print.ts";
+import { summed } from "#skills/main/stats.ts";
 import { ORIGINS, type Origin, type StarterRead, starterReads } from "#src/campaign/climb.ts";
 import { testOf, type Tally } from "#src/kernel/compare.ts";
 import { familiesOf } from "#src/kernel/history.ts";
@@ -16,7 +18,7 @@ import { callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { indexOf, practiceOf, summed, text, formatTally } from "./folds.ts";
+import { indexOf, practiceOf, text } from "./folds.ts";
 
 const SHORT_ORIGIN: Readonly<Record<Origin, string>> = {
   [ORIGINS[0]]: "chosen",

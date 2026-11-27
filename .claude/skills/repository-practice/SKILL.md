@@ -1,6 +1,6 @@
 ---
 name: repository-practice
-description: "Use before preparing commits or PRs, writing PR descriptions, comments, or prompts, choosing tests or checks, citing evidence rungs, or working near .ana/, .env, vendor/, or src/sandbox/. Explains evidence levels (present in source, proved without a model, exercised live), repository terminology, and directory ownership (AGENTS.md sections 9 to 14). preflight.ts reports required checks and labels; direction.ts detects forbidden production-to-helper imports. Procedures belong to stack-pr, run-management, and attribution-and-proof; coding habits live in tools/oxlint/HABITS.md."
+description: "Use before preparing commits or PRs, writing PR descriptions, comments, or prompts, choosing tests or checks, citing evidence rungs, or working near .ana/, .env, vendor/, or src/sandbox/. Explains evidence levels (present in source, proved without a model, exercised live), repository terminology, and directory ownership (AGENTS.md sections 9 to 14). preflight.ts reports required checks and labels; direction.ts detects forbidden production-to-helper and skill-main-to-skill imports. Procedures belong to stack-pr, run-management, and attribution-and-proof; coding habits live in tools/oxlint/HABITS.md."
 ---
 
 # Repository practice
@@ -54,4 +54,4 @@ perform actual validation. Its test suite lives in `test/repository-practice-scr
 bun .claude/skills/repository-practice/scripts/direction.ts [--file <path>]...
 ```
 
-`AGENTS.md` section 12 enforces one-way dependencies, gated in `tools/loc/source-policy.ts` (`commit:check`, `gate`, `ci.yml`). This script wraps that check for targeted `--file` runs, flagging any import from production code (`src/`, `vendor/`, `packages/`, and `tools/` outside `tools/wri/`) into `.claude/`, `tools/wri/`, `studies/`, or `test/`, exiting with status 1 if any violation is found. Its tests live in `test/repository-practice-script.test.ts`.
+`AGENTS.md` section 12 enforces one-way dependencies, gated in `tools/loc/source-policy.ts` (`commit:check`, `gate`, `ci.yml`). This script wraps that check for targeted `--file` runs, flagging any import from production code (`src/`, `vendor/`, `packages/`, and `tools/` outside `tools/wri/`) into `.claude/`, `tools/wri/`, `studies/`, or `test/`, or from `.claude/skills/main/` into other helper trees (`.claude/` outside `main/`, `tools/wri/`, `studies/`) or `test/`, exiting with status 1 if any violation is found. Its tests live in `test/repository-practice-script.test.ts`.

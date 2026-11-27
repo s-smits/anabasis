@@ -11,6 +11,7 @@ import { falseSteps as againstBar, type Shift, shiftOf } from "#skills/main/stat
 import { DAY_MS } from "#src/meta/clock.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { median } from "#src/meta/tally.ts";
+import { plural } from "#src/meta/text.ts";
 import { campaignsOf, outsideLines, scoresOf } from "./outside.ts";
 
 const USAGE = `usage:
@@ -33,7 +34,7 @@ const USAGE = `usage:
 const OPTIONS = {
   window: "int",
   back: "int",
-  until: "text",
+  until: "time",
   pack: "list",
   "any-setting": "flag",
   has: "list",
@@ -263,7 +264,7 @@ function atHorizon(windows: readonly Window[], at: (run: Run, hours: number) => 
     : `No newest run was cut short past ${String(FLOOR)} h, so each run is read whole`;
   return {
     windows: kept.map((window) => ({ ...window, runs: window.runs.map((run) => at(run, hours)) })),
-    line: `${read}; ${counted(left, "run")} cut short sooner ${left === 1 ? "is" : "are"} left out.`,
+    line: `${read}; ${plural(left, "run")} cut short sooner ${left === 1 ? "is" : "are"} left out.`,
   };
 }
 
@@ -300,13 +301,12 @@ function changed({ relative, shift, verdict }: Change): string {
 }
 const day = (at: number) => new Date(at).toISOString().slice(0, 10);
 const labelOf = ({ back }: Window) => (back === 0 ? "now" : `${String(back)} back`);
-const counted = (count: number, what: string) => `${String(count)} ${what}${count === 1 ? "" : "s"}`;
 
 function pooledLine(window: Window): string {
   const distinct = (key: "release" | "setting") => [...new Set(window.runs.map((run) => run[key]))];
   const opened = `${labelOf(window)}: opened ${day(window.from)} to ${day(window.to - 1)}`;
   if (window.runs.length === 0) return `${opened}, no run`;
-  return `${opened}, ${counted(window.runs.length, "run")}, ${counted(distinct("setting").length, "setting")}, ${distinct("release").join(", ")}`;
+  return `${opened}, ${plural(window.runs.length, "run")}, ${plural(distinct("setting").length, "setting")}, ${distinct("release").join(", ")}`;
 }
 
 export function guardOf(
@@ -422,9 +422,7 @@ async function main(args: CommandArgs): Promise<number> {
   const format = formatOf(args);
   const [days, back] = [args.int("window") ?? 7, args.int("back") ?? 2];
   if (days < 1 || back < 1) return args.die("--window and --back take a whole number from 1");
-  const named = args.value("until");
-  const until = named === null ? Date.now() : Date.parse(named);
-  if (Number.isNaN(until)) return args.die(`--until takes a date; got ${named ?? ""}`);
+  const until = args.time("until") ?? Date.now();
   const kept = { home: args.value("runs"), repo: runtimeProcess.cwd() };
   const { runs, skipped, at } = await loadRuns({
     until,

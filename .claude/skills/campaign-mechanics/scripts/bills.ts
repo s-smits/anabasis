@@ -10,7 +10,7 @@
  * their campaign's reserve.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { campaignLogs } from "#skills/main/logs.ts";
+import { campaignLogs, namedLogs } from "#skills/main/logs.ts";
 import { formatOf, MISSING, printed } from "#skills/main/print.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -18,7 +18,6 @@ import { SEATS, type Seat, traced, whose } from "#src/kernel/trace.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
 import { logEvents } from "#tools/runs/registry.ts";
-import { logAcross } from "#tools/runs/snapshots.ts";
 
 const SINCE = "2026-10-25";
 /** Multiplier above a seat's median turn cost that flags an outlier turn poorly captured by turn counts. */
@@ -163,13 +162,13 @@ if (import.meta.main) {
       if ((home === null) === (args.positionals.length === 0)) {
         args.die("name the campaigns, or a folder of them with --runs");
       }
-      const paths =
+      const logs =
         home === null
-          ? await Promise.all(args.positionals.map((named) => logAcross(named)))
-          : (await campaignLogs(home, [], args.value("since") ?? SINCE)).map(({ path }) => path);
-      const seats = paths.flatMap((path) => billedSeats(logEvents(path)));
+          ? await namedLogs(args.positionals)
+          : await campaignLogs(home, [], args.value("since") ?? SINCE);
+      const seats = logs.flatMap(({ path }) => billedSeats(logEvents(path)));
       console.log(printed(HEAD, billRows(seats), formatOf(args)));
-      console.log(`\n${String(paths.length)} logs, ${String(seats.length)} finished seats with a bill.`);
+      console.log(`\n${String(logs.length)} logs, ${String(seats.length)} finished seats with a bill.`);
     },
   );
 }

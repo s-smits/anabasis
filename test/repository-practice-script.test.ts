@@ -53,11 +53,22 @@ describe("the tree a change is made in", () => {
 });
 
 describe("the direction check", () => {
-  it("reports production-to-helper and test imports while allowing helpers to import production", () => {
+  it("reports production-to-helper, test, and skill-main-to-helper imports while allowing helpers to import production", () => {
     const edges = new Map<string, readonly string[]>([
       ["src/a.ts", ["src/b.ts", ".claude/skills/x/scripts/y.ts"]],
       ["tools/campaign/c.ts", ["tools/wri/folds.ts", "test/helpers/matchers.ts", "src/a.ts"]],
-      [".claude/skills/x/scripts/y.ts", ["src/a.ts"]],
+      [
+        ".claude/skills/main/cli.ts",
+        [
+          "src/meta/git.ts",
+          ".claude/skills/main/print.ts",
+          ".claude/skills/x/scripts/y.ts",
+          "tools/wri/folds.ts",
+          "studies/s/run.ts",
+          "test/helpers/matchers.ts",
+        ],
+      ],
+      [".claude/skills/x/scripts/y.ts", ["src/a.ts", ".claude/skills/main/cli.ts"]],
       ["studies/s/run.ts", ["src/a.ts"]],
     ]);
     const found = breaches([...edges.keys()], (file) => edges.get(file) ?? []);
@@ -65,6 +76,14 @@ describe("the direction check", () => {
       { file: "src/a.ts", imported: ".claude/skills/x/scripts/y.ts", root: ".claude/" },
       { file: "tools/campaign/c.ts", imported: "tools/wri/folds.ts", root: "tools/wri/" },
       { file: "tools/campaign/c.ts", imported: "test/helpers/matchers.ts", root: "test/" },
+      {
+        file: ".claude/skills/main/cli.ts",
+        imported: ".claude/skills/x/scripts/y.ts",
+        root: ".claude/",
+      },
+      { file: ".claude/skills/main/cli.ts", imported: "tools/wri/folds.ts", root: "tools/wri/" },
+      { file: ".claude/skills/main/cli.ts", imported: "studies/s/run.ts", root: "studies/" },
+      { file: ".claude/skills/main/cli.ts", imported: "test/helpers/matchers.ts", root: "test/" },
     ]);
   });
 });

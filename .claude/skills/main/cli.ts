@@ -5,9 +5,11 @@
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { homedir } from "#src/meta/os.ts";
-import { isAbsolute, join, relative, resolve } from "#src/meta/path.ts";
+import { isAbsolute, relative, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+
+export const SKILL_REPO = resolve(import.meta.dir, "..", "..", "..");
 
 /**
  * Prints the script name and one-line diagnostic to stderr, then exits with `code`.
@@ -15,10 +17,11 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 type ExitWith = (message: string, code?: number) => never;
 
 /**
- * `abs` requires an absolute path, `int` an integer, `list` collects repeated occurrences, `text`
- * takes one string, and `flag` is a boolean switch.
+ * `abs` requires an absolute path, `int` an integer, `number` a finite decimal number, `time` an
+ * ISO-8601 date or timestamp (`YYYY-MM-DD...`, parsed with `Date.parse`), `list` collects repeated
+ * occurrences, `text` takes one string, and `flag` is a boolean switch.
  */
-type OptionKind = "text" | "abs" | "int" | "flag" | "list";
+type OptionKind = "text" | "abs" | "int" | "number" | "time" | "flag" | "list";
 
 /** An explicit exit code, or nothing for 0. */
 type CommandResult = number | undefined | void;
@@ -38,6 +41,8 @@ export interface CommandArgs {
   /** Exits via `die` when missing or empty. */
   required: (name: string) => string;
   int: (name: string) => number | null;
+  number: (name: string) => number | null;
+  time: (name: string) => number | null;
   flag: (name: string) => boolean;
   list: (name: string) => readonly string[];
 }
@@ -132,6 +137,26 @@ function commandArgs(spec: CommandSpec, parsed: Parsed, die: ExitWith): CommandA
       if (!/^-?\d+$/.test(raw)) die(`--${name} must be an integer, got ${capturedJsonStringify(raw)}`);
       return Number(raw);
     },
+    number: (name) => {
+      kindOf(name, "number");
+      const raw = text(name);
+      if (raw === undefined) return null;
+      const parsedNumber = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/u.test(raw) ? Number(raw) : Number.NaN;
+      if (!Number.isFinite(parsedNumber)) {
+        die(`--${name} must be a number, got ${capturedJsonStringify(raw)}`);
+      }
+      return parsedNumber;
+    },
+    time: (name) => {
+      kindOf(name, "time");
+      const raw = text(name);
+      if (raw === undefined) return null;
+      const parsedTime = /^\d{4}-\d{2}-\d{2}/u.test(raw) ? Date.parse(raw) : Number.NaN;
+      if (Number.isNaN(parsedTime)) {
+        die(`--${name} must be an ISO date or time, got ${capturedJsonStringify(raw)}`);
+      }
+      return parsedTime;
+    },
     flag: (name) => {
       kindOf(name, "flag");
       return parsed.values[name] === true;
@@ -194,7 +219,7 @@ export async function runCommand(
     if (route.host === "") die("--host needs a host's name");
     const { scriptOn } = await import("#tools/runs/hosts.ts");
     const { hostNamed } = await import("#tools/runs/host-config.ts");
-    const script = relative(join(import.meta.dir, "..", "..", ".."), Bun.main);
+    const script = relative(SKILL_REPO, Bun.main);
     try {
       runtimeProcess.exitCode = await scriptOn(hostNamed(route.host), script, route.args);
     } catch (error) {

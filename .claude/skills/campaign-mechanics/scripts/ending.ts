@@ -5,6 +5,7 @@
  *   bun .claude/skills/campaign-mechanics/scripts/ending.ts <name | path/to/log.jsonl> [--at <line | ISO time>]
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { countsLine } from "#skills/main/print.ts";
 import { refusals, stopRule, supplyOf } from "#src/campaign/admission.ts";
 import { CRASHES_IN_A_ROW, nextAction, supplyRun } from "#src/campaign/scheduler.ts";
 import { askedOf, crashedRun } from "#src/campaign/state.ts";
@@ -12,12 +13,12 @@ import { decidedLine } from "#src/campaign/move.ts";
 import { pendingSignals } from "#src/campaign/signal.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { existsSync } from "#src/meta/filesystem.ts";
-import { isAbsolute, resolve } from "#src/meta/path.ts";
+import { resolve } from "#src/meta/path.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { IDLE, idleOf, MOVED } from "#tools/campaign/campaign-terms.ts";
-import { logEvents, readNamed } from "#tools/runs/registry.ts";
+import { logEvents } from "#tools/runs/registry.ts";
+import { logAcross } from "#tools/runs/snapshots.ts";
 import { planOn } from "#tools/runs/view.ts";
 
 type Ending = ReturnType<typeof campaignEnding>;
@@ -72,11 +73,7 @@ export function campaignEnding(events: readonly LogEvent[]) {
 }
 
 function movesLine({ total, counts }: ReturnType<typeof movesOf>): string {
-  if (total === 0) return "no move";
-  const listed = Object.entries(counts)
-    .map(([key, count]) => `${key} ${String(count)}`)
-    .join(", ");
-  return `${plural(total, "move")} (${listed})`;
+  return total === 0 ? "no move" : `${plural(total, "move")} (${countsLine(counts)})`;
 }
 
 function standingLines({
@@ -129,10 +126,9 @@ export function endingLines({ events, endings, since, standing }: Ending, reads 
 if (import.meta.main) {
   await runCommand(
     { name: "ending", usage: USAGE, positionals: 1, options: { at: "text" } },
-    (args: CommandArgs) => {
+    async (args: CommandArgs) => {
       const [given = ""] = args.positionals;
-      // A path to a log as given, relative ones included; anything else is a campaign's name.
-      const path = isAbsolute(given) || existsSync(given) ? resolve(given) : readNamed(given).path;
+      const path = resolve(await logAcross(given));
       const at = args.value("at");
       const all = logEvents(path);
       const events = at === null ? all : eventsAt(all, at);

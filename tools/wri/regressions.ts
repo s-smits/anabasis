@@ -1,3 +1,4 @@
+import { formatTally } from "#skills/main/print.ts";
 import { epochsOf, ORIGINS, starterReads } from "#src/campaign/climb.ts";
 import { callPrograms } from "#src/kernel/call-programs.ts";
 import { rawFlipP } from "#src/kernel/compare.ts";
@@ -21,7 +22,6 @@ import {
   type SolverTier,
 } from "../runs/bench-store.ts";
 import type { DomainReadiness } from "./domains.ts";
-import { formatTally } from "./folds.ts";
 
 interface RubricMiss {
   readonly index: number;

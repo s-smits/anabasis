@@ -7,13 +7,13 @@
  *   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> --task <id | version prefix>
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { campaignName } from "#skills/main/logs.ts";
 import { starterIn } from "#src/campaign/climb.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
-import { basename, dirname } from "#src/meta/path.ts";
 import { exampleId } from "#tools/campaign/exam.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
@@ -169,7 +169,7 @@ async function main(args: CommandArgs): Promise<number> {
   const events = read(log);
   const asked = args.value("task");
   if (args.flag("rows")) {
-    console.log(gradeRows(events, basename(dirname(log))).join("\n"));
+    console.log(gradeRows(events, campaignName(log)).join("\n"));
     return 0;
   }
   if (asked !== null) {

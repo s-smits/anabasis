@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { countsLine } from "#skills/main/print.ts";
 import type { applyContinuation as ApplyContinuation } from "#src/agent/session.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
 import type { drafting as Drafting } from "#src/examiner/draft.ts";
@@ -11,6 +12,7 @@ import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
+import { MINUTE_MS } from "#src/meta/clock.ts";
 import {
   existsSync,
   openSync,
@@ -145,7 +147,8 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
   const finishedSolves = of("solve.finished");
   return {
     events: [from, events.length],
-    minutes: first === undefined || last === undefined ? 0 : (Date.parse(last) - Date.parse(first)) / 60_000,
+    minutes:
+      first === undefined || last === undefined ? 0 : (Date.parse(last) - Date.parse(first)) / MINUTE_MS,
     billed: billedBetween(events, from),
     sessions: stretch.flatMap(({ kind, data }) =>
       SESSION_STARTS.has(kind) && isString(data.session) ? [data.session] : [],
@@ -184,11 +187,6 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
   };
 }
 
-const listed = (counts: Readonly<Record<string, number>>) =>
-  Object.entries(counts)
-    .map(([word, count]) => `${word} ${String(count)}`)
-    .join(", ") || "none";
-
 export function told(reading: Reading): string[] {
   const builderLine = [
     `checkpoints ${String(reading.checkpoints)}`,
@@ -202,22 +200,22 @@ export function told(reading: Reading): string[] {
   ];
   if (hasDraft(reading)) {
     lines.push(
-      `exam drafted ${String(reading.drafted)}, audits ${listed(reading.audits)}, frozen ${String(reading.frozen)}`,
+      `exam drafted ${String(reading.drafted)}, audits ${countsLine(reading.audits)}, frozen ${String(reading.frozen)}`,
     );
   }
   if (hasBuild(reading)) lines.push(`builder ${builderLine}`);
   if (hasComp(reading)) {
     lines.push(
-      `comparisons ${reading.comparisons.join(", ") || "none"} (reported ${String(reading.reported)}), solves ${ratio(reading.solves)}, rulings ${listed(reading.rulings)}`,
+      `comparisons ${reading.comparisons.join(", ") || "none"} (reported ${String(reading.reported)}), solves ${ratio(reading.solves)}, rulings ${countsLine(reading.rulings)}`,
     );
   }
   if (hasExam(reading)) {
     lines.push(
-      `drafts proposed ${String(reading.proposed)}, task admissions ${listed(reading.gates)}; held ${String(reading.held)}`,
+      `drafts proposed ${String(reading.proposed)}, task admissions ${countsLine(reading.gates)}; held ${String(reading.held)}`,
     );
   }
   if (reading.campaignEnded.length > 0) lines.push(`campaign ended ${reading.campaignEnded.join(", ")}`);
-  lines.push(`calls ${listed(reading.calls)}`);
+  lines.push(`calls ${countsLine(reading.calls)}`);
   for (const [text, count] of Object.entries(reading.mentions)) {
     lines.push(`calls naming ${text}: ${String(count)}`);
   }

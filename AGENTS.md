@@ -181,9 +181,9 @@ State outcomes over an input space, not examples (`HABITS.md` §12.12). Prefer:
 
 Pin each §6 default once. Avoid wording/per-reader examples, lint fixtures (`rule-examples`), browser click-flows (view-model tables + smokes), module mocks, sleeps and test-only exports; assert via live entry points. Delete/replace tests only against owner mutants (`commit-r` step 8). Check full exit codes (unmasked by pipes); isolated passes are leads, missing-userns wall failures are real.
 
-**Readers/helpers** (search by behaviour first, delete dead guards/timers; helpers may import production, never reverse, `direction.ts`, and call owning folds):
-- Campaign, `bun run` verb, local job, UI → `src/` fold or `tools/` command
-- Single-campaign (`wri.ts`) → `tools/wri/` · Shared skills (≥2) / cross-run → `.claude/skills/main/` · Single skill → its `scripts/`
+**Readers/helpers** (search by behaviour, delete dead guards/timers; one-way, `direction.ts`, call folds):
+- **Production** (`src/`, `vendor/`, `packages/`, `tools/` not `wri/`): battle-tested primitives, campaigns, `bun run`, jobs, UI—graduate when needed
+- **Helpers**: single-run → `tools/wri/` · ≥2 skills / cross-run → `.claude/skills/main/` (no skill/wri imports) · 1 skill → `scripts/`
 
 ## 13. Writing
 

@@ -113,7 +113,7 @@ export const SEATS = {
   },
 } satisfies Record<Seat, SeatEntry>;
 
-export function importsIn(root: string): ImportsOf {
+function importsIn(root: string): ImportsOf {
   return (file) => importsOf(root, file);
 }
 

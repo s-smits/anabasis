@@ -31,8 +31,7 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   - **Draft:** `exam.drafted`, `referee.draft` verdicts, `contract.frozen`
   - **Builder:** `build.checkpoint`, practice solves (`finished/started`), promotions, reverts
   - **Comparison:** `comparison.started`/`reported`, comparison solves, `referee.finding` rulings
-  - **Examiner:** `task.proposed`, `task.gate` outcomes, held count (historical pre-v0.14 room
-    solves and turn spreads appear only when present in the log)
+  - **Examiner:** `task.proposed`, `task.gate` outcomes, held count
   - **Campaign endings:** `campaign.ended`
   On a seed log, `read` starts at the seed cut; `--log` accepts an absolute path and requires
   `--from <event>` outside a seed.

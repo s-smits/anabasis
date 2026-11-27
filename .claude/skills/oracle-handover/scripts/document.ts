@@ -55,7 +55,7 @@ export const tokensOf = (text: string): number => Math.round(new TextEncoder().e
 
 /** The 1-based lines of top-level declaration `name`, from the head comment of its first statement
  *  to the end of its last, so that overloads and merged interfaces come whole. */
-export function declarationLines(text: string, name: string): [number, number] {
+function declarationLines(text: string, name: string): [number, number] {
   const file = ts.createSourceFile("part.ts", text, ts.ScriptTarget.ESNext, true);
   const named = (node: ts.Statement) =>
     ts.isVariableStatement(node)
@@ -85,7 +85,7 @@ export function declarationLines(text: string, name: string): [number, number] {
   return [line(from), line(last.getEnd())];
 }
 
-export function sectionLines(lines: readonly string[], keys: readonly string[]): [number, number][] {
+function sectionLines(lines: readonly string[], keys: readonly string[]): [number, number][] {
   // A `#` line inside a fenced block is code, not a heading.
   let fence = false;
   const headings = lines.map((line) => {

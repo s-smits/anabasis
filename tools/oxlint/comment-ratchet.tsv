@@ -453,7 +453,6 @@ tools/wri/execution.ts	3
 tools/wri/findings.ts	7
 tools/wri/folds.ts	49
 tools/wri/gaming.ts	1
-tools/wri/gate-era.ts	4
 tools/wri/grade.ts	6
 tools/wri/index.ts	16
 tools/wri/investigation.ts	6

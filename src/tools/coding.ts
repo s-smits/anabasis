@@ -33,7 +33,7 @@ export async function prepareImage(
   path: string,
   model: Pick<Model<Api>, "input" | "inputLimits">,
 ): Promise<ImageContent | null> {
-  const mimeType = Bun.file(path).type.split(";")[0] ?? "";
+  const [mimeType = ""] = Bun.file(path).type.split(";");
   if (!model.input.includes("image") || !mimeType.startsWith("image/")) return null;
   const resize = model.inputLimits?.images?.resize;
   const prepared = await images.prepare(bytes, mimeType, {

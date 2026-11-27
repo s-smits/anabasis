@@ -135,11 +135,11 @@ export function fromHome<Parameters extends TSchema>(
       return expand(parseJsonAs<JsonValue>(value), field);
     }
     if (!isRecord(value)) return value;
-    const entries = Object.entries(value);
-    if (entries.length === 1 && entries[0]?.[0] === "from_file" && isString(entries[0][1])) {
-      return homeFile(home, entries[0][1], field === "base64" ? "base64" : "text");
+    const keys = Object.keys(value);
+    if (keys.length === 1 && keys[0] === "from_file" && isString(value.from_file)) {
+      return homeFile(home, value.from_file, field === "base64" ? "base64" : "text");
     }
-    return Object.fromEntries(entries.map(([key, inner]) => [key, expand(inner, key)]));
+    return Object.fromEntries(keys.map((key) => [key, expand(value[key] ?? null, key)]));
   };
   return {
     ...definition,

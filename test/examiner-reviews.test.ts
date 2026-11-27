@@ -432,6 +432,18 @@ describe("Examiner review projection and search (read_reviews)", () => {
     const capped = readReviews(big.events, { source: "draft", limit: 20 });
     expect(capped).toContain("next cursor:");
     expect(Buffer.byteLength(capped)).toBeLessThan(10 * 1024);
+    const validCursor = /next cursor: (\S+)/u.exec(capped)?.[1] ?? "";
+    expect(validCursor).toMatch(/^\d+:.+$/u);
+    const [, key = ""] = validCursor.split(":");
+    expect(readReviews(big.events, { source: "draft", cursor: `0:${key}` })).toContain("Showing 1-");
+    for (const badCursor of [`${validCursor}:extra`, `-1:${key}`, `1.5:${key}`, "0:wrongkey"]) {
+      expect(readReviews(big.events, { source: "draft", cursor: badCursor })).toContain(
+        "Cursor does not match the active filters",
+      );
+    }
+    expect(readReviews(big.events, { source: "draft", check: "no-such-check" })).toContain(
+      "No review records match",
+    );
   });
 
   it("summarises cross-arm review telemetry on taskHistory lines and omits practice and mirror pairs", () => {

@@ -154,10 +154,9 @@ function formatWrapped(
   calls: readonly Call[],
   nudge: string | undefined,
 ): string {
-  const keptNumbers = new Set(turns.flatMap(({ turn }) => (turn === null ? [] : [turn])));
   const callsByTurn = new Map<number, Call[]>();
   for (const call of calls) {
-    if (call.turn === null || !keptNumbers.has(call.turn)) continue;
+    if (call.turn === null) continue;
     const list = callsByTurn.get(call.turn);
     if (list === undefined) callsByTurn.set(call.turn, [call]);
     else list.push(call);

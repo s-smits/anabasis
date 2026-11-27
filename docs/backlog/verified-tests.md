@@ -1,6 +1,6 @@
 # Tests that state an outcome over a space of inputs
 
-Status (21 November 2026): the kernel's comparison and the move table are checked by enumeration
+Status (27 November 2026): the kernel's comparison and the move table are checked by enumeration
 and search instead of examples (`test/compare-exhaustive.test.ts`, `test/decide-explore.test.ts`,
 `test/pairs-property.test.ts`, `test/wall-practice.test.ts`), replacing six example files. The
 mechanical mutants of the five owners are the oracle for each deletion (commit-r, step 8). The
@@ -12,21 +12,35 @@ compartments below are still example-based.
    the old tests killed are restored as cases or answered in the pull request. A fold whose output
    has no rule apart from its code (`poolOf`, `releaseOrder`, `taskRecords`) keeps named cases
    where no definition written in the test can be compared with it.
-2. **Campaign scenarios.** `test/round.test.ts`, `test/campaign.test.ts` and the harness-builder
-   tests walk chosen paths through a round. A search over the commands a round can take, from a
-   rehearsal's seed, with the log's folds as invariants, would replace most of them; the mutants
-   of `src/campaign/` are its oracle.
-3. **The Builder's wall by perturbation.** `test/builder.test.ts` and `test/builder-led.test.ts`
-   prove byte identity on chosen pairs of logs. A generator that perturbs every hidden value, check
-   and held-out outcome of a small campaign, holding the tally, and compares every Builder message
-   byte for byte would state rule 3 over a space instead of a pair.
-4. **Run and investigation tools.** The `runs-*` and `wri-*` test files repeat fixtures across
-   files; consolidating them to one fixture builder each is a refold, not a rewrite.
-5. **The search's environment against the record.** The decide search writes the events each move
+2. **Campaign scenarios.** `test/round.test.ts`, `test/builder-led.test.ts`,
+   `test/harness-builder.test.ts`, and `test/campaign.test.ts` walk chosen paths through a round. A
+   search over the commands a round can take, from a rehearsal's seed, with the log's folds as
+   invariants, would replace most of them; the mutants of `src/campaign/` and `tools/campaign/` are
+   its oracle.
+3. **The Builder's wall and tools.** `test/builder.test.ts` and `test/builder-led.test.ts` prove
+   byte identity on chosen pairs of logs and repeat full faux sessions for individual `read_trace`,
+   `layPractice`, `snapshot`, and `readHarnessFiles` paths. A perturbation generator over hidden
+   values, checks, and held-out outcomes plus table-driven file/tool cases would replace most of
+   it; `src/builder/` and `src/harness/files.ts` are its oracle.
+4. **Run and investigation tools.** `test/wri-readers.test.ts` and the `runs-*` suites repeat
+   verbose `LogEvent[]` fixtures across tests; consolidating `diagnosticRows`, `overview`, and
+   lane-report parsing into one declarative fixture builder and invariant table cuts boilerplate
+   cleanly without losing kills (`tools/wri/` as oracle).
+5. **Auditor and Examiner sessions.** `test/review.test.ts`, `test/draft.test.ts`,
+   `test/examiner.test.ts`, and `test/revise-exam.test.ts` enumerate individual probe, ruling, and
+   drafting scenarios. Collapsing probe/ruling cases and `draftReading`/`from_file`/review-filter
+   checks into tables and perturbation checks leaves only process/provider boundary smokes
+   (`src/audit/` and `src/examiner/` as oracle).
+6. **Check router, stack land, and mutation oracle.** `test/router.test.ts`, `test/land.test.ts`,
+   and `test/commit-r-mutate.test.ts` exercise pure scheduling, stack-ordering, and
+   diff-hunk/batching rules through heavy filesystem and subprocess fixtures. Testing pure ranking,
+   queue, stack-graph, and batching invariants over generated small topologies and keeping a thin
+   subprocess smoke layer reduces both lines and wall time.
+7. **The search's environment against the record.** The decide search writes the events each move
    writes from a hand-made answer table. Replaying `decide` over `data/runs/` and checking that
    every recorded answer to a move is one the table offers would show that the searched space
    covers what campaigns did.
-6. **The order of the rows.** `decide` takes the first row that answers. Exporting the rows would
+8. **The order of the rows.** `decide` takes the first row that answers. Exporting the rows would
    let the search assert that order on every reached log, with a witness for each pair of rows that
    both answer.
 

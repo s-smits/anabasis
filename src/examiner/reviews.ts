@@ -307,8 +307,9 @@ function findingContext(events: readonly LogEvent[], reported: ReadonlyMap<strin
     event: { data },
   } of eventsOf(events, FINDING)) {
     const [solve, from] = [str(data.solve), str(data.reusedFrom)];
-    if (solve === null || from === null || !solveComp.has(solve)) continue;
-    const comp = solveComp.get(solve) ?? null;
+    if (solve === null || from === null) continue;
+    const comp = solveComp.get(solve);
+    if (comp === undefined) continue;
     if (comp === null || reported.has(comp)) {
       reuseCounts.set(from, (reuseCounts.get(from) ?? 0) + 1);
     }
@@ -339,8 +340,9 @@ function projectReviews(events: readonly LogEvent[], source: ReviewQuery["source
       }
       if (findings === null) return [];
       const [solve, from] = [str(data.solve), str(data.reusedFrom)];
-      if (solve === null || !findings.solveComp.has(solve)) return [];
-      const comp = findings.solveComp.get(solve) ?? null;
+      if (solve === null) return [];
+      const comp = findings.solveComp.get(solve);
+      if (comp === undefined) return [];
       if (comp !== null && !reported.has(comp)) return [];
       if (from !== null && findings.seenPrimary.has(from)) return [];
       if (from === null) findings.seenPrimary.add(solve);

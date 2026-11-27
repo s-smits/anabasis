@@ -82,11 +82,16 @@ export function persistedDraftDefects(
       (data.verdict === "defects" || data.verdict === "sound") &&
       (revision === undefined ? !isString(data.revision) : data.revision === revision),
   );
-  const prior: DraftAuditFinding[] = [];
+  let [audits, prior]: [number, DraftAuditFinding[]] = [0, []];
   for (const {
     event: { data },
   } of matched) {
-    if (data.verdict !== "defects" || !Array.isArray(data.findings) || data.findings.length === 0) continue;
+    if (data.verdict === "sound") {
+      [audits, prior] = [0, []];
+      continue;
+    }
+    audits += 1;
+    if (!Array.isArray(data.findings) || data.findings.length === 0) continue;
     prior.push({
       verdict: "defects",
       // SAFETY: `referee.draft` findings and probeRows are written by `reviewDraft` below.
@@ -96,7 +101,7 @@ export function persistedDraftDefects(
       probes: Array.isArray(data.probeRows) ? (data.probeRows as DraftAuditFinding["probes"]) : [],
     });
   }
-  return { audits: matched.length, prior };
+  return { audits, prior };
 }
 
 const TURN_LIMIT = 24;

@@ -17,7 +17,7 @@ import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
 import { boundedPause, pendingSignals } from "#src/campaign/signal.ts";
 import { conversing, examine } from "#src/examiner/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { append, CALL_KINDS, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
+import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { promoted as lastPromoted } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -224,6 +224,10 @@ async function runAction(
               : `The host refused the ${label} action; choose another action.`,
           );
         }
+        if (eventsOf(read(context.log, TRACE_KINDS), "exam.revised").length > 0) {
+          bench.halt.abort();
+          return text("The exam was revised; this campaign hands off to its successor.");
+        }
         context.failed = { move, why: errorMessage(error) };
         bench.halt.abort();
         return text(`The host could not complete the ${label} action. The campaign has been stopped.`);
@@ -420,7 +424,8 @@ function halted(context: CampaignContext, bench: Bench) {
   const reading = actionTurn(context);
   const { decided } = reading;
   const waits = decided.move === "promote" && context.opening.attended;
-  if (context.used >= context.maxMoves || decided.move === "end" || waits) bench.halt.abort();
+  const repairDue = decided.move === "examine" && decided.code === "bound";
+  if (context.used >= context.maxMoves || decided.move === "end" || waits || repairDue) bench.halt.abort();
   return reading;
 }
 

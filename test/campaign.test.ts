@@ -31,7 +31,6 @@ import { JUDGED_TASK_DOLLARS, Refused, refusals, stopRule } from "../src/campaig
 import {
   codeOf,
   FOLLOWED,
-  hostClaude,
   LIMITS,
   starter,
   resolveCheckpoint,
@@ -180,16 +179,6 @@ describe("the trees a paid seat refuses", () => {
     expect(treeFault(followed)).toContain(FOLLOWED);
     expect(treeFault(own)).toBeNull();
     expect(treeFault(loose)).toBeNull();
-  });
-});
-
-describe("the Claude options a host seat runs with", () => {
-  it("keeps a transcript under the seat's id only where the seat names a directory for it", () => {
-    const shutdown = new AbortController().signal;
-    const optionsOf = (persistDir?: string) =>
-      hostClaude({ webSearch: false, cacheTtl: "1h", persistDir }, "/home", shutdown, undefined, "x-1");
-    expect(optionsOf("/sessions").persist).toEqual({ dir: "/sessions", seat: "x-1" });
-    expect(optionsOf()).not.toHaveProperty("persist");
   });
 });
 

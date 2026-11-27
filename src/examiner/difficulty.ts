@@ -28,9 +28,9 @@ export const FIELDS: readonly { readonly field: string; readonly rungs: readonly
     rungs: [
       "1: compute annual mean discharge from one clean CSV gauge table.",
       "3: merge multi-sheet workbooks and a PDF rating-curve bulletin whose station IDs use mixed prefixes and an unannounced cfs-to-m3/s unit break; naive joins bias peak flow and drop missing-code flags.",
-      "4: audit a multi-station SQLite archive and messy field sheets, run formal diagnostics (residual patterns, high-leverage storms, collinearity and nested-model tests), and deliver a summary-first formula workbook, standalone and embedded diagnostic figures, and a concise decision memo.",
+      "4: audit a multi-station SQLite archive and messy field sheets, run formal diagnostics (residual patterns, high-leverage storms, collinearity and nested-model tests), and deliver a verified calculation workbook, diagnostic figures, and a concise technical memo.",
       "5: harmonise conflicting gauge revisions, censored flood peaks and datum shifts across mixed formats where default estimators fail assumption checks, requiring sensitivity analyses, explicit exclusion logs and traceable quantitative citations across every artifact.",
-      "6: multi-basin coupled water-balance calibration with sparse winter telemetry, structural breaks and competing stakeholder constraints where standard automated scripts miss subtle sub-requirements or bury key numbers behind raw dumps.",
+      "6: multi-basin coupled water-balance calibration with sparse winter telemetry, structural breaks and competing stakeholder constraints where standard automated scripts miss subtle requirements or obscure key findings behind unorganised raw tables.",
       "7: watershed-wide extreme-event attribution combining heterogeneous historical records, non-stationary priors and tight multi-artifact audit standards where no single canned pipeline passes every quantitative check, diagnostic standard and executive-review bar.",
     ],
   },

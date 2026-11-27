@@ -188,7 +188,7 @@ function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance
   return { category: { label, counts }, importance };
 }
 
-export function requiredChecksOf(root: string, change: Change): Owed {
+function requiredChecksOf(root: string, change: Change): Owed {
   const areas = new Map<string, Area>();
   for (const file of change.all) {
     for (const route of momentsOf({ file_path: file }, new Set())) {

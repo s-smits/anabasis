@@ -443,10 +443,7 @@ export function nextOf(dir: string, known: Known = {}): string[] {
 /** How long each campaign `among` holds by a name is now, or null for one it does not hold or that
  *  may still write its log (`stillRunning`), whose log grows on every look and would reopen its
  *  unreached and pending rows at each `next`. */
-export function lengthsIn(
-  among: readonly Run[],
-  running: () => readonly Running[] = processes,
-): Where["lengthOf"] {
+function lengthsIn(among: readonly Run[], running: () => readonly Running[] = processes): Where["lengthOf"] {
   const lengths = new Map<string, number | null>();
   let looked: readonly Running[] | undefined;
   return (name) => {
@@ -486,7 +483,7 @@ function held<T>(path: string, reader: (path: string) => T): T | null {
   }
 }
 
-export const movedIn = (
+const movedIn = (
   known: readonly Run[],
   running: readonly Running[],
   now: number,
@@ -733,7 +730,7 @@ function open(args: CommandArgs, repo: string): number {
  * still-missing view beside the plan of the iteration that read it. `liveOf` says which runs may
  * still write their logs, whose rows no plan is late for.
  */
-export function ledgerViews(
+function ledgerViews(
   dir: string,
   root: string,
   lengthOf: Where["lengthOf"],

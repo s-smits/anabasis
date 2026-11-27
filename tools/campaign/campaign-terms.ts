@@ -451,18 +451,7 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
   ];
   const wanting = tasksToAskFor(turn.events, turn.plan);
   const tasks = wanting > 0 ? String(wanting) : undefined;
-  const reviewer = kind === "write" ? sharedOf(turn).reviewer : [];
-  const reviseFlag = kind === "write" && !opening.revise ? ["--no-revise"] : [];
-  return {
-    args: [
-      ...packOf(values),
-      ...seat,
-      ...reviewer,
-      ...reviseFlag,
-      ...(kind === "draft" ? [] : flag("tasks", tasks)),
-    ],
-    tasks,
-  };
+  return { args: [...packOf(values), ...seat, ...(kind === "draft" ? [] : flag("tasks", tasks))], tasks };
 }
 
 export const LED = "led";

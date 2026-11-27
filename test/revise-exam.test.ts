@@ -25,6 +25,7 @@ import { taskVersion } from "../src/kernel/task.ts";
 import { HOST_TOOLS_FILE } from "../src/kernel/verify.ts";
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -42,7 +43,7 @@ import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { hashJsonValue, requireJsonValue } from "../src/meta/stable-json.ts";
 import { REPO } from "../tools/campaign/campaign.ts";
-import { draftReading } from "../tools/campaign/exam.ts";
+import { draftReading, stagedExamOf } from "../tools/campaign/exam.ts";
 import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
 import { ungated } from "../tools/campaign/prepare.ts";
 import { freezeCandidate, type RevisionAuditor, revisionRunner } from "../tools/campaign/revise.ts";
@@ -244,7 +245,7 @@ async function seedCampaign(opts?: {
   writeReceipt(log, "run-1", {
     at: "2026-11-27T00:00:00.000Z",
     pid: 1234,
-    flags: ["--name", name, "--budget", "50", "--project", "demo"],
+    flags: ["--name", name, "--budget", "50", "--moves", "5", "--project", "demo"],
     envFile: null,
     commit: "abcdef1234567890",
     dirty: false,
@@ -1453,13 +1454,24 @@ export const scores = {
     await expect(openSuccessor(seed.log)).rejects.toThrow("failed checker reading");
     writeFileSync(validatedHelper, "#!/bin/sh\necho ok\n");
 
-    const next1 = await openSuccessor(seed.log);
+    const next1 = await openSuccessor(seed.log, 2);
     const fullB = readFileSync(next1.log, "utf8").trim().split("\n");
     for (const keepLines of [1, 2, 3, fullB.length - 1]) {
       writeFileSync(next1.log, `${fullB.slice(0, keepLines).join("\n")}\n`);
       const recovered = await openSuccessor(seed.log);
       expect(recovered).toEqual(next1);
     }
+    const evaluatorB = join(stagedExamOf(next1.log)?.checks ?? "", "evaluator.ts");
+    const soundEvaluator = readFileSync(evaluatorB, "utf8");
+    writeFileSync(
+      evaluatorB,
+      soundEvaluator.replace("artifact.n % 2 === 0", "artifact.n % 2 === 0 && artifact.n !== 10"),
+    );
+    writeFileSync(next1.log, `${fullB.slice(0, 3).join("\n")}\n`);
+    await expect(openSuccessor(seed.log)).rejects.toThrow(
+      "successor lin-a-rev2 failed checker reading: the accept control of ex-001 did not pass: fail check-even",
+    );
+    writeFileSync(evaluatorB, soundEvaluator);
     const next2 = await openSuccessor(seed.log);
     expect(next1).toEqual(next2);
     expect(next1.name).toBe("lin-a-rev2");
@@ -1494,7 +1506,16 @@ export const scores = {
     expect(readlinkSync(join(dirname(next1.log), "examiner-home", ".toolchain", "bin", "my-alias"))).toBe(
       "my-helper",
     );
-    expect(lastLaunch(next1.log)?.flags).toContain("lin-a-rev2");
+    expect(lastLaunch(next1.log)?.flags).toEqual([
+      "--name",
+      "lin-a-rev2",
+      "--budget",
+      "50",
+      "--moves",
+      "2",
+      "--project",
+      "demo",
+    ]);
 
     expect(ungated({ tasks: seed.tasks, pack: (task) => packageOf(seed.checks, task) }, eventsB)).toEqual([]);
 
@@ -1516,10 +1537,15 @@ export const scores = {
     await expect(openSuccessor(next1.log)).rejects.toThrow("no exam.revised");
     expect(revisionRefusal(eventsB, { kind: "tune" })).toContain("already opened from a rubric tune");
     const draftB = draftOf(eventsB) ?? PARENT_DRAFT;
-    writeFileSync(
-      join(dirname(next1.log), "examiner-home", ".toolchain", "bin", "my-helper"),
-      "#!/bin/sh\necho ok\n",
+    const bundleB = join(
+      dirname(next1.log),
+      "revisions",
+      "exams",
+      hashJsonValue(draftB).slice(0, 16),
+      "bundle",
     );
+    cpSync(join(dirname(next1.log), "examiner-home"), bundleB, { recursive: true, verbatimSymlinks: true });
+    writeFileSync(join(bundleB, ".toolchain", "bin", "my-helper"), "#!/bin/sh\necho ok\n");
     append(next1.log, REVISED, {
       session: "x-2",
       kind: "repair",

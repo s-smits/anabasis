@@ -40,7 +40,7 @@ import {
   type Step,
   scriptedModel,
 } from "./helpers/fixture-pack.ts";
-import { containing } from "./helpers/matchers.ts";
+import { containing, present } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const STEM = `test-bl-${String(runtimeProcess.pid)}`;
@@ -901,6 +901,54 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
     expect(promoted).toBeGreaterThan(word);
     expect(answered).toBeGreaterThan(promoted);
     expect(pendingSignals(events)).toEqual([]);
+
+    const pauseName = `${STEM}-pause-reached`;
+    let now = Date.now();
+    await harnessBuilder([...(await prepared(pauseName)), ...FLAGS], {
+      seated: builderScript(winning(), [
+        {
+          wait: async () => {
+            append(join(REPO, ".ana", "d2", pauseName, LOG_FILE), "campaign.word", {
+              word: "pause",
+              after: "examined",
+              base: of(pauseName, "exam.finished").length - 1,
+            });
+            return ["examine", {}];
+          },
+        },
+      ]),
+      host: {
+        ...HOST,
+        now: () => now,
+        sleep: async () => {
+          now += 200_000;
+        },
+      },
+    });
+    expect(said(pauseName, "examine")).toEqual([
+      containing("The campaign reached its operator pause point; no further action may start."),
+    ]);
+
+    const repairName = `${STEM}-repair-due`;
+    await harnessBuilder([...(await prepared(repairName)), ...FLAGS], {
+      seated: builderScript(passing(), [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        {
+          wait: async () => {
+            const log = join(REPO, ".ana", "d2", repairName, LOG_FILE);
+            const last = present(of(repairName, REPORTED).at(-1));
+            const owed = { session: "g-9", old: present(last.fresh), fresh: present(last.starter) };
+            append(log, COMPARED, { ...of(repairName, COMPARED).at(-1), ...owed });
+            append(log, REPORTED, { ...last, ...owed, reading: "check-defects" });
+            return ["campaign_status", {}];
+          },
+        },
+        ["campaign_status", {}],
+      ]),
+      examine: unwritten,
+    });
+    expect(said(repairName, "campaign_status")).toHaveLength(1);
   });
 
   const everythingRead = async (
@@ -1046,6 +1094,7 @@ describe.concurrent("a campaign's endings", () => {
       }),
     ).toMatchObject({ move: "end", ending: "no-room" });
     expect(of(liveName, EXAMINED)).toMatchObject([{ held: [] }, { held: [] }]);
+    expect(said(liveName, "examine")).toHaveLength(2);
 
     const turnsName = `${STEM}-turns`;
     expect(

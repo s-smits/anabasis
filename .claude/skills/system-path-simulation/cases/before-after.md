@@ -28,7 +28,7 @@ Cut matching seeds with distinct names `sim-<what>-before` / `sim-<what>-after` 
 | Decision | `harness-builder.ts --name <seed> --dry-run` (or `runs view` `decidedOn` when seat credentials are absent) | Decision row, move, inputs |
 | Path | `bun run runs rehearse` with one script | Readings, endings, event counts |
 | Wall | `scripts/wall-probe.ts <before> <after>` | Commands whose exit/output changed |
-| Live seat | `scripts/live-seat.ts start` (operator approval) | Single sample = path check only; repeated rounds use [optimize](optimize.md) |
+| Live seat | `scripts/live-seat.ts start` (bounded spend) | Single sample = path check only; repeated rounds use [optimize](optimize.md) |
 
 Run each reader twice per arm to filter jitter and ignore the host-code digest line (solve-path edits change `host` digest while keeping `sandbox` unchanged, `codeOf` in `tools/campaign/campaign.ts`). `runs pulse` writes `.ana/runs-pulse.json` in the target tree; clean it if testing a scratch tree. If the source run already executed at `before`, it can serve as baseline while seeding only `after` (note effort/login differences).
 
@@ -36,4 +36,4 @@ Pre-register intended effect, null effect, and side-effect checks before running
 
 ## Before landing
 
-When simulating the top-risk unproved PRs on a stack (2 by default): prioritise seat visibility/actions > scoring/refusals > readers/tooling. Run each `after` arm in a detached worktree at that PR's head (never in its working tree or a live run's tree), fix any defect in the introducing commit on operator approval and restack (`stack-pr`), and trash worktrees when done (`/usr/bin/trash ../anabasis-{before,after}-<what> && git worktree prune`).
+When simulating the top-risk unproved PRs on a stack (2 by default): prioritise seat visibility/actions > scoring/refusals > readers/tooling. Run each `after` arm in a detached worktree at that PR's head (never in its working tree or a live run's tree), fix any defect in the introducing commit and restack (`stack-pr`), and trash worktrees when done (`/usr/bin/trash ../anabasis-{before,after}-<what> && git worktree prune`).

@@ -1,7 +1,7 @@
 import { keysIf } from "#src/meta/optional-key.ts";
 import { availableParallelism } from "#src/meta/os.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { killProcessGroup } from "#src/meta/subprocess.ts";
+import { killProcessGroup, runSync, zeroExitText } from "#src/meta/subprocess.ts";
 import type { Place } from "#tools/runs/host-config.ts";
 import { runBatch } from "./mutate-batch.ts";
 import {
@@ -378,6 +378,11 @@ export async function runFleetPool(opts: {
     return { batch: stolen, wasHedged: stolen.length > 0 };
   };
 
+  const thisMacWokeSince = (ms: number): boolean => {
+    const woke = /sec = (\d+)/u.exec(zeroExitText(runSync(["sysctl", "-n", "kern.waketime"])) ?? "")?.[1];
+    return woke !== undefined && Number(woke) * 1000 > ms;
+  };
+
   const runRemoteBatchSeat = async (seat: FastWorker): Promise<void> => {
     const hostKey = seat.place.remote ?? "remote";
     const doneQualify = new Set<string>();
@@ -407,6 +412,7 @@ export async function runFleetPool(opts: {
       const needQualify = [...new Set(batch.flatMap((task) => task.plan.active))].filter(
         (name) => !doneQualify.has(name),
       );
+      const began = Date.now();
       const got = await runBatch(
         seat,
         batch.map((task) => task.plan),
@@ -461,6 +467,11 @@ export async function runFleetPool(opts: {
         pending.unshift(...missing);
         const detail = got.stderr.split("\n").findLast((line) => line.trim() !== "");
         const why = detail === undefined ? "" : ` (${detail})`;
+        if (thisMacWokeSince(began)) {
+          console.error(`${hostKey} gave no verdict${why} while this machine slept; retrying`);
+          await Bun.sleep(10_000);
+          continue;
+        }
         consecutiveDrops = got.rows.length > 0 ? 0 : consecutiveDrops + 1;
         totalDrops += 1;
         if (consecutiveDrops < 2 && totalDrops < 4 && !doneAll()) {

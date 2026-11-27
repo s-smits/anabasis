@@ -311,7 +311,7 @@ function open(
       persistSession: keepTranscript,
       includePartialMessages: true,
       abortController: abort,
-      env: claudeEnv(claude, { provider: model.provider, token: options.apiKey }),
+      env: claudeEnv(claude, keepTranscript, { provider: model.provider, token: options.apiKey }),
     },
   });
   const session: Session = {
@@ -341,7 +341,8 @@ function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): Effo
 }
 
 function claudeEnv(
-  { cacheTtl, compaction, home, persist, fork }: ClaudeOptions,
+  { cacheTtl, compaction, home }: ClaudeOptions,
+  keepTranscript: boolean,
   credential: { readonly provider: string; readonly token: string | undefined },
 ): Record<string, string> {
   const account = ACCOUNTS.get(credential.provider);
@@ -358,10 +359,7 @@ function claudeEnv(
     ...keyIfDefined("PATH", Bun.env.PATH),
     ...keyIfDefined("TMPDIR", Bun.env.TMPDIR),
     CLAUDE_CONFIG_DIR: config,
-    ...keyIfDefined(
-      "CLAUDE_CODE_PROJECT_DIR_NAME",
-      persist !== undefined || fork !== undefined ? CLAUDE_PROJECT_DIR : undefined,
-    ),
+    ...keysIf(keepTranscript, () => ({ CLAUDE_CODE_PROJECT_DIR_NAME: CLAUDE_PROJECT_DIR })),
     [account.variable]: token,
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",

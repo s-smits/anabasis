@@ -26,3 +26,11 @@ src/examiner/revise.ts	1 -> 2	Type.Array(Type.String({ minLength: 1 }), {	presen
 src/examiner/revise.ts	1 -> 2	Type.Array(Type.Object({ ...CONTROL_ADD, check: Type.String({ minLength: 1 }) }), {	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
 tools/campaign/successor.ts	4 -> 5	const { faults, read: seen } = await draftReading(dirB, rev.draft, 4);	equivalent	the width argument only sets how many checks run at once in pooled readChecker, never which ones run
 tools/campaign/session.ts	true -> false	webSearch: true,	presentation	web search is a tool offered to the Builder seat, a seat-visible input kept byte-identical
+src/campaign/opening.ts	|| -> &&	!isString(rec.campaign) ||	equivalent	bun check rejects the mutant: campaign and revised lose their string narrowing (TS2322)
+src/campaign/opening.ts	|| -> &&	!isString(rec.revised) ||	equivalent	bun check rejects the mutant: campaign and revised lose their string narrowing (TS2322)
+src/examiner/write.ts	20 -> 21	Type.Integer({ minimum: 1, maximum: 20, description: "Max records per page (default 10)." }),	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
+src/examiner/write.ts	1 -> 2	Type.Integer({ minimum: 1, maximum: 20, description: "Max records per page (default 10)." }),	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
+src/examiner/write.ts	swap ?:	system: systemPrompt(request.contract.objective, request.revise === undefined ? "fixed" : "revisable"),	presentation	selects system-prompt wording that only reaches the Examiner; the revision tools are gated on request.revise separately
+src/examiner/write.ts	=== -> !==	system: systemPrompt(request.contract.objective, request.revise === undefined ? "fixed" : "revisable"),	presentation	selects system-prompt wording that only reaches the Examiner; the revision tools are gated on request.revise separately
+src/examiner/prompt.ts	=== -> !==	...(tasks.reviews === null ? [] : [tasks.reviews]),	presentation	adds or drops the reviews line in the Examiner's opening and wake messages only
+src/examiner/prompt.ts	swap ?:	...(tasks.reviews === null ? [] : [tasks.reviews]),	presentation	adds or drops the reviews line in the Examiner's opening and wake messages only

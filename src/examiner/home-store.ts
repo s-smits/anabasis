@@ -103,12 +103,12 @@ function manifestPath(storeDir: string, sessionId: string): string {
 }
 
 export function snapshotHome(sourceDir: string, storeDir: string, sessionId: string): void {
+  const manifest = manifestPath(storeDir, sessionId);
   if (!existsSync(sourceDir)) return;
   const objectsDir = join(storeDir, OBJECTS);
   mkdirSync(objectsDir, { recursive: true });
   const entries: HomeEntry[] = [];
   walkHome(sourceDir, "", objectsDir, entries);
-  const manifest = manifestPath(storeDir, sessionId);
   const temp = `${manifest}.${String(runtimeProcess.pid)}.tmp`;
   writeFileSync(temp, `${capturedJsonStringify({ session: sessionId, entries })}\n`);
   renameSync(temp, manifest);

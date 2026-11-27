@@ -260,19 +260,21 @@ describe("a session of any mode", () => {
 });
 
 describe("the home a wall keeps for a campaign's writing sessions", () => {
-  it("keeps nothing of a writing session's home where it crashed with a command running", async () => {
-    const s = seat("write", []);
-    const keep = join(dirname(s.log), "examiner-home");
-    mkdirSync(keep);
-    writeFileSync(join(keep, "kept.txt"), "kept\n");
-    const opened = await inExaminerSandbox(s.request, { ...WALL, keep }, async ({ shell }) => {
-      writeFileSync(join(shell.dirs.home, "wrote.txt"), "wrote\n");
-      append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "crashed", running: 1 });
-      return readdirSync(shell.dirs.home).toSorted();
-    });
-    expect(opened).toEqual(["kept.txt", "wrote.txt"]);
-    expect(readdirSync(keep)).toEqual(["kept.txt"]);
-    expect(hasHomeSnapshot(join(dirname(s.log), EXAMINER_HOMES), s.request.id)).toBe(false);
+  it("keeps a writing session's home unless it crashed with a command running", async () => {
+    for (const running of [1, 0]) {
+      const s = seat("write", []);
+      const keep = join(dirname(s.log), "examiner-home");
+      mkdirSync(keep);
+      writeFileSync(join(keep, "kept.txt"), "kept\n");
+      const opened = await inExaminerSandbox(s.request, { ...WALL, keep }, async ({ shell }) => {
+        writeFileSync(join(shell.dirs.home, "wrote.txt"), "wrote\n");
+        append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "crashed", running });
+        return readdirSync(shell.dirs.home).toSorted();
+      });
+      expect(opened).toEqual(["kept.txt", "wrote.txt"]);
+      expect(readdirSync(keep).toSorted()).toEqual(running > 0 ? ["kept.txt"] : ["kept.txt", "wrote.txt"]);
+      expect(hasHomeSnapshot(join(dirname(s.log), EXAMINER_HOMES), s.request.id)).toBe(running === 0);
+    }
   });
 
   it("carries a relative link as it stands, into the home and out of it", async () => {

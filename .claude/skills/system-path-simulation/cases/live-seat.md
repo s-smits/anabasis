@@ -3,7 +3,7 @@
 A live seat places a real model in a single seat starting from a recorded campaign state when the
 question depends on model behaviour or real provider/sandbox integration rather than deterministic
 runtime logic. Seat types, cut points, archive-first screening, and concurrency rules live in
-[SKILL.md](../SKILL.md#tier-3-scriptslive-seatts--report). Re-running a comparison round cut with
+[SKILL.md](../SKILL.md#live-targets-scriptslive-seatts). Re-running a comparison round cut with
 `--before g-<n>` compares without rebuilding the harness, seating only the comparison solves and
 any triggered Auditor or pairwise judge.
 
@@ -87,7 +87,7 @@ A backend can be probed outside any campaign directly through its provider (`cla
 - **Use the production prompt verbatim.** Nothing may inform the model that it is in a simulation
   or hint at the desired outcome. When testing a prompt edit, that edit is the sole experimental
   variable and the seed holds every other condition constant.
-- **Keep live runs bounded and autonomous once requested.** Plan **1 to 2 live angles** for a small PR and **4 to 8 live angles** (covering distinct seams, domains, or controls) for a large PR or stack, running **at most 2 concurrently** on a quiet host. When the operator asks for live simulation without naming every knob, infer omitted angles, model/effort, open login, and per-seat caps from recent `.ana/wri/sim-*` history, `tools/runs/fresh.ts`, `runs usage`, and `runs loadwatch --once` (see [SKILL.md](../SKILL.md#autonomous-parameter-selection-once-live-simulation-is-requested)). Bound each angle with `--proposals` / `--turns` / `--tries` (Examiner/draft), `--moves 1 --turns` / `--practice-solves` (Builder), or `--cap` (comparisons), and replay rare (<5%) archived events model-free instead of spending \$15 to \$40 on a single draw.
+- **Keep live runs bounded and autonomous once requested.** Plan **1 to 2 live angles** for a small PR and **4 to 8 live angles** (covering distinct seams, domains, or controls) for a large PR or stack, running **at most 2 concurrently** on a quiet host. When the operator asks for live simulation without naming every knob, keep every seat on the operator-named backend (never choose or switch backends autonomously) and infer omitted angles, model/effort within that backend, open login, and per-seat caps from recent `.ana/wri/sim-*` history, `tools/runs/fresh.ts`, `runs usage`, and `runs loadwatch --once` (see [SKILL.md](../SKILL.md#autonomous-parameter-selection-once-live-simulation-is-requested)). Bound each angle with `--proposals` / `--turns` / `--tries` (Examiner/draft), `--moves 1 --turns` / `--practice-solves` (Builder), or `--cap` (comparisons), and replay rare (<5%) archived events model-free instead of spending \$15 to \$40 on a single draw.
 
 Report a single live seat as a verified execution path (`exercised live`) rather than a
 statistical measurement of model performance (`AGENTS.md` rule 6). Nothing produced by a seed enters a

@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
@@ -112,15 +113,21 @@ function testIndex(tree: string, depth: number) {
       }),
     );
   const reachable = reachAt(depth);
+  const direct = depth === 1 ? reachable : reachAt(1);
   let transitive: Map<string, Set<string>> | null = null;
   const transformed = new Map(tests.map((test) => [test, runtimeText(tree, test)] as const));
   const timings = timingsOf(tree);
-  const compareSuites = (a: string, b: string): number => {
-    const [ta, tb] = [timings.get(a), timings.get(b)];
-    if (ta !== undefined && tb !== undefined) return ta - tb;
-    if (ta !== undefined || tb !== undefined) return ta === undefined ? 1 : -1;
-    return statSync(join(tree, a)).size - statSync(join(tree, b)).size;
-  };
+  const compareSuites =
+    (owner: string) =>
+    (a: string, b: string): number => {
+      const directDiff =
+        (direct.get(a)?.has(owner) === true ? 0 : 1) - (direct.get(b)?.has(owner) === true ? 0 : 1);
+      if (directDiff !== 0) return directDiff;
+      const [ta, tb] = [timings.get(a), timings.get(b)];
+      if (ta !== undefined && tb !== undefined) return ta - tb;
+      if (ta !== undefined || tb !== undefined) return ta === undefined ? 1 : -1;
+      return statSync(join(tree, a)).size - statSync(join(tree, b)).size;
+    };
   return (owner: string): string[] => {
     let matched = tests.filter(
       (path) => reachable.get(path)?.has(owner) === true || pathMentioned(transformed.get(path) ?? "", owner),
@@ -136,8 +143,8 @@ function testIndex(tree: string, depth: number) {
         matched = tests.filter((path) => (transformed.get(path) ?? "").includes(needle));
       }
     }
-    return [...new Set([...matched.toSorted(compareSuites), ...(OWNERS.get(owner) ?? [])])].filter((path) =>
-      existsSync(join(tree, path)),
+    return [...new Set([...matched.toSorted(compareSuites(owner)), ...(OWNERS.get(owner) ?? [])])].filter(
+      (path) => existsSync(join(tree, path)),
     );
   };
 }
@@ -156,7 +163,7 @@ const rowsOf = (path: string): Row[] =>
 const verdictOf = ({ killed }: Row) => {
   const verdicts = Object.values(killed);
   if (verdicts.includes(true)) return "killed";
-  return verdicts.includes(false) ? "survived" : "unread";
+  return verdicts.length > 0 && verdicts.every((one) => one === false) ? "survived" : "unread";
 };
 
 function deadlineOf(clock: string | null): string | null {
@@ -305,7 +312,7 @@ async function runPlan(opts: {
     "--local",
     String(localSlots),
     "--batch",
-    "24",
+    "48",
     "--prune",
     "--cov-cache",
     join(here, "cov"),
@@ -361,6 +368,7 @@ function writeReport(opts: {
     diffBase === null ? "survivors.ids.txt" : `survivors.diff-${diffBase.slice(0, 9)}.ids.txt`,
   );
   if (recheckIds.length > 0) writeFileSync(idsFile, `${recheckIds.join("\n")}\n`);
+  else rmSync(idsFile, { force: true });
   const summary = diffMode
     ? `Diff survivors since ${diffBase.slice(0, 9)}: ${String(added.length)} across ${String(clusters.length)} line(s)`
     : prevFull === null

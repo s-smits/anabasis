@@ -175,6 +175,193 @@ describe("the mutation oracle", () => {
       expect(existsSync(out)).toBe(false);
     }
   }, 60_000);
+
+  it("refuses a failing unmutated rest-wave suite, keeps subprocess suites unpruned, and marks mixed false/null rows unread", () => {
+    const tree = join(root, "soundness-tree");
+    mkdirSync(tree);
+    writeFileSync(
+      join(tree, "m.ts"),
+      [
+        "export const direct = (x: number) => x > 1;",
+        "export const viaSub = (x: number) => x > 5;",
+        "if (import.meta.main) console.log(String(viaSub(Number(process.argv[2]))));",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(tree, "hybrid.test.ts"),
+      [
+        'import { expect, it } from "bun:test";',
+        'import { direct } from "./m.ts";',
+        'it("checks direct", () => expect([direct(1), direct(2)]).toEqual([false, true]));',
+        'it("checks via subprocess", () => {',
+        '  const a = Bun.spawnSync([process.execPath, "m.ts", "5"], { cwd: import.meta.dir, stdout: "pipe" });',
+        '  const b = Bun.spawnSync([process.execPath, "m.ts", "6"], { cwd: import.meta.dir, stdout: "pipe" });',
+        '  expect([a.stdout.toString().trim(), b.stdout.toString().trim()]).toEqual(["false", "true"]);',
+        "});",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(tree, "pass-first.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { direct } from "./m.ts";\nit("passes", () => expect(direct(2)).toBe(true));\n',
+    );
+    writeFileSync(
+      join(tree, "fail-rest.test.ts"),
+      'import { expect, it } from "bun:test";\nit("fails unmutated", () => expect(1).toBe(2));\n',
+    );
+
+    const subSuites = join(root, "sub-suites.json");
+    const subOut = join(root, "sub-out.jsonl");
+    writeFileSync(subSuites, JSON.stringify({ hybrid: ["hybrid.test.ts"] }));
+    const subRun = runScript(
+      "run",
+      tree,
+      "m.ts",
+      "--out",
+      subOut,
+      "--suites",
+      subSuites,
+      "--prune",
+      "--stop-at-kill",
+      "--jobs",
+      "1",
+    );
+    expect(subRun.exitCode).toBe(0);
+    const subLine2 = rowsOf(subOut).filter((row) => row.line === 2);
+    expect(subLine2.length).toBeGreaterThan(0);
+    expect(subLine2.every(({ killed }) => killed.hybrid === true)).toBe(true);
+
+    const restSuites = join(root, "rest-suites.json");
+    const restOut = join(root, "rest-out.jsonl");
+    writeFileSync(restSuites, JSON.stringify({ first: ["pass-first.test.ts"], rest: ["fail-rest.test.ts"] }));
+    const restRun = runScript(
+      "run",
+      tree,
+      "m.ts",
+      "--out",
+      restOut,
+      "--suites",
+      restSuites,
+      "--prune",
+      "--stop-at-kill",
+      "--jobs",
+      "1",
+    );
+    expect(restRun.exitCode).not.toBe(0);
+    expect(restRun.stderr.toString()).toContain('baseline suite "rest" did not pass unmutated (failed)');
+
+    const mixedOut = join(root, "mixed-out.jsonl");
+    writeFileSync(
+      mixedOut,
+      `${JSON.stringify({ id: "m.ts:1:x", file: "m.ts", line: 1, label: "x", killed: { a: false, b: null } })}\n`,
+    );
+    expect(runScript("report", mixedOut).stdout.toString().trim()).toBe(
+      "file  killed  survived  unread\nm.ts  0  0  1",
+    );
+  }, 60_000);
+
+  it("matches isolated verdicts in schemata mode, hands watchdog timeouts to Mode 2, and detects helper subprocesses", () => {
+    const tree = join(root, "schema-tree");
+    mkdirSync(join(tree, "test", "helpers"), { recursive: true });
+    writeFileSync(
+      join(tree, "s.ts"),
+      [
+        "export function sumTo(n: number): number {",
+        "  let acc = 0;",
+        "  for (let i = 0; i < n; i = i + 1) {",
+        "    acc = acc + i;",
+        "  }",
+        "  return acc;",
+        "}",
+        "export const inv = (x: unknown): unknown => !x;",
+        "export const viaSub = (x: number) => x > 5;",
+        "if (import.meta.main) console.log(String(viaSub(Number(process.argv[2]))));",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(tree, "test", "helpers", "sub.ts"),
+      'export const callSub = (arg: string) => Bun.spawnSync([process.execPath, "s.ts", arg], { cwd: process.cwd(), stdout: "pipe" }).stdout.toString().trim();\n',
+    );
+    writeFileSync(
+      join(tree, "test", "pure.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { inv, sumTo } from "../s.ts";\nit("sums", () => expect(sumTo(4)).toBe(6));\nit("preserves boolean type of !x", () => expect(typeof inv(undefined)).toBe("boolean"));\n',
+    );
+    writeFileSync(
+      join(tree, "test", "helper-sub.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { callSub } from "./helpers/sub.ts";\nit("runs helper sub", () => expect([callSub("5"), callSub("6")]).toEqual(["false", "true"]));\n',
+    );
+    const suites = join(root, "schema-suites.json");
+    writeFileSync(
+      suites,
+      JSON.stringify({ pure: ["test/pure.test.ts"], helperSub: ["test/helper-sub.test.ts"] }),
+    );
+    const outSchema = join(root, "schema-fast.jsonl");
+    const outIso = join(root, "schema-iso.jsonl");
+    const fast = runScript(
+      "run",
+      tree,
+      "s.ts",
+      "--out",
+      outSchema,
+      "--suites",
+      suites,
+      "--prune",
+      "--stop-at-kill",
+      "--jobs",
+      "2",
+      "--timeout",
+      "2",
+    );
+    const iso = runScript(
+      "run",
+      tree,
+      "s.ts",
+      "--out",
+      outIso,
+      "--suites",
+      suites,
+      "--stop-at-kill",
+      "--jobs",
+      "2",
+      "--timeout",
+      "2",
+    );
+    expect([fast.exitCode, iso.exitCode]).toEqual([0, 0]);
+    const statusOf = (killed: Readonly<Record<string, boolean | null>>) => {
+      const vals = Object.values(killed);
+      if (vals.includes(true)) return "killed";
+      return vals.length > 0 && vals.every((v) => v === false) ? "survived" : "unread";
+    };
+    const byId = (rows: readonly Row[]) => Object.fromEntries(rows.map((r) => [r.id, statusOf(r.killed)]));
+    expect(byId(rowsOf(outSchema))).toStrictEqual(byId(rowsOf(outIso)));
+    const subRows = rowsOf(outSchema).filter((r) => r.line === 9);
+    expect(subRows.length).toBeGreaterThan(0);
+    expect(subRows.every((r) => r.killed.helperSub === true)).toBe(true);
+    const notRow = rowsOf(outSchema).find((r) => r.line === 8 && r.label === "drop !");
+    expect(notRow?.killed.pure).toBe(true);
+    const hangRow = rowsOf(outSchema).find((r) => r.line === 3 && r.label === "+ -> -");
+    expect(hangRow).toBeDefined();
+    expect(statusOf(hangRow?.killed ?? {})).toBe("unread");
+
+    writeFileSync(join(tree, "other.ts"), "export const flag = (n: number) => n > 0;\n");
+    const onlyIds = join(root, "multi-only.txt");
+    writeFileSync(onlyIds, `${notRow?.id ?? ""}\nother.ts:37:> -> >=\n`);
+    const onlyRun = runScript(
+      "run",
+      tree,
+      "s.ts",
+      "other.ts",
+      "--out",
+      join(root, "multi-only.jsonl"),
+      "--suites",
+      suites,
+      "--only",
+      onlyIds,
+      "--jobs",
+      "1",
+    );
+    expect(onlyRun.exitCode).toBe(0);
+    expect(onlyRun.stderr.toString()).not.toContain("stale --only IDs");
+  }, 60_000);
 });
 
 const RUNNER = String.raw`#!/bin/sh

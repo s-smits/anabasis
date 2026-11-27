@@ -542,7 +542,7 @@ describe("a campaign against its bars", () => {
     );
   });
 
-  it("reads the starter against itself on the halves of its own solves in each starter comparison, and counts it towards no bar", () => {
+  it("reads the starter against itself on the halves of its own solves and falls back to it in honesty only when the reference A/A is unpowered on a non-judged starter read", () => {
     const starterLine = (events: readonly LogEvent[]) => barLines([opened, ...events])[2];
     let solves = 0;
     const solved = (session: string, task: string, harness: string, valid: readonly boolean[]) => {
@@ -567,8 +567,23 @@ describe("a campaign against its bars", () => {
       old: string,
       fresh: string,
       each: number,
-      starter: (place: number) => readonly boolean[],
+      extra: {
+        readonly starter: (place: number) => readonly boolean[];
+        readonly noise?: readonly number[];
+        readonly judged?: boolean;
+      },
     ) => [
+      ...(extra.judged === true
+        ? [
+            event("comparison.started", {
+              session,
+              old,
+              fresh,
+              starter: "S",
+              judge: { weights: { code: 0.5, judge: 0.5, step: 0.5 } },
+            }),
+          ]
+        : []),
       ...TASKS6.flatMap((task, place) => [
         ...solved(
           session,
@@ -576,10 +591,10 @@ describe("a campaign against its bars", () => {
           old,
           Array.from({ length: each }, () => true),
         ),
-        ...solved(session, task, fresh, starter(place)),
+        ...solved(session, task, fresh, extra.starter(place)),
       ]),
       event(REPORTED, {
-        ...reported(session, old, fresh).data,
+        ...reported(session, old, fresh, extra.noise).data,
         solves: each,
         setting: SETTING,
         versions: TASKS6,
@@ -589,25 +604,83 @@ describe("a campaign against its bars", () => {
     const promoted = [reported("g-1", "S", "h1"), promotedTo("h1", "S"), ...TASKS6.flatMap(heldOut)];
     const [drifts, alike, once] = [() => [true, false], () => [true, true], () => [true]];
     const apart = (place: number) => (place % 2 === 0 ? [true, false] : [false, true]);
-    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, apart)])).toBe(
-      "- Baseline A/A control: 1 split-arm starter comparison, 1 powered A/A control: 0 one-sided (95% bound 95%), 1 two-sided false positives, 0 tied every task. Observational only, excluded from honesty bar.",
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, { starter: apart })])).toBe(
+      "- Baseline A/A control: 1 split-arm starter comparison, 1 powered A/A control: 0 one-sided (95% bound 95%), 1 two-sided false positives, 0 tied every task. Used by honesty where the reference A/A is unpowered; observational otherwise.",
     );
-    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toContain(
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, { starter: drifts })])).toContain(
       "1 powered A/A control: 0 one-sided (95% bound 95%), 0 two-sided false positives, 0 tied every task.",
     );
-    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toContain(
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, { starter: alike })])).toContain(
       "1 split-arm starter comparison, 0 powered A/A controls: 0 one-sided (95% bound 100%), 0 two-sided false positives, 1 tied every task.",
     );
+    const allZero = [0, 0, 0, 0, 0, 0];
+    const tiedRefLog = [
+      opened,
+      ...promoted,
+      ...compared("g-2", "h1", "S", 2, { starter: drifts, noise: allZero }),
+    ];
+    expect(epochsOf(tiedRefLog)[0]?.falsePromotion).toMatchObject({
+      controls: 1,
+      errors: 0,
+      tied: 0,
+      byMeasure: { validity: { controls: 1, errors: 0 }, objective: { controls: 0, errors: 0 } },
+    });
+    expect(barLines(tiedRefLog)[1]).toContain(
+      "1 powered A/A control: 0 one-sided (95% bound 95%), 0 two-sided false positives (1 starter split-arm fallback where reference was unpowered).",
+    );
+    const poweredRefLog = [
+      opened,
+      ...promoted,
+      ...compared("g-2", "h1", "S", 2, { starter: apart, noise: [1, -1, 1, -1, 1, -1] }),
+    ];
+    expect(epochsOf(poweredRefLog)[0]?.falsePromotion).toMatchObject({
+      controls: 1,
+      errors: 0,
+      either: 0,
+      byMeasure: { validity: { controls: 0, errors: 0 }, objective: { controls: 1, errors: 0 } },
+    });
+    const judgedTiedLog = [
+      opened,
+      ...promoted,
+      ...compared("g-2", "h1", "S", 2, { starter: drifts, noise: allZero, judged: true }),
+    ];
+    expect(epochsOf(judgedTiedLog)[0]?.falsePromotion).toMatchObject({
+      controls: 0,
+      tied: 1,
+    });
+    expect(barLines(judgedTiedLog)[2]).toBe(
+      "- Baseline A/A control: 1 judged starter comparison excluded (no starter split-arm judge votes). Observational only.",
+    );
+    const fourMirrored = (place: number) =>
+      place % 2 === 0 ? [true, false, true, false] : [false, true, false, true];
+    const fourLog = [
+      opened,
+      ...promoted,
+      ...compared("g-2", "h1", "S", 4, { starter: fourMirrored, noise: allZero }),
+    ];
+    expect(epochsOf(fourLog)[0]?.falsePromotion.byMeasure).toEqual({
+      validity: { controls: 0, errors: 0 },
+      objective: { controls: 0, errors: 0 },
+    });
+    const fourFlips = [
+      opened,
+      ...promoted,
+      ...compared("g-2", "h1", "S", 4, { starter: () => [true, false, true, true], noise: allZero }),
+    ];
+    expect(epochsOf(fourFlips)[0]?.falsePromotion.byMeasure).toEqual({
+      validity: { controls: 1, errors: 0 },
+      objective: { controls: 0, errors: 0 },
+    });
     const none = "- Baseline A/A control: no split-arm starter comparison recorded yet. Observational only.";
-    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 1, once)])).toBe(none);
-    expect(starterLine([...promoted, ...compared("g-2", "h1", "h2", 2, drifts)])).toBe(none);
-    const log = [opened, ...promoted, ...compared("g-2", "h1", "S", 2, drifts)];
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 1, { starter: once })])).toBe(none);
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "h2", 2, { starter: drifts })])).toBe(none);
+    const log = [opened, ...promoted, ...compared("g-2", "h1", "S", 2, { starter: drifts })];
     expect(epochsOf(log)[1]?.starter_tally).toEqual({ wins: 0, losses: 0, ties: 6 });
     const repeats = (events: readonly LogEvent[]) => barLines([opened, ...events])[3];
-    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toBe(
+    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, { starter: alike })])).toBe(
       "- Rollout consistency: in 1 comparison both arms had uniform validity across all rollouts per task, and in 1 uniform objective scores as well (g-2, zero split-arm variance on either arm). Observational only.",
     );
-    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toBe(
+    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, { starter: drifts })])).toBe(
       "- Rollout consistency: in 0 comparisons both arms had uniform validity across all rollouts per task, and in 0 uniform objective scores as well. Observational only.",
     );
     expect(barLines(objectiveLog(0.05))[3]).toBe(

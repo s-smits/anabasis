@@ -1325,6 +1325,27 @@ export const scores = {
         auditor: SOUND_AUDIT,
       })({ session: "x-1", kind: "tune", why: "reweight", candidate: validTuneCandidate }),
     ).toEqual({ accepted: false, message: "Refused: no reviewer is configured to audit the revision." });
+
+    const judgedSeed = await seedCampaign({ name: "camp-judged-tune" });
+    const judgedRes = await revisionRunner({
+      log: judgedSeed.log,
+      parentBundle: judgedSeed.bundle,
+      packages: judgedSeed.packages,
+      auditor: SOUND_AUDIT,
+    })({
+      session: "x-1",
+      kind: "tune",
+      why: "add judge",
+      candidate: candidateDraft(PARENT_DRAFT, {
+        kind: "tune",
+        why: "add judge",
+        objective_items: [
+          codeItem("accuracy", 1),
+          { id: "clarity", weight: 1, kind: "judge", criterion: "Reports methodology clearly." },
+        ],
+      }),
+    });
+    expect(judgedRes).toMatchObject({ accepted: true });
   });
 
   it("opens successor B idempotently across crash prefixes, carries budget/stopRule/harness/lineage, and enforces 1 tune/epoch", async () => {

@@ -3,7 +3,6 @@ import { type Static, Type } from "typebox";
 import { type AgentTool, runAgent } from "../agent/session.ts";
 import { waitOut } from "../solver/run.ts";
 import { type AnswerFile, fileRowBytes, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
-import { extract, headOf } from "../kernel/extract.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
 import { append, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
@@ -157,12 +156,8 @@ export function taskFileTexts(publicInput: JsonValue): Map<string, string> {
   const files = new Map<string, string>();
   for (const entry of Array.isArray(rows) ? rows : []) {
     const row = asRecord(entry);
-    if (row === null || !isString(row.path) || files.has(row.path)) continue;
-    if (isString(row.text)) {
+    if (row !== null && isString(row.path) && isString(row.text) && !files.has(row.path)) {
       files.set(row.path, row.text);
-    } else if (isString(row.base64) && fileRowBytes(row) !== null) {
-      const extracted = extract({ path: row.path, base64: row.base64 });
-      files.set(row.path, [...headOf(extracted), extracted.text].join("\n"));
     }
   }
   return files;

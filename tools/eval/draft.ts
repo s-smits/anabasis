@@ -49,9 +49,9 @@ const OPTIONS = {
   "examiner-effort": { type: "string", default: "high" },
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string" },
-  tries: { type: "string", default: "6" },
-  minutes: { type: "string", default: "60" },
-  turns: { type: "string", default: "40" },
+  tries: { type: "string", default: "8" },
+  minutes: { type: "string", default: "90" },
+  turns: { type: "string", default: "80" },
   jobs: { type: "string", default: "4" },
   /** The setting flags, read when the log records no setting yet, for the solve budget shown to the
    *  drafting Examiner. */

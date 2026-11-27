@@ -210,7 +210,7 @@ function notebookImages(filePath: string, text: string): { readonly path: string
   }
 }
 
-export function embeddedImages(file: AnswerFile): { readonly path: string; readonly bytes: Buffer }[] {
+export function answerImages(file: AnswerFile): { readonly path: string; readonly bytes: Buffer }[] {
   const bytes = Buffer.from(file.base64, "base64");
   if (isZip(bytes)) {
     return zipImages(bytes, DELIVERABLES.bytes).map(({ path, data }) => ({
@@ -218,9 +218,10 @@ export function embeddedImages(file: AnswerFile): { readonly path: string; reado
       bytes: data,
     }));
   }
-  return file.text !== undefined && file.path.toLowerCase().endsWith(".ipynb")
-    ? notebookImages(file.path, file.text)
-    : [];
+  if (file.text !== undefined) {
+    return file.path.toLowerCase().endsWith(".ipynb") ? notebookImages(file.path, file.text) : [];
+  }
+  return file.base64 === "" ? [] : [{ path: file.path, bytes }];
 }
 
 export function headOf(extracted: Extracted): string[] {

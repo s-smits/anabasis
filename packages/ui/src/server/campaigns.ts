@@ -47,6 +47,7 @@ const ENDINGS = [
   "operator",
   "control",
   "finished",
+  "revise",
 ] as const satisfies readonly Ending[];
 const WORDED: ReadonlySet<Ending> = new Set([
   "budget",
@@ -58,6 +59,7 @@ const WORDED: ReadonlySet<Ending> = new Set([
   "finished",
 ]);
 const ENVIRONMENT_WITHHELD = "withheld in the default tier: it quotes the error that ended a session";
+const REVISE_WITHHELD = "withheld in the default tier: exam revision detail is on the exam side";
 
 const reasonSaid = (ending: Ending, tier: Tier): boolean => examTier(tier) || WORDED.has(ending);
 
@@ -122,7 +124,7 @@ const nextIn = once((log) => {
 function nextShown(decided: ScheduledAction, tier: Tier): NextMove {
   const shown =
     decided.move === "end" && !reasonSaid(decided.ending, tier)
-      ? { ...decided, why: ENVIRONMENT_WITHHELD }
+      ? { ...decided, why: decided.ending === "revise" ? REVISE_WITHHELD : ENVIRONMENT_WITHHELD }
       : decided;
   return { ...shown, line: decidedLine(shown) };
 }

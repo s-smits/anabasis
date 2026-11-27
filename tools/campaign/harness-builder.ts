@@ -23,19 +23,20 @@ import { endedData, endedOf } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
-import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { mkdirSync, openSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { asError, errorMessage } from "#src/meta/runtime-values.ts";
 import { waitOut } from "#src/solver/run.ts";
 import { acceptCommand } from "../eval/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../eval/draft.ts";
+import { examineCommand } from "../eval/examine.ts";
 import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
-import { standing } from "../runs/registry.ts";
+import { BUILDER, keepers, standing } from "../runs/registry.ts";
 import { campaignLog, LIMITS, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
 import { type CampaignContext, campaignTools, releasePendingPractice } from "./campaign-actions.ts";
 import {
@@ -66,6 +67,7 @@ import { gated as queued, HOST, waitCrashed, waitPaused } from "./host.ts";
 import { type Campaign, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
 import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
+import { openSuccessor, rewriteNameFlag } from "./successor.ts";
 
 const ENDED = "campaign.ended";
 /** A conversation that ended whole, by its finish or at its own limits: what `idleOf` counts
@@ -75,7 +77,7 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
 type Made = Extract<
   ScheduledAction,
-  { move: "draft" | "accept" | "prepare" | "compare" | "promote" | "revert" }
+  { move: "draft" | "accept" | "prepare" | "examine" | "compare" | "promote" | "revert" }
 >;
 
 /**
@@ -126,6 +128,15 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
     const session = nextId(events, "d");
     begin({ session });
     await draftCommand(examinerRun(turn, session, "draft").args, seats.draft);
+    return;
+  }
+  if (decided.move === "examine") {
+    if (seats.seated !== solved && seats.examine === undefined) {
+      throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
+    }
+    const session = nextId(events, "x");
+    begin({ session });
+    await examineCommand(examinerRun(turn, session, "write").args, seats.examine, undefined, seats.audit);
     return;
   }
   const { session, args } = comparisonOf(decided, turn);
@@ -277,11 +288,72 @@ async function lead(
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
-  if (left.move === "end") ended(log, read(log), left);
-  if (left.move === "end" && left.ending !== "environment" && values.handover !== undefined) {
-    await closeCommand([...packOf(values), "--to", values.handover]);
+  if (left.move === "end" && left.ending !== "revise") {
+    ended(log, read(log), left);
+    if (left.ending !== "environment" && values.handover !== undefined) {
+      await closeCommand([...packOf(values), "--to", values.handover]);
+    }
   }
   return left;
+}
+
+function rewriteMovesFlag(flags: readonly string[], remaining: number): string[] {
+  if (!Number.isFinite(remaining)) return [...flags];
+  const value = String(remaining);
+  const out: string[] = [];
+  for (let at = 0; at < flags.length; at += 1) {
+    const word = flags[at] ?? "";
+    if (word.startsWith("--moves=")) out.push(`--moves=${value}`);
+    else if (word === "--moves") {
+      out.push("--moves", value);
+      at += 1;
+    } else out.push(word);
+  }
+  return out;
+}
+
+async function handoffRevision(
+  log: string,
+  args: readonly string[],
+  values: Values,
+  decided: Extract<ScheduledAction, { move: "end" }>,
+  {
+    paid,
+    remaining,
+    seats,
+    hasCampaign,
+  }: {
+    readonly paid: "paid" | "scripted";
+    readonly remaining: number;
+    readonly seats: Seats;
+    readonly hasCampaign: boolean;
+  },
+): Promise<ScheduledAction> {
+  const name = values.name ?? "";
+  const next = await openSuccessor(log);
+  console.log(`${name}: opened successor campaign ${next.name} at ${next.log}`);
+  if (values.handover !== undefined && hasCampaign) {
+    await closeCommand([...packOf(values), "--to", values.handover]);
+  }
+  if (remaining <= 0) return decided;
+  const nextArgs = rewriteMovesFlag(rewriteNameFlag(args, name, next.name), remaining);
+  if (paid === "scripted") return await harnessBuilder(nextArgs, seats);
+  if (keepers(name).length > 0) {
+    console.log(`${name}: keeper will continue successor ${next.name}`);
+    return decided;
+  }
+  const out = join(dirname(next.log), `launch-${nextRun(next.log)}`);
+  const child = capturedSpawn([capturedExecPath, join(REPO, BUILDER), ...nextArgs], {
+    cwd: REPO,
+    env: runtimeProcess.env,
+    detached: true,
+    stdin: "ignore",
+    stdout: openSync(`${out}.out`, "a"),
+    stderr: openSync(`${out}.err`, "a"),
+  });
+  child.unref();
+  console.log(`${name}: handed off to successor ${next.name} (pid ${String(child.pid)})`);
+  return decided;
 }
 
 function settingOf(log: string, given: Values): AskedSetting {
@@ -421,6 +493,14 @@ export async function harnessBuilder(
       );
       for (const line of faults) console.log(line);
       if (values["dry-run"]) return decided;
+      if (decided.ending === "revise") {
+        return await handoffRevision(log, args, values, decided, {
+          paid,
+          remaining: most - made,
+          seats,
+          hasCampaign: campaign !== null,
+        });
+      }
       ended(log, events, decided);
       if (values.handover !== undefined && campaign !== null) {
         await closeCommand([...packOf(values), "--to", values.handover]);
@@ -436,13 +516,13 @@ export async function harnessBuilder(
       if (boundedPause(waited ? read(log) : events, began)) return decided;
       if (waited) continue;
     }
-    if (decided.move === "build" || decided.move === "examine") {
+    if (decided.move === "build" || (decided.move === "examine" && decided.code !== "bound")) {
       campaign ??= await openCampaign(packNamed(values));
       const turns = { maxMoves: most, used: made, failed: null, began };
       const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
       const left = await lead(context, decided);
       [made, { opening }] = [context.used, context];
-      if (left !== null) return left;
+      if (left !== null && !(left.move === "end" && left.ending === "revise")) return left;
       continue;
     }
     if (decided.move === "promote" && opening.attended) {

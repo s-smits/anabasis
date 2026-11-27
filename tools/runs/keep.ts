@@ -10,7 +10,7 @@
  * unless that login is at its cap; any other ending is the campaign's own, and the keeper leaves.
  * A run goes on from its log at its worktree's commit, through the refusals of `runs continue`.
  */
-import type { LogEvent } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { endedOf } from "#src/kernel/reports.ts";
 import { nonRetryableProvider } from "#src/kernel/solve.ts";
 import { askedOf, type Seat, traced } from "#src/kernel/trace.ts";
@@ -37,10 +37,10 @@ import {
   startRefusal,
 } from "./logins.ts";
 import { checkStart, lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
-import { keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
+import { keepers, logEvents, Misused, processes, type Run, runNamed, writers } from "./registry.ts";
 import { stop } from "./stop.ts";
 
-export type Turn = "watch" | "move" | "continue" | "done";
+export type Turn = "watch" | "move" | "continue" | "handoff" | "done";
 
 interface Hands {
   readonly events: () => readonly LogEvent[];
@@ -51,6 +51,7 @@ interface Hands {
   readonly checkStart: (login: string | undefined, flags: readonly string[]) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly start: (login: string | undefined) => Promise<boolean>;
+  readonly handoff?: (successor: string, login: string | undefined) => Promise<void>;
   readonly say: (line: string) => void;
   readonly env: Env;
 }
@@ -88,11 +89,19 @@ function refusalOnClaudeLogin(events: readonly LogEvent[], why: string, flags: r
 const turnsIn = (events: readonly LogEvent[]): number =>
   events.filter(({ kind, data }) => kind.endsWith(".turn") && data.stopReason !== "error").length;
 
+const successorOf = (events: readonly LogEvent[]): string | null => {
+  const next = eventsOf(events, "campaign.ended").at(-1)?.event.data.successor;
+  return isString(next) && next !== "" ? next : null;
+};
+
 export function turnOf(state: RunState, now: number, waitMs: number): Turn {
   if (state.kind === "waiting") {
     return state.wait.for === "provider" && state.wait.until - now > waitMs ? "move" : "watch";
   }
-  if (state.kind === "ended") return state.ending === GOES_ON ? "continue" : "done";
+  if (state.kind === "ended") {
+    if (state.ending === GOES_ON) return "continue";
+    return state.ending === "revise" ? "handoff" : "done";
+  }
   if (state.kind === "stopped" && state.pause !== undefined) return "done";
   return state.kind === "kept" || state.kind === "stopped" ? "continue" : "watch";
 }
@@ -137,7 +146,7 @@ export async function roomFor(
 }
 
 export const keeperActed = (line: string): boolean =>
-  /: (?:move|continue) (?:on login|without a login)|; left waiting$|(?:no seat took a model turn|non-retryable provider refusal[^:]*): kept no longer$/u.test(
+  /: (?:move|continue|handoff to \S+) (?:on login|without a login)|; left waiting$|(?:no seat took a model turn|non-retryable provider refusal[^:]*): kept no longer$/u.test(
     line,
   );
 
@@ -152,7 +161,8 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     const events = hands.events();
     const state = hands.stands(events, now);
     const turn = turnOf(state, now, waitMs);
-    if (turn === "done") {
+    const successor = turn === "handoff" ? successorOf(events) : null;
+    if (turn === "done" || (turn === "handoff" && (successor === null || hands.handoff === undefined))) {
       hands.say(
         state.kind === "ended"
           ? `${name} ended on ${state.ending}: kept no longer`
@@ -186,18 +196,22 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     let fleet: Awaited<ReturnType<Hands["fleet"]>> | undefined;
     const counted = async () => (fleet ??= await hands.fleet());
     let why = "";
+    const subject = successor ?? name;
     const target = await nextLogin(
-      turn,
+      turn === "handoff" ? "continue" : turn,
       { current, spent, billed: logins.length > 0 && billsLogin(events, flags) },
       async () => {
         const found = await roomFor(logins, spent, await counted(), hands.read, { env: hands.env, now });
         ({ why } = found);
         return found.logins;
       },
-      async (login) => startRefusal(hands.env, payerOf(login, flags), "here", await counted(), name) !== null,
+      async (login) =>
+        startRefusal(hands.env, payerOf(login, flags), "here", await counted(), subject) !== null,
     );
     let refusal =
-      target === null ? null : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), name);
+      target === null
+        ? null
+        : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), subject);
     if (turn === "move" && target !== null && refusal === null) {
       try {
         await hands.checkStart(target, flags);
@@ -222,6 +236,17 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     }
     waitedOn = "";
     askAt = 0;
+    const loginWords = target === undefined ? "without a login" : `on login ${target}`;
+    if (turn === "handoff" && successor !== null && hands.handoff !== undefined) {
+      act(now, `handoff to ${successor} ${loginWords}`);
+      try {
+        await hands.handoff(successor, target);
+        return true;
+      } catch (error) {
+        hands.say(`  ${errorMessage(error)}`);
+        return false;
+      }
+    }
     const turns = turnsIn(events);
     barren = turn === "continue" && turns === worked ? barren + 1 : 0;
     worked = turns;
@@ -229,7 +254,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       act(now, `went on ${String(BARREN)} times and no seat took a model turn: kept no longer`);
       return true;
     }
-    act(now, `${turn} ${target === undefined ? "without a login" : `on login ${target}`}`);
+    act(now, `${turn} ${loginWords}`);
     try {
       if (turn === "move") await hands.stop();
       await hands.start(target);
@@ -260,7 +285,13 @@ function poolOf(file: string, env: Env): () => Promise<readonly string[]> {
   };
 }
 
-async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitMs: number): Promise<void> {
+async function keepGoing(
+  run: Run,
+  pool: () => Promise<readonly string[]>,
+  waitMs: number,
+  named: readonly string[] | undefined,
+  waitHours: string,
+): Promise<void> {
   const look = keeperOf(run.name, pool, waitMs, {
     events: () => logEvents(run.path),
     stands: (events, now) => runState(run, events, processes(), now),
@@ -270,6 +301,15 @@ async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitM
     checkStart: (login, flags) => checkStart(run, rerun(flags, undefined), { login }),
     stop: () => stop([run.name, "--yes"]),
     start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),
+    handoff: async (successor, login) => {
+      const next = runNamed(successor);
+      if (writers(next, processes()).length === 0) {
+        await start(next, rerun(lastRun(next).flags, undefined), login, undefined);
+      }
+      if (keepers(next.name, processes()).length === 0) {
+        leaveKeeper(next, named, waitHours);
+      }
+    },
     say: (line) => console.log(line),
     env: runtimeProcess.env,
   });
@@ -304,7 +344,7 @@ export async function keep(args: readonly string[]): Promise<void> {
   }
   if (values.here) {
     const pool = named === undefined ? poolOf(envRunsFile(run.tree), runtimeProcess.env) : async () => named;
-    return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR_MS);
+    return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR_MS, named, values["wait-hours"]);
   }
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);
   if (!values.yes) return said(run, `would be kept going on logins ${logins.join(", ")}`);

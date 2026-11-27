@@ -13,7 +13,16 @@ import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
 import { ending, text, tool } from "../tools/answer.ts";
-import { type Draft, draftFaults, draftOf, TEXT_FILES } from "./draft.ts";
+import {
+  CHECK_ITEM_SCHEMA,
+  type Draft,
+  draftFaults,
+  draftOf,
+  EVALUATOR_SCHEMA,
+  RUBRIC_ITEM_SCHEMA,
+  TASK_FIELDS,
+  TEXT_FILES,
+} from "./draft.ts";
 import { FROM_FILE, fromHome } from "./shell.ts";
 
 interface RevisionOutcome {
@@ -53,40 +62,19 @@ const REVISE_PARAMETERS = Type.Object({
     }),
   ),
   checks: Type.Optional(
-    Type.Array(
-      Type.Object({
-        id: Type.String({ pattern: "^check-[a-z0-9-]+$" }),
-        rule: Type.String({ minLength: 1 }),
-        assertion: Type.String({ minLength: 1 }),
-        tools: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-      }),
-      {
-        minItems: 1,
-        description:
-          "Optional full check list preserving every inherited check's id, rule and assertion, while adding new checks or verifier tools. Omit to keep checks unchanged.",
-      },
-    ),
+    Type.Array(CHECK_ITEM_SCHEMA, {
+      minItems: 1,
+      description:
+        "Optional full check list preserving every inherited check's id, rule and assertion, while adding new checks or verifier tools. Omit to keep checks unchanged.",
+    }),
   ),
-  evaluator: Type.Optional(
-    Type.Union([
-      Type.String({ minLength: 1, description: "Updated TypeScript check program source." }),
-      Type.Object({ from_file: Type.String({ minLength: 1 }) }),
-    ]),
-  ),
+  evaluator: Type.Optional(EVALUATOR_SCHEMA),
   objective_items: Type.Optional(
-    Type.Array(
-      Type.Object({
-        id: Type.String({ pattern: "^[a-z][a-z0-9-]*$" }),
-        weight: Type.Number({ exclusiveMinimum: 0 }),
-        kind: Type.Optional(Type.Union([Type.Literal("code"), Type.Literal("judge")])),
-        criterion: Type.Optional(Type.String({ minLength: 1 })),
-      }),
-      {
-        minItems: 1,
-        description:
-          "Updated weighted [0, 1] rubric items (reweight, edit, add, or remove code/judge items). Omit to keep current objective items unchanged.",
-      },
-    ),
+    Type.Array(RUBRIC_ITEM_SCHEMA, {
+      minItems: 1,
+      description:
+        "Updated weighted [0, 1] rubric items (reweight, edit, add, or remove code/judge items). Omit to keep current objective items unchanged.",
+    }),
   ),
   objective_tools: Type.Optional(
     Type.Array(Type.String({ minLength: 1 }), {
@@ -94,14 +82,9 @@ const REVISE_PARAMETERS = Type.Object({
     }),
   ),
   add_tasks: Type.Optional(
-    Type.Array(
-      Type.Object({
-        family: Type.String({ pattern: "\\S" }),
-        public_input: Type.Unknown(),
-        hidden: Type.Unknown({ description: "Null when the exam has no hidden values." }),
-      }),
-      { description: "Optional new example tasks appended after the inherited examples." },
-    ),
+    Type.Array(Type.Object(TASK_FIELDS), {
+      description: "Optional new example tasks appended after the inherited examples.",
+    }),
   ),
   add_accept_controls: Type.Optional(
     Type.Array(Type.Object(CONTROL_ADD), {

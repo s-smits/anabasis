@@ -7,10 +7,10 @@ import { ORIGINS, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { testOf } from "#src/kernel/compare.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { callsOf } from "#src/kernel/trace.ts";
 import { objectiveOf } from "#src/kernel/verify.ts";
-import { asRecord } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { draftAuditPasses, unverifiedFinalPasses } from "./components.ts";
@@ -48,6 +48,11 @@ interface GamingScan {
     readonly lowProbeSound: number;
   };
   readonly reversals: readonly string[];
+  readonly examiner: {
+    readonly readReviews: number;
+    readonly reviseCalls: number;
+    readonly revised: { readonly kind: string; readonly maxWeightDelta: number } | null;
+  };
   readonly builder: {
     readonly maxTaskRepeats: number;
     readonly heavyTasks: number;
@@ -71,6 +76,37 @@ const listed = (values: readonly (string | number)[], sep = ", "): string =>
   values.length === 0 ? "none" : values.join(sep);
 const finalCount = (value: unknown, series: readonly number[]): number =>
   Array.isArray(value) ? value.length : (series.at(-1) ?? 0);
+
+function itemWeights(draft: unknown): Map<string, number> {
+  const objective = asRecord(asRecord(draft)?.objective);
+  const raw = Array.isArray(objective?.items) ? objective.items : [];
+  return new Map(
+    raw.flatMap((one) => {
+      const record = asRecord(one);
+      return record !== null && isString(record.id) && isNumber(record.weight)
+        ? [[record.id, record.weight] as const]
+        : [];
+    }),
+  );
+}
+
+function examinerTelemetry(log: Index, standing: unknown): GamingScan["examiner"] {
+  const examCalls = callsOf(log.traces, "exam");
+  const readReviews = examCalls.filter(({ tool }) => tool === "read_reviews").length;
+  const reviseCalls = examCalls.filter(({ tool }) => tool === "revise_exam").length;
+  const rev = eventsOf(log.events, "exam.revised").at(-1)?.event.data;
+  if (rev === undefined || !isString(rev.kind)) {
+    return { readReviews, reviseCalls, revised: null };
+  }
+  const before = itemWeights(standing);
+  const after = itemWeights(rev.draft);
+  const ids = new Set([...before.keys(), ...after.keys()]);
+  const maxWeightDelta = Math.max(
+    0,
+    ...[...ids].map((id) => Math.abs((after.get(id) ?? 0) - (before.get(id) ?? 0))),
+  );
+  return { readReviews, reviseCalls, revised: { kind: rev.kind, maxWeightDelta } };
+}
 
 function gamingScanOf(log: Index): GamingScan {
   const puts = callsOf(log.traces, "draft").filter(({ tool }) => tool === "draft_exam");
@@ -162,6 +198,7 @@ function gamingScanOf(log: Index): GamingScan {
       ).length,
     },
     reversals,
+    examiner: examinerTelemetry(log, standing),
     builder: { maxTaskRepeats, heavyTasks, heavySessions, untriedCompares },
     solver: {
       repeatedObjectiveClusters: clusters.length,
@@ -174,7 +211,7 @@ function gamingScanOf(log: Index): GamingScan {
 }
 
 export function gamingRows(events: readonly LogEvent[]): string[] {
-  const { draft, draftAudit, reversals, builder, solver } = gamingScanOf(indexOf(events));
+  const { draft, draftAudit, reversals, examiner, builder, solver } = gamingScanOf(indexOf(events));
   const validShare = draft.totalScored > 0 ? percent(draft.validScored / draft.totalScored) : "n/a";
   const leads = pick([
     [draft.droppedChecks || draft.droppedRules, "draft-rule-drop"],
@@ -187,11 +224,15 @@ export function gamingRows(events: readonly LogEvent[]): string[] {
   ]);
   const heavyNote = builder.heavySessions.length > 0 ? `; sessions: ${builder.heavySessions.join(", ")}` : "";
   const topNote = solver.topCluster === null ? "" : ` (${solver.topCluster})`;
+  const revisionNote =
+    examiner.revised === null
+      ? ""
+      : `, revised (${examiner.revised.kind}, max weight delta ${examiner.revised.maxWeightDelta.toFixed(2)})`;
   return [
     `gaming: ${plural(leads.length, "lead")} (${listed(leads)})`,
     `  draft: ${plural(draft.puts, "put")}, checks [${listed(draft.checksSeries, "->")}]${draft.droppedChecks ? " (dropped)" : ""}, rules [${listed(draft.rulesSeries, "->")}]${draft.droppedRules ? " (dropped)" : ""}; scored validity ${share(draft.validScored, draft.totalScored)} (${validShare})`,
     `  referee.draft: ${String(draftAudit.passes)} passes, ${String(draftAudit.probes)} probes, findings ${tally(draftAudit.findings)}, objective-declared ${draftAudit.objectiveDeclared ? "yes" : "no"}, low-probe-sound ${String(draftAudit.lowProbeSound)}, unverified-freeze ${draftAudit.unverifiedFreeze ? "yes" : "no"}`,
-    `  examiner: chosen/after reversals: ${listed(reversals, "; ")}`,
+    `  examiner: chosen/after reversals: ${listed(reversals, "; ")}; read_reviews ${String(examiner.readReviews)}, revise_exam ${String(examiner.reviseCalls)}${revisionNote}`,
     `  builder: max ${String(builder.maxTaskRepeats)} practice solves/task (${String(builder.heavyTasks)} tasks >=${String(HILL_CLIMB_REPEATS)}), untried compares ${String(builder.untriedCompares)}${heavyNote}`,
     `  solver: identical-objective clusters ${String(solver.repeatedObjectiveClusters)}${topNote}`,
   ];

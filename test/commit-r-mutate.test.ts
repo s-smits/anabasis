@@ -720,7 +720,7 @@ describe("nightly mutation suite selection", () => {
       capturedJsonParse(
         readFileSync(join(state, head2, `src_extra.diff-${head.slice(0, 9)}.suites.json`), "utf8"),
       ),
-    ).toEqual({ extra: ["test/extra.test.ts"] });
+    ).toEqual({ extra: ["test/extra.test.ts"], "extra-indirect": ["test/extra-indirect.test.ts"] });
     const diffReport = readFileSync(join(state, head2, "report.md"), "utf8");
     expect(diffReport).toContain("src/kernel/solve.ts:3  [2:");
     const recheckIds = readFileSync(join(state, head2, `survivors.diff-${head.slice(0, 9)}.ids.txt`), "utf8")
@@ -778,6 +778,39 @@ describe("nightly mutation suite selection", () => {
       commit: head3,
       full: head3,
     });
+    const solveLines = readFileSync(join(tree, "src", "kernel", "solve.ts"), "utf8").split("\n");
+    const answers = rowsOf(join(state, head3, "src_kernel_solve.jsonl"))
+      .filter(({ killed }) => Object.values(killed).every((one) => one === false))
+      .map(({ label, line }) =>
+        ["src/kernel/solve.ts", label, solveLines[line - 1]?.trim(), "equivalent", "no caller reads it"].join(
+          "\t",
+        ),
+      );
+    expect(answers.length).toBeGreaterThan(0);
+    const stale = ["src/kernel/solve.ts", "swap ?:", "gone();", "presentation", "only printed wording"].join(
+      "\t",
+    );
+    const ledger = join(tree, ".claude", "skills", "mutation-testing", "answered-survivors.tsv");
+    mkdirSync(join(ledger, ".."), { recursive: true });
+    writeFileSync(ledger, ["path\tlabel\tsource\tkind\treason", ...answers, stale, ""].join("\n"));
+    runNightly(tree, state, ["--full"]);
+    const answeredReport = readFileSync(join(state, head3, "report.md"), "utf8");
+    expect(answeredReport).toContain(
+      `Answered in \`.claude/skills/mutation-testing/answered-survivors.tsv\`: ${String(new Set(answers).size + 1)}`,
+    );
+    expect(answeredReport).toContain(
+      "Stale answer, no such survivor now (delete the row): `src/kernel/solve.ts  swap ?:  gone();`",
+    );
+    runNightly(tree, state, ["--diff", head]);
+    const answeredDiff = readFileSync(join(state, head3, "report.md"), "utf8");
+    expect(answeredDiff).toContain(`Diff survivors since ${head.slice(0, 9)}: 0 across 0 line(s)`);
+    expect(answeredDiff).not.toContain("Stale answer");
+    writeFileSync(
+      ledger,
+      ["path\tlabel\tsource\tkind\treason", `${stale}\textra`.replace("presentation", "fine"), ""].join("\n"),
+    );
+    expect(runNightly(tree, state, ["--full"]).exitCode).not.toBe(0);
+    rmSync(ledger);
 
     writeFileSync(join(tree, "test", ".test-timings.json"), "{broken");
     expect(runNightly(tree, join(root, "nightly-bad")).exitCode).toBe(0);

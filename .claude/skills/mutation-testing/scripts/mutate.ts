@@ -30,15 +30,8 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { checkPlaces, fleetPlaces, hostsFor, namedPlaces, type Place } from "#tools/runs/host-config.ts";
 import * as ts from "typescript5";
-import {
-  BATCH_FILE,
-  type FastWorker,
-  isAway,
-  measureCoverage,
-  routed,
-  spawnsSubprocess,
-  type VerdictMap,
-} from "./mutate-exec.ts";
+import { BATCH_FILE } from "./mutate-batch.ts";
+import { type FastWorker, isAway, measureCoverage, routed, type VerdictMap } from "./mutate-exec.ts";
 import { type PoolTask, runFleetPool, UNKNOWN_SUITE_MS } from "./mutate-pool.ts";
 import { type SchemaMutant, screenFileWithSchemata } from "./mutate-schema.ts";
 
@@ -448,6 +441,7 @@ function buildPoolTasks(opts: {
   readonly afterSchema: readonly PendingItem[];
   readonly priorById: ReadonlyMap<string, Map<string, boolean | null>>;
   readonly uncovered: ReadonlyMap<string, Map<string, Set<number>>>;
+  readonly unreached: ReadonlyMap<string, Map<string, Set<string>>>;
   readonly durations: ReadonlyMap<string, number>;
   readonly runCov: boolean;
   readonly mode: KillMode;
@@ -456,7 +450,11 @@ function buildPoolTasks(opts: {
   const tasks: PoolTask[] = [];
   for (const { item, rest } of opts.afterSchema) {
     const active = opts.runCov
-      ? rest.filter((name) => opts.uncovered.get(name)?.get(item.mutant.file)?.has(item.mutant.line) !== true)
+      ? rest.filter(
+          (name) =>
+            opts.uncovered.get(name)?.get(item.mutant.file)?.has(item.mutant.line) !== true &&
+            opts.unreached.get(name)?.get(item.mutant.file)?.has(item.mutant.id) !== true,
+        )
       : rest;
     if (active.length === 0) {
       opts.record(item, finalizeRow(item.suites, opts.priorById.get(item.mutant.id), {}, opts.mode));
@@ -495,18 +493,9 @@ async function dispatchRemaining(opts: {
   readonly deadline: number;
   readonly record: (item: TargetItem, killed: VerdictMap) => void;
 }): Promise<number> {
-  const leadNeeded = new Set(
-    opts.afterSchema.flatMap(({ rest }) => {
-      if (opts.mode !== "stop-at-kill" || rest.length < 2) return rest;
-      const keep = Math.min(rest.length - 1, Math.max(1, Math.floor((rest.length * 2) / 3)));
-      return rest.slice(0, keep);
-    }),
-  );
+  const needed = new Set(opts.afterSchema.flatMap(({ rest }) => rest));
   const covSuites = new Map(
-    [...opts.allSuites.entries()].filter(
-      ([name, paths]) =>
-        leadNeeded.has(name) && !opts.localQualified.has(name) && !spawnsSubprocess(opts.root, paths),
-    ),
+    [...opts.allSuites.entries()].filter(([name]) => needed.has(name) && !opts.localQualified.has(name)),
   );
   const runCov =
     opts.prune && (opts.afterSchema.length >= 5 || (opts.cacheDir !== null && existsSync(opts.cacheDir)));
@@ -524,14 +513,27 @@ async function dispatchRemaining(opts: {
   };
   const stayLocal = localSlots > 0 && opts.afterSchema.length <= localSlots;
   const activeWorkers = pickWorkers(stayLocal ? "local" : "fleet");
+  const mutantsByFile = new Map<string, Mutant[]>();
+  for (const { item } of opts.afterSchema) {
+    const list = mutantsByFile.get(item.mutant.file) ?? [];
+    list.push(item.mutant);
+    mutantsByFile.set(item.mutant.file, list);
+  }
   const [cov] = await Promise.all([
     runCov
       ? measureCoverage(opts.root, covSuites, [...opts.originals.keys()], {
           seconds: opts.seconds,
           cacheDir: opts.cacheDir,
+          originals: opts.originals,
+          mutantsByFile,
+          prepareClone: async (dest) => {
+            await cloneTree(opts.root, dest);
+            linkModules(opts.root, dest, "local");
+          },
         })
       : Promise.resolve({
           uncovered: new Map<string, Map<string, Set<number>>>(),
+          unreached: new Map<string, Map<string, Set<string>>>(),
           covered: new Map<string, Map<string, number>>(),
           passed: new Set<string>(),
           durations: new Map<string, number>(),
@@ -544,6 +546,7 @@ async function dispatchRemaining(opts: {
     afterSchema: opts.afterSchema,
     priorById: opts.priorById,
     uncovered: cov.uncovered,
+    unreached: cov.unreached,
     durations: opts.durations,
     runCov,
     mode: opts.mode,

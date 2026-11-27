@@ -53,14 +53,7 @@ const SHORT_CIRCUIT_ALT = new Map<string, string>([
 
 const TRANSPILER = new Bun.Transpiler({ loader: "ts" });
 
-const SCHEMA_PREAMBLE = `const __anaSch = () => (globalThis as unknown as { __ANA_SCH?: { m: number; rec: boolean; hits: Set<number> } }).__ANA_SCH;
-function __anaHit(k: number): boolean {
-  const s = __anaSch();
-  if (s === undefined) return false;
-  if (s.rec) s.hits.add(k);
-  return s.m === k;
-}
-function __anaIf(k: number): boolean { return !__anaHit(k); }
+const SCHEMA_HELPERS = `function __anaIf(k: number): boolean { return !__anaHit(k); }
 function __anaNot(k: number, v: unknown): unknown { return __anaHit(k) ? v : !v; }
 function __anaCond(k: number, v: unknown): boolean { return __anaHit(k) ? !v : Boolean(v); }
 function __anaLit<T>(k: number, orig: T, alt: T): T { return __anaHit(k) ? alt : orig; }
@@ -78,6 +71,28 @@ function __anaB(k: number, op: number, a: unknown, b: unknown): unknown {
   }
 }
 `;
+
+const SCHEMA_PREAMBLE = `const __anaSch = () => (globalThis as unknown as { __ANA_SCH?: { m: number; rec: boolean; hits: Set<number> } }).__ANA_SCH;
+function __anaHit(k: number): boolean {
+  const s = __anaSch();
+  if (s === undefined) return false;
+  if (s.rec) s.hits.add(k);
+  return s.m === k;
+}
+${SCHEMA_HELPERS}`;
+
+function tracePreamble(tracePath: string): string {
+  return `import { appendFileSync as __anaAppend } from "node:fs";
+const __anaSeen = new Set<number>();
+function __anaHit(k: number): boolean {
+  if (!__anaSeen.has(k)) {
+    __anaSeen.add(k);
+    __anaAppend(${JSON.stringify(tracePath)}, String(k) + "\\n");
+  }
+  return false;
+}
+${SCHEMA_HELPERS}`;
+}
 
 function isSchemataSuite(root: string, paths: readonly string[]): boolean {
   if (paths.length !== 1) return false;
@@ -307,14 +322,18 @@ const hasTopLevelMutableBinding = (tree: ts.SourceFile): boolean =>
     (stmt) => ts.isVariableStatement(stmt) && (stmt.declarationList.flags & ts.NodeFlags.Const) === 0,
   );
 
-function buildSchemaSource(
+function buildInstrumented(
   file: string,
   source: string,
   mutants: readonly SchemaMutant[],
+  preamble: string,
+  topLevel: "immutable-only" | "allow-mutable",
 ): { readonly source: string | null; readonly encoded: ReadonlyMap<number, SchemaMutant> } {
   if (mutants.length === 0) return { source: null, encoded: new Map() };
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  if (hasTopLevelMutableBinding(tree)) return { source: null, encoded: new Map() };
+  if (topLevel === "immutable-only" && hasTopLevelMutableBinding(tree)) {
+    return { source: null, encoded: new Map() };
+  }
   const { bySpan, starts } = buildMutantLookup(mutants);
   const encoded = new Map<number, SchemaMutant>();
   const ctx = {
@@ -335,13 +354,31 @@ function buildSchemaSource(
   }
   body += source.slice(cursor);
   if (encoded.size === 0) return { source: null, encoded };
-  const combined = `${SCHEMA_PREAMBLE}\n${body}`;
+  let combined = `${preamble}\n${body}`;
+  if (body.startsWith("#!")) {
+    const nl = body.indexOf("\n");
+    const shebang = nl === -1 ? body : body.slice(0, nl + 1);
+    combined = `${shebang}${preamble}\n${nl === -1 ? "" : body.slice(nl + 1)}`;
+  }
   try {
     TRANSPILER.transformSync(combined);
     return { source: combined, encoded };
   } catch {
     return { source: null, encoded: new Map() };
   }
+}
+
+function buildSchemaSource(file: string, source: string, mutants: readonly SchemaMutant[]) {
+  return buildInstrumented(file, source, mutants, SCHEMA_PREAMBLE, "immutable-only");
+}
+
+export function buildTraceSource(
+  file: string,
+  source: string,
+  mutants: readonly SchemaMutant[],
+  tracePath: string,
+) {
+  return buildInstrumented(file, source, mutants, tracePreamble(tracePath), "allow-mutable");
 }
 
 const WORKER_HARNESS = `import { expect as realExpect, it as realIt } from "bun:test";

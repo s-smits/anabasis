@@ -234,7 +234,7 @@ function rolloutLog(store: string, task: string, label: string) {
   };
 }
 
-const piLogs = (traj: string): string => join(tmpdir(), "pi-solve-logs", basename(traj, ".jsonl"));
+const piLogs = (traj: string): string => join(tmpdir(), `pi-solve-logs-${basename(traj, ".jsonl")}`);
 
 /** `pi-solve.ts` inside the placed harness on the pilot's model, effort and dollars, its wall two
  *  minutes inside the hold; its trace is copied, as the store is another mount. */

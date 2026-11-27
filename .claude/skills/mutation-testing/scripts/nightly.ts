@@ -17,7 +17,7 @@ import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { availableParallelism } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
-import { NEAR, within } from "#tools/runtime/gate.ts";
+import { within } from "#tools/runtime/gate.ts";
 import { mutantsOf } from "./mutate.ts";
 
 const CAMPAIGN_SUITES = ["test/harness-builder.test.ts", "test/campaign-kill.test.ts", "test/climb.test.ts"];
@@ -101,7 +101,7 @@ const joinedPath = (path: string): string =>
 const pathMentioned = (code: string, path: string): boolean =>
   code.includes(path) || code.includes(joinedPath(path));
 
-function testIndex(tree: string, depth: number) {
+function testIndex(tree: string) {
   const tests = readdirSync(join(tree, "test"))
     .filter((name) => name.endsWith(".test.ts"))
     .map((name) => `test/${name}`);
@@ -113,9 +113,8 @@ function testIndex(tree: string, depth: number) {
         return [test, seen] as const;
       }),
     );
-  const reachable = reachAt(depth);
-  const direct = depth === 1 ? reachable : reachAt(1);
-  let transitive: Map<string, Set<string>> | null = null;
+  const reachable = reachAt(Number.POSITIVE_INFINITY);
+  const direct = reachAt(1);
   const transformed = new Map(tests.map((test) => [test, runtimeText(tree, test)] as const));
   const timings = timingsOf(tree);
   const compareSuites =
@@ -133,10 +132,6 @@ function testIndex(tree: string, depth: number) {
     let matched = tests.filter(
       (path) => reachable.get(path)?.has(owner) === true || pathMentioned(transformed.get(path) ?? "", owner),
     );
-    if (matched.length === 0 && depth < Number.POSITIVE_INFINITY) {
-      transitive ??= reachAt(Number.POSITIVE_INFINITY);
-      matched = tests.filter((path) => transitive?.get(path)?.has(owner) === true);
-    }
     if (matched.length === 0) {
       const parent = dirname(owner);
       if (parent !== "." && parent.includes("/")) {
@@ -196,6 +191,26 @@ function survivorEntries(tree: string, commit: string, rows: readonly Row[]): Su
     const key = `${row.file}  ${row.label}  ${source}`;
     return [{ id: row.id, file: row.file, line: row.line, label: row.label, source, key }];
   });
+}
+
+const ANSWERED = ".claude/skills/mutation-testing/answered-survivors.tsv";
+const ANSWER_KINDS = new Set(["equivalent", "presentation"]);
+
+function answeredKeys(tree: string): Set<string> {
+  const path = join(tree, ANSWERED);
+  if (!existsSync(path)) return new Set();
+  const rows = readFileSync(path, "utf8").split("\n").slice(1).filter(Boolean);
+  return new Set(
+    rows.map((row) => {
+      const [file = "", label = "", source = "", kind = "", reason = ""] = row.split("\t");
+      if (!ANSWER_KINDS.has(kind) || reason.trim().split(/\s+/u).length < 3) {
+        throw new Error(
+          `${ANSWERED}: "${row}" needs a kind (equivalent or presentation) and a reason a reviewer can check`,
+        );
+      }
+      return `${file}  ${label}  ${source}`;
+    }),
+  );
 }
 
 function freshSurvivors(now: readonly Survivor[], before: readonly Survivor[]): Survivor[] {
@@ -355,11 +370,19 @@ function writeReport(opts: {
     tableRows.push([`\`${owner}\``, count("killed"), count("survived"), count("unread")]);
   }
   const lines = [heading, "", printed(["owner", "killed", "survived", "unread"], tableRows)];
-  const added = diffMode
-    ? survivorEntries(tree, head, now)
-    : prevFull === null
-      ? []
-      : freshSurvivors(survivorEntries(tree, head, now), survivorEntries(tree, prevFull, before));
+  const answered = answeredKeys(tree);
+  const current = survivorEntries(tree, head, now);
+  const added = (
+    diffMode
+      ? current
+      : prevFull === null
+        ? []
+        : freshSurvivors(current, survivorEntries(tree, prevFull, before))
+  ).filter(({ key }) => !answered.has(key));
+  const live = new Set(current.map(({ key }) => key));
+  const stale = diffMode
+    ? []
+    : [...answered].filter((key) => owners.some((owner) => key.startsWith(`${owner}  `)) && !live.has(key));
   const clusters = formatSurvivorClusters(added);
   const recheckIds = [
     ...added.map(({ id }) => id),
@@ -384,6 +407,8 @@ function writeReport(opts: {
         `Unfinished, resumes next run: \`${owner}\` (deadline, or a suite failed unmutated; see the log)`,
     ),
     summary,
+    ...(answered.size > 0 ? [`Answered in \`${ANSWERED}\`: ${String(answered.size)}`] : []),
+    ...stale.map((key) => `Stale answer, no such survivor now (delete the row): \`${key}\``),
     ...(recheckIds.length > 0 ? [`Recheck IDs (\`mutate.ts run --only\`): \`${idsFile}\``] : []),
     ...clusters,
   );
@@ -436,7 +461,7 @@ async function nightly(args: CommandArgs, rawTree: string): Promise<number> {
   }
   const until = deadlineOf(args.value("until"));
   const timeout = args.int("timeout") ?? 900;
-  const suitesFor = testIndex(tree, diffMode ? NEAR.root : Number.POSITIVE_INFINITY);
+  const suitesFor = testIndex(tree);
   const unfinished: string[] = [];
   const untested: [string, number][] = [];
   const owners =

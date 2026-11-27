@@ -3,13 +3,13 @@ import { availableParallelism } from "#src/meta/os.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
 import type { Place } from "#tools/runs/host-config.ts";
+import { runBatch } from "./mutate-batch.ts";
 import {
   type ActiveProc,
   type BatchPlan,
   type FastWorker,
   isAway,
   killsOf,
-  runBatch,
   unfit,
   type VerdictMap,
 } from "./mutate-exec.ts";
@@ -217,10 +217,15 @@ export async function runFleetPool(opts: {
       if (wait === undefined) {
         const paths = opts.suites.get(name);
         const map = paths === undefined ? new Map<string, readonly string[]>() : new Map([[name, paths]]);
-        wait = unfit(seat, map, opts.seconds, baseConc).then((why) => {
+        wait = (async () => {
+          let why = await unfit(seat, map, opts.seconds, baseConc);
+          if (why !== null) {
+            await Bun.sleep(200);
+            why = await unfit(seat, map, opts.seconds, baseConc);
+          }
           if (why === null) opts.localQualified.add(name);
           return why;
-        });
+        })();
         localQualifyWait.set(name, wait);
       }
       const why = await wait;
@@ -290,7 +295,7 @@ export async function runFleetPool(opts: {
               ).length
             : pending.length;
         const demand = Math.min(localSeats.length, Math.max(1, runnablePending + localInFlight));
-        const localConc = mode === "local" ? Math.min(2, Math.max(1, Math.floor(cores / (demand * 2)))) : 4;
+        const localConc = mode === "local" ? Math.min(2, Math.max(1, Math.floor(cores / (demand * 2)))) : 2;
         const outcome = await killsOf(seat, mode === "local" ? orderPlan(task.plan) : task.plan, {
           originals: opts.originals,
           suites: opts.suites,

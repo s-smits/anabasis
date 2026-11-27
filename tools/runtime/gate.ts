@@ -63,7 +63,7 @@ const UI_TEST = /^packages\/ui\/test\/[^/]+\.test\.tsx?$/u;
 const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
 const IMPORTS = new Map<string, string[]>();
 const TRANSPILERS = { ts: new Bun.Transpiler({ loader: "ts" }), tsx: new Bun.Transpiler({ loader: "tsx" }) };
-export const NEAR = { root: 1, ui: 3 } as const;
+const NEAR = { root: 1, ui: 3 } as const;
 const FIRST = [
   ["install", ["install", "--frozen-lockfile"]],
   ["format", ["run", "format:check"]],

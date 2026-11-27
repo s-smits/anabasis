@@ -14,7 +14,7 @@ import { formatComparisonHistory } from "#src/builder/past.ts";
 import { seedSavedHarnesses, snapshot } from "#src/builder/store.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
-import { pendingSignals } from "#src/campaign/signal.ts";
+import { boundedPause, pendingSignals } from "#src/campaign/signal.ts";
 import { conversing, examine } from "#src/examiner/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, CALL_KINDS, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
@@ -182,6 +182,9 @@ async function runAction(
       within: (work) => bench.within(work),
     });
     if (aborted()) return text("The campaign has been stopped by the host.");
+    if (boundedPause(read(context.log), context.began ?? 0)) {
+      return halt("The campaign reached its operator pause point; no further action may start.");
+    }
     const { turn, decided } = actionTurn(context);
     if (decided.move === "end") {
       return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);

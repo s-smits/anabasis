@@ -93,6 +93,7 @@ export function turnOf(state: RunState, now: number, waitMs: number): Turn {
     return state.wait.for === "provider" && state.wait.until - now > waitMs ? "move" : "watch";
   }
   if (state.kind === "ended") return state.ending === GOES_ON ? "continue" : "done";
+  if (state.kind === "stopped" && state.pause !== undefined) return "done";
   return state.kind === "kept" || state.kind === "stopped" ? "continue" : "watch";
 }
 
@@ -151,8 +152,11 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     const events = hands.events();
     const state = hands.stands(events, now);
     const turn = turnOf(state, now, waitMs);
-    if (turn === "done" && state.kind === "ended") {
-      hands.say(`${name} ended on ${state.ending}: kept no longer`);
+    if (turn === "done") {
+      if (state.kind === "ended") hands.say(`${name} ended on ${state.ending}: kept no longer`);
+      else if (state.kind === "stopped" && state.pause !== undefined) {
+        hands.say(`${name} paused (${state.pause.why}): kept no longer`);
+      }
       return true;
     }
     if (turn === "watch") {

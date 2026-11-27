@@ -5,6 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   ANSWERED,
+  boundedPause,
   PAUSE,
   PAUSE_STOP_WINDOW_MS,
   pausePointReached,
@@ -146,5 +147,12 @@ describe("an operator's word", () => {
       event("build.call", { session: "b-2" }, 1_500_000 + PAUSE_STOP_WINDOW_MS),
     ];
     expect(pauseSince(abandoned, 0)).toBeUndefined();
+    const halted = [
+      ...confirmed,
+      event("build.finished", { session: "b-2", ended: "stopped" }, 1_500_000 + PAUSE_STOP_WINDOW_MS + 1000),
+    ];
+    expect(boundedPause(halted, 0)).toBe(true);
+    expect(boundedPause([event("campaign.opened", {}), word({ word: "pause" })], 0)).toBe(false);
+    expect(pauseSince(halted, 0)?.data.after).toBe("reported");
   });
 });

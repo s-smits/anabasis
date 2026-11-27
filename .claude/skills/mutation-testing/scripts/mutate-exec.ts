@@ -431,7 +431,8 @@ export async function unfit(
   const batchSec = Math.min(600, Math.max(seconds, Math.ceil(all.length / Math.max(1, localConc)) * 30));
   if (suites.size > 1 && (await verdict(worker, all, batchSec, localConc)) === false) return null;
   for (const [name, paths] of suites) {
-    const said = await verdict(worker, paths, seconds, localConc);
+    const loaded = await verdict(worker, paths, seconds, localConc);
+    const said = loaded === false ? false : await verdict(worker, paths, 2 * seconds, 1);
     if (said === false) continue;
     const at = worker.place.remote === undefined ? "" : ` on ${worker.place.remote}`;
     return `baseline suite "${name}" did not pass unmutated (${said === true ? "failed" : "no verdict"})${at}`;

@@ -178,6 +178,7 @@ interface Survivor {
   readonly label: string;
   readonly source: string;
   readonly key: string;
+  readonly suites: readonly string[];
 }
 
 function survivorEntries(tree: string, commit: string, rows: readonly Row[]): Survivor[] {
@@ -189,7 +190,8 @@ function survivorEntries(tree: string, commit: string, rows: readonly Row[]): Su
     }
     const source = sources.get(row.file)?.[row.line - 1]?.trim() ?? "";
     const key = `${row.file}  ${row.label}  ${source}`;
-    return [{ id: row.id, file: row.file, line: row.line, label: row.label, source, key }];
+    const suites = Object.keys(row.killed);
+    return [{ id: row.id, file: row.file, line: row.line, label: row.label, source, key, suites }];
   });
 }
 
@@ -225,7 +227,57 @@ function freshSurvivors(now: readonly Survivor[], before: readonly Survivor[]): 
   );
 }
 
-function formatSurvivorClusters(entries: readonly Survivor[]): string[] {
+function reachReader(cov: string): (entry: Survivor) => Reach {
+  const ranOf = (suite: string): ((entry: Survivor) => boolean) | null => {
+    const lcov = join(cov, `${suite}.lcov`);
+    const traced = join(cov, `${suite}.unreached.json`);
+    if (existsSync(lcov)) {
+      const hits = new Set<string>();
+      let file = "";
+      for (const entry of readFileSync(lcov, "utf8").split("\n")) {
+        if (entry.startsWith("SF:")) file = entry.slice(3);
+        const [line = 0, count = 0] = entry.startsWith("DA:") ? entry.slice(3).split(",").map(Number) : [];
+        if (count > 0) hits.add(`${file}:${String(line)}`);
+      }
+      return ({ file: at, line }) => hits.has(`${at}:${String(line)}`);
+    }
+    if (!existsSync(traced)) return null;
+    const missed = asRecord(asRecord(capturedJsonParse(readFileSync(traced, "utf8")))?.unreached);
+    return ({ file, id }) => {
+      const ids = missed?.[file];
+      return !(Array.isArray(ids) && ids.includes(id));
+    };
+  };
+  const cache = new Map<string, ((entry: Survivor) => boolean) | null>();
+  return (entry) => {
+    const ran = entry.suites.map((suite) => {
+      if (!cache.has(suite)) cache.set(suite, ranOf(suite));
+      return cache.get(suite)?.(entry) ?? null;
+    });
+    return {
+      by: entry.suites.filter((_, at) => ran[at] === true),
+      unknown: ran.filter((one) => one === null).length,
+    };
+  };
+}
+
+interface Reach {
+  readonly by: readonly string[];
+  readonly unknown: number;
+}
+
+function routeOf({ by, unknown }: Reach): string {
+  if (by.length > 0) {
+    const named = by.slice(0, 3).map((suite) => `\`${suite}\``);
+    const more = by.length > 3 ? ` and ${String(by.length - 3)} more` : "";
+    return `run by ${named.join(", ")}${more}: pin it through one of these flows, or answer it`;
+  }
+  return unknown === 0
+    ? "run by no suite: delete it, or reach it through a live entry point"
+    : `run by no suite with coverage on record, ${String(unknown)} without: recheck before deleting`;
+}
+
+function formatSurvivorClusters(entries: readonly Survivor[], reach: (entry: Survivor) => Reach): string[] {
   const groups = [...Map.groupBy(entries, ({ file, line }) => `${file}:${String(line)}`).values()].toSorted(
     (a, b) =>
       b.length - a.length ||
@@ -238,7 +290,10 @@ function formatSurvivorClusters(entries: readonly Survivor[]): string[] {
     const counts = new Map<string, number>();
     for (const { label } of group) counts.set(label, (counts.get(label) ?? 0) + 1);
     const ops = [...counts].map(([label, n]) => (n > 1 ? `${label} x${String(n)}` : label)).join(", ");
-    return [`- \`${first.file}:${String(first.line)}  [${String(group.length)}: ${ops}]  ${first.source}\``];
+    return [
+      `- \`${first.file}:${String(first.line)}  [${String(group.length)}: ${ops}]  ${first.source}\``,
+      `  ${routeOf(reach(first))}`,
+    ];
   });
 }
 
@@ -373,7 +428,7 @@ function writeReport(opts: {
   const stale = diffMode
     ? []
     : [...answered].filter((key) => owners.some((owner) => key.startsWith(`${owner}  `)) && !live.has(key));
-  const clusters = formatSurvivorClusters(added);
+  const clusters = formatSurvivorClusters(added, reachReader(join(here, "cov")));
   const recheckIds = [
     ...added.map(({ id }) => id),
     ...now.filter((row) => verdictOf(row) === "unread").map(({ id }) => id),

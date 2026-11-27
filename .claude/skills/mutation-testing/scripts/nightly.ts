@@ -301,7 +301,7 @@ async function runPlan(opts: {
       })),
     ),
   );
-  const localSlots = Math.max(2, Math.floor((availableParallelism() * 2) / 3));
+  const localSlots = Math.max(2, Math.floor(availableParallelism() / 2));
   const command = [
     MUTATE,
     "run",
@@ -312,7 +312,7 @@ async function runPlan(opts: {
     "--local",
     String(localSlots),
     "--batch",
-    "48",
+    "24",
     "--prune",
     "--cov-cache",
     join(here, "cov"),

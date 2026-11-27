@@ -576,23 +576,29 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
       { taskId: "ex-003", answer: { v: 3 }, files: [file], refusedBy: null },
       { taskId: "ex-001", answer: { v: 0 }, files: [file], refusedBy: "ok" },
     ];
-    const runWith = (check: Verifier) =>
+    const runWith = (check: Verifier, controls: readonly Control[] = withFiles) =>
       readChecker({
         brief: probeBrief,
         contract,
         verify: check,
         tasks: tasksOf([null, null, null]),
-        controls: withFiles,
+        controls,
         found: () => true,
         width: 2,
       });
-    const blind = await runWith(async (t, a) =>
+    const unread: Verifier = async (t, a) =>
       asRecord(a)?.v === asRecord(t.publicInput)?.id
         ? { kind: "pass", objective: 10 }
-        : { kind: "fail", blocking: ["ok"] },
-    );
+        : { kind: "fail", blocking: ["ok"] };
+    const blind = await runWith(unread);
     expect(blind.faults).toEqual([matching(/deliverable files had no effect/u)]);
     expect(blind.notes).toEqual([]);
+    for (const bare of [
+      withFiles.map(({ files: _files, ...control }) => control),
+      withFiles.map((control) => ({ ...control, files: [] })),
+    ]) {
+      expect((await runWith(unread, bare)).faults).toEqual([]);
+    }
     const stripping: readonly Verifier[] = [
       async (t, a, _s, files) =>
         asRecord(a)?.v === asRecord(t.publicInput)?.id

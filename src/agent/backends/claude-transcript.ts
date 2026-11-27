@@ -31,7 +31,6 @@ export interface ClaudeFork {
 
 interface ParsedEntry {
   readonly uuid: string;
-  readonly type: string;
   readonly raw: JsonObject;
 }
 
@@ -61,7 +60,7 @@ function parseTranscript(jsonl: string): {
     if (sdkSessionId === undefined && isString(raw.sessionId) && UUID.test(raw.sessionId)) {
       sdkSessionId = raw.sessionId;
     }
-    if (isString(raw.uuid) && isString(raw.type)) entries.push({ uuid: raw.uuid, type: raw.type, raw });
+    if (isString(raw.uuid)) entries.push({ uuid: raw.uuid, raw });
   }
   if (sdkSessionId === undefined) {
     throw new Error("the Claude transcript records no valid sessionId UUID");
@@ -76,14 +75,14 @@ function messageBlocks(entry: JsonObject): readonly JsonObject[] | null {
 }
 
 function isAssistantTurnEntry(entry: ParsedEntry): JsonObject | null {
-  if (entry.type !== "assistant") return null;
+  if (entry.raw.type !== "assistant") return null;
   const message = asRecord(entry.raw.message);
   if (message === null || message.model === "<synthetic>") return null;
   return message;
 }
 
 function isToolResultCarrier(entry: ParsedEntry): readonly JsonObject[] | null {
-  if (entry.type !== "user") return null;
+  if (entry.raw.type !== "user") return null;
   const blocks = messageBlocks(entry.raw);
   if (blocks === null || blocks.length === 0) return null;
   return blocks.every((block) => block.type === "tool_result") ? blocks : null;
@@ -121,9 +120,9 @@ function assistantTurns(entries: readonly ParsedEntry[]): readonly TurnSpan[] {
     if (toolResults !== null) {
       recordToolResults(toolResults, current);
       current.endUuid = entry.uuid;
-    } else if (entry.type === "attachment") {
+    } else if (entry.raw.type === "attachment") {
       current.endUuid = entry.uuid;
-    } else if (entry.type === "user") {
+    } else if (entry.raw.type === "user") {
       current = null;
     }
   }

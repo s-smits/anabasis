@@ -347,11 +347,11 @@ describe("Examiner review projection and search (read_reviews)", () => {
       readReviews(log.events, { comparison: "c-1", item: "clarity", query: "sensitivity table" }),
     ).toContain("Showing 1-1 of 1");
     expect(readReviews(log.events, { task: "t-2" })).toContain("Showing 1-2 of 2");
-    expect(readReviews(log.events, { task: "no-such-task" })).toContain("No review records match");
     expect(readReviews(log.events, { comparison: "d-1" })).toContain("Showing 1-2 of 2");
-    expect(readReviews(log.events, { comparison: "no-such-comp" })).toContain("No review records match");
     expect(readReviews(log.events, { item: "clarity" })).toContain("Showing 1-2 of 2");
-    expect(readReviews(log.events, { item: "no-such-item" })).toContain("No review records match");
+    for (const filter of ["task", "comparison", "item", "check", "outcome"] as const) {
+      expect(readReviews(log.events, { [filter]: "no-such-value" })).toContain("No review records match");
+    }
     const findingsOnly = readReviews(log.events, { source: "finding" });
     expect(findingsOnly).not.toContain("[pair]");
     expect(findingsOnly).not.toContain("[draft]");

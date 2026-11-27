@@ -1,16 +1,17 @@
 // Keeping a campaign going: the turn a keeper takes, and the login it moves the run to.
 import { afterAll, describe, expect, it } from "bun:test";
-import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { seats } from "../tools/runs/fresh.ts";
 import { keeperActed, keeperOf, nextLogin, roomFor, type Turn, turnOf } from "../tools/runs/keep.ts";
 import { stateOf } from "../tools/runs/state.ts";
 import { billsLogin, fiveHourWith, type Reading } from "../tools/runs/logins.ts";
 import { WAIT_HOURS } from "../tools/runs/manage.ts";
-import { fakeHosts } from "./helpers/fake-hosts.ts";
+import { writeReceipt } from "../tools/runs/receipt.ts";
+import { fakeHosts, fakeNice, reapKeepers, startsOf } from "./helpers/fake-hosts.ts";
 
 const NOW = Date.parse("2026-10-15T12:00:00.000Z");
 const HOUR = 3_600_000;
@@ -494,6 +495,47 @@ if (stat !== "" && !stat.startsWith("Z")) console.log(${JSON.stringify(row)});
     expect(after.startsWith(before)).toBe(true);
     expect(after).toContain('"kind":"campaign.word"');
     expect(alive).toBe(false);
+  }, 60_000);
+});
+
+describe.concurrent("a keeper handing off to a revised exam's successor", () => {
+  async function handOff(moves: string) {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const receipt = (name: string) => ({
+      at: "2026-10-15T12:00:00.000Z",
+      pid: 1,
+      flags: ["--name", name, "--moves", moves, "--target", "8"],
+      envFile: null,
+      commit: made.commit,
+      dirty: false,
+      load: 0,
+      cores: 1,
+    });
+    for (const [name, data] of [
+      ["sample", { ending: "revise", successor: "sample-rev2" }],
+      ["sample-rev2", { ending: "finished" }],
+    ] as const) {
+      const log = join(made.main, ".ana", "d2", name, "log.jsonl");
+      mkdirSync(dirname(log), { recursive: true });
+      append(log, ENDED, data);
+      writeReceipt(log, "run-1", receipt(name));
+    }
+    mkdirSync(join(made.main, "tools", "campaign"), { recursive: true });
+    writeFileSync(join(made.main, "tools", "campaign", "harness-builder.ts"), "process.exit(0);\n");
+    fakeNice(made.root);
+    const result = await made.runAsync(
+      'import { keep } from "REPOSITORY/tools/runs/keep.ts"; await keep(["sample", "--here"]); process.exit();',
+      { ANA_LOGINS: "", CLAUDE_CODE_OAUTH_TOKEN: "a" },
+    );
+    return { starts: startsOf(made.recorded()), keepers: await reapKeepers(result.out) };
+  }
+
+  it("starts and keeps the successor while it has moves left, and leaves one with none unstarted", async () => {
+    expect(await Promise.all(["3", "0"].map(handOff))).toEqual([
+      { starts: 1, keepers: 1 },
+      { starts: 0, keepers: 0 },
+    ]);
   }, 60_000);
 });
 

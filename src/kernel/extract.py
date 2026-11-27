@@ -140,7 +140,8 @@ def db(raw):
         total = 0
         for tbl in tables:
             q = tbl.replace('"', '""')
-            counts.append(f"{tbl} ({con.execute(f'SELECT COUNT(*) FROM \"{q}\"').fetchone()[0]} rows)")
+            row_count = con.execute('SELECT COUNT(*) FROM "' + q + '"').fetchone()[0]
+            counts.append(f"{tbl} ({row_count} rows)")
             cols = [r[1] for r in con.execute(f'PRAGMA table_info("{q}")')]
             if not cols:
                 blocks.append(f"## {tbl}")

@@ -438,21 +438,21 @@ async function readDeliveredFile(given: {
   readonly from: number;
 }) {
   const { bench, solve, files, path, from } = given;
-  const cut = path.indexOf("#");
-  const basePath = cut === -1 ? path : path.slice(0, cut);
-  const kept = files.find((each) => each.path === basePath);
+  const exact = files.find((each) => each.path === path);
+  const kept = exact ?? files.find((each) => path.startsWith(`${each.path}#`));
   if (kept === undefined) throw new Error(`${solve} delivered no file ${path}`);
+  const embedded = exact === undefined;
   const [delivered = { path: kept.path, base64: "" }] = readAnswerFiles(bench.request.log, [kept]);
   const visuals = answerImages(delivered);
   if (from === 0) {
     const hit = visuals.find((each) => each.path === path);
     const image = hit === undefined ? null : await prepareImage(hit.bytes, hit.path, bench.request.model);
     if (image !== null) {
-      const label = cut === -1 ? headOf(extract(delivered)).join("\n") : path;
+      const label = embedded ? path : headOf(extract(delivered)).join("\n");
       return { output: [{ type: "text" as const, text: label }, image] };
     }
   }
-  if (cut !== -1) throw new Error(`${solve} has no viewable image ${path}`);
+  if (embedded) throw new Error(`${solve} has no viewable image ${path}`);
   const refs = visuals.flatMap((each) => (each.path === delivered.path ? [] : [each.path]));
   const hint = refs.length === 0 ? "" : `\nembedded images: ${refs.join(", ")}`;
   return text(`${pageOf(extract(delivered), from)}${hint}`);

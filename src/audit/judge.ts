@@ -208,7 +208,7 @@ async function voted(reader: Reader, given: VoteInput) {
     ],
     log: given.log,
     over: () => kept.length > 0,
-    most: hasImages ? TURNS + MAX_PAIR_IMAGES : TURNS,
+    most: TURNS + imagesA.size + imagesB.size,
     defaultSeconds: SECONDS,
     next: "Nothing is recorded until you call record_vote.",
   });

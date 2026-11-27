@@ -11,6 +11,7 @@ import { epochsOf, ORIGINS, starterIn, starterReads } from "#src/campaign/climb.
 import { comparisonsOf } from "#src/campaign/state.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { draftOf } from "#src/examiner/draft.ts";
+import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { hasJudge } from "#src/kernel/contract.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { CALL_KINDS, type EventKind, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
@@ -159,7 +160,10 @@ function releasesOf(repo: string): { name: string; at: number }[] {
 }
 
 function judgedLabel(events: readonly LogEvent[], opening: ReturnType<typeof openingOf>): string {
-  if (!hasJudge(draftOf(events)?.objective)) return "";
+  const draft = draftOf(events);
+  const judged =
+    draft === null ? opening?.judged === true : hasJudge(draft.objective) && frozenChecker(events) !== null;
+  if (!judged) return "";
   const reviewer = opening?.seats.reviewer ?? null;
   return reviewer === null ? " judged" : ` judged(${reviewer.model.replace(/^claude\//u, "")})`;
 }

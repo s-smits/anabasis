@@ -183,6 +183,10 @@ describe("the campaign's executing Bun and opening guards", () => {
     expect(opened(judgedLog, termFlags("--reviewer", "codex/gpt-6.1-sol", "--hitl"), "paid").judged).toBe(
       false,
     );
+    const reviseLog = join(root, "terms", "revise", LOG_FILE);
+    expect(opened(reviseLog, termFlags(), "scripted").revise).toBe(true);
+    expect(opened(reviseLog, termFlags("--no-revise"), "scripted").revise).toBe(false);
+    expect(opened(reviseLog, termFlags(), "scripted").revise).toBe(false);
 
     const budgetLog = join(root, "terms", "budget", LOG_FILE);
     const budgetFlags = flagsOf(["--name", "terms", "--project", PROJECT, ...OPENED_FROM, "--budget", "300"]);

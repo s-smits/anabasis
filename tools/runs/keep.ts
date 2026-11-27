@@ -162,7 +162,11 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     const state = hands.stands(events, now);
     const turn = turnOf(state, now, waitMs);
     const successor = turn === "handoff" ? successorOf(events) : null;
-    if (turn === "done" || (turn === "handoff" && (successor === null || hands.handoff === undefined))) {
+    const handoff =
+      turn === "handoff" && successor !== null && hands.handoff !== undefined
+        ? { successor, run: hands.handoff }
+        : null;
+    if (turn === "done" || (turn === "handoff" && handoff === null)) {
       hands.say(
         state.kind === "ended"
           ? `${name} ended on ${state.ending}: kept no longer`
@@ -196,9 +200,9 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     let fleet: Awaited<ReturnType<Hands["fleet"]>> | undefined;
     const counted = async () => (fleet ??= await hands.fleet());
     let why = "";
-    const subject = successor ?? name;
+    const subject = handoff?.successor ?? name;
     const target = await nextLogin(
-      turn === "handoff" ? "continue" : turn,
+      handoff === null ? turn : "continue",
       { current, spent, billed: logins.length > 0 && billsLogin(events, flags) },
       async () => {
         const found = await roomFor(logins, spent, await counted(), hands.read, { env: hands.env, now });
@@ -237,10 +241,10 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     waitedOn = "";
     askAt = 0;
     const loginWords = target === undefined ? "without a login" : `on login ${target}`;
-    if (turn === "handoff" && successor !== null && hands.handoff !== undefined) {
-      act(now, `handoff to ${successor} ${loginWords}`);
+    if (handoff !== null) {
+      act(now, `handoff to ${handoff.successor} ${loginWords}`);
       try {
-        await hands.handoff(successor, target);
+        await handoff.run(handoff.successor, target);
         return true;
       } catch (error) {
         hands.say(`  ${errorMessage(error)}`);

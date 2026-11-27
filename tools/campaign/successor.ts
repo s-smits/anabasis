@@ -209,7 +209,7 @@ export async function openSuccessor(
     }
     const carriedHarness = promoted(eventsA) ?? latestBuilt(eventsA);
     const harnessDir = carriedHarness === null ? null : join(dirA, "states", carriedHarness);
-    if (carriedHarness !== null && harnessDir !== null && existsSync(harnessDir)) {
+    if (harnessDir !== null && existsSync(harnessDir)) {
       const imported = await importHarness(logB, harnessDir, `carried from ${nameA} after exam revision`);
       if (latestBuilt(read(logB, TRACE_KINDS)) !== imported.digest) {
         append(logB, "build.checkpoint", { session: "rev", harness: imported.digest });

@@ -150,11 +150,11 @@ function stopVerdict({ stop }: Supply, pastStop: string | undefined) {
   const after = `${String(stop.sinceStep)} moves that could have shown a gain`;
   return {
     refuses: stop.stop && pastStop === undefined,
-    why: `the campaign has had ${after} since its last step, and none did: its patience is spent (--patience). To go on all the same, pass --past-stop "<why>", which is logged`,
+    why: `the campaign has had ${after} since its last standing step, and none did: its patience is spent (--patience). To go on all the same, pass --past-stop "<why>", which is logged`,
     notes: holding([
       [
         stop.stop && pastStop !== undefined,
-        `going on past the plan's stop rule, ${after} after the last step: ${String(pastStop)}`,
+        `going on past the plan's stop rule, ${after} after the last standing step: ${String(pastStop)}`,
       ],
     ]),
   };

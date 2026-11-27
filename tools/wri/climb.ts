@@ -59,7 +59,7 @@ const COLUMNS = [
   "since",
   "comparisons after",
   "room on validity",
-  "steps won by validity, confirmed",
+  "steps with validity points, confirmed",
   "spent so far",
   "last move ended",
 ] as const;

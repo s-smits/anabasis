@@ -824,6 +824,21 @@ describe.concurrent("campaign draft lifecycle", () => {
     );
   });
 
+  it("lets no draft with one checker fault stand", async () => {
+    const name = `${STEM}-one-fault`;
+    await draftCommand(
+      [...opened(name), "--session", "d-1", "--tries", "1"],
+      putting(withTools(["no-such-engine-xyz"])),
+      referee(() => ({ verdict: "sound", findings: [], summary: "should not run", probes: [] })),
+    );
+    const said = read(campaignLog(name)).flatMap(({ kind, data }) =>
+      kind === "draft.call" ? [data.text] : [],
+    );
+    expect(said[0]).toContain("1 fault:\n- ");
+    expect(said[0]).toContain("no-such-engine-xyz, which is not on the verifier's tool path");
+    expect(draftOf(read(campaignLog(name)))).toBeNull();
+  });
+
   it("freezes no exam whose audit ended on an error: ends on a refusal no retry clears, redrafts after a usage limit", async () => {
     const audited = (name: string, error: string) =>
       draftCommand(
@@ -1089,7 +1104,10 @@ describe.concurrent("campaign draft lifecycle", () => {
         session: "d-1",
         pass,
         verdict: "defects",
-        findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "old keyword search" }],
+        findings:
+          pass === 1
+            ? [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "old keyword search" }]
+            : [],
         summary: "keyword check",
         probeRows: [
           {

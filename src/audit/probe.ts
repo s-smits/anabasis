@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import type { AgentTool } from "../agent/session.ts";
-import { type AnswerFile, textFiles } from "../kernel/answer-files.ts";
+import { type AnswerFile, DELIVERABLES, textFiles } from "../kernel/answer-files.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import {
   blockingOf,
@@ -16,6 +16,7 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
+import { storedZip, zipMembers } from "../meta/zip.ts";
 import { text, tool } from "../tools/answer.ts";
 
 // oxlint-disable-next-line typescript/consistent-type-definitions -- type alias stays assignable to `JsonObject`
@@ -316,11 +317,20 @@ function changedFile(files: readonly AnswerFile[], change: ProbeRow["changes"][n
     }
   }
   const inside = change.path.slice(`${FILE}${file.path}/`.length);
+  const updatedEntries = (file.entries ?? []).map((each) =>
+    each.path === inside ? { path: inside, text: parsed } : each,
+  );
+  const rawMembers = zipMembers(Buffer.from(file.base64, "base64"), DELIVERABLES.bytes).members;
+  const rebuiltZip =
+    rawMembers.length > 0
+      ? storedZip(
+          rawMembers.map(({ path, data }) => ({ path, text: path === inside ? parsed : data })),
+        ).toString("base64")
+      : storedZip(updatedEntries).toString("base64");
   return files.with(at, {
     ...file,
-    entries: (file.entries ?? []).map((each) =>
-      each.path === inside ? { path: inside, text: parsed } : each,
-    ),
+    base64: rebuiltZip,
+    entries: updatedEntries,
   });
 }
 

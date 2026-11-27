@@ -609,7 +609,10 @@ describe("rejection adjudication and evidence gates", () => {
       ).toMatchObject({ ruling: "earned", field, probes: [1] });
       expect(read(z.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
       expect(given).toHaveLength(2);
-      expect(given.at(-1)?.[0]?.base64).toBe(book);
+      const probedZip = Buffer.from(given.at(-1)?.[0]?.base64 ?? "", "base64");
+      expect(given.at(-1)?.[0]?.base64).not.toBe(book);
+      expect(probedZip.toString("utf8")).toContain("<t>good</t>");
+      expect(probedZip.toString("utf8")).toContain("<v>bad</v>");
       expect(given.at(-1)?.[0]?.entries?.[1]).toEqual({
         path: "xl/worksheets/sheet1.xml",
         text: "<v>bad</v>",

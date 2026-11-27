@@ -3,7 +3,7 @@ import { type Cap, patienceOf } from "../kernel/reports.ts";
 import { billedAll } from "../kernel/meter.ts";
 import { SIZE } from "../kernel/size.ts";
 import { unadmitted } from "../kernel/acceptance.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import type { Plan } from "./state.ts";
 
 export type RevisionKind = "tune" | "repair";
@@ -19,6 +19,7 @@ interface Carried {
   readonly sinceStep: number;
   readonly attempts: number;
   readonly tunes: number;
+  readonly tunedThisEpoch: boolean;
 }
 
 interface OpeningParent {
@@ -55,6 +56,7 @@ const UNBILLED: ReadonlySet<EventKind> = new Set([
   "verdict",
   "condition.recorded",
   "exam.drafted",
+  "exam.revised",
   "task.proposed",
   "task.feasible",
   "task.gate",
@@ -109,6 +111,7 @@ function parseParent(raw: unknown): OpeningParent | null {
       sinceStep: num(carried.sinceStep),
       attempts: num(carried.attempts),
       tunes: num(carried.tunes),
+      tunedThisEpoch: isBoolean(carried.tunedThisEpoch) ? carried.tunedThisEpoch : rec.kind === "tune",
     },
     lineageTasks: Array.isArray(rec.lineageTasks) ? rec.lineageTasks.filter(isString) : [],
   };

@@ -66,6 +66,7 @@ const ROWS: readonly {
 
 const DRAFTS = 3;
 export const CRASHES_IN_A_ROW = DRAFTS;
+const MAX_REPAIR_ATTEMPTS = 2;
 const SHORT_OF_TASKS = ["no-held", "held-short"] as const;
 const WANTS_TASKS = "comparison admission requires more held-out tasks";
 const BUILDS_AND_ASKS = "Builder continues building and requests tasks";
@@ -270,7 +271,10 @@ function bound(ground: Ground): Move | null {
     );
   }
   if (read?.report.reading === "check-defects") {
-    if (plan.canRevise === true) {
+    const repairAttempts = events
+      .slice(read.reported + 1)
+      .filter((event) => event.kind === "exam.finished" && !INTERRUPTED.has(event.data.ended)).length;
+    if (plan.canRevise === true && repairAttempts < MAX_REPAIR_ATTEMPTS) {
       return examine(
         ground,
         "tasks",

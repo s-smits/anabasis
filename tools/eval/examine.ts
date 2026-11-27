@@ -74,15 +74,13 @@ export async function examineCommand(
   const model = modelNamed(examiner);
   const forkPlan = seatForkPlan(campaign.log, "exam", model, values);
   const canRevise = values.revise ?? opening?.revise ?? true;
-  const defaultAuditor = session === examine ? undefined : null;
-  const auditor = audit === undefined ? defaultAuditor : audit;
   const revise = canRevise
     ? revisionRunner({
         log: campaign.log,
         parentBundle: campaign.bundle,
         packages: campaign.packages,
         reviewer: { model: values.reviewer, effort: values["reviewer-effort"] },
-        auditor,
+        auditor: audit,
       })
     : undefined;
   const models =

@@ -485,10 +485,13 @@ function controlsClause(risk: FalsePromotion): string {
 
 export function riskLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);
-  const carried = openingOf(events)?.parent?.carried.attempts ?? 0;
+  const opening = openingOf(events);
+  const carried = opening?.parent?.carried.attempts ?? 0;
+  const level = Number(opening?.terms.level ?? 0.02);
+  const carriedRisk = carried > 0 && Number.isFinite(level) ? carried * level : 0;
   const total = Math.min(
     1,
-    epochs.reduce((sum, { falsePromotion }) => sum + falsePromotion.union, 0),
+    carriedRisk + epochs.reduce((sum, { falsePromotion }) => sum + falsePromotion.union, 0),
   );
   return [
     ...epochs.map(({ nth, falsePromotion: risk }) => {

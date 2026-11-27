@@ -1,16 +1,16 @@
 import { Button, NoSignal } from "../components/primitives.tsx";
 import { matchesTerms } from "../components/tool-call.tsx";
-import type {
-  LeftOut,
-  Outcome,
-  Share,
-  TaskCell,
-  TaskGrid,
-  TaskDraw,
-  TaskLeftOut,
-  TaskRow,
+import {
+  type LeftOut,
+  type Outcome,
+  type Share,
+  shortHash,
+  type TaskCell,
+  type TaskGrid,
+  type TaskDraw,
+  type TaskLeftOut,
+  type TaskRow,
 } from "../models.ts";
-import { shortHash } from "../models.ts";
 import { Choose } from "../components/picker.tsx";
 import { choiceCounts } from "../components/table.tsx";
 import { useKept } from "../route.ts";

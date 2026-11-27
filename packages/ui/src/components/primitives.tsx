@@ -1,7 +1,5 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
-import { useRef, useState } from "react";
-import type { Tone } from "../models.ts";
-import { shortHash } from "../models.ts";
+import { type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, useRef, useState } from "react";
+import { shortHash, type Tone } from "../models.ts";
 import { hasText } from "../../../../src/meta/text.ts";
 
 const COPIED_MS = 1400;

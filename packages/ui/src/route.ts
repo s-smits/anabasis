@@ -9,8 +9,7 @@
  * at once, beside the list rather than after it.
  */
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import type { CampaignReading } from "./models.ts";
-import { TOKEN_PARAMETER } from "./models.ts";
+import { type CampaignReading, TOKEN_PARAMETER } from "./models.ts";
 import { keysIf } from "../../../src/meta/optional-key.ts";
 
 export type Pane = "campaign" | "moves" | "tasks" | "log";

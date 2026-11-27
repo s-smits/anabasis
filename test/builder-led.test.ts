@@ -30,6 +30,7 @@ import { HOST } from "../tools/campaign/host.ts";
 import type { Seated } from "../tools/campaign/round.ts";
 import { settleCommand } from "../tools/campaign/settle.ts";
 import { wordCommand } from "../tools/campaign/signal.ts";
+import { successorName } from "../tools/campaign/successor.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import {
   type FixtureTask,
@@ -426,6 +427,7 @@ describe.concurrent("live Builder and Examiner coordination", () => {
       },
     };
     const flags = await prepared(name);
+    names.push(successorName(name));
     const compares = () => of(name, MOVED).filter(({ move }) => move === "compare").length;
     const before = compares();
     await expect(harnessBuilder([...flags, ...FLAGS, "--moves", "4"], seats)).rejects.toThrow();

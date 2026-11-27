@@ -1,7 +1,8 @@
 import { stopRule } from "#src/campaign/admission.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
-import { isRevisionKind, openingOf, type RevisionKind } from "#src/campaign/opening.ts";
-import { type Draft, draftOf } from "#src/examiner/draft.ts";
+import { openingOf, type RevisionKind } from "#src/campaign/opening.ts";
+import type { Draft } from "#src/examiner/draft.ts";
+import { tunedThisEpoch } from "#src/examiner/revise.ts";
 import { hasJudge } from "#src/kernel/contract.ts";
 import { contentOf, writtenTasks } from "#src/kernel/history.ts";
 import { append, eventsOf, LOG_FILE, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
@@ -15,10 +16,9 @@ import {
   mkdirSync,
   openSync,
   renameSync,
-  rmSync,
 } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import type { JsonObject } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { keepReading } from "../eval/accept.ts";
@@ -67,64 +67,39 @@ function revisionEvent(events: readonly LogEvent[]): {
   readonly draft: Draft;
 } {
   const data = eventsOf(events, "exam.revised").at(-1)?.event.data;
-  const draftRaw = asRecord(data?.draft);
-  const kind = data?.kind;
-  if (
-    data === undefined ||
-    draftRaw === null ||
-    !isString(data.draftHash) ||
-    !isString(data.why) ||
-    !isRevisionKind(kind)
-  ) {
-    throw new Error("cannot open successor campaign: log holds no valid exam.revised event");
-  }
-  return {
-    kind,
-    why: data.why,
-    draftHash: data.draftHash,
-    draftObj: draftRaw,
-    draft: parseJsonAs<Draft>(draftRaw),
-  };
+  if (data === undefined) throw new Error("cannot open successor campaign: log holds no exam.revised event");
+  // SAFETY: `exam.revised` is appended only by `tools/campaign/revise.ts` from a typed `PendingCandidate`.
+  const { kind, why, draftHash, draft } = parseJsonAs<{
+    readonly kind: RevisionKind;
+    readonly why: string;
+    readonly draftHash: string;
+    readonly draft: JsonObject;
+  }>(data);
+  return { kind, why, draftHash, draftObj: draft, draft: parseJsonAs<Draft>(draft) };
 }
 
 function carriedFrom(eventsA: readonly LogEvent[], kind: RevisionKind) {
   const prior = openingOf(eventsA)?.parent?.carried;
-  const epochs = epochsOf(eventsA);
-  const attempts = epochs.reduce((sum, epoch) => sum + epoch.falsePromotion.attempts, 0);
-  const tunedThisEpoch =
-    kind === "tune" ? true : epochs.length > 1 ? false : (prior?.tunedThisEpoch ?? false);
+  const attempts = epochsOf(eventsA).reduce((sum, epoch) => sum + epoch.falsePromotion.attempts, 0);
   return {
     spent: (prior?.spent ?? 0) + billedAll(eventsA),
     sinceStep: stopRule(eventsA).sinceStep,
     attempts: (prior?.attempts ?? 0) + attempts,
     tunes: (prior?.tunes ?? 0) + (kind === "tune" ? 1 : 0),
-    tunedThisEpoch,
+    tunedThisEpoch: kind === "tune" || tunedThisEpoch(eventsA),
   };
 }
 
 function lineageFrom(eventsA: readonly LogEvent[], nextDraft: Draft): string[] {
   const prior = openingOf(eventsA)?.parent?.lineageTasks ?? [];
-  const parentExamples = draftOf(eventsA)?.tasks ?? [];
-  return [
-    ...new Set([
-      ...prior,
-      ...writtenTasks(eventsA).map(contentOf),
-      ...parentExamples.map(contentOf),
-      ...nextDraft.tasks.map(contentOf),
-    ]),
-  ];
+  return [...new Set([...prior, ...writtenTasks(eventsA).map(contentOf), ...nextDraft.tasks.map(contentOf)])];
 }
 
 function copyTreeIfMissing(from: string, to: string): void {
   if (!existsSync(from) || existsSync(to)) return;
   const staging = `${to}.tmp-${crypto.randomUUID()}`;
-  try {
-    cpSync(from, staging, COPY_OPTS);
-    renameSync(staging, to);
-  } catch (error) {
-    rmSync(staging, { recursive: true, force: true });
-    if (!existsSync(to)) throw error;
-  }
+  cpSync(from, staging, COPY_OPTS);
+  renameSync(staging, to);
 }
 
 function writeSuccessorOpening(
@@ -162,7 +137,7 @@ function writeSuccessorOpening(
 
 export async function openSuccessor(
   logA: string,
-  remainingMoves?: number,
+  remainingMoves = Number.POSITIVE_INFINITY,
 ): Promise<{ readonly name: string; readonly log: string }> {
   const eventsA = read(logA, TRACE_KINDS);
   const rev = revisionEvent(eventsA);
@@ -218,11 +193,10 @@ export async function openSuccessor(
     const receiptA = lastLaunch(logA);
     if (receiptA !== undefined && lastLaunch(logB) === undefined) {
       const { session: _session, ...kept } = receiptA;
-      const renamed = rewriteNameFlag(receiptA.flags, nameA, nameB);
       writeReceipt(logB, "run-1", {
         ...kept,
         at: new Date().toISOString(),
-        flags: remainingMoves === undefined ? renamed : rewriteMovesFlag(renamed, remainingMoves),
+        flags: rewriteMovesFlag(rewriteNameFlag(receiptA.flags, nameA, nameB), remainingMoves),
       });
     }
     if (endedOf(eventsA)?.ending !== "revise") {

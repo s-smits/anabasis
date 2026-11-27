@@ -24,3 +24,4 @@ src/examiner/revise.ts	swap ?:	lane === "judged"	presentation	lane-dependent obj
 src/examiner/revise.ts	=== -> !==	lane === "judged"	presentation	lane-dependent objective_items description the Examiner reads, kept byte-identical as a seat-visible input
 src/examiner/revise.ts	1 -> 2	Type.Array(Type.String({ minLength: 1 }), {	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
 src/examiner/revise.ts	1 -> 2	Type.Array(Type.Object({ ...CONTROL_ADD, check: Type.String({ minLength: 1 }) }), {	presentation	tool parameter schema the Examiner reads, kept byte-identical as a seat-visible input
+tools/campaign/successor.ts	4 -> 5	const { faults, read: seen } = await draftReading(dirB, rev.draft, 4);	equivalent	the width argument only sets how many checks run at once in pooled readChecker, never which ones run

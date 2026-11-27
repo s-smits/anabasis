@@ -1439,6 +1439,20 @@ export const scores = {
     expect(res.accepted).toBe(true);
     expect(readFileSync(join(seed.checks, "evaluator.ts"), "utf8")).toBe(parentEvalBefore);
 
+    const revisedDraft = eventsOf(read(seed.log), "exam.revised").at(-1)?.event.data.draft ?? {};
+    const validated = join(
+      seed.dir,
+      "revisions",
+      "exams",
+      hashJsonValue(revisedDraft).slice(0, 16),
+      "bundle",
+    );
+    const validatedHelper = join(validated, ".toolchain", "bin", "my-helper");
+    writeFileSync(helperPath, "#!/bin/sh\nexit 1\n");
+    writeFileSync(validatedHelper, "#!/bin/sh\nexit 1\n");
+    await expect(openSuccessor(seed.log)).rejects.toThrow("failed checker reading");
+    writeFileSync(validatedHelper, "#!/bin/sh\necho ok\n");
+
     const next1 = await openSuccessor(seed.log);
     const fullB = readFileSync(next1.log, "utf8").trim().split("\n");
     for (const keepLines of [1, 2, 3, fullB.length - 1]) {
@@ -1477,6 +1491,9 @@ export const scores = {
     expect(promoted(eventsB)).toBeNull();
     expect(existsSync(join(dirname(next1.log), "memory", "MEMORY.md"))).toBe(true);
     expect(existsSync(join(dirname(next1.log), "examiner-home", "gen.py"))).toBe(true);
+    expect(readlinkSync(join(dirname(next1.log), "examiner-home", ".toolchain", "bin", "my-alias"))).toBe(
+      "my-helper",
+    );
     expect(lastLaunch(next1.log)?.flags).toContain("lin-a-rev2");
 
     expect(ungated({ tasks: seed.tasks, pack: (task) => packageOf(seed.checks, task) }, eventsB)).toEqual([]);
@@ -1496,38 +1513,37 @@ export const scores = {
       "--moves",
       "3",
     ]);
-    await expect(openSuccessor(next1.log)).rejects.toThrow("no valid exam.revised");
+    await expect(openSuccessor(next1.log)).rejects.toThrow("no exam.revised");
     expect(revisionRefusal(eventsB, { kind: "tune" })).toContain("already opened from a rubric tune");
-    const repairChildLog = join(dirname(seed.dir), "lin-a-rev3", LOG_FILE);
-    mkdirSync(dirname(repairChildLog), { recursive: true });
-    for (const ev of eventsB) {
-      if (ev.kind === "campaign.opened") {
-        append(repairChildLog, OPENED, {
-          ...ev.data,
-          parent: {
-            campaign: "lin-a-rev2",
-            revised: "deadbeef",
-            kind: "repair",
-            carried: { spent: 12.5, sinceStep: 1, attempts: 1, tunes: 1, tunedThisEpoch: true },
-            lineageTasks: [],
-          },
-        });
-      } else {
-        append(repairChildLog, ev.kind, ev.data);
-      }
-    }
-    expect(revisionRefusal(read(repairChildLog), { kind: "tune" })).toContain(
+    const draftB = draftOf(eventsB) ?? PARENT_DRAFT;
+    writeFileSync(
+      join(dirname(next1.log), "examiner-home", ".toolchain", "bin", "my-helper"),
+      "#!/bin/sh\necho ok\n",
+    );
+    append(next1.log, REVISED, {
+      session: "x-2",
+      kind: "repair",
+      why: "repair check-even",
+      draft: requireJsonValue(draftB),
+      draftHash: hashJsonValue(draftB),
+    });
+    const repairChild = await openSuccessor(next1.log);
+    expect(openingOf(read(repairChild.log))?.parent?.carried).toMatchObject({
+      tunes: 1,
+      tunedThisEpoch: true,
+    });
+    expect(revisionRefusal(read(repairChild.log), { kind: "tune" })).toContain(
       "already opened from a rubric tune",
     );
-    append(next1.log, "harness.promoted", { harness: "h-b1", from: "starter" });
-    expect(stopRule(read(next1.log)).sinceStep).toBe(0);
-    append(next1.log, "comparison.started", {
+    append(repairChild.log, "harness.promoted", { harness: "h-b1", from: "starter" });
+    expect(stopRule(read(repairChild.log)).sinceStep).toBe(0);
+    append(repairChild.log, "comparison.started", {
       session: "g-s",
       old: "h-b1",
       fresh: "starter",
       starter: "starter",
     });
-    append(next1.log, "comparison.reported", {
+    append(repairChild.log, "comparison.reported", {
       session: "g-s",
       old: "h-b1",
       fresh: "starter",
@@ -1538,7 +1554,7 @@ export const scores = {
       valid: { old: [0, 0, 6], fresh: [6, 0, 0], informative: { old: 6, fresh: 6 } },
       aside: [],
     });
-    expect(revisionRefusal(read(next1.log), { kind: "tune" })).toBeNull();
+    expect(revisionRefusal(read(repairChild.log), { kind: "tune" })).toBeNull();
     expect(draftOf(eventsB)?.checks.some(({ id }) => id === "check-positive")).toBe(true);
 
     expect(replayed(seed.log)).toContain("revised (tune)");

@@ -704,8 +704,15 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
 
     const hitlName = `${STEM}-dyn-hitl`;
     names.push(hitlName);
+    const said = spyOn(console, "log");
     const hitl = await harnessBuilder(["--name", hitlName, ...crossFamily, "--hitl"], makeSeats(judgedExam));
+    const lines = said.mock.calls.map(([line]) => (isString(line) ? line : ""));
+    said.mockRestore();
     expect(hitl).toMatchObject({ move: "end", ending: "exam" });
+    expect(lines.filter((line) => line.startsWith("fault: ") && line.includes("--admit-judge"))).toHaveLength(
+      1,
+    );
+    expect(lines.filter((line) => line.startsWith("to admit the judged"))).toEqual([containing("accept.ts")]);
     expect(of(hitlName, "contract.frozen")).toEqual([]);
     expect(of(hitlName, "checker.read").at(-1)?.faults).toEqual([
       containing("--admit check-product"),

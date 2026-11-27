@@ -17,7 +17,7 @@ import { formatScores, OBJECTIVE, objectiveOf, scoresOf, type Task } from "../ke
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { epochsOf, tasksByEpoch } from "../campaign/climb.ts";
-import { reviewSummariesByTask } from "./reviews.ts";
+import { reviewInventoryLine, reviewSummariesByTask } from "./reviews.ts";
 
 interface Answered {
   readonly turns: readonly number[];
@@ -166,6 +166,7 @@ function formatOutcomeLine(
     `${named}, scored ${plural(spreads.length, "task")}: the reference harness won ${won(1)}, the harness it was compared with won ${won(-1)}, and ${won(0)} tied.`,
     `The largest family among them held ${String(largest)}.`,
     `The reference harness was valid in every solve on ${count("every")} of them, in some on ${count("some")} and in none on ${count("none")}; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside.`,
+    ...(report.data.reading === "check-defects" ? ["It stopped on check defects."] : []),
     ...(own.length === 0
       ? []
       : [
@@ -294,8 +295,10 @@ export function taskHistory(
       [`${taskId} (${family})`, ...clauses, ...reviewNote, ...fault].join("; "),
     ]);
   }
+  const stood = outcomeSummaryLines(events, currentReports, after, pairsOf);
   return {
-    stood: outcomeSummaryLines(events, currentReports, after, pairsOf),
+    stood,
+    reviews: after === undefined || stood !== null ? reviewInventoryLine(events) : null,
     groups: Object.values(BLOCKS).flatMap((heading): { heading: string; lines: string[] }[] => {
       const held = lines.get(heading) ?? [];
       return held.length === 0 ? [] : [{ heading, lines: held }];

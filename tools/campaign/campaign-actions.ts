@@ -257,6 +257,7 @@ const examineAction =
       args,
       (request, wall) => examiner.session({ ...request, opened: resolve }, wall),
       AbortSignal.any([bench.halt.signal, ...(bench.request.kill === undefined ? [] : [bench.request.kill])]),
+      seats.audit,
     ).then(() => refreshCampaign(context, bench));
     await Promise.race([work, onRecord]);
     const done = work

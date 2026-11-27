@@ -19,6 +19,7 @@ import { TEXT_FILES } from "./draft.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt, wakeMessage } from "./prompt.ts";
 import { taskHistory, measured } from "./record.ts";
 import { readReviews, REVIEW_EVENT_KINDS } from "./reviews.ts";
+import { readExamTool, type ReviseRunner, reviseTool } from "./revise.ts";
 import { FROM_FILE, fromHome, type Walls } from "./shell.ts";
 
 interface Terms {
@@ -32,12 +33,14 @@ interface Terms {
   readonly pack: (task: Task) => TaskPackage;
   readonly budget: SolveBudget | null;
   readonly verify: Verifier | null;
+  readonly revise?: ReviseRunner | undefined;
 }
 
 interface Desk {
   request: Terms;
   readonly stop: AbortSignal;
   proposed: number;
+  revised: boolean;
   readonly seen: Map<string, "now" | "earlier">;
   readonly answered: Map<string, { readonly answer: JsonValue; readonly files?: readonly AnswerFile[] }>;
   readonly checked: Map<string, Task>;
@@ -384,13 +387,18 @@ export function writing(
       budget: asked.budget,
     });
   let told = openedOn(request, before);
+  const lineage = openingOf(before)?.parent?.lineageTasks ?? [];
   const desk: Desk = {
     request,
     stop,
     rest,
     home,
     proposed: 0,
-    seen: new Map(admittedDrafts(before).map((task) => [contentOf(task), "earlier"] as const)),
+    revised: false,
+    seen: new Map([
+      ...admittedDrafts(before).map((task) => [contentOf(task), "earlier"] as const),
+      ...lineage.map((hash) => [hash, "earlier"] as const),
+    ]),
     answered: new Map(),
     checked: new Map(),
     planted: new Set(),
@@ -399,7 +407,7 @@ export function writing(
   };
   return {
     kind: "exam" as const,
-    system: systemPrompt(request.contract.objective),
+    system: systemPrompt(request.contract.objective, request.revise === undefined ? "fixed" : "revisable"),
     get opening() {
       return told;
     },
@@ -422,6 +430,7 @@ export function writing(
       exampleTool(() => [...writtenTasks(read(desk.request.log, TRACE_KINDS)), ...desk.request.tasks]),
       reviewsTool(desk),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
+      ...(request.revise === undefined ? [] : [readExamTool(request.log), reviseTool(desk, request.revise)]),
     ],
     enters: "Nothing in your home enters the exam: a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",
@@ -429,11 +438,11 @@ export function writing(
     get declined() {
       return spent(desk) ? null : MORE;
     },
-    done: (): "supplied" | null => (supplied(desk) ? "supplied" : null),
+    done: (): "stands" | "supplied" | null => (desk.revised ? "stands" : supplied(desk) ? "supplied" : null),
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
     ask: (next: Terms) => {
-      Object.assign(desk, { request: next, proposed: 0, held: [], refused: [] });
+      Object.assign(desk, { request: next, proposed: 0, revised: false, held: [], refused: [] });
       const events = read(next.log, CALL_KINDS);
       told = openedOn(next, events);
       return wakeOn(events, next.tasks, next.limits);

@@ -9,12 +9,13 @@ import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { unaudited } from "#src/campaign/scheduler.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
-import { eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
+import { read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { nonRetryableProvider } from "#src/kernel/solve.ts";
 import {
   type DraftAuditCase,
   type DraftAuditFinding,
   formatDraftFinding,
+  persistedDraftDefects,
   replayDraftProbes,
   reviewDraft,
 } from "#src/audit/draft-audit.ts";
@@ -62,30 +63,6 @@ const OPTIONS = {
 
 type DraftSeen = NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
 
-function persistedDefects(events: readonly LogEvent[]): {
-  readonly audits: number;
-  readonly prior: DraftAuditFinding[];
-} {
-  const logged = eventsOf(events, "referee.draft").filter(
-    ({ event: { data } }) => !isString(data.revision) && data.verdict === "defects",
-  );
-  const prior: DraftAuditFinding[] = [];
-  for (const {
-    event: { data },
-  } of logged) {
-    if (!Array.isArray(data.findings) || data.findings.length === 0) continue;
-    prior.push({
-      verdict: "defects",
-      // SAFETY: `referee.draft` findings and probeRows are written by `reviewDraft` in `src/audit/draft-audit.ts`.
-      findings: data.findings as DraftAuditFinding["findings"],
-      summary: isString(data.summary) ? data.summary : "",
-      // SAFETY: as above.
-      probes: Array.isArray(data.probeRows) ? (data.probeRows as DraftAuditFinding["probes"]) : [],
-    });
-  }
-  return { audits: logged.length, prior };
-}
-
 /** Replays prior defect probes at no model cost before spending an audit pass, and still replays
  *  them past `MAX_DRAFT_AUDITS`. */
 function draftAuditGate(given: {
@@ -95,7 +72,7 @@ function draftAuditGate(given: {
   readonly auditor: DraftAuditor | null;
   readonly reader: Reader | null;
 }) {
-  const seeded = persistedDefects(read(given.log, TRACE_KINDS));
+  const seeded = persistedDraftDefects(read(given.log, TRACE_KINDS));
   let audits = seeded.audits;
   const priorReviews = [...seeded.prior];
   return async (seen: DraftSeen): Promise<readonly string[]> => {

@@ -397,7 +397,9 @@ export function draftFaults(draft: Draft): string[] {
     ...(again === undefined ? [] : [`${again} is named twice: an id names one rule or one check`]),
     ...draft.rules.flatMap(({ id }) => {
       const checked = draft.checks.filter((check) => check.rule === id).length;
-      return checked === 1 ? [] : [`rule ${id} has ${String(checked)} checks, and each rule has one`];
+      return checked >= 1
+        ? []
+        : [`rule ${id} has ${String(checked)} checks, and each rule needs at least one`];
     }),
     ...draft.checks.flatMap(({ id, rule }) =>
       ruleIds.includes(rule) ? [] : [`check ${id} enforces ${rule}, and the draft holds no such rule`],

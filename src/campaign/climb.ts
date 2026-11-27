@@ -23,6 +23,7 @@ import { keysIf } from "../meta/optional-key.ts";
 import { plural, tallyText } from "../meta/text.ts";
 import { short } from "./move.ts";
 import type { Called } from "./names.ts";
+import { openingOf } from "./opening.ts";
 
 interface ControlSlice {
   readonly controls: number;
@@ -484,6 +485,7 @@ function controlsClause(risk: FalsePromotion): string {
 
 export function riskLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);
+  const carried = openingOf(events)?.parent?.carried.attempts ?? 0;
   const total = Math.min(
     1,
     epochs.reduce((sum, { falsePromotion }) => sum + falsePromotion.union, 0),
@@ -493,6 +495,9 @@ export function riskLines(events: readonly LogEvent[]): string[] {
       const attempts = plural(risk.attempts, ATTEMPT);
       return `- Epoch ${String(nth)}: ${attempts}, estimated false-promotion risk ${percent(risk.union)}; ${controlsClause(risk)}.`;
     }),
+    ...(carried > 0
+      ? [`- Carried from parent lineage: ${plural(carried, `prior ${ATTEMPT}`)} before exam revision.`]
+      : []),
     `Campaign-wide estimated false-promotion risk across all epochs: ${percent(total)} (sum of per-epoch estimates capped at 100%, assuming no independence between attempts; an estimate rather than a formal bound).`,
     "The permutation test assumes each untied task is equally likely to favour either arm under the null; solver drift can violate exchangeability. A/A controls provide an empirical check: each false positive signals noise, although a single event does not establish miscalibration. With 0 false positives in n independent comparisons sharing a common rate, the approximate 95% upper confidence limit is 3/n (the log does not establish those assumptions). These estimates cover recorded attempts only; additional attempts increase cumulative risk.",
   ];

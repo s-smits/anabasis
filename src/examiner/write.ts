@@ -445,7 +445,7 @@ export function writing(
       Object.assign(desk, { request: next, proposed: 0, revised: false, held: [], refused: [] });
       const events = read(next.log, CALL_KINDS);
       told = openedOn(next, events);
-      return wakeOn(events, next.tasks, next.limits);
+      return wakeOn(events, next.tasks, next.limits, next.revise === undefined ? "fixed" : "revisable");
     },
   };
 }
@@ -454,7 +454,8 @@ export function wakeOn(
   events: readonly LogEvent[],
   tasks: readonly Pick<Task, "taskId" | "family">[],
   told: Parameters<typeof wakeMessage>[1],
+  revision: "fixed" | "revisable" = "fixed",
 ): string {
   const since = events.findLastIndex(({ kind }) => kind === "exam.started");
-  return wakeMessage(taskHistory(events, tasks, since), told);
+  return wakeMessage(taskHistory(events, tasks, since), told, revision);
 }

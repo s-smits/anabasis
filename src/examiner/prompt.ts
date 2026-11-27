@@ -111,9 +111,15 @@ ${brief}`,
   ].join("\n\n");
 }
 
-export function wakeMessage(tasks: ReturnType<typeof taskHistory>, told: Told): string {
+export function wakeMessage(
+  tasks: ReturnType<typeof taskHistory>,
+  told: Told,
+  revision: "fixed" | "revisable" = "fixed",
+): string {
   return [
-    "The host asks for more tasks under the same exam.",
+    revision === "revisable"
+      ? "The host wakes this session with updated comparison readings."
+      : "The host asks for more tasks under the same exam.",
     tasks.stood ?? "No comparison has reported since the host last told you.",
     ...(tasks.reviews === null ? [] : [tasks.reviews]),
     ...(tasks.groups.length === 0

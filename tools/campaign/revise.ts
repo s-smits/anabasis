@@ -119,7 +119,8 @@ async function verifyWitnesses(input: {
     const task =
       verdict?.task === undefined || verdict.task === null ? undefined : packages.get(verdict.task);
     if (verdict === undefined || task === undefined || verdict.answer === undefined) {
-      faults.push(`${label} witness ${solve} could not be loaded (missing task package or answer)`);
+      const taskLabel = isString(verdict?.task) ? ` on ${verdict.task}` : "";
+      faults.push(`${label} witness${taskLabel} could not be loaded (missing task package or answer)`);
       return null;
     }
     const files =
@@ -135,7 +136,9 @@ async function verifyWitnesses(input: {
         const witness = loadWitness(id, label);
         return witness === null ? [] : [witness];
       } catch (error) {
-        faults.push(`${label} witness ${id} files could not be read: ${errorMessage(error)}`);
+        const taskId = verdicts.get(id)?.task;
+        const taskLabel = isString(taskId) ? ` on ${taskId}` : "";
+        faults.push(`${label} witness${taskLabel} files could not be read: ${errorMessage(error)}`);
         return [];
       }
     });
@@ -153,14 +156,12 @@ async function verifyWitnesses(input: {
       check !== undefined &&
       (origBlocking.includes(check) || (findingChecks.get(witness.solve)?.has(check) ?? false));
     if (result.kind !== "fail") {
-      faults.push(
-        `earned Referee witness ${witness.solve} (${witness.task.taskId}) no longer fails (got ${result.kind})`,
-      );
+      faults.push(`earned Referee witness on ${witness.task.taskId} no longer fails (got ${result.kind})`);
       continue;
     }
     if (kind === "repair" && check !== undefined && onCheck && !result.blocking.includes(check)) {
       faults.push(
-        `earned Referee witness ${witness.solve} (${witness.task.taskId}) is no longer blocked by repaired check ${check}`,
+        `earned Referee witness on ${witness.task.taskId} is no longer blocked by repaired check ${check}`,
       );
       continue;
     }
@@ -170,7 +171,7 @@ async function verifyWitnesses(input: {
       !origBlocking.some((id) => result.blocking.includes(id))
     ) {
       faults.push(
-        `earned Referee witness ${witness.solve} (${witness.task.taskId}) is no longer blocked by any original check (${origBlocking.join(", ")})`,
+        `earned Referee witness on ${witness.task.taskId} is no longer blocked by any original check (${origBlocking.join(", ")})`,
       );
       continue;
     }
@@ -183,7 +184,9 @@ async function verifyWitnesses(input: {
     const uncleared: string[] = [];
     for (const { witness, result } of defectResults) {
       if (result.kind === "faulty" || result.kind === "non-result") {
-        faults.push(`check-defect witness ${witness.solve} faulted under candidate: ${result.reason}`);
+        faults.push(
+          `check-defect witness on ${witness.task.taskId} faulted under candidate: ${result.reason}`,
+        );
         continue;
       }
       const origBlocking = witness.verdict.checker?.kind === "fail" ? witness.verdict.checker.blocking : [];
@@ -192,13 +195,14 @@ async function verifyWitnesses(input: {
         ? result.kind === "pass"
         : result.kind === "pass" || (result.kind === "fail" && !result.blocking.includes(check));
       if (cleared) defectCleared += 1;
-      else uncleared.push(witness.solve);
+      else uncleared.push(witness.task.taskId);
     }
     if (defectChecked === 0 || defectCleared === 0) {
       faults.push(`repair candidate did not clear any check-defect witness for ${check}`);
     } else if (uncleared.length > 0) {
+      const tasks = [...new Set(uncleared)].join(", ");
       faults.push(
-        `repair candidate left ${String(uncleared.length)}/${String(defectChecked)} check-defect witnesses uncleared for ${check}: ${uncleared.join(", ")}`,
+        `repair candidate left ${String(uncleared.length)}/${String(defectChecked)} check-defect witnesses uncleared for ${check} (tasks: ${tasks})`,
       );
     }
   }

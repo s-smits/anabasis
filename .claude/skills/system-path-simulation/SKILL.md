@@ -17,7 +17,7 @@ Simulate a PR or stack before launching a full campaign or merging. Use model-fr
 
 Use [stack-contracts.md](../run-improvement-campaign/references/stack-contracts.md) to pick the contract seams each change touches.
 
-## Sizing live angles
+## Sizing and launching live angles
 
 When a PR changes model-facing prompts, schemas, agent flows, or scoring, do not stop at mocked runs alone:
 
@@ -26,7 +26,14 @@ When a PR changes model-facing prompts, schemas, agent flows, or scoring, do not
 - **Concurrency:** run **at most 2** live simulations concurrently on a quiet host.
 - **Bounds:** keep each live angle short and bounded (`--cap`, `--minutes`, `--tries`, `--proposals`, `--moves`). Use [optimize](cases/optimize.md) only for deliberate paired prompt/parameter sweeps.
 
-Live runs require operator approval naming the agents, model, effort, login, and dollar/time cap. Check `runs usage` (across every required provider) and `runs loadwatch --once` before starting, and never print `--env-file`.
+### Autonomous parameter selection once live simulation is requested
+
+Never start unprompted paid runs when the operator has not asked for live-model simulation. Once the operator asks to run live simulations (for example, "simulate with real models", "run 4–6 live angles", or "continue" on an approved live-simulation plan) without spelling out every parameter, determine the omitted values from recent history rather than pausing to ask:
+
+1. **Angles:** pick the 1–2 (small PR) or 4–8 (large PR / stack) highest-signal angles covering every changed seam plus a control domain. Where code refuses a seat combination on the chosen backend (for example, same-family judged pairs), state that in one line and substitute an angle that runs cleanly on the chosen backend alone.
+2. **Model and effort:** honour any backend, model, or effort the operator named (never silently mix in another backend). When omitted, infer the default seat preset from recent `.ana/wri/sim-*` records, prior session history, and `tools/runs/fresh.ts` (`NAMED`), keeping all seats on that single backend unless the operator named a split.
+3. **Login and host:** run `bun run runs usage`, `bun run runs active`, and `bun run runs loadwatch --once` (never print `--env-file`). Pick an open login with headroom (preferring the most remaining weekly quota / earliest reset among open logins within plan concurrency caps) and a quiet non-benchmark host.
+4. **Dollar and minute caps:** derive a bounded per-angle cap from prior `.ana/wri/sim-*` sittings of the same seat kind (typically \$15 to \$50 and 20 to 30 minutes per bounded seat, scaled to seat scope). Record the chosen angles, model, effort, cap, and falsifiers in `.ana/wri/sim-<date>-<topic>/predictions.md` before launch, then start Wave 1 immediately.
 
 ## Practical rules
 

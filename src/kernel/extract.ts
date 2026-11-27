@@ -176,32 +176,30 @@ const joinedText = (value: unknown): string =>
   Array.isArray(value) ? value.filter(isString).join("") : isString(value) ? value : "";
 
 function notebookImages(filePath: string, text: string): { readonly path: string; readonly bytes: Buffer }[] {
+  let cells: unknown;
   try {
-    const cells = asRecord(capturedJsonParse(text))?.cells;
-    return Array.isArray(cells)
-      ? cells.flatMap((cell, i) => {
-          const outputs = asRecord(cell)?.outputs;
-          return Array.isArray(outputs)
-            ? outputs.flatMap((out, j) => {
-                const data = asRecord(asRecord(out)?.data);
-                return Object.entries(IMAGE_EXT).flatMap(([mime, ext]) => {
-                  const raw = joinedText(data?.[mime]).trim();
-                  return raw === ""
-                    ? []
-                    : [
-                        {
-                          path: `${filePath}#cell-${String(i)}-out-${String(j)}.${ext}`,
-                          bytes: Buffer.from(raw, "base64"),
-                        },
-                      ];
-                });
-              })
-            : [];
-        })
-      : [];
+    cells = asRecord(capturedJsonParse(text))?.cells;
   } catch {
     return [];
   }
+  if (!Array.isArray(cells)) return [];
+  const outputs = cells.flatMap((cell, i) => {
+    const list = asRecord(cell)?.outputs;
+    return Array.isArray(list) ? list.map((out, j) => ({ i, j, data: asRecord(asRecord(out)?.data) })) : [];
+  });
+  return outputs.flatMap(({ i, j, data }) =>
+    Object.entries(IMAGE_EXT).flatMap(([mime, ext]) => {
+      const raw = joinedText(data?.[mime]).trim();
+      return raw === ""
+        ? []
+        : [
+            {
+              path: `${filePath}#cell-${String(i)}-out-${String(j)}.${ext}`,
+              bytes: Buffer.from(raw, "base64"),
+            },
+          ];
+    }),
+  );
 }
 
 export function answerImages(file: AnswerFile): { readonly path: string; readonly bytes: Buffer }[] {

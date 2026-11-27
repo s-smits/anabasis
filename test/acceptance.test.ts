@@ -687,6 +687,13 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
     expect(await unread(reads(new Set()), { answerFormat: noteAtLeast(2) })).toEqual([
       "answer fields $.flags[].ok, $.flags[].why",
     ]);
+    const withOptional = {
+      ...format,
+      properties: { ...format.properties, comment: { type: "string" } },
+    };
+    expect(await unread(reads(new Set(optional)), { answerFormat: withOptional })).toEqual([
+      "answer fields $.comment",
+    ]);
   });
 });
 

@@ -25,7 +25,7 @@ import { hasJudge } from "#src/kernel/contract.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { INTERRUPTED, PATIENCE } from "#src/kernel/reports.ts";
 import { degradations, unservedTurns } from "#src/kernel/trace.ts";
-import { isNumber } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { hasWholeToken, plural } from "#src/meta/text.ts";
@@ -41,6 +41,7 @@ const DEFAULT_LEVEL = 0.02;
 const MIN_WRITE_REFUSAL_SOLVES = 2;
 const MIN_WRITE_REFUSAL_RATE = 0.05;
 const WRITE_REFUSAL = /\b(?:EPERM|EACCES)\b|operation not permitted|permission denied/iu;
+const PROBE_CONTENT_MAX = 12;
 const AUDIT_VERDICTS = new Set(["sound", "defects", "skipped"]);
 
 const warn = (factor: string, lane: number, detail: string): string =>
@@ -266,17 +267,21 @@ function writeRefusalFindings(log: Index): string[] {
     log.solves.length,
     new Set(log.traces.filter((each) => each.seat === "solve").map((each) => each.id)).size,
   );
-  const refused = new Set(
-    log.traces
-      .filter(
-        (each) =>
-          each.part === "call" &&
-          each.seat === "solve" &&
-          (each.tool === "write" || each.tool === "edit") &&
-          each.isError &&
-          WRITE_REFUSAL.test(each.text),
-      )
-      .map((each) => each.id),
+  const refusedCalls = log.traces.flatMap((each) =>
+    each.part === "call" &&
+    each.seat === "solve" &&
+    (each.tool === "write" || each.tool === "edit") &&
+    each.isError &&
+    WRITE_REFUSAL.test(each.text)
+      ? [each]
+      : [],
+  );
+  const refused = new Set(refusedCalls.map((each) => each.id));
+  const substantive = new Set(
+    refusedCalls.flatMap(({ id, tool, args }) => {
+      const content = tool === "write" ? asRecord(args)?.content : undefined;
+      return !isString(content) || content.length > PROBE_CONTENT_MAX ? [id] : [];
+    }),
   );
   const overallHit =
     refused.size >= MIN_WRITE_REFUSAL_SOLVES &&
@@ -313,11 +318,15 @@ function writeRefusalFindings(log: Index): string[] {
               `${row.harness === starter ? `starter ${row.harness.slice(0, 8)}` : row.harness.slice(0, 8)} ${String(row.refused)}/${String(row.total)} (${percent(row.refused / row.total)})`,
           )
           .join(", ")}`;
+  const probeNote =
+    substantive.size < refused.size
+      ? ` (${String(substantive.size)}/${String(refused.size)} with content >${String(PROBE_CONTENT_MAX)} chars)`
+      : "";
   return [
     warn(
       "honesty",
       19,
-      `solver write/edit permission refusals: ${String(refused.size)}/${String(totalSolves)} solves hit EPERM/EACCES${suffix}`,
+      `solver write/edit permission refusals: ${String(refused.size)}/${String(totalSolves)} solves hit EPERM/EACCES${probeNote}${suffix}`,
     ),
   ];
 }

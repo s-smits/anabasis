@@ -245,8 +245,27 @@ async function probeReading(
             const formed = (field: Field | undefined): field is Field =>
               field !== undefined && answerFormatFault(given.contract.answerFormat, field.answer) === null;
             const filled = fieldsOf(run.answer, "$", "filled");
-            return fieldsOf(run.answer, "$", "emptied")
-              .map((field, at) => (formed(field) ? field : filled[at]))
+            const record = asRecord(run.answer);
+            const props =
+              record === null
+                ? []
+                : Object.entries(asRecord(asRecord(given.contract.answerFormat)?.properties) ?? {});
+            const absent = props.flatMap(([key, prop]) => {
+              if (record === null || Object.hasOwn(record, key)) return [];
+              const base = doNothingAnswer(prop, given.contract.answerFormat);
+              const alt = otherLeaf(base, "filled");
+              const make = (value: JsonValue): Field => ({
+                path: `$.${key}`,
+                answer: { ...record, [key]: value },
+              });
+              return [alt !== undefined && formed(make(alt)) ? make(alt) : make(base)];
+            });
+            return [
+              ...fieldsOf(run.answer, "$", "emptied").map((field, at) =>
+                formed(field) ? field : filled[at],
+              ),
+              ...absent,
+            ]
               .filter(formed)
               .map((field) => ({ run, task, files: run.files, field }));
           }),

@@ -112,8 +112,8 @@ Home contains \`public/task.json\`, \`public/files/\`, \`public/resources/\`, an
 ## Designing tools that transfer (.toolchain/)
 
 Build small, general, verb-first CLIs (accepting relative file paths, \`--help\`, stdout results, stderr diagnostics, exit 0/1/2) that work on ordinary workspaces outside this host:
-- Multi-format inspection and extraction across CSV, Excel, Word, PDF, SQLite and JSON inputs.
-- Deliverable verification: check live evaluated workbook formulas (zero \`#REF!\`/\`#DIV/0!\`/\`#VALUE!\`/\`#NAME?\`/\`#N/A\` and zero uncached formulas), summary-first sheet ordering (summary/results tabs before large raw-data tabs so key tables are never truncated), standalone plus embedded figure export, and requirement-manifest completeness across every requested sub-item.
+- Workspace inspection and extraction across the domain's native input formats.
+- Deliverable verification: reopen every produced file with an independent reader to check format integrity, computed values, visual clarity, and requirement completeness across every requested item.
 - Independent domain diagnostics, assumption tests and sensitivity checks.
 Keep campaign-specific adapters (\`public/task.json\`, \`answer.json\`) strictly separate from general tools, and prune tools that practice traces show sit unused.
 

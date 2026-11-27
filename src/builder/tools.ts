@@ -462,7 +462,7 @@ export function traceTool(bench: Bench): AgentTool {
   return tool({
     name: "read_trace",
     description:
-      "Inspect a practice solve: overview (ending, answer, delivered files, closing text, tool calls), one full call (`call`), or a delivered file (`file`, paged from `from` bytes, including workbook sheet order/dimensions, formulas, embedded visuals, tables, and direct image rendering for figures).",
+      "Inspect a practice solve: overview (ending, answer, delivered files, closing text, tool calls), one full call (`call`), or a delivered file (`file`, paged from `from` bytes, including structured contents, tables, formulas, embedded visuals, and direct image rendering).",
     parameters: Type.Object({
       solve: Type.String({ description: "A solve's id." }),
       call: Type.Optional(Type.Number({ minimum: 1, description: "A call's number, from the list." })),

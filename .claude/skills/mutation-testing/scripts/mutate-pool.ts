@@ -14,7 +14,7 @@ import {
   type VerdictMap,
 } from "./mutate-exec.ts";
 
-const TARGET_BATCH_MS = 240_000;
+const TARGET_BATCH_MS = 120_000;
 export const UNKNOWN_SUITE_MS = 4000;
 
 export interface PoolTask {
@@ -110,8 +110,6 @@ async function settleProcs(procs: ReadonlySet<ActiveProc>, graceMs: number): Pro
   for (const proc of procs) killProcessGroup(proc, "SIGKILL");
 }
 
-const refusedSuiteOf = (why: string): string | null => /^baseline suite "([^"]+)"/u.exec(why)?.[1] ?? null;
-
 export async function runFleetPool(opts: {
   readonly activeWorkers: readonly FastWorker[];
   readonly tasks: readonly PoolTask[];
@@ -130,7 +128,7 @@ export async function runFleetPool(opts: {
   const localSeats = opts.activeWorkers.filter((seat) => !isAway(seat));
   const remoteSeats = opts.activeWorkers.filter(isAway);
   const cores = availableParallelism();
-  const baseConc = Math.min(4, Math.max(1, Math.floor(cores / Math.max(1, localSeats.length))));
+  const baseConc = Math.min(2, Math.max(1, Math.floor(cores / Math.max(1, localSeats.length * 2))));
   const activeSuites = new Map(
     [...opts.suites.entries()].filter(([name]) => pending.some((task) => task.plan.active.includes(name))),
   );
@@ -252,7 +250,7 @@ export async function runFleetPool(opts: {
               ).length
             : pending.length;
         const demand = Math.min(localSeats.length, Math.max(1, runnablePending + localInFlight));
-        const localConc = mode === "local" ? Math.min(4, Math.max(1, Math.floor(cores / demand))) : 4;
+        const localConc = mode === "local" ? Math.min(2, Math.max(1, Math.floor(cores / (demand * 2)))) : 4;
         const outcome = await killsOf(seat, mode === "local" ? orderPlan(task.plan) : task.plan, {
           originals: opts.originals,
           suites: opts.suites,
@@ -307,6 +305,8 @@ export async function runFleetPool(opts: {
     const doneQualify = new Set<string>();
     const badSuites = new Set<string>();
     let lastRefusal: string | null = null;
+    let consecutiveDrops = 0;
+    let totalDrops = 0;
     while (!doneAll() && !retired.has(seat.place)) {
       const batch = pullRemoteBatch(pending, {
         cap: opts.batchCap,
@@ -358,33 +358,40 @@ export async function runFleetPool(opts: {
       const missing = batch.filter((task) => !doneKeys.has(task.key));
       if (doneAll()) return;
       if (got.refused !== null) {
-        lastRefusal = got.refused;
+        const { suite: badSuite, why } = got.refused;
+        lastRefusal = why;
         pending.unshift(...missing);
-        const badSuite = refusedSuiteOf(got.refused);
-        if (badSuite !== null && !badSuites.has(badSuite)) {
+        if (!badSuites.has(badSuite)) {
           badSuites.add(badSuite);
-          recordSkip(badSuite, got.refused);
+          recordSkip(badSuite, why);
           if (
             pending.some((task) => !doneKeys.has(task.key) && !task.plan.active.some((n) => badSuites.has(n)))
           ) {
-            console.error(`${got.refused}; ${hostKey} skips suite "${badSuite}"`);
+            console.error(`${why}; ${hostKey} skips suite "${badSuite}"`);
             continue;
           }
         }
         retired.add(seat.place);
-        refused.set(seat.place, got.refused);
+        refused.set(seat.place, why);
         return;
       }
       if (got.qualified) for (const name of needQualify) doneQualify.add(name);
       if (got.dropped || missing.length > 0) {
-        retired.add(seat.place);
-        const detail = got.stderr.split("\n").findLast((line) => line.trim() !== "");
-        console.error(
-          `${hostKey} gave no verdict${detail === undefined ? "" : ` (${detail})`}, so takes no more mutants`,
-        );
         pending.unshift(...missing);
+        const detail = got.stderr.split("\n").findLast((line) => line.trim() !== "");
+        const why = detail === undefined ? "" : ` (${detail})`;
+        consecutiveDrops = got.rows.length > 0 ? 0 : consecutiveDrops + 1;
+        totalDrops += 1;
+        if (consecutiveDrops < 2 && totalDrops < 4 && !doneAll()) {
+          console.error(`${hostKey} gave no verdict${why}; retrying`);
+          await Bun.sleep(2000);
+          continue;
+        }
+        retired.add(seat.place);
+        console.error(`${hostKey} gave no verdict${why}, so takes no more mutants`);
         return;
       }
+      consecutiveDrops = 0;
     }
   };
 

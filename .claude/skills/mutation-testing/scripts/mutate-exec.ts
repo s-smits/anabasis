@@ -469,7 +469,8 @@ async function qualify() {
     const said = await runPaths(root, cfg.suites[name] ?? [], qConc, cfg.seconds);
     if (said === false) continue;
     const at = cfg.remoteLabel === "" ? "" : " on " + cfg.remoteLabel;
-    console.log(QUALIFY_FAIL + 'baseline suite "' + name + '" did not pass unmutated (' + (said === true ? "failed" : "no verdict") + ')' + at);
+    const why = 'baseline suite "' + name + '" did not pass unmutated (' + (said === true ? "failed" : "no verdict") + ')' + at;
+    console.log(QUALIFY_FAIL + JSON.stringify({ suite: name, why }));
     return false;
   }
   console.log(QUALIFY_OK);
@@ -536,7 +537,7 @@ async function runIn(dir, plan) {
   console.log(BATCH_ROW + JSON.stringify({ id: mutant.id, killed }));
 }
 it("mutate batch", async () => {
-  const lanes = Math.min(Math.min(8, Math.max(2, availableParallelism())), cfg.plans.length);
+  const lanes = Math.min(Math.min(6, Math.max(2, Math.floor(availableParallelism() / 2))), cfg.plans.length);
   const dirs = Array.from({ length: lanes }, () => mkdtempSync(join(tmpdir(), "ana-m-")));
   const cloneAll = Promise.all(dirs.map((copy) => cloneLane(copy)));
   const deadline = cfg.remainingMs === null ? null : Date.now() + cfg.remainingMs;
@@ -575,7 +576,7 @@ export async function runBatch(
 ): Promise<{
   readonly rows: BatchRow[];
   readonly qualified: boolean;
-  readonly refused: string | null;
+  readonly refused: { readonly suite: string; readonly why: string } | null;
   readonly dropped: boolean;
   readonly stderr: string;
 }> {
@@ -619,13 +620,19 @@ export async function runBatch(
     opts.activeProcs.add(run);
     const rows: BatchRow[] = [];
     let qualified = false;
-    let refused: string | null = null;
+    let refused: { readonly suite: string; readonly why: string } | null = null;
     const decoder = new TextDecoder();
     let buf = "";
     const handleLine = (line: string) => {
       if (line.includes(QUALIFY_OK_MARKER)) qualified = true;
       const failAt = line.indexOf(QUALIFY_FAIL_MARKER);
-      if (failAt !== -1) refused = line.slice(failAt + QUALIFY_FAIL_MARKER.length).trim();
+      if (failAt !== -1) {
+        // SAFETY: emitted as JSON `{ suite, why }` by `BATCH_DRIVER_BODY` above.
+        refused = JSON.parse(line.slice(failAt + QUALIFY_FAIL_MARKER.length)) as {
+          readonly suite: string;
+          readonly why: string;
+        };
+      }
       const rowAt = line.indexOf(BATCH_MARKER);
       if (rowAt !== -1) {
         // SAFETY: every marked line was emitted by `BATCH_DRIVER_BODY` above.

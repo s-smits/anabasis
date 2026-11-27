@@ -164,8 +164,7 @@ export function opened(publicInput: JsonValue, filesDir = TASK_FILES): JsonValue
     const held = asRecord(row);
     if (held === null || !isString(held.path)) return row;
     const bytes = written.get(held.path);
-    const decoded = bytes === undefined ? null : fileRowBytes(held);
-    if (bytes === undefined || decoded === null || !decoded.equals(bytes)) return row;
+    if (bytes === undefined || fileRowBytes(held)?.equals(bytes) !== true) return row;
     written.delete(held.path);
     const { text: _t, base64: _b, entries: _e, ...rest } = held;
     return { ...rest, path: held.path, file: `${filesDir}/${held.path}`, bytes: bytes.length };

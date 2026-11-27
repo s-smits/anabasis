@@ -225,52 +225,48 @@ function controlOf(
   };
 }
 
-function judgedSessionsIn(events: readonly LogEvent[]): Set<string> {
-  return new Set(
+function starterSplits(events: readonly LogEvent[], reports: readonly Reported[]) {
+  const starter = starterIn(events);
+  const judged = new Set(
     eventsOf(events, "comparison.started").flatMap(({ event: { data } }) =>
       isString(data.session) && judgeIn(data) !== undefined ? [data.session] : [],
     ),
   );
-}
-
-function starterSplitOf(
-  events: readonly LogEvent[],
-  report: Reported,
-  starter: string | null,
-  judged: ReadonlySet<string>,
-) {
-  if (
-    starter === null ||
-    report.data.fresh !== starter ||
-    report.data.old === starter ||
-    judged.has(report.session)
-  ) {
-    return null;
+  const bySession = new Map<string, ReturnType<typeof controlOf>>();
+  let judgedCount = 0;
+  for (const report of reports) {
+    if (starter === null || report.data.fresh !== starter || report.data.old === starter) continue;
+    if (judged.has(report.session)) {
+      judgedCount += 1;
+      continue;
+    }
+    const pairs = pairsReported(events, report, "fresh");
+    if (pairs.length === 0) continue;
+    const flips = pairs.some(({ old, fresh }) => [...old, ...fresh].some((v, _, all) => v !== all[0]));
+    bySession.set(
+      report.session,
+      controlOf(
+        report.index,
+        levelOf(report),
+        pairs.map(differenceOf),
+        flips ? "validity" : "objective",
+        "starter",
+      ),
+    );
   }
-  const pairs = pairsReported(events, report, "fresh");
-  if (pairs.length === 0) return null;
-  const flips = pairs.some((pair) => {
-    const all = [...pair.old, ...pair.fresh];
-    return all.some((valid) => valid !== all[0]);
-  });
-  return controlOf(
-    report.index,
-    levelOf(report),
-    pairs.map(differenceOf),
-    flips ? "validity" : "objective",
-    "starter",
-  );
+  return { bySession, judgedCount };
 }
 
-function controlsIn(events: readonly LogEvent[], reports: readonly Reported[]) {
-  const starter = starterIn(events);
-  const judged = judgedSessionsIn(events);
+function controlsIn(
+  events: readonly LogEvent[],
+  reports: readonly Reported[],
+  splits = starterSplits(events, reports).bySession,
+) {
   return reports.flatMap((each) => {
     const noise = asRecord(each.data.noise);
     if (!Array.isArray(noise?.differences)) return [];
     const own = controlOf(each.index, levelOf(each), scoresIn(noise), measureSliceOf(each.data, noise));
-    if (own.able) return [own];
-    const fallback = starterSplitOf(events, each, starter, judged);
+    const fallback = own.able ? undefined : splits.get(each.session);
     return [fallback?.able === true ? fallback : own];
   });
 }
@@ -519,7 +515,8 @@ export function promotionCosts(events: readonly LogEvent[]): ReadonlyMap<string,
 
 export function barLines(events: readonly LogEvent[]): string[] {
   const reports = lastReports(events);
-  const controls = controlsIn(events, reports);
+  const splits = starterSplits(events, reports);
+  const controls = controlsIn(events, reports, splits.bySession);
   const epochs = epochsFrom(events, reports, controls);
   const pairsOf = pairLookup(events);
   const climbed = epochs.filter(({ nth, reverted }) => nth > 1 && reverted !== true);
@@ -542,7 +539,7 @@ export function barLines(events: readonly LogEvent[]): string[] {
   return [
     `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
     `- Honesty: ${plural(controls.length, "A/A control")}; ${controlCounts(controls)}${fallbackNote}.${tiedNote} Observational; the bar pools a release's.`,
-    starterNoiseLine(events, reports),
+    starterNoiseLine([...splits.bySession.values()], splits.judgedCount),
     repeatLine(reports, pairsOf),
   ];
 }
@@ -568,31 +565,15 @@ function controlCounts(controls: readonly ReturnType<typeof controlOf>[]): strin
   return `${plural(able, "powered A/A control")}: ${String(steps)} one-sided (95% bound ${percent(upperBound(steps, able))}), ${String(either)} two-sided false positives`;
 }
 
-function starterNoiseLine(events: readonly LogEvent[], reports: readonly Reported[]): string {
-  const starter = starterIn(events);
-  const judged = judgedSessionsIn(events);
-  const judgedCount = reports.filter(
-    (report) =>
-      starter !== null &&
-      report.data.fresh === starter &&
-      report.data.old !== starter &&
-      judged.has(report.session),
-  ).length;
-  const read = reports.flatMap((report) => {
-    const split = starterSplitOf(events, report, starter, judged);
-    return split === null ? [] : [split];
-  });
+function starterNoiseLine(read: readonly ReturnType<typeof controlOf>[], judgedCount: number): string {
   const head = "- Baseline A/A control:";
   const judgedNote =
     judgedCount === 0
       ? ""
       : `${plural(judgedCount, "judged starter comparison")} excluded (no starter split-arm judge votes)`;
   if (read.length === 0) {
-    return judgedCount === 0
-      ? `${head} no split-arm starter comparison recorded yet. Observational only.`
-      : `${head} ${judgedNote}. Observational only.`;
+    return `${head} ${judgedNote || "no split-arm starter comparison recorded yet"}. Observational only.`;
   }
   const tied = read.filter((control) => control.tied).length;
-  const extra = judgedCount === 0 ? "" : `; ${judgedNote}`;
-  return `${head} ${plural(read.length, "split-arm starter comparison")}, ${controlCounts(read)}, ${String(tied)} tied every task${extra}. Used by honesty where the reference A/A is unpowered; observational otherwise.`;
+  return `${head} ${plural(read.length, "split-arm starter comparison")}, ${controlCounts(read)}, ${String(tied)} tied every task${judgedNote === "" ? "" : `; ${judgedNote}`}. Used by honesty where the reference A/A is unpowered; observational otherwise.`;
 }

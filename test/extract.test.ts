@@ -214,47 +214,20 @@ describe("the offline file extractor", () => {
     expect(refused.fault).not.toContain("\n");
   });
 
-  it("extracts docx tables, workbook sheet order and embedded visuals, sqlite row/index counts, and notebook images", () => {
+  it("extracts docx tables and embedded images from Office archives and notebooks", () => {
     const doc = zipped("report.docx", {
       "word/document.xml":
         "<w:document><w:body><w:p><w:r><w:t>Summary</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Metric</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Value</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>N</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>42</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>",
       "word/media/image1.png": "x",
+      "word/media/vector.svg": "<svg/>",
     });
-    const docRead = extract(doc);
-    expect(docRead.text).toBe("Summary\nMetric\tValue\nN\t42");
-    expect(docRead.notes).toEqual(["embedded visuals: 1 image(s)"]);
+    expect(extract(doc).text).toBe("Summary\nMetric\tValue\nN\t42");
     expect(answerImages(doc).map(({ path }) => path)).toEqual(["report.docx#word/media/image1.png"]);
-
-    const book = zipped("vis.xlsx", {
-      "xl/workbook.xml":
-        '<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Summary" sheetId="1" r:id="r1"/><sheet name="Raw" sheetId="2" r:id="r2"/></sheets></workbook>',
-      "xl/_rels/workbook.xml.rels":
-        '<Relationships><Relationship Id="r1" Target="worksheets/sheet1.xml"/><Relationship Id="r2" Target="worksheets/sheet2.xml"/></Relationships>',
-      "xl/worksheets/sheet1.xml":
-        '<worksheet><sheetData><row><c r="A1"><v>1</v></c></row></sheetData></worksheet>',
-      "xl/worksheets/sheet2.xml":
-        '<worksheet><sheetData><row><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row><row><c r="A2"><v>3</v></c></row></sheetData></worksheet>',
-      "xl/media/image1.png": "x",
-      "xl/charts/chart1.xml": "<c:chartSpace/>",
-    });
-    expect(headOf(extract(book))).toContain("sheets: Summary (1x1), Raw (2x2)");
-    expect(headOf(extract(book))).toContain("embedded visuals: 1 image(s), 1 chart(s)");
 
     const nb = {
       cells: [{ cell_type: "code", source: "plot()", outputs: [{ data: { "image/png": "AAAA" } }] }],
     };
     const nbFile = plain("diag.ipynb", JSON.stringify(nb));
-    expect(extract(nbFile).text).toContain("[image/png output, 4 chars]");
     expect(answerImages(nbFile).map(({ path }) => path)).toEqual(["diag.ipynb#cell-0-out-0.png"]);
-
-    const db64 = sqliteBytes((db) => {
-      db.run("CREATE TABLE items (id INTEGER PRIMARY KEY, code TEXT)");
-      db.run("CREATE INDEX idx_items_code ON items(code)");
-      db.run("INSERT INTO items VALUES (1, 'a'), (2, 'b')");
-    });
-    expect(extract({ path: "out.db", base64: db64 }).notes).toEqual([
-      "tables: items (2 rows)",
-      "indexes: idx_items_code",
-    ]);
   });
 });

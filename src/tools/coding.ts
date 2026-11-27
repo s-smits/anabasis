@@ -28,12 +28,10 @@ const images: ImageProcessor = {
     (await (photon ??= createNodePhotonImages())).prepare(bytes, mimeType, limits),
 };
 
-type ImageModel = Pick<Model<Api>, "input" | "inputLimits">;
-
 export async function prepareImage(
   bytes: Uint8Array,
   path: string,
-  model: ImageModel,
+  model: Pick<Model<Api>, "input" | "inputLimits">,
 ): Promise<ImageContent | null> {
   const mimeType = Bun.file(path).type.split(";")[0] ?? "";
   if (!model.input.includes("image") || !mimeType.startsWith("image/")) return null;

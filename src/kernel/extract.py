@@ -32,14 +32,6 @@ def parse_xml(raw):
 def paras(raw):
     return "\n".join(line for p in parse_xml(raw).iter() if tag(p) == "p" and (line := text_of(p, "t")))
 
-def visuals_note(names, prefix, charts=None):
-    imgs = sum(1 for n in names if n.startswith(prefix) and not n.endswith("/"))
-    ch = sum(1 for n in names if charts and re.match(charts, n))
-    parts = [f"{imgs} image(s)"] if imgs else []
-    if ch:
-        parts.append(f"{ch} chart(s)")
-    return [f"embedded visuals: {', '.join(parts)}"] if parts else []
-
 def docx(zf):
     root = parse_xml(read_member(zf, "word/document.xml"))
     body = next((n for n in root if tag(n) == "body"), root)
@@ -54,7 +46,7 @@ def docx(zf):
                     cells = [text_of(tc, "t").replace("\t", " ") for tc in tr if tag(tc) == "tc"]
                     if any(cells):
                         lines.append("\t".join(cells))
-    return {"text": "\n".join(lines), "formulas": None, "notes": visuals_note(zf.namelist(), "word/media/")}
+    return {"text": "\n".join(lines), "formulas": None}
 
 def xlsx(zf, max_cells, max_empty):
     all_names = zf.namelist()
@@ -79,9 +71,8 @@ def xlsx(zf, max_cells, max_empty):
         ordered.append((path, label))
     counts = {"cachedEvaluated": 0, "uncachedFormula": 0, "formulaError": 0, "zeroRefFormulaCount": 0}
     out = []
-    dims = []
     for path, title in ordered:
-        cells = empty = max_cols = 0
+        cells = empty = 0
         rows = []
         for row in parse_xml(read_member(zf, path)).iter():
             if tag(row) != "row":
@@ -112,12 +103,9 @@ def xlsx(zf, max_cells, max_empty):
                 else:
                     vals.append(shown)
             empty = empty + 1 if all(x == "" for x in vals) else 0
-            max_cols = max(max_cols, len(vals))
             rows.append("\t".join(vals))
-        dims.append(f"{title} ({len(rows)}x{max_cols})")
         out.append(f"## {title}\n" + "\n".join(rows))
-    notes = ([f"sheets: {', '.join(dims)}"] if dims else []) + visuals_note(all_names, "xl/media/", r"^xl/charts/chart\d+\.xml$")
-    return {"text": "\n\n".join(out), "formulas": counts, "notes": notes}
+    return {"text": "\n\n".join(out), "formulas": counts}
 
 def db(raw):
     import sqlite3
@@ -134,14 +122,10 @@ def db(raw):
             con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, MAX_SQLITE_LENGTH)
         con.text_factory = lambda b: b.decode("utf-8", "replace")
         tables = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
-        indexes = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL ORDER BY name")]
         blocks = []
-        counts = []
         total = 0
         for tbl in tables:
             q = tbl.replace('"', '""')
-            row_count = con.execute('SELECT COUNT(*) FROM "' + q + '"').fetchone()[0]
-            counts.append(f"{tbl} ({row_count} rows)")
             cols = [r[1] for r in con.execute(f'PRAGMA table_info("{q}")')]
             if not cols:
                 blocks.append(f"## {tbl}")
@@ -167,8 +151,7 @@ def db(raw):
             blocks.append(f"## {tbl}\n" + "\t".join(cols) + ("\n" + "\n".join(rows) if rows else ""))
             if total > MAX_DB_CHARS:
                 break
-        notes = ([f"tables: {', '.join(counts)}"] if counts else []) + ([f"indexes: {', '.join(indexes)}"] if indexes else [])
-        return {"text": "\n\n".join(blocks), "formulas": None, "notes": notes}
+        return {"text": "\n\n".join(blocks), "formulas": None}
     finally:
         con.close()
 
@@ -184,5 +167,5 @@ else:
             res = docx(zf)
         else:
             slides = sorted((p for p in zf.namelist() if re.match(r"^ppt/slides/slide\d+\.xml$", p)), key=num)
-            res = {"text": "\n\n".join(f"## slide {num(p)}\n{paras(read_member(zf, p))}" for p in slides), "formulas": None, "notes": visuals_note(zf.namelist(), "ppt/media/")}
+            res = {"text": "\n\n".join(f"## slide {num(p)}\n{paras(read_member(zf, p))}" for p in slides), "formulas": None}
 sys.stdout.write(json.dumps(res))

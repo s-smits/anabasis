@@ -387,15 +387,17 @@ describe.concurrent("the mutation oracle over check hosts", () => {
   }, 60_000);
 
   it("batches mutants remotely under --batch with --prune and matches single-mutant verdicts in fewer trips", () => {
-    const batched = fleet("fleet-batch", { ANA_HOSTS: hosts(host("a", 2)) }, [
-      "--batch",
-      "4",
-      "--prune",
-      "--stop-at-kill",
-    ]);
+    const covCache = join(root, "fleet-batch-cov");
+    const batched = fleet(
+      "fleet-batch",
+      { ANA_HOSTS: hosts(host("a", 2), host("b", 1)), ANA_FAKE_BROKEN: "b" },
+      ["--batch", "4", "--prune", "--cov-cache", covCache, "--stop-at-kill"],
+    );
     expect(batched.status).toBe(0);
     expect(verdicts(batched.rows)).toStrictEqual(here);
     expect(batched.sent.length).toBeLessThan(1 + Object.keys(here).length);
+    expect(existsSync(join(covCache, "t.ok"))).toBe(true);
+    expect(existsSync(join(covCache, "t.lcov"))).toBe(true);
   }, 60_000);
 
   it("refuses a host list it cannot read, before it runs anything", () => {

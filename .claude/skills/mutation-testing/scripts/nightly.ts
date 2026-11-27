@@ -12,6 +12,7 @@ import {
 import { changedLinesInDiff, gitMaybe, mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { availableParallelism } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { NEAR, within } from "#tools/runtime/gate.ts";
@@ -264,53 +265,58 @@ function diffTargets(
   });
 }
 
-async function runOwner(opts: {
+interface OwnerJob {
+  readonly owner: string;
+  readonly out: string;
+  readonly suites: Record<string, readonly string[]>;
+  readonly ids: readonly string[] | null;
+}
+
+async function runPlan(opts: {
   readonly tree: string;
   readonly state: string;
   readonly here: string;
-  readonly owner: string;
-  readonly diffBase: string | null;
-  readonly suiteJson: string;
-  readonly ids: readonly string[] | null;
+  readonly jobs: readonly OwnerJob[];
   readonly timeout: number;
   readonly until: string | null;
 }): Promise<boolean> {
-  const { tree, state, here, owner, diffBase, suiteJson, ids, timeout, until } = opts;
-  if (until !== null && Date.now() >= Date.parse(until)) return false;
-  const prefix = stem(owner, diffBase);
-  const out = join(here, `${prefix}.jsonl`);
-  const map = join(here, `${prefix}.suites.json`);
-  writeFileSync(map, suiteJson);
-  const only: string[] = [];
-  if (ids !== null) {
-    const idsPath = join(here, `${prefix}.ids.txt`);
-    writeFileSync(idsPath, `${ids.join("\n")}\n`);
-    only.push("--only", idsPath);
-  }
-  const localSlots = Math.max(2, Math.floor(availableParallelism() / 3));
+  const { tree, state, here, jobs, timeout, until } = opts;
+  if (jobs.length === 0 || (until !== null && Date.now() >= Date.parse(until))) return jobs.length === 0;
+  const planPath = join(here, "plan.json");
+  writeFileSync(
+    planPath,
+    JSON.stringify(
+      jobs.map(({ owner, out, suites, ids }) => ({
+        file: owner,
+        out,
+        suites,
+        ...keyIfNotNull("ids", ids),
+      })),
+    ),
+  );
+  const localSlots = Math.max(2, availableParallelism());
   const command = [
     MUTATE,
     "run",
     tree,
-    owner,
-    "--out",
-    out,
-    "--suites",
-    map,
+    "--plan",
+    planPath,
     "--fleet",
     "--local",
     String(localSlots),
     "--batch",
-    "12",
+    "24",
     "--prune",
+    "--cov-cache",
+    join(here, "cov"),
     "--stop-at-kill",
-    ...only,
+    "--timeout",
+    String(timeout),
+    "--clones",
+    join(state, "clone"),
+    ...(until === null ? [] : ["--until", until]),
   ];
-  const extra = ["--timeout", String(timeout), "--clones", join(state, "clone")];
-  const run = Bun.spawn(["bun", ...command, ...extra, ...(until === null ? [] : ["--until", until])], {
-    stdout: "inherit",
-    stderr: "inherit",
-  });
+  const run = Bun.spawn(["bun", ...command], { stdout: "inherit", stderr: "inherit" });
   return (await run.exited) === 0;
 }
 
@@ -420,24 +426,26 @@ async function nightly(args: CommandArgs, rawTree: string): Promise<number> {
       : [...OWNERS.keys()].filter((owner) => existsSync(join(tree, owner)));
   const prevFull = done?.full ?? null;
   const diffIds = targets === null ? new Map<string, string[]>() : new Map(targets);
+  const jobs: OwnerJob[] = [];
   for (const owner of owners) {
     const suites = suitesFor(owner);
     if (suites.length === 0) {
       untested.push([owner, diffMode ? (diffIds.get(owner)?.length ?? 0) : mutantsOf(tree, owner).length]);
       continue;
     }
-    const ok = await runOwner({
-      tree,
-      state,
-      here,
-      owner,
-      diffBase,
-      suiteJson: JSON.stringify(Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]]))),
-      ids: diffMode ? (diffIds.get(owner) ?? []) : null,
-      timeout,
-      until,
-    });
-    if (!ok) unfinished.push(owner);
+    const prefix = stem(owner, diffBase);
+    const suiteMap = Object.fromEntries(suites.map((path) => [path.slice(5, -8), [path]] as const));
+    writeFileSync(join(here, `${prefix}.suites.json`), JSON.stringify(suiteMap));
+    const ids = diffMode ? (diffIds.get(owner) ?? []) : null;
+    if (ids !== null) writeFileSync(join(here, `${prefix}.ids.txt`), `${ids.join("\n")}\n`);
+    jobs.push({ owner, out: join(here, `${prefix}.jsonl`), suites: suiteMap, ids });
+  }
+  const ok = await runPlan({ tree, state, here, jobs, timeout, until });
+  if (!ok) {
+    for (const job of jobs) {
+      const expected = job.ids?.length ?? mutantsOf(tree, job.owner).length;
+      if (rowsOf(job.out).length < expected) unfinished.push(job.owner);
+    }
   }
   const complete = unfinished.length === 0;
   const stats = writeReport({

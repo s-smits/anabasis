@@ -104,7 +104,7 @@ function witnessLoader(log: string, events: readonly LogEvent[], packages: Reado
     ),
     ...[...packages.values()].map((entry) => [entry.taskId, entry] as const),
   ]);
-  return (ids: readonly string[], label: string, faults: string[], verify: Verifier) => {
+  return (ids: readonly string[], label: string, faults: string[], verify: Verifier, kill?: AbortSignal) => {
     const loaded = ids.flatMap((solve) => {
       try {
         const verdict = verdicts.get(solve);
@@ -124,16 +124,16 @@ function witnessLoader(log: string, events: readonly LogEvent[], packages: Reado
             ? undefined
             : readAnswerFiles(log, verdict.files);
         return [{ solve, verdict, task, answer: verdict.answer, files }];
-      } catch (error) {
+      } catch {
         const taskId = verdicts.get(solve)?.task;
         const taskLabel = isString(taskId) ? ` on ${taskId}` : "";
-        faults.push(`${label} witness${taskLabel} files could not be read: ${errorMessage(error)}`);
+        faults.push(`${label} witness${taskLabel} deliverable files could not be read`);
         return [];
       }
     });
     return pooled(loaded, 4, async (witness) => ({
       witness,
-      result: await verify(witness.task, witness.answer, undefined, witness.files),
+      result: await verify(witness.task, witness.answer, kill, witness.files),
     }));
   };
 }
@@ -145,12 +145,13 @@ async function verifyWitnesses(input: {
   readonly verify: Verifier;
   readonly kind: RevisionKind;
   readonly check?: string | undefined;
+  readonly kill?: AbortSignal | undefined;
 }): Promise<{
   readonly faults: readonly string[];
   readonly notes: readonly string[];
   readonly summary: WitnessSummary;
 }> {
-  const { log, events, packages, verify, kind, check } = input;
+  const { log, events, packages, verify, kind, check, kill } = input;
   const runWitnesses = witnessLoader(log, events, packages);
   const faults: string[] = [];
   const notes: string[] = [];
@@ -176,7 +177,7 @@ async function verifyWitnesses(input: {
   const earnedIds = [...standsOf(events).entries()].flatMap(([id, ruling]) =>
     ruling === "earned" ? [id] : [],
   );
-  const earnedResults = await runWitnesses(earnedIds, "earned", faults, verify);
+  const earnedResults = await runWitnesses(earnedIds, "earned", faults, verify, kill);
   let [earnedRetained, repairedCheckFlips] = [0, 0];
   for (const { witness, result } of earnedResults) {
     const origBlocking = origBlockingOf(witness, result, "earned Referee");
@@ -209,7 +210,13 @@ async function verifyWitnesses(input: {
   }
   let [defectChecked, defectCleared] = [0, 0];
   if (kind === "repair" && check !== undefined) {
-    const defectResults = await runWitnesses(defectSolvesFor(events, check), "check-defect", faults, verify);
+    const defectResults = await runWitnesses(
+      defectSolvesFor(events, check),
+      "check-defect",
+      faults,
+      verify,
+      kill,
+    );
     defectChecked = defectResults.length;
     const uncleared: string[] = [];
     for (const { witness, result } of defectResults) {
@@ -324,6 +331,7 @@ async function validateCandidate(input: {
   readonly packages: ReadonlyMap<string, Task>;
   readonly width: number;
   readonly sourceHome?: string | undefined;
+  readonly kill?: AbortSignal | undefined;
 }): Promise<
   | { readonly ok: false; readonly message: string }
   | {
@@ -332,7 +340,7 @@ async function validateCandidate(input: {
       readonly witnessed: Awaited<ReturnType<typeof verifyWitnesses>>;
     }
 > {
-  const { log, events, candidate, kind, check, packages, width, sourceHome } = input;
+  const { log, events, candidate, kind, check, packages, width, sourceHome, kill } = input;
   const staged = await draftReading(join(dirname(log), "revisions"), candidate, width, sourceHome);
   if (staged.faults.length > 0 || staged.read === undefined) {
     return {
@@ -350,6 +358,7 @@ async function validateCandidate(input: {
     verify: staged.read.verify,
     kind,
     check,
+    kill,
   });
   if (witnessed.faults.length > 0) {
     return {
@@ -370,10 +379,13 @@ export function revisionRunner(config: {
   readonly reviewer?: { readonly model?: string | undefined; readonly effort?: string | undefined };
   readonly auditor?: RevisionAuditor | null | undefined;
   readonly width?: number | undefined;
+  readonly kill?: AbortSignal | undefined;
 }): ReviseRunner {
   const auditor: RevisionAuditor | null = config.auditor === undefined ? reviewDraft : config.auditor;
   const width = config.width ?? 4;
+  const cancelled = () => config.kill?.aborted === true;
   return async ({ session, kind, why, check, candidate, home }) => {
+    if (cancelled()) return { accepted: false, message: "Refused: session cancelled." };
     const events = read(config.log, TRACE_KINDS);
     const opening = openingOf(events);
     const parent = draftOf(events);
@@ -403,6 +415,7 @@ export function revisionRunner(config: {
         packages: config.packages(),
         width,
         sourceHome,
+        kill: config.kill,
       }),
     );
     if (!checked.ok) return { accepted: false, message: checked.message };
@@ -418,6 +431,7 @@ export function revisionRunner(config: {
       reader: revisionReader(config.reviewer ?? {}, opening),
     });
     if (audited !== null) return { accepted: false, message: audited };
+    if (cancelled()) return { accepted: false, message: "Refused: session cancelled." };
     const lateRefusal = gate(read(config.log, TRACE_KINDS));
     if (lateRefusal !== null) return { accepted: false, message: `Refused: ${lateRefusal}` };
     const draftHash = hashJsonValue(candidate);
@@ -487,7 +501,8 @@ export async function freezeCandidate(
     throw new Error(`candidate parent checks ${payload.parent.checks} do not match frozen ${frozen.checks}`);
   }
   const auditedSound = eventsOf(events, "referee.draft").some(
-    ({ event: { data } }) => data.verdict === "sound" && data.revision === frozen.checks,
+    ({ event: { data } }) =>
+      data.verdict === "sound" && data.revision === frozen.checks && data.session === payload.audit.session,
   );
   if (payload.audit.verdict !== "sound" || !auditedSound) {
     throw new Error(`candidate ${candidate} has no logged sound adversarial audit for ${frozen.checks}`);

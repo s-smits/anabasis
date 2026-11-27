@@ -81,6 +81,7 @@ export async function examineCommand(
         packages: campaign.packages,
         reviewer: { model: values.reviewer, effort: values["reviewer-effort"] },
         auditor: audit,
+        kill,
       })
     : undefined;
   const models =

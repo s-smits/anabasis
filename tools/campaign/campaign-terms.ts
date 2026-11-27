@@ -246,13 +246,12 @@ function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: 
   };
 }
 
-function validateOpening(given: {
-  readonly opening: Opening;
-  readonly values: Values;
-  readonly seats: "paid" | "scripted";
-  readonly events: readonly LogEvent[];
-}): void {
-  const { opening, values, seats, events } = given;
+function validateOpening(
+  opening: Opening,
+  values: Values,
+  seats: "paid" | "scripted",
+  events: readonly LogEvent[],
+): void {
   if (seats === "paid" && opening.seats.reviewer === null) {
     throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
   }
@@ -368,7 +367,7 @@ export function opened(
     solver,
     terms: resolveTerms(events, was, values),
   };
-  validateOpening({ opening, values, seats, events });
+  validateOpening(opening, values, seats, events);
   persistOpening(log, events, opening, values["dry-run"] ? "dry-run" : "write", heard);
   return opening;
 }

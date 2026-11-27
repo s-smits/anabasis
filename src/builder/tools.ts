@@ -430,32 +430,32 @@ function pageOf(extracted: Extracted, from: number): string {
   ].join("\n");
 }
 
-async function readDeliveredFile(given: {
-  readonly bench: Bench;
-  readonly solve: string;
-  readonly files: readonly FileManifest[];
-  readonly path: string;
-  readonly from: number;
-}) {
-  const { bench, solve, files, path, from } = given;
+async function readDeliveredFile(
+  bench: Bench,
+  files: readonly FileManifest[],
+  ask: { readonly solve: string; readonly path: string; readonly from: number },
+) {
+  const { solve, path, from } = ask;
   const exact = files.find((each) => each.path === path);
   const kept = exact ?? files.find((each) => path.startsWith(`${each.path}#`));
   if (kept === undefined) throw new Error(`${solve} delivered no file ${path}`);
-  const embedded = exact === undefined;
   const [delivered = { path: kept.path, base64: "" }] = readAnswerFiles(bench.request.log, [kept]);
   const visuals = answerImages(delivered);
-  if (from === 0) {
-    const hit = visuals.find((each) => each.path === path);
-    const image = hit === undefined ? null : await prepareImage(hit.bytes, hit.path, bench.request.model);
-    if (image !== null) {
-      const label = embedded ? path : headOf(extract(delivered)).join("\n");
-      return { output: [{ type: "text" as const, text: label }, image] };
-    }
+  const hit = from === 0 ? visuals.find((each) => each.path === path) : undefined;
+  const image = hit === undefined ? null : await prepareImage(hit.bytes, hit.path, bench.request.model);
+  if (image !== null) {
+    return {
+      output: [
+        { type: "text" as const, text: exact === undefined ? path : headOf(extract(delivered)).join("\n") },
+        image,
+      ],
+    };
   }
-  if (embedded) throw new Error(`${solve} has no viewable image ${path}`);
+  if (exact === undefined) throw new Error(`${solve} has no viewable image ${path}`);
   const refs = visuals.flatMap((each) => (each.path === delivered.path ? [] : [each.path]));
-  const hint = refs.length === 0 ? "" : `\nembedded images: ${refs.join(", ")}`;
-  return text(`${pageOf(extract(delivered), from)}${hint}`);
+  return text(
+    `${pageOf(extract(delivered), from)}${refs.length === 0 ? "" : `\nembedded images: ${refs.join(", ")}`}`,
+  );
 }
 
 export function traceTool(bench: Bench): AgentTool {
@@ -488,10 +488,8 @@ export function traceTool(bench: Bench): AgentTool {
       if (args.call !== undefined) return text(callText(calls, args.call));
       const { answer, files = [] } = verdictsOf(events).get(args.solve) ?? {};
       if (args.file !== undefined) {
-        return await readDeliveredFile({
-          bench,
+        return await readDeliveredFile(bench, files, {
           solve: args.solve,
-          files,
           path: args.file,
           from: args.from ?? 0,
         });

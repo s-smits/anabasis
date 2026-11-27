@@ -129,7 +129,7 @@ export function fromHome<Parameters extends TSchema>(
   home: string | undefined,
   definition: ToolRegistration<Parameters>,
 ): ToolRegistration<Parameters> {
-  const expand = (value: JsonValue, field?: string): JsonValue => {
+  const expand = (value: JsonValue, field = ""): JsonValue => {
     if (Array.isArray(value)) return value.map((item) => expand(item));
     if (isString(value) && /^\s*\{\s*"from_file"\s*:\s*"[^"\\]+"\s*\}\s*$/u.test(value)) {
       return expand(parseJsonAs<JsonValue>(value), field);

@@ -3,10 +3,9 @@ import { crc32, inflateRawSync } from "node:zlib";
 const LOCAL = 0x04_03_4b_50;
 const CENTRAL = 0x02_01_4b_50;
 const END = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
-const IMAGE_EXT = /\.(?:png|jpe?g|gif|webp)$/iu;
 const NONE = { members: [], used: 0 };
 
-function zipMembers(
+export function zipMembers(
   bytes: Buffer,
   most: number,
 ): { members: { readonly path: string; readonly data: Buffer }[]; used: number } {
@@ -49,20 +48,15 @@ export function zipTexts(
   most: number,
 ): { members: { readonly path: string; readonly text: string }[]; used: number } {
   const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-  const raw = zipMembers(bytes, most);
-  const members: { readonly path: string; readonly text: string }[] = [];
-  for (const { path, data } of raw.members) {
+  const { members: raw, used } = zipMembers(bytes, most);
+  const members = raw.flatMap(({ path, data }) => {
     try {
-      members.push({ path, text: utf8.decode(data) });
+      return [{ path, text: utf8.decode(data) }];
     } catch {
-      /* A binary member, such as an image, has no text. */
+      return [];
     }
-  }
-  return { members, used: raw.used };
-}
-
-export function zipImages(bytes: Buffer, most: number): { readonly path: string; readonly data: Buffer }[] {
-  return zipMembers(bytes, most).members.filter(({ path }) => IMAGE_EXT.test(path));
+  });
+  return { members, used };
 }
 
 export function storedZip(

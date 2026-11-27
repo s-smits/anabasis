@@ -111,23 +111,16 @@ function fairCap(parts: readonly string[], budget: number): number {
   return budget;
 }
 
-type AnswerImages = ReadonlyMap<string, ImageContent>;
-
 async function answerOf(events: readonly LogEvent[], log: string, solve: string, model: Reader["model"]) {
   const verdict = loggedVerdict(events, solve, log);
   if (verdict === null) throw new Error(`solve ${solve} has no answer on record to judge`);
   const extracted = verdict.files.map(extract);
   const images = new Map<string, ImageContent>();
-  const embedded = new Map<string, string[]>();
   for (const raw of verdict.files) {
     for (const candidate of answerImages(raw)) {
       if (images.size >= MAX_PAIR_IMAGES) break;
       const prepared = await prepareImage(candidate.bytes, candidate.path, model);
-      if (prepared === null) continue;
-      images.set(candidate.path, prepared);
-      if (candidate.path !== raw.path) {
-        embedded.set(raw.path, [...(embedded.get(raw.path) ?? []), candidate.path]);
-      }
+      if (prepared !== null) images.set(candidate.path, prepared);
     }
   }
   const parts = [
@@ -135,7 +128,9 @@ async function answerOf(events: readonly LogEvent[], log: string, solve: string,
     ...extracted.map((file) =>
       [
         ...headOf(file),
-        ...(embedded.get(file.path) ?? []).map((ref) => `[image available via view_image: ${ref}]`),
+        ...[...images.keys()]
+          .filter((ref) => ref.startsWith(`${file.path}#`))
+          .map((ref) => `[image available via view_image: ${ref}]`),
         images.has(file.path) ? `[image available via view_image: ${file.path}]` : file.text,
       ].join("\n"),
     ),
@@ -154,32 +149,23 @@ async function answerOf(events: readonly LogEvent[], log: string, solve: string,
   };
 }
 
-const IMAGE_PARAMETERS = Type.Object({
-  answer: Type.Union([Type.Literal("A"), Type.Literal("B")]),
-  path: Type.String({ minLength: 1 }),
-});
-
-interface VoteInput extends PairCase {
-  readonly id: string;
-  readonly lines: readonly string[];
-  readonly fence: string;
-  readonly criterion: string;
-  readonly pair: readonly [string, string];
-  readonly images: readonly [AnswerImages, AnswerImages];
-}
-
-async function voted(reader: Reader, given: VoteInput) {
+async function voted(
+  reader: Reader,
+  given: PairCase & { readonly id: string; readonly lines: readonly string[]; readonly fence: string },
+  criterion: string,
+  [a, b]: readonly [Awaited<ReturnType<typeof answerOf>>, Awaited<ReturnType<typeof answerOf>>],
+) {
   const kept: Static<typeof VOTE_PARAMETERS>[] = [];
-  const [a, b] = given.pair;
-  const [imagesA, imagesB] = given.images;
-  const hasImages = imagesA.size > 0 || imagesB.size > 0;
   const fenced = (answer: string) => `${given.fence}\n${answer}\n${given.fence}`;
   const view = tool({
     name: "view_image",
     description: "Inspect an image file delivered by Answer A or Answer B.",
-    parameters: IMAGE_PARAMETERS,
+    parameters: Type.Object({
+      answer: Type.Union([Type.Literal("A"), Type.Literal("B")]),
+      path: Type.String({ minLength: 1 }),
+    }),
     execute: async (args) => {
-      const image = (args.answer === "A" ? imagesA : imagesB).get(args.path);
+      const image = (args.answer === "A" ? a.images : b.images).get(args.path);
       if (image === undefined) throw new Error(`Answer ${args.answer} has no viewable image ${args.path}`);
       return { output: [{ type: "text", text: `Answer ${args.answer}: ${args.path}` }, image] };
     },
@@ -190,12 +176,12 @@ async function voted(reader: Reader, given: VoteInput) {
     system: PAIR_SYSTEM,
     opening: [
       ...given.lines,
-      `Answer A:\n${fenced(a)}`,
-      `Answer B:\n${fenced(b)}`,
-      `The criterion: ${given.criterion}`,
+      `Answer A:\n${fenced(a.text)}`,
+      `Answer B:\n${fenced(b.text)}`,
+      `The criterion: ${criterion}`,
     ].join("\n\n"),
     tools: [
-      ...(hasImages ? [view] : []),
+      ...(a.images.size + b.images.size > 0 ? [view] : []),
       tool({
         name: "record_vote",
         description: "Record which answer meets the criterion better, or neither.",
@@ -208,7 +194,7 @@ async function voted(reader: Reader, given: VoteInput) {
     ],
     log: given.log,
     over: () => kept.length > 0,
-    most: TURNS + imagesA.size + imagesB.size,
+    most: TURNS + a.images.size + b.images.size,
     defaultSeconds: SECONDS,
     next: "Nothing is recorded until you call record_vote.",
   });
@@ -236,19 +222,12 @@ export async function judgePair(reader: Reader, given: PairCase): Promise<void> 
   const settled = await pooled(jobs, PAIR_CONCURRENCY, async ({ one, criterion, aIsFirst, voteId }) => {
     try {
       const lines = taskLines(given, one !== HOLISTIC);
-      const order: [string, string] = aIsFirst ? [first.text, second.text] : [second.text, first.text];
-      const images: [AnswerImages, AnswerImages] = aIsFirst
-        ? [first.images, second.images]
-        : [second.images, first.images];
-      const { vote, meter } = await voted(reader, {
-        ...given,
-        id: voteId,
-        lines,
-        fence,
+      const { vote, meter } = await voted(
+        reader,
+        { ...given, id: voteId, lines, fence },
         criterion,
-        pair: order,
-        images,
-      });
+        aIsFirst ? [first, second] : [second, first],
+      );
       const sign = vote === null ? null : VOTE[vote.better] * (aIsFirst ? 1 : -1);
       return { status: "fulfilled" as const, value: { one, voteId, sign, meter } };
     } catch (error) {

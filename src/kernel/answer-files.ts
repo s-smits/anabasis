@@ -107,23 +107,21 @@ export function capturedFiles(value: JsonValue | undefined): AnswerFile[] {
   return files;
 }
 
-function decodeBase64(raw: string): Buffer | null {
-  const bytes = Buffer.from(raw, "base64");
-  return bytes.toString("base64") === raw ? bytes : null;
-}
-
 export function fileRowBytes(row: Record<string, JsonValue | undefined>): Buffer | null {
   if (!isString(row.path) || !safePaths([row.path])) return null;
   if (isString(row.text)) return Buffer.from(row.text, "utf8");
-  if (isString(row.base64)) return decodeBase64(row.base64);
-  if (!Array.isArray(row.entries)) return null;
-  const members: TextFile[] = [];
-  for (const item of row.entries) {
-    const member = asRecord(item);
-    if (!isString(member?.path) || !isString(member.text)) return null;
-    members.push({ path: member.path, text: member.text });
+  if (isString(row.base64)) {
+    const bytes = Buffer.from(row.base64, "base64");
+    return bytes.toString("base64") === row.base64 ? bytes : null;
   }
-  return safePaths(members.map(({ path }) => path)) ? storedZip(members) : null;
+  if (!Array.isArray(row.entries)) return null;
+  const members = row.entries.flatMap((item) => {
+    const member = asRecord(item);
+    return isString(member?.path) && isString(member.text) ? [{ path: member.path, text: member.text }] : [];
+  });
+  return members.length === row.entries.length && safePaths(members.map(({ path }) => path))
+    ? storedZip(members)
+    : null;
 }
 
 export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {

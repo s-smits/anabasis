@@ -261,7 +261,10 @@ const examineAction =
     ).then(() => refreshCampaign(context, bench));
     await Promise.race([work, onRecord]);
     const done = work
-      .then(() => waitCrashed(context.log, context.seats.host))
+      .then(() => {
+        halted(context, bench);
+        return waitCrashed(context.log, context.seats.host);
+      })
       .then(() =>
         releasePendingPractice(context, `Examiner session ${session} beside the conversation ended`, bench),
       )

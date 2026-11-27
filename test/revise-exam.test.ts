@@ -28,7 +28,10 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
+import { REPO } from "../tools/campaign/campaign.ts";
 import { draftReading } from "../tools/campaign/exam.ts";
+import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
 import { ungated } from "../tools/campaign/prepare.ts";
 import { freezeCandidate, type RevisionAuditor, revisionRunner } from "../tools/campaign/revise.ts";
 import { crossFamilyVendors } from "../tools/campaign/round.ts";
@@ -36,6 +39,9 @@ import { openSuccessor, rewriteNameFlag, successorName } from "../tools/campaign
 import { keepReading } from "../tools/eval/accept.ts";
 import { packageOf } from "../tools/m0/stored-sweep.ts";
 import { lastLaunch, writeReceipt } from "../tools/runs/receipt.ts";
+import { replayed } from "../tools/runs/replay.ts";
+import { EVENT_FORMATTERS, triggerOf } from "../tools/runs/summary.ts";
+import { gamingRows } from "../tools/wri/gaming.ts";
 import { call, finish, seat, sweep } from "./helpers/examiner-seat.ts";
 
 setDefaultTimeout(120_000);
@@ -814,6 +820,54 @@ export const scores = {
     });
     expect(revisionRefusal(read(next1.log), { kind: "tune" })).toBeNull();
     expect(draftOf(eventsB)?.checks.some(({ id }) => id === "check-positive")).toBe(true);
+
+    expect(replayed(seed.log)).toContain("revised (tune)");
+    expect(replayed(next1.log)).toContain("from lin-a (tune)");
+    const badParentLog = join(dirname(seed.dir), "lin-bad-rev2", LOG_FILE);
+    mkdirSync(dirname(badParentLog), { recursive: true });
+    append(badParentLog, "campaign.opened", {
+      project: "demo",
+      parent: {
+        campaign: "lin-a",
+        revised: "wrong-hash",
+        kind: "tune",
+        carried: { spent: 0, sinceStep: 0, attempts: 0, tunes: 1 },
+        lineageTasks: [],
+      },
+    });
+    expect(() => replayed(badParentLog)).toThrow("disagrees with successor opening");
+
+    expect(EVENT_FORMATTERS["exam.revised"]?.({ kind: "tune", why: "reweight" })).toContain(
+      "exam revised (tune): reweight",
+    );
+    expect(
+      EVENT_FORMATTERS["campaign.ended"]?.({ ending: "revise", successor: "lin-a-rev2", why: "reweight" }),
+    ).toContain("-> lin-a-rev2");
+    expect(
+      triggerOf({
+        live: false,
+        promotions: 0,
+        compared: 1,
+        allTied: false,
+        ending: "revise",
+        hours: 1,
+      }),
+    ).toBeNull();
+
+    const gaming = gamingRows([
+      ...eventsA,
+      {
+        at: "2026-11-26T00:00:00.000Z",
+        kind: "exam.call",
+        data: { session: "x-1", tool: "read_reviews", args: {} },
+      },
+      {
+        at: "2026-11-26T00:00:01.000Z",
+        kind: "exam.call",
+        data: { session: "x-1", tool: "revise_exam", args: {} },
+      },
+    ]).join("\n");
+    expect(gaming).toContain("read_reviews 1, revise_exam 1, revised (tune, max weight delta 2.00)");
   });
 
   it("exposes read_exam and revise_exam in writing sessions, rejects lineage duplicates, and ends stands on revision", async () => {
@@ -866,5 +920,117 @@ export const scores = {
     expect(runnerCalls).toEqual(["tune:adjust item weights"]);
     expect(systemPrompt(undefined, "fixed")).not.toContain("revise_exam");
     expect(systemPrompt(undefined, "revisable")).toContain("revise_exam");
+  });
+
+  it("drives check-defects direct repair examine and seamless A -> B handoff in harnessBuilder", async () => {
+    const name = `test-rev-hb-${String(runtimeProcess.pid)}`;
+    const nextName = successorName(name);
+    const campRoot = join(REPO, ".ana", "d2");
+    ROOTS.push(join(campRoot, name), join(campRoot, nextName));
+    rmSync(join(campRoot, name), { recursive: true, force: true });
+    rmSync(join(campRoot, nextName), { recursive: true, force: true });
+
+    const dir = join(campRoot, name);
+    const log = join(dir, LOG_FILE);
+    mkdirSync(dir, { recursive: true });
+    append(log, "campaign.opened", {
+      project: "demo",
+      budget: { dollars: 50, reserve: 1 },
+      patience: 6,
+      seats: {
+        builder: { model: "claude/claude-opus-5-5", effort: "high" },
+        examiner: { model: "claude/claude-opus-5-5", effort: "high" },
+        reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "high" },
+      },
+      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
+      prompt: "test domain",
+      terms: { level: "0.05", practice: "0" },
+    });
+    append(log, "campaign.setting", {
+      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
+      minutes: 10,
+      modelTurns: 10,
+      target: 8,
+      solves: 1,
+    });
+    const draftObj = parseJsonAs<JsonObject>(capturedJsonStringify(PARENT_DRAFT));
+    append(log, "exam.drafted", { session: "d-1", draft: draftObj });
+    const { faults, read: seen } = await draftReading(dir, PARENT_DRAFT, 4);
+    expect(faults).toEqual([]);
+    if (seen === undefined) throw new Error("expected draft reading");
+    keepReading(log, seen.checker, seen.reading, {
+      admitted: new Set(),
+      authored: true,
+      judge: false,
+      freeze: true,
+      despite: "",
+    });
+    const task0 = PARENT_DRAFT.tasks[0];
+    if (task0 === undefined) throw new Error("expected parent task");
+    const numberedTask0 = { taskId: "ex-001", ...task0 };
+    const v0 = taskVersion(packageOf(seen.checks, numberedTask0));
+    append(log, "task.proposed", { version: v0, taskId: "ex-001", session: "x-0", task: numberedTask0 });
+    append(log, "task.gate", { version: v0, gate: 1, outcome: "passed" });
+    append(log, "build.checkpoint", { session: "b-1", harness: "h1" });
+    recordHistoricalWitnesses(log, v0, { includeDefect: true, reportComp: false });
+    append(log, "comparison.reported", {
+      session: "g-1",
+      old: "starter",
+      fresh: "h1",
+      starter: "starter",
+      level: 0.05,
+      reading: "check-defects",
+      versions: [v0],
+      scored: null,
+      aside: [],
+    });
+
+    const fixedEvaluator = PARENT_EVALUATOR.replace(
+      'note === "exact:" + String(hidden.target)',
+      String.raw`note.trim().replace(/\s+/g, "") === "exact:" + String(hidden.target)`,
+    );
+    const repairSession = seat("write", [
+      call("read_exam", {}),
+      call("revise_exam", {
+        kind: "repair",
+        why: "allow whitespace after colon in note.txt",
+        check: "check-strict",
+        evaluator: fixedEvaluator,
+      }),
+      finish,
+    ]);
+    let examineCalls = 0;
+    const ended = await harnessBuilder(["--name", name, "--moves", "1", "--practice", "0"], {
+      seated: () => ({
+        builder: null,
+        setting: "scripted",
+        solve: async () => {
+          throw new Error("unexpected solve");
+        },
+      }),
+      examine: async (request, wall) => {
+        examineCalls += 1;
+        return await examine(
+          { ...request, model: repairSession.request.model, models: repairSession.request.models },
+          wall,
+        );
+      },
+      audit: SOUND_AUDIT,
+    });
+    const eventsA = read(log);
+    expect(eventsOf(eventsA, "exam.finished").at(-1)?.event.data.crash).toBeNull();
+    expect(ended).toMatchObject({ move: "end", ending: "revise" });
+    expect(examineCalls).toBe(1);
+    expect(eventsOf(eventsA, "build.started")).toHaveLength(0);
+    expect(eventsOf(eventsA, "exam.revised")).toHaveLength(1);
+    expect(endedOf(eventsA)?.ending).toBe("revise");
+    expect(eventsOf(eventsA, "campaign.ended").at(-1)?.event.data.successor).toBe(nextName);
+    const logB = join(campRoot, nextName, LOG_FILE);
+    expect(existsSync(logB)).toBe(true);
+    const eventsB = read(logB);
+    expect(openingOf(eventsB)?.parent?.campaign).toBe(name);
+    expect(openingOf(eventsB)?.parent?.kind).toBe("repair");
+    expect(eventsOf(eventsB, "contract.frozen")).toHaveLength(1);
+    expect(replayed(logB)).toContain(`from ${name} (repair)`);
   });
 });

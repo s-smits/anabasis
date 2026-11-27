@@ -16,6 +16,7 @@ import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campai
 import { type EventKind, eventsOf, type LogEvent, read as readEvents } from "#src/kernel/log.ts";
 import { type Call, traced } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { gitText } from "#src/meta/git.ts";
 import { resolve } from "#src/meta/path.ts";
@@ -174,6 +175,22 @@ export async function view(args: readonly string[]): Promise<void> {
   for (const line of await runReason(run, runState(run, events, running))) console.log(line);
   const campaign = campaignOf(events);
   const called = calledBy(namesOf(events));
+  const parent = openingOf(events)?.parent ?? null;
+  const revised = eventsOf(events, "exam.revised").at(-1)?.event.data;
+  const successor = eventsOf(events, "campaign.ended").at(-1)?.event.data.successor;
+  const lineage = [
+    ...(parent === null
+      ? []
+      : [
+          row(
+            "lineage",
+            `from ${parent.campaign} (${parent.kind}, ${parent.revised.slice(0, 8)}) · carried ${dollars(parent.carried.spent)}, ${String(parent.carried.sinceStep)} since step, ${plural(parent.carried.tunes, "tune")}, ${plural(parent.lineageTasks.length, "prior task")}`,
+          ),
+        ]),
+    ...(revised === undefined || !isString(revised.kind)
+      ? []
+      : [row("revised", `${revised.kind} -> ${isString(successor) ? successor : "pending"}`)]),
+  ];
   const lines = viewLines(name, campaign, Date.now(), called);
   const open = openSteps(campaign.steps);
   const decided = decidedOn(events, values);
@@ -181,7 +198,9 @@ export async function view(args: readonly string[]): Promise<void> {
   const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called, reads)}`);
   console.log(
     [
-      ...lines,
+      ...lines.slice(0, 2),
+      ...lineage,
+      ...lines.slice(2),
       "Climb summary",
       ...climb,
       ...barLines(events).map((bar) => `  ${bar}`),

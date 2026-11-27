@@ -310,6 +310,54 @@ describe("the rulings and the endings each tier may see", () => {
     expect(ended.text.includes(marker)).toBe(false);
     expect((await ask("campaign", { key }, "exam", root)).answer.row.ending?.why).toContain(marker);
   });
+
+  test("withholds exam.revised rationale in the default tier while showing revision events and checker rows", async () => {
+    const { root, dir } = copy();
+    const checkMarker = "check-quartz-9191";
+    const key = `${root.split("/").at(-1) ?? ""}/${fixture.name}`;
+    const line = (at: string, kind: string, data: JsonObject) => `${JSON.stringify({ at, kind, data })}\n`;
+    appendFileSync(
+      join(dir, "log.jsonl"),
+      [
+        line("2026-09-29T05:00:00.000Z", "checker.read", {
+          checks: "abc123",
+          rows: [{ id: "c1" }, { id: "c2" }],
+          admitted: [],
+          faults: [],
+        }),
+        line("2026-09-29T05:01:00.000Z", "exam.revised", {
+          kind: "repair",
+          why: `repaired ${checkMarker} parser bug`,
+          draftHash: "abcdef0123456789",
+        }),
+        line("2026-09-29T05:02:00.000Z", "campaign.ended", {
+          ending: "revise",
+          why: `repaired ${checkMarker} parser bug`,
+          successor: "fixture-rev2",
+        }),
+      ].join(""),
+    );
+    const campDefault = await ask("campaign", { key }, "default", root);
+    expect(campDefault.answer.row.ending).toEqual({ ending: "revise" });
+    expect(campDefault.text.includes(checkMarker)).toBe(false);
+    expect(campDefault.answer.nextMove?.why).not.toContain(checkMarker);
+    const campExam = await ask("campaign", { key }, "exam", root);
+    expect(campExam.answer.row.ending?.why).toContain(checkMarker);
+    expect(campExam.answer.nextMove?.why).toContain(checkMarker);
+
+    const logDefault = await ask("log", { key }, "default", root);
+    expect(logDefault.text.includes(checkMarker)).toBe(false);
+    const whats = logDefault.answer.rows.map(({ what }) => what);
+    expect(whats.some((what) => what.includes("Checks read") && what.includes("2 checks"))).toBe(true);
+    expect(
+      whats.some((what) => what.includes("Exam revised (repair)") && what.includes("abcdef012345")),
+    ).toBe(true);
+    expect(
+      whats.some(
+        (what) => what.includes("Campaign ended: revise") && what.includes("successor fixture-rev2"),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("a list read again", () => {

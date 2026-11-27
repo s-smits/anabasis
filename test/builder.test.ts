@@ -1341,6 +1341,32 @@ describe.concurrent("a Builder session", () => {
     expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual(["practice"]);
   });
 
+  it("starts no practice solve after a host fault, in the faulted call or in one queued behind it", async () => {
+    const both = fauxAssistantMessage(
+      [fauxToolCall("practice", { tasks: ["t-1", "t-2"] }), fauxToolCall("practice", { tasks: ["t-2"] })],
+      toolUse,
+    );
+    const s = await setup([both, finish]);
+    const started: string[] = [];
+    await expect(
+      session(
+        {
+          ...s.request,
+          limits: { ...LIMITS, concurrency: 1 },
+          practise: async (task, _dir, _digest, kill) => {
+            started.push(task.version);
+            if (kill.aborted) throw kill.reason;
+            throw new Error("host fault");
+          },
+        },
+        s,
+        s.walled,
+      ),
+    ).rejects.toThrow("host fault");
+    expect(started).toEqual(["v1"]);
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "crashed", practiceSolves: 2 });
+  });
+
   it("keeps the harness a crashed session last practised as a harness snapshot, and no edit after it", async () => {
     const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
     const tried = await setup([edit, call("practice", { tasks: ["t-1"] }), failed]);
@@ -2370,6 +2396,80 @@ describe("harness file checks and practice task mentions", () => {
       events.findLastIndex(({ kind }) => kind === BUILD_FINISHED),
     );
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 5, crash: null });
+  });
+
+  it("aborts background practice when the turn limit ends the session, and lets it finish after finish", async () => {
+    const outlasting = (seen: boolean[], gate?: Promise<void>) =>
+      (async (_task, _dir, _digest, kill) => {
+        await Promise.race([
+          gate ?? Bun.sleep(3000),
+          new Promise((resolve) => {
+            kill.addEventListener("abort", resolve, { once: true });
+          }),
+        ]);
+        seen.push(kill.aborted);
+        return { solve: "s-bg", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
+      }) satisfies typeof capped.request.practise;
+    const capped = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      fauxAssistantMessage("Waiting for practice."),
+    ]);
+    const cappedSeen: boolean[] = [];
+    await session(
+      {
+        ...capped.request,
+        limits: { ...LIMITS, turns: 2 },
+        practiceWaitSeconds: 0.02,
+        practise: outlasting(cappedSeen),
+      },
+      capped,
+      capped.walled,
+    );
+    expect(cappedSeen).toEqual([true]);
+
+    const gate = Promise.withResolvers<void>();
+    const finished = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      () => {
+        setTimeout(() => gate.resolve(), 30);
+        return finish;
+      },
+    ]);
+    const finishedSeen: boolean[] = [];
+    await session(
+      { ...finished.request, practiceWaitSeconds: 0.02, practise: outlasting(finishedSeen, gate.promise) },
+      finished,
+      finished.walled,
+    );
+    expect(finishedSeen).toEqual([false]);
+  });
+
+  it("ends crashed, without another model turn, when background practice faults while the Builder waits", async () => {
+    const gate = Promise.withResolvers<void>();
+    const s = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      () => {
+        setTimeout(() => gate.resolve(), 30);
+        return fauxAssistantMessage("Waiting for practice.");
+      },
+      finish,
+    ]);
+    await expect(
+      session(
+        {
+          ...s.request,
+          practiceWaitSeconds: 0.02,
+          practise: async () => {
+            await gate.promise;
+            throw new Error("host fault");
+          },
+        },
+        s,
+        s.walled,
+      ),
+    ).rejects.toThrow("host fault");
+    expect(s.sent).toHaveLength(1);
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "crashed", crash: "host fault" });
   });
 
   it("stops background practice on kill, refunds unstarted solves, and steers late non-fatal errors", async () => {

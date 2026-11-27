@@ -58,7 +58,7 @@ export async function examineCommand(
   args: readonly string[],
   session: Session<"write"> = examine,
   kill?: AbortSignal,
-  audit?: RevisionAuditor | null,
+  audit?: RevisionAuditor,
 ): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS, allowNegative: true });
   const { session: id, examiner } = values;

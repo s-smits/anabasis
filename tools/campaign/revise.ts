@@ -15,9 +15,8 @@ import { defectSolvesFor, type ReviseRunner, revisionFaults, revisionRefusal } f
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { readAnswerFiles } from "#src/kernel/answer-files.ts";
 import { append, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
-import { proposalsOf } from "#src/kernel/history.ts";
-import { ranUnder, standsOf, verdictsOf } from "#src/kernel/solves.ts";
-import { HOST_TOOLS_FILE, type Task, type Verifier } from "#src/kernel/verify.ts";
+import { standsOf, verdictsOf } from "#src/kernel/solves.ts";
+import { blockingOf, decides, type Task, type Verifier } from "#src/kernel/verify.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import {
   cpSync,
@@ -34,7 +33,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
@@ -47,6 +46,9 @@ export type RevisionAuditor = (reader: Reader, target: DraftAuditCase) => Promis
 
 const MAX_REVISION_AUDITS = 3;
 
+type Asked = Omit<Parameters<ReviseRunner>[0], "home">;
+type Seen = NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
+
 interface WitnessSummary {
   readonly earnedChecked: number;
   readonly earnedRetained: number;
@@ -54,7 +56,13 @@ interface WitnessSummary {
   readonly defectCleared: number;
 }
 
-interface PendingCandidate {
+interface Checked {
+  readonly seen: Seen;
+  readonly notes: readonly string[];
+  readonly witnesses: WitnessSummary;
+}
+
+interface RevisionRecord {
   readonly session: string;
   readonly kind: RevisionKind;
   readonly why: string;
@@ -64,79 +72,85 @@ interface PendingCandidate {
   readonly draftHash: string;
   readonly checker: { readonly contract: string; readonly checks: string };
   readonly reading: { readonly faults: readonly string[]; readonly notes: readonly string[] };
-  readonly audit: { readonly session: string; readonly verdict: "sound" | "none" };
+  readonly audit: { readonly session: string; readonly verdict: "sound" };
   readonly witnesses: WitnessSummary;
 }
 
-function withMergedToolchain<T>(
-  parentBundle: string,
-  examinerHome: string | undefined,
-  run: (sourceHome: string | undefined) => Promise<T>,
-): Promise<T> {
-  const parentTools = join(parentBundle, TOOL_TREE_DIR);
-  const hasParent = existsSync(parentTools);
-  const home =
-    examinerHome !== undefined && existsSync(join(examinerHome, TOOL_TREE_DIR))
-      ? { dir: examinerHome, tools: join(examinerHome, TOOL_TREE_DIR) }
-      : null;
-  if (!hasParent && home === null) return run(undefined);
-  const scratch = mkdtempSync(join(tmpdir(), "ana-rev-tools-"));
-  const target = join(scratch, TOOL_TREE_DIR);
-  return Promise.try(async () => {
-    if (hasParent) {
-      cpSync(parentTools, target, { recursive: true, verbatimSymlinks: true });
-      rmSync(join(target, HOST_TOOLS_FILE), { force: true });
-    }
-    if (home !== null) {
-      cpSync(home.tools, target, { recursive: true, verbatimSymlinks: true });
-      refuseNamingHome(target, home.dir, TOOL_TREE_DIR);
-    }
-    return await run(scratch);
-  }).finally(() => {
-    rmSync(scratch, { recursive: true, force: true });
-  });
+const listed = (head: string, faults: readonly string[]): string =>
+  [`${head} (${String(faults.length)} faults):`, ...faults.map((fault) => `- ${fault}`)].join("\n");
+
+function frozenParent(events: readonly LogEvent[]): { readonly draft: Draft; readonly checks: string } {
+  const draft = draftOf(events);
+  const frozen = frozenChecker(events);
+  if (draft === null || frozen === null) throw new Error("parent exam is missing or unfrozen");
+  return { draft, checks: frozen.checks };
 }
 
-function witnessLoader(log: string, events: readonly LogEvent[], packages: ReadonlyMap<string, Task>) {
-  const verdicts = verdictsOf(events);
-  const solveVersion = new Map(ranUnder(events).map(({ id, under }) => [id, under.task]));
-  const byTaskId = new Map<string, Task>([
-    ...proposalsOf(events).flatMap((proposal) =>
-      proposal.task === null ? [] : [[proposal.task.taskId, proposal.task] as const],
-    ),
-    ...[...packages.values()].map((entry) => [entry.taskId, entry] as const),
-  ]);
-  return (ids: readonly string[], label: string, faults: string[], verify: Verifier, kill?: AbortSignal) => {
+async function withMergedToolchain<T>(
+  parentBundle: string,
+  examinerHome: string | undefined,
+  run: (sourceHome: string) => Promise<T>,
+): Promise<T> {
+  const scratch = mkdtempSync(join(tmpdir(), "ana-rev-tools-"));
+  const target = join(scratch, TOOL_TREE_DIR);
+  try {
+    cpSync(join(parentBundle, TOOL_TREE_DIR), target, { recursive: true, verbatimSymlinks: true });
+    if (examinerHome !== undefined && existsSync(join(examinerHome, TOOL_TREE_DIR))) {
+      cpSync(join(examinerHome, TOOL_TREE_DIR), target, { recursive: true, verbatimSymlinks: true });
+      refuseNamingHome(target, examinerHome, TOOL_TREE_DIR);
+    }
+    return await run(scratch);
+  } finally {
+    rmSync(scratch, { recursive: true });
+  }
+}
+
+interface Witness {
+  readonly task: string;
+  readonly before: readonly string[];
+  readonly after: readonly string[];
+}
+
+function witnessRunner(input: {
+  readonly log: string;
+  readonly events: readonly LogEvent[];
+  readonly packages: ReadonlyMap<string, Task>;
+  readonly verify: Verifier;
+  readonly kill?: AbortSignal | undefined;
+  readonly faults: string[];
+}) {
+  const { log, verify, kill, faults } = input;
+  const verdicts = verdictsOf(input.events);
+  const byTaskId = new Map([...input.packages.values()].map((entry) => [entry.taskId, entry] as const));
+  return async (ids: readonly string[], label: string): Promise<Witness[]> => {
     const loaded = ids.flatMap((solve) => {
+      const verdict = verdicts.get(solve);
+      const taskId = verdict?.task ?? null;
+      const named = taskId === null ? "" : ` on ${taskId}`;
+      const task = taskId === null ? undefined : byTaskId.get(taskId);
+      if (verdict === undefined || task === undefined) {
+        faults.push(`${label} witness${named} could not be loaded (missing task package)`);
+        return [];
+      }
+      const before = blockingOf(verdict.checker);
       try {
-        const verdict = verdicts.get(solve);
-        const version = solveVersion.get(solve);
-        const task =
-          (version === undefined ? undefined : packages.get(version)) ??
-          (verdict?.task === undefined || verdict.task === null
-            ? undefined
-            : (packages.get(verdict.task) ?? byTaskId.get(verdict.task)));
-        if (verdict === undefined || task === undefined || verdict.answer === undefined) {
-          const taskLabel = isString(verdict?.task) ? ` on ${verdict.task}` : "";
-          faults.push(`${label} witness${taskLabel} could not be loaded (missing task package or answer)`);
-          return [];
-        }
-        const files =
-          verdict.files === undefined || verdict.files.length === 0
-            ? undefined
-            : readAnswerFiles(log, verdict.files);
-        return [{ solve, verdict, task, answer: verdict.answer, files }];
+        const files = readAnswerFiles(log, verdict.files ?? []);
+        return before.length === 0 ? [] : [{ task, answer: verdict.answer, files, before }];
       } catch {
-        const taskId = verdicts.get(solve)?.task;
-        const taskLabel = isString(taskId) ? ` on ${taskId}` : "";
-        faults.push(`${label} witness${taskLabel} deliverable files could not be read`);
+        faults.push(`${label} witness${named} deliverable files could not be read`);
         return [];
       }
     });
-    return pooled(loaded, 4, async (witness) => ({
-      witness,
-      result: await verify(witness.task, witness.answer, kill, witness.files),
+    const ran = await pooled(loaded, 4, async ({ task, answer, files, before }) => ({
+      task,
+      before,
+      result: await verify(task, answer, kill, files),
     }));
+    return ran.flatMap(({ task, before, result }) => {
+      if (decides(result)) return [{ task: task.taskId, before, after: blockingOf(result) }];
+      faults.push(`${label} witness on ${task.taskId} faulted under candidate: ${result.reason}`);
+      return [];
+    });
   };
 }
 
@@ -145,116 +159,61 @@ async function verifyWitnesses(input: {
   readonly events: readonly LogEvent[];
   readonly packages: ReadonlyMap<string, Task>;
   readonly verify: Verifier;
-  readonly kind: RevisionKind;
-  readonly check?: string | undefined;
+  readonly repaired: string | undefined;
   readonly kill?: AbortSignal | undefined;
 }): Promise<{
   readonly faults: readonly string[];
   readonly notes: readonly string[];
   readonly summary: WitnessSummary;
 }> {
-  const { log, events, packages, verify, kind, check, kill } = input;
-  const runWitnesses = witnessLoader(log, events, packages);
+  const { events, repaired } = input;
   const faults: string[] = [];
   const notes: string[] = [];
-  const origBlockingOf = (
-    witness: {
-      readonly task: Task;
-      readonly verdict: {
-        readonly checker?:
-          | { readonly kind: string; readonly blocking?: readonly string[] }
-          | null
-          | undefined;
-      };
-    },
-    result: Awaited<ReturnType<Verifier>>,
-    label: string,
-  ): readonly string[] | null => {
-    if (result.kind === "faulty" || result.kind === "non-result") {
-      faults.push(`${label} witness on ${witness.task.taskId} faulted under candidate: ${result.reason}`);
-      return null;
-    }
-    return witness.verdict.checker?.kind === "fail" ? (witness.verdict.checker.blocking ?? []) : [];
-  };
-  const earnedIds = [...standsOf(events).entries()].flatMap(([id, ruling]) =>
-    ruling === "earned" ? [id] : [],
+  const rerun = witnessRunner({ ...input, faults });
+  const untouched = (before: readonly string[]) => before.filter((id) => id !== repaired);
+  const earned = await rerun(
+    [...standsOf(events).entries()].flatMap(([id, ruling]) => (ruling === "earned" ? [id] : [])),
+    "earned Referee",
   );
-  const earnedResults = await runWitnesses(earnedIds, "earned", faults, verify, kill);
-  let [earnedRetained, repairedCheckFlips] = [0, 0];
-  for (const { witness, result } of earnedResults) {
-    const origBlocking = origBlockingOf(witness, result, "earned Referee");
-    if (origBlocking === null) continue;
-    const untouched =
-      kind === "repair" && check !== undefined ? origBlocking.filter((id) => id !== check) : origBlocking;
-    const soleRepaired =
-      kind === "repair" && check !== undefined && origBlocking.length > 0 && untouched.length === 0;
-    if (soleRepaired) {
-      if (result.kind === "fail" && result.blocking.includes(check)) earnedRetained += 1;
-      else repairedCheckFlips += 1;
-      continue;
-    }
-    if (result.kind !== "fail") {
-      faults.push(`earned Referee witness on ${witness.task.taskId} no longer fails (got ${result.kind})`);
-      continue;
-    }
-    if (untouched.length > 0 && !untouched.some((id) => result.blocking.includes(id))) {
+  let [earnedRetained, flips] = [0, 0];
+  for (const { task, before, after } of earned) {
+    const left = untouched(before);
+    const guarding = left.length === 0 ? before : left;
+    if (after.some((id) => guarding.includes(id))) earnedRetained += 1;
+    else if (left.length === 0) flips += 1;
+    else if (after.length === 0) faults.push(`earned Referee witness on ${task} no longer fails`);
+    else {
       faults.push(
-        `earned Referee witness on ${witness.task.taskId} is no longer blocked by any untouched check (${untouched.join(", ")})`,
+        `earned Referee witness on ${task} is no longer blocked by any untouched check (${left.join(", ")})`,
       );
-      continue;
     }
-    earnedRetained += 1;
   }
-  if (repairedCheckFlips > 0 && check !== undefined) {
+  if (flips > 0) {
     notes.push(
-      `${String(repairedCheckFlips)} historical earned witness${repairedCheckFlips === 1 ? "" : "es"} solely on repaired check ${check} now pass; probe ${check} to verify it still enforces its published rule without over-relaxing.`,
+      `${String(flips)} historical earned witness${flips === 1 ? "" : "es"} solely on repaired check ${String(repaired)} now pass; probe ${String(repaired)} to verify it still enforces its published rule without over-relaxing.`,
     );
   }
-  let [defectChecked, defectCleared] = [0, 0];
-  if (kind === "repair" && check !== undefined) {
-    const defectResults = await runWitnesses(
-      defectSolvesFor(events, check),
-      "check-defect",
-      faults,
-      verify,
-      kill,
+  const summary = { earnedChecked: earned.length, earnedRetained, defectChecked: 0, defectCleared: 0 };
+  if (repaired === undefined) return { faults, notes, summary };
+  const defects = await rerun(defectSolvesFor(events, repaired), "check-defect");
+  const uncleared = defects.filter(
+    ({ before, after }) => after.length > 0 && (untouched(before).length === 0 || after.includes(repaired)),
+  );
+  if (uncleared.length === defects.length) {
+    faults.push(`repair candidate did not clear any check-defect witness for ${repaired}`);
+  } else if (uncleared.length > 0) {
+    faults.push(
+      `repair candidate left ${String(uncleared.length)}/${String(defects.length)} check-defect witnesses uncleared for ${repaired} (tasks: ${[...new Set(uncleared.map(({ task }) => task))].join(", ")})`,
     );
-    defectChecked = defectResults.length;
-    const uncleared: string[] = [];
-    for (const { witness, result } of defectResults) {
-      const origBlocking = origBlockingOf(witness, result, "check-defect");
-      if (origBlocking === null) continue;
-      const sole = origBlocking.length === 1 && origBlocking[0] === check;
-      const cleared = sole
-        ? result.kind === "pass"
-        : result.kind === "pass" || (result.kind === "fail" && !result.blocking.includes(check));
-      if (cleared) defectCleared += 1;
-      else uncleared.push(witness.task.taskId);
-    }
-    if (defectChecked === 0 || defectCleared === 0) {
-      faults.push(`repair candidate did not clear any check-defect witness for ${check}`);
-    } else if (uncleared.length > 0) {
-      const tasks = [...new Set(uncleared)].join(", ");
-      faults.push(
-        `repair candidate left ${String(uncleared.length)}/${String(defectChecked)} check-defect witnesses uncleared for ${check} (tasks: ${tasks})`,
-      );
-    }
   }
   return {
     faults,
     notes,
-    summary: { earnedChecked: earnedResults.length, earnedRetained, defectChecked, defectCleared },
+    summary: { ...summary, defectChecked: defects.length, defectCleared: defects.length - uncleared.length },
   };
 }
 
-function revisionReader(
-  reviewer: { readonly model?: string | undefined; readonly effort?: string | undefined },
-  opening: ReturnType<typeof openingOf>,
-): Reader | null {
-  const recorded = opening?.seats.reviewer ?? null;
-  const model = reviewer.model ?? recorded?.model;
-  if (model === undefined) return null;
-  const effort = reviewer.effort ?? recorded?.effort ?? "high";
+function revisionReader(model: string, effort: string): Reader {
   return {
     model: modelNamed(model),
     // SAFETY: effort is validated by the backend on call.
@@ -268,12 +227,12 @@ async function auditRevision(input: {
   readonly session: string;
   readonly parentChecks: string;
   readonly prompt: string;
-  readonly seen: NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
-  readonly extraNotes: readonly string[];
-  readonly auditor: RevisionAuditor | null;
-  readonly reader: Reader | null;
+  readonly checked: Checked;
+  readonly auditor: RevisionAuditor;
+  readonly reader: Reader;
 }): Promise<string | null> {
-  const { log, session, parentChecks, prompt, seen, extraNotes, auditor, reader } = input;
+  const { log, session, parentChecks, prompt, checked, auditor, reader } = input;
+  const { seen } = checked;
   const seeded = persistedDraftDefects(read(log, TRACE_KINDS), parentChecks);
   const [verifiedFixed, unverified]: [string[], string[]] = [[], []];
   for (const prior of seeded.prior) {
@@ -295,8 +254,6 @@ async function auditRevision(input: {
   if (seeded.audits >= MAX_REVISION_AUDITS) {
     return `Refused: revision audit cap (${String(MAX_REVISION_AUDITS)}) reached without a sound audit${unverified.length > 0 ? ` (${String(unverified.length)} unverified prior defect findings)` : ""}.`;
   }
-  if (auditor === null) return null;
-  if (reader === null) return "Refused: no reviewer configured to audit the revision.";
   const review = await auditor(reader, {
     session,
     pass: seeded.audits + 1,
@@ -307,7 +264,7 @@ async function auditRevision(input: {
     verify: seen.verify,
     tasks: seen.tasks,
     controls: seen.controls,
-    notes: [...seen.reading.notes, ...extraNotes],
+    notes: [...seen.reading.notes, ...checked.notes],
     priorFindings: unverified,
     verifiedFixed,
     log,
@@ -324,145 +281,123 @@ async function auditRevision(input: {
   return null;
 }
 
-async function validateCandidate(input: {
+async function validated(input: {
   readonly log: string;
   readonly events: readonly LogEvent[];
-  readonly candidate: Draft;
-  readonly kind: RevisionKind;
-  readonly check?: string | undefined;
+  readonly asked: Asked;
   readonly packages: ReadonlyMap<string, Task>;
-  readonly width: number;
   readonly sourceHome?: string | undefined;
   readonly kill?: AbortSignal | undefined;
-}): Promise<
-  | { readonly ok: false; readonly message: string }
-  | {
-      readonly ok: true;
-      readonly seen: NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
-      readonly witnessed: Awaited<ReturnType<typeof verifyWitnesses>>;
-    }
-> {
-  const { log, events, candidate, kind, check, packages, width, sourceHome, kill } = input;
-  const staged = await draftReading(join(dirname(log), "revisions"), candidate, width, sourceHome);
-  if (staged.faults.length > 0 || staged.read === undefined) {
-    return {
-      ok: false,
-      message: [
-        `Revision failed checker validation (${String(staged.faults.length)} faults):`,
-        ...staged.faults.map((fault) => `- ${fault}`),
-      ].join("\n"),
-    };
+}): Promise<string | Checked> {
+  const { log, asked, sourceHome } = input;
+  const staged = await draftReading(join(dirname(log), "revisions"), asked.candidate, 4, sourceHome);
+  if (staged.read === undefined || staged.faults.length > 0) {
+    return listed("Revision failed checker validation", staged.faults);
   }
   const witnessed = await verifyWitnesses({
     log,
-    events,
-    packages,
+    events: input.events,
+    packages: input.packages,
+    kill: input.kill,
     verify: staged.read.verify,
-    kind,
-    check,
-    kill,
+    repaired: asked.kind === "repair" ? asked.check : undefined,
   });
-  if (witnessed.faults.length > 0) {
-    return {
-      ok: false,
-      message: [
-        `Revision failed historical witness checks (${String(witnessed.faults.length)} faults):`,
-        ...witnessed.faults.map((fault) => `- ${fault}`),
-      ].join("\n"),
-    };
-  }
-  return { ok: true, seen: staged.read, witnessed };
+  return witnessed.faults.length > 0
+    ? listed("Revision failed historical witness checks", witnessed.faults)
+    : { seen: staged.read, notes: witnessed.notes, witnesses: witnessed.summary };
 }
+
+function recordOf(
+  asked: Asked,
+  events: readonly LogEvent[],
+  checked: Checked,
+  audited: string,
+): RevisionRecord {
+  const parent = frozenParent(events);
+  const { seen } = checked;
+  return {
+    session: asked.session,
+    kind: asked.kind,
+    why: asked.why,
+    ...keyIfDefined("check", asked.check),
+    parent: { draft: hashJsonValue(parent.draft), checks: parent.checks },
+    draft: asked.candidate,
+    draftHash: hashJsonValue(asked.candidate),
+    checker: seen.checker,
+    reading: { faults: [...seen.reading.faults], notes: [...seen.reading.notes] },
+    audit: { session: audited, verdict: "sound" },
+    witnesses: checked.witnesses,
+  };
+}
+
+const recorded = (record: RevisionRecord): JsonObject =>
+  parseJsonAs<JsonObject>(capturedJsonStringify(record));
 
 export function revisionRunner(config: {
   readonly log: string;
   readonly parentBundle: string;
   readonly packages: () => Map<string, Task>;
   readonly reviewer?: { readonly model?: string | undefined; readonly effort?: string | undefined };
-  readonly auditor?: RevisionAuditor | null | undefined;
-  readonly width?: number | undefined;
+  readonly auditor?: RevisionAuditor | undefined;
   readonly kill?: AbortSignal | undefined;
 }): ReviseRunner {
-  const auditor: RevisionAuditor | null = config.auditor === undefined ? reviewDraft : config.auditor;
-  const width = config.width ?? 4;
-  const cancelled = () => config.kill?.aborted === true;
-  return async ({ session, kind, why, check, candidate, home }) => {
-    if (cancelled()) return { accepted: false, message: "Refused: session cancelled." };
+  const auditor = config.auditor ?? reviewDraft;
+  return async ({ home, ...asked }) => {
     const events = read(config.log, TRACE_KINDS);
     const opening = openingOf(events);
-    const parent = draftOf(events);
-    const frozen = frozenChecker(events);
-    const reviewerModel = config.reviewer?.model ?? opening?.seats.reviewer?.model ?? null;
+    const seat = opening?.seats.reviewer ?? null;
+    const reviewer = config.reviewer?.model ?? seat?.model;
     const gate = (logEvents: readonly LogEvent[]) =>
-      revisionRefusal(logEvents, {
-        kind,
-        check,
-        candidate,
-        reviewer: reviewerModel,
-        requireReviewer: auditor === reviewDraft,
-        crossFamily: crossFamilyVendors,
-      });
+      config.kill?.aborted === true
+        ? "session cancelled."
+        : revisionRefusal(logEvents, {
+            kind: asked.kind,
+            check: asked.check,
+            candidate: asked.candidate,
+            reviewer: reviewer ?? null,
+            crossFamily: crossFamilyVendors,
+          });
     const refusal = gate(events);
     if (refusal !== null) return { accepted: false, message: `Refused: ${refusal}` };
-    if (parent === null || frozen === null) {
-      throw new Error("parent exam is missing or unfrozen");
+    if (reviewer === undefined) {
+      return { accepted: false, message: "Refused: no reviewer is configured to audit the revision." };
     }
     const checked = await withMergedToolchain(config.parentBundle, home, (sourceHome) =>
-      validateCandidate({
+      validated({
         log: config.log,
         events,
-        candidate,
-        kind,
-        check,
+        asked,
         packages: config.packages(),
-        width,
         sourceHome,
         kill: config.kill,
       }),
     );
-    if (!checked.ok) return { accepted: false, message: checked.message };
-    const { seen, witnessed } = checked;
+    if (isString(checked)) return { accepted: false, message: checked };
     const audited = await auditRevision({
       log: config.log,
-      session,
-      parentChecks: frozen.checks,
+      session: asked.session,
+      parentChecks: frozenParent(events).checks,
       prompt: opening?.prompt ?? "",
-      seen,
-      extraNotes: witnessed.notes,
+      checked,
       auditor,
-      reader: revisionReader(config.reviewer ?? {}, opening),
+      reader: revisionReader(reviewer, config.reviewer?.effort ?? seat?.effort ?? "high"),
     });
     if (audited !== null) return { accepted: false, message: audited };
-    if (cancelled()) return { accepted: false, message: "Refused: session cancelled." };
     const lateRefusal = gate(read(config.log, TRACE_KINDS));
     if (lateRefusal !== null) return { accepted: false, message: `Refused: ${lateRefusal}` };
-    const draftHash = hashJsonValue(candidate);
-    const payload: PendingCandidate = {
-      session,
-      kind,
-      why,
-      ...keyIfDefined("check", check),
-      parent: { draft: hashJsonValue(parent), checks: frozen.checks },
-      draft: candidate,
-      draftHash,
-      checker: seen.checker,
-      reading: { faults: [...seen.reading.faults], notes: [...seen.reading.notes] },
-      audit: { session, verdict: auditor === null ? "none" : "sound" },
-      witnesses: witnessed.summary,
-    };
-    const revisionsDir = join(dirname(config.log), "revisions");
+    const record = recordOf(asked, events, checked, asked.session);
     if (opening?.attended === true) {
+      const revisionsDir = join(dirname(config.log), "revisions");
+      const shortHash = record.draftHash.slice(0, 16);
       mkdirSync(revisionsDir, { recursive: true });
-      const shortHash = draftHash.slice(0, 16);
-      writeFileSync(join(revisionsDir, `${shortHash}.json`), `${capturedJsonStringify(payload, null, 2)}\n`);
-      const name = basename(dirname(config.log));
+      writeFileSync(join(revisionsDir, `${shortHash}.json`), `${capturedJsonStringify(record, null, 2)}\n`);
       return {
         accepted: false,
-        message: `The revision passed validation and audit and awaits operator approval under --hitl: bun tools/campaign/revise.ts --name ${name} --candidate ${shortHash} --freeze`,
+        message: `The revision passed validation and audit and awaits operator approval under --hitl: bun tools/campaign/revise.ts --name ${basename(dirname(config.log))} --candidate ${shortHash} --freeze`,
       };
     }
     try {
-      append(config.log, "exam.revised", parseJsonAs<JsonObject>(capturedJsonStringify(payload)));
+      append(config.log, "exam.revised", recorded(record));
     } catch (error) {
       return { accepted: false, message: `Refused: ${errorMessage(error)}` };
     }
@@ -483,73 +418,57 @@ const OPTIONS = {
 export async function freezeCandidate(
   log: string,
   candidate: string,
-  packages: ReadonlyMap<string, Task>,
+  packages: () => Promise<ReadonlyMap<string, Task>>,
 ): Promise<{ readonly name: string; readonly log: string }> {
   if (!/^[a-f0-9]{16}$/u.test(candidate)) {
     throw new Error(`invalid candidate hash ${JSON.stringify(candidate)}`);
   }
   const file = join(dirname(log), "revisions", `${candidate}.json`);
   if (!existsSync(file)) throw new Error(`no staged revision candidate at ${file}`);
-  const payload = parseJsonAs<PendingCandidate>(readFileSync(file, "utf8"));
-  const actualHash = hashJsonValue(payload.draft);
-  if (actualHash !== payload.draftHash || !actualHash.startsWith(candidate)) {
-    throw new Error(`candidate ${candidate} hash mismatch (draft hashes to ${actualHash.slice(0, 16)})`);
+  const staged = parseJsonAs<RevisionRecord>(readFileSync(file, "utf8"));
+  const draftHash = hashJsonValue(staged.draft);
+  if (!draftHash.startsWith(candidate)) {
+    throw new Error(`candidate ${candidate} hash mismatch (draft hashes to ${draftHash.slice(0, 16)})`);
   }
   const events = read(log, TRACE_KINDS);
-  if (eventsOf(events, "exam.revised").at(-1)?.event.data.draftHash === payload.draftHash) {
+  if (eventsOf(events, "exam.revised").at(-1)?.event.data.draftHash === draftHash) {
     return await openSuccessor(log);
   }
-  const parent = draftOf(events);
-  const frozen = frozenChecker(events);
-  if (parent === null || frozen === null) throw new Error(`${log} holds no frozen drafted exam`);
-  if (payload.parent.checks !== frozen.checks) {
-    throw new Error(`candidate parent checks ${payload.parent.checks} do not match frozen ${frozen.checks}`);
-  }
+  const asked: Asked = {
+    session: staged.session,
+    kind: staged.kind,
+    why: staged.why,
+    check: staged.check,
+    candidate: staged.draft,
+  };
+  const refusal = revisionRefusal(events, { ...asked, crossFamily: crossFamilyVendors });
+  if (refusal !== null) throw new Error(refusal);
+  const parent = frozenParent(events);
   const auditedSound = eventsOf(events, "referee.draft").some(
     ({ event: { data } }) =>
-      data.verdict === "sound" && data.revision === frozen.checks && data.session === payload.audit.session,
+      data.verdict === "sound" && data.revision === parent.checks && data.session === staged.audit.session,
   );
-  if (payload.audit.verdict !== "sound" || !auditedSound) {
-    throw new Error(`candidate ${candidate} has no logged sound adversarial audit for ${frozen.checks}`);
+  if (!auditedSound) {
+    throw new Error(`candidate ${candidate} has no logged sound adversarial audit for ${parent.checks}`);
   }
-  const faults = revisionFaults(parent, payload.draft, payload.kind, payload.check);
+  const faults = revisionFaults(parent.draft, staged.draft, staged.kind, staged.check);
   if (faults.length > 0) throw new Error(`candidate faults: ${faults.join("; ")}`);
-  const refusal = revisionRefusal(events, {
-    kind: payload.kind,
-    check: payload.check,
-    candidate: payload.draft,
-    crossFamily: crossFamilyVendors,
-  });
-  if (refusal !== null) throw new Error(refusal);
-  const stagedBundle = join(dirname(log), "revisions", "exams", actualHash.slice(0, 16), "bundle");
-  const checked = await withMergedToolchain(stagedBundle, undefined, (sourceHome) =>
-    validateCandidate({
-      log,
-      events,
-      candidate: payload.draft,
-      kind: payload.kind,
-      check: payload.check,
-      packages,
-      width: 4,
-      sourceHome,
-    }),
-  );
-  if (!checked.ok) throw new Error(checked.message);
-  append(log, "exam.revised", parseJsonAs<JsonObject>(capturedJsonStringify(payload)));
+  const checked = await validated({ log, events, asked, packages: await packages() });
+  if (isString(checked)) throw new Error(checked);
+  append(log, "exam.revised", recorded(recordOf(asked, events, checked, staged.audit.session)));
   return await openSuccessor(log);
 }
 
-async function reviseCommand(args: readonly string[]): Promise<number> {
+async function reviseCommand(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { name, candidate } = values;
   if (name === undefined || candidate === undefined || !values.freeze) {
     throw new Error("usage: bun tools/campaign/revise.ts --name <campaign> --candidate <hash> --freeze");
   }
-  const log = campaignLog(name);
-  const campaign = await openCampaign({ name });
-  const next = await freezeCandidate(log, candidate, campaign.packages());
+  const next = await freezeCandidate(campaignLog(name), candidate, async () =>
+    (await openCampaign({ name })).packages(),
+  );
   console.log(`revision frozen; successor campaign ${next.name} opened at ${next.log}`);
-  return 0;
 }
 
-if (import.meta.main) runtimeProcess.exitCode = await reviseCommand(Bun.argv.slice(2));
+if (import.meta.main) await reviseCommand(Bun.argv.slice(2));

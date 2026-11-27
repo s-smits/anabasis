@@ -52,7 +52,7 @@ export interface Seats {
   readonly seated: Seated;
   readonly examine?: Session<"write"> | undefined;
   readonly draft?: Session<"draft"> | undefined;
-  readonly audit?: RevisionAuditor | null | undefined;
+  readonly audit?: RevisionAuditor | undefined;
   readonly host?: Host | undefined;
   readonly prepare?: typeof prepareCommand | undefined;
   readonly unreviewed?: boolean | undefined;

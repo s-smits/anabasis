@@ -934,6 +934,30 @@ describe.concurrent("campaign draft lifecycle", () => {
         );
         expect(calls).toBe(1);
         expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
+        const codex = "openai-codex/gpt-6.1-sol";
+        const recorded = { model: SOLVER, effort: "medium" };
+        const readers: string[] = [];
+        const rows: [typeof recorded | undefined, string, string][] = [
+          [recorded, "--reviewer", codex],
+          [recorded, "--reviewer-effort", "low"],
+          [undefined, "--reviewer", codex],
+        ];
+        for (const [index, [opening, ...flags]] of rows.entries()) {
+          await draftCommand(
+            [
+              ...opened(`${STEM}-audit-flagged-${String(index)}`, false, opening),
+              "--session",
+              "d-1",
+              ...flags,
+            ],
+            putting(SOUND),
+            referee((_, reader) => {
+              readers.push(`${reader.model.provider}/${reader.model.id}@${reader.effort}`);
+              return { verdict: "sound", findings: [], summary: "sound", probes: [] };
+            }),
+          );
+        }
+        expect(readers).toEqual([`${codex}@medium`, `${SOLVER}@low`, `${codex}@high`]);
       })(),
       (async () => {
         const name = `${STEM}-audit-skipped-no-error`;

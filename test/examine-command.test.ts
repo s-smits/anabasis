@@ -1,6 +1,7 @@
 // The Examiner command, `tools/eval/examine.ts`, with a scripted session. No paid model runs here.
 import { afterAll, describe, expect, it } from "bun:test";
 import { readdirSync, rmSync } from "../src/meta/filesystem.ts";
+import { append, LOG_FILE } from "../src/kernel/log.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { inExaminerSandbox } from "../src/examiner/shell.ts";
@@ -12,12 +13,12 @@ import { present } from "./helpers/matchers.ts";
 const STEM = `test-examine-command-${String(runtimeProcess.pid)}`;
 const PACK = ["--examiner", "claude/claude-opus-5-5"];
 const finished = () => ({ ended: "finished", puts: 0, held: [], refused: [] }) as const;
-for (const name of ["home"]) {
+for (const name of ["home", "judged"]) {
   layOutPack(join(REPO, ".ana", "d2", `${STEM}-${name}`), fixtureTasks(1));
 }
 
 afterAll(() => {
-  for (const name of ["home"]) {
+  for (const name of ["home", "judged"]) {
     rmSync(join(REPO, ".ana", "d2", `${STEM}-${name}`), { recursive: true, force: true });
   }
 });
@@ -32,5 +33,34 @@ describe("the Examiner command", () => {
       return finished();
     });
     expect(home).not.toContain("reference-harness");
+  });
+
+  it("offers revision unless --no-revise withholds it", async () => {
+    const offered: boolean[] = [];
+    const runs: [string, ...string[]][] = [["x-2"], ["x-3", "--no-revise"]];
+    for (const [session, ...flags] of runs) {
+      await examineCommand([...PACK, "--name", `${STEM}-home`, "--session", session, ...flags], (request) => {
+        offered.push(request.revise !== undefined);
+        return Promise.resolve(finished());
+      });
+    }
+    expect(offered).toEqual([true, false]);
+  });
+
+  it("judges by the flagged reviewer over the recorded seat", async () => {
+    const name = `${STEM}-judged`;
+    append(join(REPO, ".ana", "d2", name, LOG_FILE), "campaign.opened", {
+      solver: { model: "claude/claude-opus-5-5", effort: "high" },
+      seats: { reviewer: { model: "claude/claude-sonnet-5-5", effort: "high" } },
+    });
+    const lanes: (string | undefined)[] = [];
+    const runs: [string, ...string[]][] = [["x-1"], ["x-2", "--reviewer", "openai-codex/gpt-6.1-sol"]];
+    for (const [session, ...flags] of runs) {
+      await examineCommand([...PACK, "--name", name, "--session", session, ...flags], (request) => {
+        lanes.push(request.lane);
+        return Promise.resolve(finished());
+      });
+    }
+    expect(lanes).toEqual(["code-only", "judged"]);
   });
 });

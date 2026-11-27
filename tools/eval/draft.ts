@@ -5,7 +5,6 @@
  * `contract.frozen`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { unaudited } from "#src/campaign/scheduler.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
@@ -25,9 +24,10 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import {
   campaignLog,
-  examinerSession,
-  hostSession,
   REPO,
+  reviewerOf,
+  reviewerReader,
+  seatSession,
   stayAwake,
   worktreesOf,
 } from "../campaign/campaign.ts";
@@ -99,22 +99,6 @@ async function auditDraft(
   return review.verdict === "defects" ? review.findings.map(formatDraftFinding) : [];
 }
 
-function draftAuditReader(
-  values: { readonly reviewer?: string | undefined; readonly "reviewer-effort"?: string | undefined },
-  opening: ReturnType<typeof openingOf>,
-): Reader | null {
-  const recorded = opening?.seats.reviewer ?? null;
-  const model = values.reviewer ?? recorded?.model;
-  if (model === undefined) return null;
-  const effort = values["reviewer-effort"] ?? recorded?.effort ?? "high";
-  return {
-    model: modelNamed(model),
-    // SAFETY: `effort` is a pi thinking level validated by the backend on call.
-    effort: effort as ThinkingLevel,
-    models: examinerSession,
-  };
-}
-
 /** `session` and `audit` are injectable so tests can pass model-free stubs. */
 export async function draftCommand(
   args: readonly string[],
@@ -137,21 +121,22 @@ export async function draftCommand(
   }
   const defaultAuditor: DraftAuditor | null = session === examine ? reviewDraft : null;
   const auditor: DraftAuditor | null = audit === undefined ? defaultAuditor : audit;
-  const auditReader = draftAuditReader(values, opening);
-  const lane = rubricLaneOf(values.reviewer ?? opening?.seats.reviewer?.model, opening?.solver?.model);
+  const reviewer = reviewerOf(values, opening);
+  const lane = rubricLaneOf(reviewer?.model, opening?.solver?.model);
   const setting = settingAsked(values, recordedSetting(events));
   const { wallSeconds, modelTurns } = setting.named.limits;
   /** The last entry is the accepted draft's reading. */
   const readings: (DraftSeen | undefined)[] = [];
-  const gate = { session: id, prompt, log, auditor, reader: auditReader };
+  const gate = {
+    session: id,
+    prompt,
+    log,
+    auditor,
+    reader: reviewer === null ? null : reviewerReader(reviewer),
+  };
   const model = modelNamed(examiner);
   const forkPlan = seatForkPlan(log, "draft", model, values);
-  const models = hostSession({
-    webSearch: false,
-    cacheTtl: "1h",
-    persistDir: join(dirname(log), CLAUDE_SESSIONS_DIR),
-    ...keyIfDefined("fork", forkPlan.fork),
-  });
+  const models = seatSession(log, "examiner", forkPlan.fork);
   stayAwake();
   const drafted = await session(
     {

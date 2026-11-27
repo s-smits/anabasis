@@ -8,7 +8,7 @@ import { CLAUDE_SESSIONS_DIR, type ClaudeFork } from "#src/agent/backends/claude
 import { type BackendOptions, backends, compactionMode } from "#src/agent/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
-import { type Opening, openingOf } from "#src/campaign/opening.ts";
+import { type Opening, openingOf, type Seat } from "#src/campaign/opening.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { departure } from "#src/kernel/acceptance.ts";
 import {
@@ -48,7 +48,7 @@ import { asRecord, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { plural } from "#src/meta/text.ts";
-import { join, resolve } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { gitMaybe, worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
@@ -349,7 +349,6 @@ export async function openCampaign(args: CampaignArgs) {
     });
   };
   const reviewers = (reader: Reader) => reviewersOf(reader, { log: written, contract, checks, verify });
-  const sessionsDir = join(dir, CLAUDE_SESSIONS_DIR);
   return {
     repo: REPO,
     trees,
@@ -386,8 +385,7 @@ export async function openCampaign(args: CampaignArgs) {
       effort,
       models: hostSession({ webSearch: false, cacheTtl: "5m" }),
     }),
-    builder: hostSession({ webSearch: true, cacheTtl: "1h", persistDir: sessionsDir }),
-    examiner: hostSession({ webSearch: false, cacheTtl: "1h", persistDir: sessionsDir }),
+    builder: seatSession(log, "builder"),
   };
 }
 
@@ -472,7 +470,7 @@ export function awaitingLines(campaign: {
  * A Builder keeps WebSearch, since its shell reaches the network anyway; an Examiner's or
  * reviewer's search would be read by nobody.
  */
-export function hostSession(seat: {
+function hostSession(seat: {
   readonly webSearch: boolean;
   readonly cacheTtl: "5m" | "1h";
   readonly persistDir?: string | undefined;
@@ -493,7 +491,31 @@ export function hostSession(seat: {
     });
 }
 
-export const examinerSession = hostSession({ webSearch: false, cacheTtl: "1h" });
+const examinerSession = hostSession({ webSearch: false, cacheTtl: "1h" });
+
+export const seatSession = (log: string, seat: "builder" | "examiner", fork?: ClaudeFork) =>
+  hostSession({
+    webSearch: seat === "builder",
+    cacheTtl: "1h",
+    persistDir: join(dirname(log), CLAUDE_SESSIONS_DIR),
+    fork,
+  });
+
+export function reviewerOf(
+  flags: { readonly reviewer?: string | undefined; readonly "reviewer-effort"?: string | undefined },
+  opening: Opening | null,
+): Seat | null {
+  const seat = opening?.seats.reviewer ?? null;
+  const model = flags.reviewer ?? seat?.model;
+  return model === undefined ? null : { model, effort: flags["reviewer-effort"] ?? seat?.effort ?? "high" };
+}
+
+export const reviewerReader = (reviewer: Seat): Reader => ({
+  model: modelNamed(reviewer.model),
+  // SAFETY: a pi thinking level the backend validates on call.
+  effort: reviewer.effort as ThinkingLevel,
+  models: examinerSession,
+});
 
 export function stayAwake(): void {
   if (runtimeProcess.platform === "darwin") {

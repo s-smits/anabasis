@@ -13,7 +13,7 @@ import { nextAction } from "#src/campaign/scheduler.ts";
 import { sessionEnded } from "#src/campaign/state.ts";
 import { type ScheduledAction, decidedLine } from "#src/campaign/move.ts";
 import { type Opening, openingOf, SEATS } from "#src/campaign/opening.ts";
-import { pendingSignals } from "#src/campaign/signal.ts";
+import { boundedPause, pendingSignals } from "#src/campaign/signal.ts";
 import { keepCutNotes, keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
@@ -429,14 +429,12 @@ export async function harnessBuilder(
     }
     if (values["dry-run"] || made >= most) return decided;
     // Promotions and reverts still land, so the reference settles before `runs pause` stops the run.
-    if (
-      decided.move !== "promote" &&
-      decided.move !== "revert" &&
-      (await waitPaused(log, began, campaign?.limits.wallSeconds ?? LIMITS.wallSeconds, {
+    if (decided.move !== "promote" && decided.move !== "revert") {
+      const waited = await waitPaused(log, began, campaign?.limits.wallSeconds ?? LIMITS.wallSeconds, {
         host: seats.host,
-      }))
-    ) {
-      continue;
+      });
+      if (boundedPause(waited ? read(log) : events, began)) return decided;
+      if (waited) continue;
     }
     if (decided.move === "build" || decided.move === "examine") {
       campaign ??= await openCampaign(packNamed(values));

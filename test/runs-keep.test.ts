@@ -69,6 +69,17 @@ describe("the turn a keeper takes", () => {
       expect(kept(events).kind).toBe("kept");
       expect(turnOf(kept(events), NOW, HOUR)).toBe("continue");
     }
+    const paused = kept([
+      event("campaign.word", {
+        word: "pause",
+        why: "runs pause --after reported",
+        after: "reported",
+        base: 0,
+      }),
+      event("comparison.reported", { session: "g-1", reading: "no-step" }),
+    ]);
+    expect(paused).toMatchObject({ kind: "stopped", pause: { why: "runs pause --after reported" } });
+    expect(turnOf(paused, NOW, HOUR)).toBe("done");
   });
 });
 

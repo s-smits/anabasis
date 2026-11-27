@@ -106,10 +106,15 @@ function latestReachedPause(events: readonly LogEvent[], since: number) {
   return null;
 }
 
+export const boundedPause = (events: readonly LogEvent[], since: number): boolean =>
+  latestReachedPause(events, since)?.bounded === true &&
+  !pendingSignals(events).some(({ word }) => word === "stop");
+
 export function pauseSince(events: readonly LogEvent[], since: number): LogEvent | undefined {
   const found = latestReachedPause(events, since);
   if (found === null) return undefined;
-  const lastAt = Date.parse(events.at(-1)?.at ?? "");
+  const last = events.findLast(({ kind, data }) => !(kind === "build.finished" && data.ended === "stopped"));
+  const lastAt = Date.parse(last?.at ?? "");
   return found.bounded && Number.isFinite(lastAt) && lastAt - found.reached >= PAUSE_STOP_WINDOW_MS
     ? undefined
     : found.event;

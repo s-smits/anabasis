@@ -264,5 +264,10 @@ suite("rehearsal over a drafted exam", () => {
     expect(tabled).toContain(": ");
     const terms = ["--project", "fixture", "--level", "0.02"];
     expect((await rehearse(...terms, "--dry-run")).said).toContain(`next · ${tabled}`);
+    const rehearsed = await rehearse(...terms);
+    expect(rehearsed.code).toBe(0);
+    expect(rehearsed.said).toMatch(
+      /next · the campaign ends \(exam\)[^\n]*\nthe rehearsal went as scripted/u,
+    );
   });
 });

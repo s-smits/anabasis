@@ -550,29 +550,32 @@ describe.concurrent("live Builder and Examiner coordination", () => {
     expect(errText).not.toContain("private examiner failure");
     expect(errText).not.toContain("check-product");
 
-    const limitName = `${STEM}-limit`;
-    const reset = Math.floor(Date.now() / 1000) + 60;
-    let asked = 0;
-    const slept: number[] = [];
-    const limitEnding = await harnessBuilder([...seeded(limitName), "--target", "8", "--practice", "3"], {
-      seated: builderScript(winning(), [["wait", {}], ["examine", {}], ["examine", {}], FINISH_IDLE]),
-      examine: (request, wall) => {
-        asked += 1;
-        if (asked === 2) throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
-        return unwritten(request, wall);
-      },
-      host: {
-        ...HOST,
-        sleep: async (ms: number) => {
-          slept.push(ms);
+    for (const opening of [false, true]) {
+      const limitName = `${STEM}-limit${opening ? "-opened" : ""}`;
+      const reset = Math.floor(Date.now() / 1000) + 60;
+      let asked = 0;
+      const slept: number[] = [];
+      const limitEnding = await harnessBuilder([...seeded(limitName), "--target", "8", "--practice", "3"], {
+        seated: builderScript(winning(), [["wait", {}], ["examine", {}], ["examine", {}], FINISH_IDLE]),
+        examine: (request, wall) => {
+          asked += 1;
+          if (asked !== 2) return unwritten(request, wall);
+          if (opening) request.opened?.();
+          throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
         },
-      },
-    });
-    expect(limitEnding).toMatchObject({ move: "end", ending: "exam", code: "tasks" });
-    expect(slept).toHaveLength(1);
-    expect(of(limitName, "campaign.waited")).toMatchObject([{ for: "provider" }]);
-    expect(said(limitName, "examine")[0]).toContain("call examine again");
-    expect(said(limitName, "examine")[0]).not.toContain("usage limit");
+        host: {
+          ...HOST,
+          sleep: async (ms: number) => {
+            slept.push(ms);
+          },
+        },
+      });
+      expect(limitEnding).toMatchObject({ move: "end", ending: "exam", code: "tasks" });
+      expect(slept).toHaveLength(1);
+      expect(of(limitName, "campaign.waited")).toMatchObject([{ for: "provider" }]);
+      expect(said(limitName, "examine")[0]).toContain(opening ? "is writing tasks" : "call examine again");
+      expect(said(limitName, "examine")[0]).not.toContain("usage limit");
+    }
 
     const resumeName = `${STEM}-resume`;
     const base = winning();

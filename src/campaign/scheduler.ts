@@ -112,23 +112,20 @@ function enoughWrittenSince(ground: Ground, reading: Reading): boolean {
 }
 
 function fruitlessRun({ events, reports, reference }: Ground) {
-  const read = Math.max(-1, ...reports.map(({ at }) => at));
+  const read = Math.max(...reports.map(({ at }) => at));
   const compared = reports.map(({ id, old, report, reported }) => ({
     at: reported,
     id,
     gain: report.reading !== "not-scored" && (old !== reference || evalHeadroom(report) === "room"),
   }));
   const gatedAt = new Map(
-    events.flatMap(({ kind, data }, at) =>
-      kind === "task.gate" && isString(data.version) ? [[data.version, at]] : [],
-    ),
+    events.flatMap(({ kind, data }, at) => (kind === "task.gate" ? [[data.version, at] as const] : [])),
   );
   const examined = events.flatMap((event, at) => {
     if (event.kind !== "exam.finished") return [];
     const wrote = heldOut(event.data);
     const held: readonly unknown[] = Array.isArray(event.data.held) ? event.data.held : [];
     const lastGate = Math.max(
-      -1,
       ...held.map((version) => (isString(version) ? (gatedAt.get(version) ?? at) : at)),
     );
     const passed = wrote ? lastGate < read : cutShort(event);
@@ -342,8 +339,7 @@ export function tasksToAskFor(events: readonly LogEvent[], plan: Plan): number {
 
 function shortBy({ plan, supply, all, events }: Ground): number {
   const promoted = events.findLastIndex(({ kind }) => isReferenceChange(kind));
-  const released = releasedSince(events, promoted).length;
-  const practice = Math.max(0, (plan.practice ?? 0) - (promoted === -1 ? supply.released : released));
+  const practice = Math.max(0, (plan.practice ?? 0) - releasedSince(events, promoted).length);
   const target = all.length === 0 ? 0 : plan.wanted.target;
   const owed = Math.max(0, practice + Math.max(target, comparisonFloor(plan.wanted.level)) - supply.held);
   return promoted === -1 ? owed : Math.min(owed, MOST_ASKED_AFTER_PROMOTION);
@@ -437,8 +433,7 @@ function noRoom(ground: Ground): Move | null {
         };
   }
   const lastEpoch = epochsOf(events).at(-1);
-  const starterOwed =
-    side === "fresh" && lastEpoch?.starter_tally === null && lastEpoch.reference !== "starter";
+  const starterOwed = lastEpoch?.starter_tally === null && lastEpoch.reference !== "starter";
   const why =
     room === "too-hard"
       ? `comparison ${last.id} showed no improvement and neither harness produced a valid answer: generating replacement tasks`
@@ -529,7 +524,7 @@ export function practiceDue(
   const count = releases.length;
   const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   let nonFrontier = 0;
-  if (count > 0 && since !== -1) {
+  if (count > 0) {
     const beforeSince = events.slice(0, since + 1);
     const heldAtSince = new Set(taskSets(beforeSince).held);
     const frontierAtSince = new Set(poolOf(beforeSince).practiceFrontier);

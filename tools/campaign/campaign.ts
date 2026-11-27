@@ -478,7 +478,7 @@ export function hostSession(seat: {
   readonly persistDir?: string | undefined;
   readonly fork?: ClaudeFork | undefined;
 }) {
-  return (home: string, shutdown: AbortSignal, cwd?: string, id?: string) =>
+  return (home: string, shutdown: AbortSignal, cwd: string | undefined, id: string) =>
     seatBackends({
       claude: {
         ...sweepOptions(home, undefined, shutdown, cwd).claude,
@@ -486,7 +486,7 @@ export function hostSession(seat: {
         cacheTtl: seat.cacheTtl,
         ...keyIfDefined(
           "persist",
-          seat.persistDir !== undefined && id !== undefined ? { dir: seat.persistDir, seat: id } : undefined,
+          seat.persistDir === undefined ? undefined : { dir: seat.persistDir, seat: id },
         ),
         ...keyIfDefined("fork", seat.fork),
       },

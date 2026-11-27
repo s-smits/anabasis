@@ -573,6 +573,7 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     await expect(harnessBuilder(["--name", name], seats)).rejects.toThrow(
       "give the prompt the campaign opens from",
     );
+    await expect(harnessBuilder([...flags, "--prompt", " "], seats)).rejects.toThrow("the prompt is empty");
     expect(await harnessBuilder([...flags, "--prompt", prompt, "--dry-run"], seats)).toMatchObject({
       move: "draft",
     });

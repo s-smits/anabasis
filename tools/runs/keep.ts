@@ -36,8 +36,8 @@ import {
   seatModels,
   startRefusal,
 } from "./logins.ts";
-import { checkStart, lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
-import { flagOf, keepers, logEvents, Misused, processes, type Run, runNamed, writers } from "./registry.ts";
+import { checkStart, lastRun, leaveKeeper, rerun, said, type Started, start, WAIT_HOURS } from "./manage.ts";
+import { flagOf, keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
 
 export type Turn = "watch" | "move" | "continue" | "handoff" | "done";
@@ -50,7 +50,7 @@ interface Hands {
   readonly read: typeof readLogins;
   readonly checkStart: (login: string | undefined, flags: readonly string[]) => Promise<void>;
   readonly stop: () => Promise<void>;
-  readonly start: (login: string | undefined) => Promise<boolean>;
+  readonly start: (login: string | undefined) => Promise<Started>;
   readonly handoff?: (successor: string, login: string | undefined) => Promise<void>;
   readonly say: (line: string) => void;
   readonly env: Env;
@@ -309,12 +309,8 @@ async function keepGoing(
       const next = runNamed(successor);
       const nextFlags = lastRun(next).flags;
       if (flagOf(nextFlags, "--moves") === "0") return;
-      if (writers(next, processes()).length === 0) {
-        await start(next, rerun(nextFlags, undefined), login, undefined);
-      }
-      if (keepers(next.name, processes()).length === 0) {
-        leaveKeeper(next, named, waitHours);
-      }
+      await start(next, rerun(nextFlags, undefined), login, undefined);
+      leaveKeeper(next, named, waitHours);
     },
     say: (line) => console.log(line),
     env: runtimeProcess.env,

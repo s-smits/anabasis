@@ -143,13 +143,12 @@ describe("runs bench", () => {
     expect(ran.some((words) => words.includes("--yes"))).toBe(false);
   });
 
-  test("completedBenchPairs handles both base- and starter- baselines with exact task matching", async () => {
+  test("completedBenchPairs pairs base- and starter- baselines by exact tasks until a store scoring covers them", async () => {
     const store = mkdtempSync(join(tmpdir(), "ana-bench-scores-"));
     scratch.push(store);
     const put = (arm: string, task: string, runtime?: string) => {
       mkdirSync(join(store, "judged", arm), { recursive: true });
-      const body = runtime === undefined ? "{}\n" : `${JSON.stringify({ runtime })}\n`;
-      writeFileSync(join(store, "judged", arm, `${task}.json`), body);
+      writeFileSync(join(store, "judged", arm, `${task}.json`), `${JSON.stringify({ task, runtime })}\n`);
     };
     put("ref-a1", "t1");
     put("starter-ref-a1", "t1");
@@ -179,6 +178,8 @@ describe("runs bench", () => {
       { label: "pi-a2", baseline: "base-pi-a2" },
       { label: "ref-a1", baseline: "starter-ref-a1" },
     ]);
+    await bench(["--store", store]);
+    expect(completedBenchPairs(store)).toEqual([]);
     await expect(bench(["--bench", "no-such-bench"])).rejects.toThrow("no benchmark no-such-bench");
   });
 

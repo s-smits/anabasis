@@ -8,23 +8,28 @@ import { hasJudge, type Objective, type RubricItem } from "../kernel/contract.ts
 import { eventsOf, isReferenceChange, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import { lastReports, promoted } from "../kernel/reports.ts";
 import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
-import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
-import { isString, type JsonValue } from "../meta/json-shape.ts";
+import { capturedJsonStringify } from "../meta/json-runtime.ts";
+import { isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import {
+  acceptFrom,
   CHECK_ITEM_SCHEMA,
+  checksFrom,
   type Draft,
   draftFaults,
   draftOf,
   EVALUATOR_SCHEMA,
+  rejectFrom,
+  rubricFrom,
   type RubricLane,
   rubricItemSchema,
   TASK_FIELDS,
+  tasksFrom,
   TEXT_FILES,
 } from "./draft.ts";
-import { FROM_FILE, fromHome } from "./shell.ts";
+import { fromHome } from "./shell.ts";
 
 interface RevisionOutcome {
   readonly accepted: boolean;
@@ -106,23 +111,8 @@ const REVISE_PARAMETERS_CODE = reviseParameters("code-only");
 type ReviseArgs = Static<typeof REVISE_PARAMETERS_JUDGED>;
 
 export function candidateDraft(parent: Draft, args: ReviseArgs): Draft {
-  const checks =
-    args.checks === undefined
-      ? parent.checks
-      : args.checks.map(({ id, rule, assertion, tools }) => ({
-          id,
-          rule,
-          assertion,
-          ...keyIfDefined("tools", tools !== undefined && tools.length > 0 ? tools : undefined),
-        }));
   const rubric: readonly RubricItem[] | undefined =
-    args.objective_items === undefined
-      ? parent.objective?.items
-      : args.objective_items.map((item) =>
-          item.kind === "judge"
-            ? { id: item.id, weight: item.weight, kind: item.kind, criterion: item.criterion ?? "" }
-            : { id: item.id, weight: item.weight, ...keyIfDefined("kind", item.kind) },
-        );
+    args.objective_items === undefined ? parent.objective?.items : rubricFrom(args.objective_items);
   const objective: Objective | undefined =
     parent.objective === undefined
       ? undefined
@@ -144,42 +134,22 @@ export function candidateDraft(parent: Draft, args: ReviseArgs): Draft {
     conventions: parent.conventions,
     rules: parent.rules,
     answerFormat: parent.answerFormat,
-    checks,
+    checks: args.checks === undefined ? parent.checks : checksFrom(args.checks),
     // SAFETY: `fromHome` resolves any `{ from_file }` object to a string before this runs.
     evaluator: args.evaluator === undefined ? parent.evaluator : (args.evaluator as string),
     ...keyIfDefined("objective", objective),
     ...keyIfDefined("objectiveTools", objective === undefined ? undefined : objectiveTools),
-    tasks: [
-      ...parent.tasks,
-      ...(args.add_tasks ?? []).map(({ family, public_input, hidden }) => ({
-        family,
-        // SAFETY: tool arguments are parsed JSON.
-        publicInput: public_input as JsonValue,
-        // SAFETY: as above.
-        hidden: decodedJsonText((hidden ?? null) as JsonValue),
-      })),
-    ],
-    accept: [
-      ...parent.accept,
-      ...(args.add_accept_controls ?? []).map(({ task, answer, files }) => ({
-        task,
-        // SAFETY: as above.
-        answer: answer as JsonValue,
-        ...keyIfDefined("files", files),
-      })),
-    ],
-    reject: [
-      ...parent.reject,
-      ...(args.add_reject_controls ?? []).map(({ task, answer, files, check }) => ({
-        task,
-        // SAFETY: as above.
-        answer: answer as JsonValue,
-        ...keyIfDefined("files", files),
-        check,
-      })),
-    ],
+    tasks: [...parent.tasks, ...tasksFrom(args.add_tasks ?? [])],
+    accept: [...parent.accept, ...acceptFrom(args.add_accept_controls ?? [])],
+    reject: [...parent.reject, ...rejectFrom(args.add_reject_controls ?? [])],
   };
 }
+
+const scoredBy = ({ objective, objectiveTools, checks }: Draft) => ({
+  objective,
+  objectiveTools,
+  checks: checks.length,
+});
 
 export function revisionFaults(
   parent: Draft,
@@ -198,14 +168,10 @@ export function revisionFaults(
     } else if (!parent.checks.some(({ id }) => id === check)) {
       faults.push(`check ${check} is not among the parent exam's checks`);
     }
-    if (!sameJsonValue(parent.objective ?? null, candidate.objective ?? null)) {
-      faults.push("repair revision cannot change objective items or rubric; use tune");
-    }
-    if (!sameJsonValue(parent.objectiveTools ?? null, candidate.objectiveTools ?? null)) {
-      faults.push("repair revision cannot change objective tools; use tune");
-    }
-    if (candidate.checks.length !== parent.checks.length) {
-      faults.push("repair revision cannot add new checks; use tune");
+    if (!sameJsonValue(scoredBy(parent), scoredBy(candidate))) {
+      faults.push(
+        "repair revision cannot change objective items, objective tools or the check list; use tune",
+      );
     }
   }
   const byId = new Map(candidate.checks.map((entry) => [entry.id, entry]));
@@ -245,9 +211,8 @@ export function defectSolvesFor(events: readonly LogEvent[], check: string): str
     if (solve === null || stands.get(solve) !== "check-defect") continue;
     const comp = solveComp.get(solve);
     if (comp !== undefined && !reported.has(comp)) continue;
-    const verdict = verdicts.get(solve);
-    if (verdict?.task == null || verdict.answer === undefined) continue;
-    const blocking = verdict.checker?.kind === "fail" ? verdict.checker.blocking : [];
+    const checker = verdicts.get(solve)?.checker;
+    const blocking = checker?.kind === "fail" ? checker.blocking : [];
     const matchedCheck =
       data.check === check || (data.check == null && blocking.length === 1 && blocking[0] === check);
     if (matchedCheck) matched.add(solve);
@@ -338,16 +303,29 @@ export function revisionRefusal(
   return null;
 }
 
-export function readExamTool(log: string): AgentTool {
+interface RevisionDesk {
+  readonly request: { readonly id: string; readonly log: string };
+  readonly home: string | undefined;
+  revised: boolean;
+}
+
+export function revisionTools(
+  desk: RevisionDesk,
+  runRevise: ReviseRunner,
+  lane: RubricLane = "judged",
+): AgentTool[] {
+  const parent = draftOf(read(desk.request.log, TRACE_KINDS));
+  return parent === null ? [] : [readExamTool(parent), reviseTool(desk, parent, runRevise, lane)];
+}
+
+function readExamTool(draft: Draft): AgentTool {
   return tool({
     name: "read_exam",
     description:
       "Return the current frozen exam draft: checks, objective items/criteria, declared verifier tools, evaluator.ts source, and example/control counts.",
     parameters: Type.Object({}),
-    execute: async () => {
-      const draft = draftOf(read(log, TRACE_KINDS));
-      if (draft === null) throw new Error("campaign holds no drafted exam");
-      return text(
+    execute: async () =>
+      text(
         capturedJsonStringify({
           checks: draft.checks,
           objective: draft.objective ?? null,
@@ -357,30 +335,17 @@ export function readExamTool(log: string): AgentTool {
           rejectControls: draft.reject.map(({ task, check }) => ({ task, check })),
           evaluator: draft.evaluator,
         }),
-      );
-    },
+      ),
   });
 }
 
-export function reviseTool(
-  desk: {
-    readonly request: { readonly id: string; readonly log: string };
-    readonly home: string | undefined;
-    revised: boolean;
-  },
-  runRevise: ReviseRunner,
-  lane: RubricLane = "judged",
-): AgentTool {
-  const filed = desk.home === undefined ? "" : ` ${FROM_FILE}`;
+function reviseTool(desk: RevisionDesk, parent: Draft, runRevise: ReviseRunner, lane: RubricLane): AgentTool {
   return tool(
     fromHome(desk.home, {
       name: "revise_exam",
-      description: `Propose a mid-campaign revision to the exam (kind "tune" for rubric/score/check refinement at settled boundaries, or "repair" for a check with an effective Referee check-defect ruling). Domain, scope, rules, conventions, answer format, objective quantity/direction/scale, inherited check assertions, and existing examples/controls stay fixed. Validated against readChecker, historical adjudicated witnesses, and an adversarial Referee audit before handing off to a successor campaign.${filed}`,
+      description: `Propose a mid-campaign revision to the exam (kind "tune" for rubric/score/check refinement at settled boundaries, or "repair" for a check with an effective Referee check-defect ruling). Domain, scope, rules, conventions, answer format, objective quantity/direction/scale, inherited check assertions, and existing examples/controls stay fixed. Validated against readChecker, historical adjudicated witnesses, and an adversarial Referee audit before handing off to a successor campaign.`,
       parameters: lane === "judged" ? REVISE_PARAMETERS_JUDGED : REVISE_PARAMETERS_CODE,
       execute: async (args: ReviseArgs) => {
-        const events = read(desk.request.log, TRACE_KINDS);
-        const parent = draftOf(events);
-        if (parent === null) return text("Refused: campaign holds no drafted exam.");
         const candidate = candidateDraft(parent, args);
         const faults = revisionFaults(parent, candidate, args.kind, args.check, args);
         if (faults.length > 0) {

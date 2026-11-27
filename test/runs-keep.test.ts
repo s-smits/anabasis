@@ -176,7 +176,7 @@ describe("a keeper's looks, scripted", () => {
       },
       start: (to) => {
         state.acted.push(`start ${to ?? "none"}`);
-        return Promise.resolve(true);
+        return Promise.resolve("running");
       },
       say: (line) => state.said.push(line),
       env: { ANA_LOGIN_RUNS: "2" },
@@ -386,7 +386,7 @@ describe("a keeper's looks, scripted", () => {
         Promise.resolve([read("3", 10), read("2", 50)].filter((r) => wanted.includes(r.login))),
       checkStart: () => Promise.resolve(),
       stop: () => Promise.resolve(),
-      start: () => Promise.resolve(true),
+      start: () => Promise.resolve("running"),
       handoff: async (successor, login) => {
         if (failOnce) {
           failOnce = false;

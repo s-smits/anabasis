@@ -57,7 +57,6 @@ interface TaskRecord {
   bestScores: Readonly<Record<string, number>> | null;
   readonly tallied: TaskReading[];
   excludedAt: number;
-  excludedOrder: number;
   doubtedAt: number;
 }
 
@@ -251,7 +250,6 @@ function taskRecords(events: readonly LogEvent[]) {
       bestScores: null,
       tallied: [],
       excludedAt: -1,
-      excludedOrder: Number.POSITIVE_INFINITY,
       doubtedAt: -1,
     };
     records.set(version, made);
@@ -345,10 +343,8 @@ function addReportReadings(
       });
     }
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {
-      order += 1;
       const record = recordOf(task);
       record.excludedAt = index;
-      record.excludedOrder = Math.min(record.excludedOrder, order);
       const own = isString(refHarness) ? (rejectedIn.get(solveKey(session, task, refHarness)) ?? []) : [];
       if (own.some((solve) => stands.get(solve) !== "earned")) record.doubtedAt = index;
     }
@@ -385,8 +381,6 @@ export function poolOf(events: readonly LogEvent[]) {
   const current = held.filter((task) => !prior.has(task));
   const doubtedSet = new Set(doubted);
   const practiceOut = new Set([...easy, ...leftOut]);
-  const firstSeen = ({ tallied, excludedOrder }: TaskRecord) =>
-    Math.min(tallied[0]?.order ?? excludedOrder, excludedOrder);
   return {
     scorable,
     frontier: scorable.filter((task) => !retained.has(task)),
@@ -405,7 +399,7 @@ export function poolOf(events: readonly LogEvent[]) {
         bestScores === null ? [] : [[version, bestScores] as const],
       ),
     ),
-    outcomes: new Map(records.toSorted((one, other) => firstSeen(one) - firstSeen(other)).flatMap(outcomeOf)),
+    outcomes: new Map(records.flatMap(outcomeOf)),
     standings: new Map(records.flatMap(standingOf)),
   };
 }
@@ -441,10 +435,7 @@ export function activePromotionAt(events: readonly LogEvent[]): number {
   return current;
 }
 
-function beforePromotion(events: readonly LogEvent[]) {
-  const promotedAt = activePromotionAt(events);
-  return promotedAt <= 0 ? { states: new Map(), held: [], released: [] } : taskSets(events, promotedAt - 1);
-}
+const beforePromotion = (events: readonly LogEvent[]) => taskSets(events, activePromotionAt(events));
 
 export function releaseOrder(
   events: readonly LogEvent[],

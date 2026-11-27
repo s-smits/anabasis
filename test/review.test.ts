@@ -13,7 +13,7 @@ import {
 import type { AgentTool } from "../src/agent/session.ts";
 import { type AnswerFile, keepAnswerFiles, shownFiles } from "../src/kernel/answer-files.ts";
 import type { Contract } from "../src/kernel/contract.ts";
-import { append, type EventKind, read } from "../src/kernel/log.ts";
+import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { billedBetween } from "../src/kernel/meter.ts";
 import { Cancellation } from "../src/kernel/solve.ts";
 import { unfinished } from "../src/kernel/trace.ts";
@@ -31,7 +31,7 @@ import {
   unclearReport,
   VERDICT_BAR,
 } from "../src/audit/agreement.ts";
-import { replayDraftProbes, reviewDraft } from "../src/audit/draft-audit.ts";
+import { persistedDraftDefects, replayDraftProbes, reviewDraft } from "../src/audit/draft-audit.ts";
 import { type DraftProbeRow, type ProbeRow, probeExamplesTool, probeTool } from "../src/audit/probe.ts";
 import { type Reader, auditRejection } from "../src/audit/auditor.ts";
 import { containing, copies, matching, objectWith } from "./helpers/matchers.ts";
@@ -885,8 +885,11 @@ describe("adversarial draft audit", () => {
     expect(read(gated.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(3);
     expect(gated.sent[0]).toContain("one replayed probe, not a fresh test");
 
-    // `replayDraftProbes` flags persisting defects, verifies fixed ones at $0, and leaves inconclusive/missing probes unverified.
-    const sameStill = await replayDraftProbes(res, {
+    // `replayDraftProbes` replays the audit as the log persisted it: flags persisting defects, verifies fixed ones at $0, and leaves inconclusive/missing probes unverified.
+    const [persisted] = persistedDraftDefects(read(s.log)).prior;
+    if (persisted === undefined) throw new Error("defects audit was not persisted");
+    expect(persisted).toEqual({ findings: res.findings, probes: res.probes });
+    const sameStill = await replayDraftProbes(persisted, {
       contract: objectiveContract,
       verify: vacuousVerify,
       tasks: [TASK],
@@ -900,7 +903,7 @@ describe("adversarial draft audit", () => {
       if ((files ?? []).length === 0) return { kind: "fail", blocking: ["files"] };
       return { kind: "pass", objective: asRecord(answer)?.span === 999 ? 50 : 10 };
     };
-    const fixedReplay = await replayDraftProbes(res, {
+    const fixedReplay = await replayDraftProbes(persisted, {
       contract: objectiveContract,
       verify: fixedVerify,
       tasks: [TASK],
@@ -911,7 +914,7 @@ describe("adversarial draft audit", () => {
     expect(fixedReplay.unverified).toEqual([]);
 
     const crashedVerify: Verifier = async () => ({ kind: "non-result", reason: "sandbox down" });
-    const crashedReplay = await replayDraftProbes(res, {
+    const crashedReplay = await replayDraftProbes(persisted, {
       contract: objectiveContract,
       verify: crashedVerify,
       tasks: [TASK],
@@ -920,6 +923,53 @@ describe("adversarial draft audit", () => {
     expect(crashedReplay.stillBroken).toEqual([]);
     expect(crashedReplay.verifiedFixed).toEqual([]);
     expect(crashedReplay.unverified).toHaveLength(3);
+  });
+
+  it("folds each revision's audits since its last sound verdict, over every log of up to three audits", () => {
+    const drafts = ["sound", "defects", "skipped"].flatMap((verdict) =>
+      [undefined, "r1", "r2"].map((revision) => ({ verdict, revision })),
+    );
+    const logsUpTo = (length: number): (typeof drafts)[] =>
+      length === 0
+        ? [[]]
+        : [[], ...drafts.flatMap((first) => logsUpTo(length - 1).map((rest) => [first, ...rest]))];
+    const wrong: string[] = [];
+    let checked = 0;
+    for (const audits of logsUpTo(3)) {
+      const events: LogEvent[] = audits.map(({ verdict, revision }, index) => ({
+        at: "",
+        kind: "referee.draft",
+        data: {
+          session: "d-1",
+          ...keyIfDefined("revision", revision),
+          verdict,
+          findings:
+            verdict === "defects"
+              ? [{ kind: "vacuous-pass", task: "t-1", probe: 1, reason: String(index) }]
+              : [],
+          summary: verdict,
+          probeRows: [],
+        },
+      }));
+      for (const revision of [undefined, "r1"]) {
+        const counted = audits.flatMap((audit, index) =>
+          audit.revision === revision && audit.verdict !== "skipped" ? [{ ...audit, index }] : [],
+        );
+        const open = counted.slice(counted.findLastIndex(({ verdict }) => verdict === "sound") + 1);
+        const want = { audits: open.length, prior: open.map(({ index }) => [String(index)]) };
+        const folded = persistedDraftDefects(events, revision);
+        const got = {
+          audits: folded.audits,
+          prior: folded.prior.map(({ findings }) => findings.map(({ reason }) => reason)),
+        };
+        checked += 1;
+        if (JSON.stringify(got) !== JSON.stringify(want)) {
+          wrong.push(JSON.stringify({ audits, revision, got, want }));
+        }
+      }
+    }
+    expect(checked).toBe(2 * (1 + 9 + 81 + 729));
+    expect(wrong).toEqual([]);
   });
 });
 

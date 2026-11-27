@@ -329,9 +329,9 @@ describe.concurrent("the Builder running its campaign", () => {
     const built = await session(
       {
         ...s.request,
-        models: (home, shutdown) => {
+        models: (...given) => {
           opened += 1;
-          return s.request.models(home, shutdown);
+          return s.request.models(...given);
         },
         campaign: (bench) => ({
           hook: () => guidance,
@@ -1938,8 +1938,8 @@ describe.concurrent("what a practice solve used", () => {
     await session(
       {
         ...s.request,
-        models: (home, shutdown) => {
-          const baseModels = s.request.models(home, shutdown);
+        models: (...given) => {
+          const baseModels = s.request.models(...given);
           // SAFETY: inherited instance supplies every method; streamSimple attaches compaction diagnostics on turn 1.
           const compactedModels = Object.create(baseModels) as typeof baseModels;
           compactedModels.streamSimple = (...asked: Parameters<typeof baseModels.streamSimple>) => {

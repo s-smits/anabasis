@@ -1,6 +1,6 @@
-import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
-import { type AgentTool, runAgent } from "../agent/session.ts";
+import { type AgentTool, runAgent, type SeatModels } from "../agent/session.ts";
 import { waitOut } from "../solver/run.ts";
 import { type AnswerFile, fileRowBytes, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
 import type { Contract } from "../kernel/contract.ts";
@@ -40,7 +40,7 @@ import {
 export interface Reader {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
-  readonly models: (home: string, shutdown: AbortSignal) => Models;
+  readonly models: SeatModels;
   readonly wallSeconds?: number;
   readonly kill?: AbortSignal;
 }

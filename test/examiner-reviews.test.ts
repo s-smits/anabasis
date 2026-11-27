@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { taskHistory } from "../src/examiner/record.ts";
 import { readReviews, reviewInventoryLine, reviewSummariesByTask } from "../src/examiner/reviews.ts";
 import { examine } from "../src/examiner/session.ts";
+import { wakeOn } from "../src/examiner/write.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -640,9 +641,11 @@ describe("Examiner review projection and search (read_reviews)", () => {
     expect(out.indexOf("[finding] c-1")).toBeLessThan(out.indexOf("[draft] d-1"));
     const told = taskHistory(log.events, [{ taskId: "t-1", family: "fixture" }]);
     expect(told.stood).toContain("It stopped on check defects.");
-    expect(told.reviews).toBe(
-      "Reported reviews in read_reviews (newest first): 1 finding (1 check-defect), 1 draft audit.",
-    );
+    const inventory =
+      "Reported reviews in read_reviews (newest first): 1 finding (1 check-defect), 1 draft audit.";
+    expect(told.reviews).toBe(inventory);
+    const limits = { wallSeconds: 600, turns: 10, puts: 4 };
+    expect(wakeOn(log.events, [{ taskId: "t-1", family: "fixture" }], limits)).toContain(inventory);
   });
 
   it("exposes read_reviews inside live Examiner writing sessions via REVIEW_EVENT_KINDS filtering", async () => {
@@ -657,6 +660,7 @@ describe("Examiner review projection and search (read_reviews)", () => {
     });
     append(s.log, "solve.call", { solve: "s-noise", tool: "bash", args: { command: "echo hi" }, text: "hi" });
     await examine(s.request);
+    expect(s.sent[0]).toContain("Reported reviews in read_reviews (newest first): 1 draft audit.");
     const reviewCall = s.of("exam.call").find((entry) => entry.tool === "read_reviews");
     expect(reviewCall?.isError).toBe(false);
     expect(isString(reviewCall?.text) && reviewCall.text).toContain("All code and judge probes checked out.");

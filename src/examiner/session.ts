@@ -1,11 +1,12 @@
-import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import {
   type AgentTool,
   applyContinuation,
   type Continuation,
-  sessionClock,
   runAgent,
+  type SeatModels,
+  sessionClock,
 } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { budgetLeft } from "../campaign/opening.ts";
@@ -36,7 +37,7 @@ interface Sitting {
     readonly turns: number;
     readonly puts: number;
   };
-  readonly models: (home: string, shutdown: AbortSignal, cwd?: string, seat?: string) => Models;
+  readonly models: SeatModels;
   readonly log: string;
   readonly kill?: AbortSignal;
   readonly opened?: () => void;

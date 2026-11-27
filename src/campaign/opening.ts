@@ -101,7 +101,7 @@ function parseParent(raw: unknown): OpeningParent | null {
   ) {
     return null;
   }
-  const num = (value: unknown) => (isNumber(value) && Number.isFinite(value) ? value : 0);
+  const num = (value: unknown) => (isNumber(value) ? value : 0);
   return {
     campaign: rec.campaign,
     revised: rec.revised,

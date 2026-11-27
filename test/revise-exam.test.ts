@@ -6,8 +6,15 @@ import { budgetLeft, openingOf } from "../src/campaign/opening.ts";
 import { nextAction } from "../src/campaign/scheduler.ts";
 import { type Draft, draftOf } from "../src/examiner/draft.ts";
 import { systemPrompt } from "../src/examiner/prompt.ts";
-import { candidateDraft, revisionFaults, revisionRefusal } from "../src/examiner/revise.ts";
+import {
+  candidateDraft,
+  defectSolvesFor,
+  type ReviseRunner,
+  revisionFaults,
+  revisionRefusal,
+} from "../src/examiner/revise.ts";
 import { examine } from "../src/examiner/session.ts";
+import { writing } from "../src/examiner/write.ts";
 import { writeStarter } from "../src/harness/starter.ts";
 import { keepAnswerFiles, textFiles } from "../src/kernel/answer-files.ts";
 import { conditionId } from "../src/kernel/condition.ts";
@@ -51,7 +58,7 @@ import { lastLaunch, writeReceipt } from "../tools/runs/receipt.ts";
 import { replayed } from "../tools/runs/replay.ts";
 import { EVENT_FORMATTERS, triggerOf } from "../tools/runs/summary.ts";
 import { gamingRows } from "../tools/wri/gaming.ts";
-import { call, condition, finish, seat, sweep } from "./helpers/examiner-seat.ts";
+import { call, condition, finish, invoke, seat, sweep, toolOf } from "./helpers/examiner-seat.ts";
 
 setDefaultTimeout(120_000);
 
@@ -374,6 +381,15 @@ describe("revision admission, immutability, and lock exclusion", () => {
         },
       ],
     });
+    expect(judgedCandidate.objective?.items).toEqual([
+      { id: "accuracy", weight: 1, kind: "code" },
+      {
+        id: "clarity",
+        weight: 1,
+        kind: "judge",
+        criterion: "Reports methodology and exact assumptions clearly.",
+      },
+    ]);
     expect(
       revisionRefusal(read(seed.log), {
         kind: "repair",
@@ -393,6 +409,8 @@ describe("revision admission, immutability, and lock exclusion", () => {
     expect(revisionRefusal(read(exactBudget.log), { kind: "tune" })).toBeNull();
 
     expect(revisionRefusal([], { kind: "tune" })).toContain("drafted and frozen");
+    const unfrozen = read(exactBudget.log).filter(({ kind }) => kind !== "contract.frozen");
+    expect(revisionRefusal(unfrozen, { kind: "tune" })).toContain("drafted and frozen");
     expect(
       revisionRefusal(
         [...read(exactBudget.log), { at: "2026-11-27T00:00:01Z", kind: "exam.revised", data: {} }],
@@ -411,6 +429,13 @@ describe("revision admission, immutability, and lock exclusion", () => {
     expect(
       revisionRefusal(read(exactBudget.log), { kind: "tune", candidate: judgedCandidate, reviewer: null }),
     ).toContain("cross-family reviewer");
+    expect(
+      revisionRefusal(read(exactBudget.log), {
+        kind: "tune",
+        candidate: judgedCandidate,
+        crossFamily: crossFamilyVendors,
+      }),
+    ).toBeNull();
     expect(
       revisionRefusal(read(exactBudget.log), {
         kind: "tune",
@@ -555,6 +580,64 @@ describe("revision admission, immutability, and lock exclusion", () => {
     expect(revisionFaults(PARENT_DRAFT, noop, "repair", "check-missing").join("\n")).toContain(
       "not among the parent exam's checks",
     );
+    const repairs = [
+      { objective_items: [codeItem("accuracy", 3), codeItem("depth", 1)] },
+      { objective_tools: ["helper"] },
+      {
+        checks: [
+          ...PARENT_DRAFT.checks.map(checkCopy),
+          { id: "check-extra", rule: "R1", assertion: "n is below a thousand" },
+        ],
+      },
+    ];
+    for (const change of repairs) {
+      const repair = candidateDraft(PARENT_DRAFT, {
+        kind: "repair",
+        why: "smuggle",
+        check: "check-strict",
+        ...change,
+      });
+      expect(revisionFaults(PARENT_DRAFT, repair, "repair", "check-strict").join("\n")).toContain(
+        "repair revision cannot change",
+      );
+    }
+
+    const scalar = { quantity: "distance", direction: "higher" } as const;
+    const scalarParent: Draft = { ...PARENT_DRAFT, objective: scalar };
+    expect(
+      candidateDraft(scalarParent, { kind: "tune", why: "keep scalar", add_tasks: [] }).objective,
+    ).toEqual(scalar);
+    expect(
+      candidateDraft(scalarParent, {
+        kind: "tune",
+        why: "to rubric",
+        objective_items: [codeItem("accuracy", 1)],
+      }).objective,
+    ).toEqual({ ...scalar, scale: "unit", items: [codeItem("accuracy", 1)] });
+    const added = { family: "f3", public_input: { prompt: "sixteen" }, hidden: { target: 16, ideal: 10 } };
+    expect(
+      candidateDraft(PARENT_DRAFT, { kind: "tune", why: "add example", add_tasks: [added] }).tasks.at(-1),
+    ).toEqual({ family: "f3", publicInput: added.public_input, hidden: added.hidden });
+  });
+
+  it("matches a check-defect finding by its named check, else by a sole blocking check (3 named x 4 blocking)", () => {
+    const at = "2026-11-27T00:00:00Z";
+    for (const named of ["check-strict", "check-even", undefined]) {
+      for (const blocking of [[], ["check-strict"], ["check-even"], ["check-even", "check-strict"]]) {
+        const events: LogEvent[] = [
+          { at, kind: "solve.started", data: { solve: "s" } },
+          { at, kind: "verdict", data: { solve: "s", task: "ex-001", answer: {}, kind: "fail", blocking } },
+          {
+            at,
+            kind: "referee.finding",
+            data: { solve: "s", ruling: "check-defect", ...keyIfDefined("check", named) },
+          },
+        ];
+        const sole = blocking.length === 1 && blocking.includes("check-strict");
+        const matched = named === "check-strict" || (named === undefined && sole);
+        expect(defectSolvesFor(events, "check-strict")).toEqual(matched ? ["s"] : []);
+      }
+    }
   });
 
   it("enforces exclusive-lock mutual exclusion between exam.revised and comparison.started in log.ts", () => {
@@ -1533,6 +1616,46 @@ export const scores = {
     expect(runnerCalls).toEqual(["tune:first try refused by runner", "tune:adjust item weights"]);
     expect(systemPrompt(undefined, "fixed")).not.toContain("revise_exam");
     expect(systemPrompt(undefined, "revisable")).toContain("revise_exam");
+  });
+
+  it("offers read_exam and revise_exam over a drafted exam only, reads it back, and checks revise_exam's arguments per lane", async () => {
+    const s = seat("write", []);
+    const revise: ReviseRunner = async () => ({ accepted: false, message: "unused" });
+    const opened = (lane: "judged" | "code-only" | undefined) =>
+      writing({ ...s.request, revise, lane }, undefined);
+    expect(opened("judged").tools.map(({ name }) => name)).not.toContain("read_exam");
+    append(s.request.log, "exam.drafted", {
+      session: "d-1",
+      draft: parseJsonAs<JsonObject>(capturedJsonStringify(PARENT_DRAFT)),
+    });
+    const shown = await invoke(toolOf(opened("judged"), "read_exam"), "r-1", {});
+    const [said] = shown.output ?? [];
+    expect(parseJsonAs<JsonObject>(said?.type === "text" ? said.text : "null")).toEqual({
+      checks: [...PARENT_DRAFT.checks],
+      objective: { ...PARENT_DRAFT.objective },
+      objectiveTools: [],
+      examples: 3,
+      acceptControls: [0, 1, 2],
+      rejectControls: [
+        { task: 0, check: "check-even" },
+        { task: 0, check: "check-strict" },
+      ],
+      evaluator: PARENT_EVALUATOR,
+    });
+    const judge = {
+      id: "clarity",
+      weight: 1,
+      kind: "judge",
+      criterion: "Reports methodology clearly and fully.",
+    };
+    const prepared = (lane: "judged" | "code-only" | undefined, args: JsonObject) => () =>
+      toolOf(opened(lane), "revise_exam").prepareArguments?.(args);
+    expect(prepared("judged", { kind: "tune", why: "" })).toThrow("why");
+    expect(prepared("judged", { kind: "tune", why: "w", objective_items: [judge] })).not.toThrow();
+    expect(prepared(undefined, { kind: "tune", why: "w", objective_items: [judge] })).not.toThrow();
+    expect(prepared("code-only", { kind: "tune", why: "w", objective_items: [judge] })).toThrow(
+      "objective_items",
+    );
   });
 
   it("drives check-defects direct repair examine and seamless A -> B handoff in harnessBuilder", async () => {

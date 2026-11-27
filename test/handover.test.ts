@@ -291,7 +291,7 @@ describe("unfinished comparisons", () => {
     c.record("solve.started", { solve: "s-2", condition: "c", comparison: "g-1" });
     const open = { id: "g-1", reading: null, begun: 2, solved: 1 };
     expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: false }]);
-    expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toMatch(
+    expect(viewLines("truss", c.events(), Date.now())[2]).toMatch(
       /no report.*in progress.*1 solve finished.*1 open.*\$1\.50/u,
     );
     c.record("exam.started", { session: "x-1" });
@@ -301,9 +301,33 @@ describe("unfinished comparisons", () => {
     c.record("campaign.ended", { ending: "no-room" });
     expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: true }]);
     expect(openSteps(campaignOf(c.events()).steps)).toEqual([]);
-    expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toMatch(
+    expect(viewLines("truss", c.events(), Date.now())[2]).toMatch(
       /no report.*interrupted.*1 solve finished.*1 cut/u,
     );
+  });
+});
+
+describe("a successor campaign's lineage", () => {
+  it("names the parent it carries from and the revision that hands it on, pending until the campaign ends", () => {
+    const c = campaign();
+    const header = () => viewLines("truss", c.events(), Date.now()).slice(2);
+    expect(header()).toEqual([]);
+    c.record("campaign.opened", {
+      parent: {
+        campaign: "truss-1",
+        revised: "d".repeat(64),
+        kind: "repair",
+        carried: { spent: 12.5, sinceStep: 3, tunes: 1 },
+        lineageTasks: ["t-1", "t-2"],
+      },
+    });
+    const lineage =
+      "lineage     from truss-1 (repair, dddddddd) · carried $12.50, 3 since step, 1 tune, 2 prior tasks";
+    expect(header()).toEqual([`  ${lineage}`]);
+    c.record("exam.revised", { kind: "tune", why: "w", draftHash: "e".repeat(64) });
+    expect(header()).toEqual([`  ${lineage}`, "  revised     tune -> pending"]);
+    c.record("campaign.ended", { ending: "revise", successor: "truss-3" });
+    expect(header()).toEqual([`  ${lineage}`, "  revised     tune -> truss-3"]);
   });
 });
 
@@ -322,7 +346,7 @@ describe("how far a comparison's tasks are independent draws", () => {
       { ...tallied("no-step", 0, 4), families: families(1, 1, 1, 1) },
     );
     c.compared("g-4", { old: HB, fresh: STARTER }, tallied("no-step", 0, 4));
-    const lines = viewLines("truss", campaignOf(c.events()), Date.now()).slice(2);
+    const lines = viewLines("truss", c.events(), Date.now()).slice(2);
     expect(lines[0]).toContain("3 of 4 tallied frontier tasks in one family");
     expect(lines[0]).not.toContain("also drawn");
     expect(lines[1]).toContain("4 of 4 tasks also drawn by g-1");

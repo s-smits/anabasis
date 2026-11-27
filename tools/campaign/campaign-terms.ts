@@ -234,7 +234,7 @@ const seatOf = (
 /** Merges move terms from flags and the prior opening, refusing any `--level` change after a
  *  comparison starts. */
 function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: Values): Opening["terms"] {
-  const began = events.findLast(({ kind, data }) => kind === STARTED && isNumber(data.level))?.data.level;
+  const began = events.findLast(({ kind }) => kind === STARTED)?.data.level;
   if (isNumber(began) && values.level !== undefined && Number(values.level) !== began) {
     throw new Error(
       `--level ${values.level}: the campaign's comparisons began at level ${String(began)}, and a term is never moved after a result. Drop the flag; another level is another campaign`,

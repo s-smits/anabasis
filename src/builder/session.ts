@@ -1,5 +1,5 @@
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { append, CALL_KINDS, isReferenceChange, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
@@ -34,8 +34,9 @@ import {
   type AgentTool,
   applyContinuation,
   type Continuation,
-  sessionClock,
   runAgent,
+  type SeatModels,
+  sessionClock,
 } from "../agent/session.ts";
 import { claimRoot } from "../sandbox/sandbox-root.ts";
 import { openingOf } from "../campaign/opening.ts";
@@ -106,7 +107,7 @@ export interface BuildRequest {
   readonly limits: BuildLimits;
   readonly solve: Limits;
   readonly solver: Solver;
-  readonly models: (home: string, shutdown: AbortSignal, cwd?: string, seat?: string) => Models;
+  readonly models: SeatModels;
   readonly log: string;
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;

@@ -12,7 +12,7 @@ import { GAP_FLOOR } from "../kernel/compare.ts";
 import { PER_CHECK_MS } from "../kernel/verify.ts";
 import { REACH } from "./difficulty.ts";
 import { budgetLine, FAIR, type SolveBudget, TASK, UNHELD } from "./prompt.ts";
-import { FROM_FILE, fromHome } from "./shell.ts";
+import { fromHome } from "./shell.ts";
 import { append, eventsOf, type LogEvent } from "../kernel/log.ts";
 import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -448,16 +448,50 @@ export function draftFaults(draft: Draft, lane: RubricLane = "judged"): string[]
   ];
 }
 
+export const checksFrom = (checks: DraftArgs["checks"]): Draft["checks"] =>
+  checks.map(({ id, rule, assertion, tools }) => ({
+    id,
+    rule,
+    assertion,
+    ...keyIfDefined("tools", tools !== undefined && tools.length > 0 ? tools : undefined),
+  }));
+
+export const rubricFrom = (items: readonly Static<typeof RUBRIC_ITEM_JUDGED>[]): RubricItem[] =>
+  items.map((item) =>
+    item.kind === "judge"
+      ? { id: item.id, weight: item.weight, kind: item.kind, criterion: item.criterion ?? "" }
+      : { id: item.id, weight: item.weight, ...keyIfDefined("kind", item.kind) },
+  );
+
+export const tasksFrom = (tasks: DraftArgs["tasks"]): Draft["tasks"] =>
+  tasks.map(({ family, public_input, hidden }) => ({
+    family,
+    // SAFETY: a tool's arguments are JSON the provider parsed, here and for each value below.
+    publicInput: public_input as JsonValue,
+    // SAFETY: as above.
+    hidden: decodedJsonText((hidden ?? null) as JsonValue),
+  }));
+
+export const acceptFrom = (controls: DraftArgs["accept_controls"]): Draft["accept"] =>
+  controls.map(({ task, answer, files }) => ({
+    task,
+    // SAFETY: as above.
+    answer: answer as JsonValue,
+    ...keyIfDefined("files", files),
+  }));
+
+export const rejectFrom = (controls: DraftArgs["reject_controls"]): Draft["reject"] =>
+  controls.map(({ task, answer, files, check }) => ({
+    task,
+    // SAFETY: as above.
+    answer: answer as JsonValue,
+    ...keyIfDefined("files", files),
+    check,
+  }));
+
 function draftedFrom(args: DraftArgs): Draft {
   const { quantity, direction, items, tools } = args.objective;
-  const rubric: readonly RubricItem[] | undefined =
-    items !== undefined && items.length > 0
-      ? items.map((item) =>
-          item.kind === "judge"
-            ? { id: item.id, weight: item.weight, kind: item.kind, criterion: item.criterion ?? "" }
-            : { id: item.id, weight: item.weight, ...keyIfDefined("kind", item.kind) },
-        )
-      : undefined;
+  const rubric = items !== undefined && items.length > 0 ? rubricFrom(items) : undefined;
   const objective: Objective | undefined =
     quantity !== undefined && direction !== undefined
       ? {
@@ -472,38 +506,16 @@ function draftedFrom(args: DraftArgs): Draft {
     scope: args.scope,
     conventions: args.conventions,
     rules: args.rules,
-    // SAFETY: a tool's arguments are JSON the provider parsed, here and for each value below.
+    // SAFETY: a tool's arguments are JSON the provider parsed.
     answerFormat: args.answer_format as JsonValue,
-    checks: args.checks.map(({ id, rule, assertion, tools: checkTools }) => ({
-      id,
-      rule,
-      assertion,
-      ...keyIfDefined("tools", checkTools !== undefined && checkTools.length > 0 ? checkTools : undefined),
-    })),
+    checks: checksFrom(args.checks),
     // SAFETY: `fromHome` has read a `from_file` object into the text its file holds before this runs.
     evaluator: args.evaluator as string,
     ...keyIfDefined("objective", objective),
     ...keyIfDefined("objectiveTools", tools !== undefined && tools.length > 0 ? tools : undefined),
-    tasks: args.tasks.map(({ family, public_input, hidden }) => ({
-      family,
-      // SAFETY: as above.
-      publicInput: public_input as JsonValue,
-      // SAFETY: as above.
-      hidden: decodedJsonText((hidden ?? null) as JsonValue),
-    })),
-    // SAFETY: as above.
-    accept: args.accept_controls.map(({ task, answer, files }) => ({
-      task,
-      answer: answer as JsonValue,
-      ...keyIfDefined("files", files),
-    })),
-    // SAFETY: as above.
-    reject: args.reject_controls.map(({ task, answer, files, check }) => ({
-      task,
-      answer: answer as JsonValue,
-      ...keyIfDefined("files", files),
-      check,
-    })),
+    tasks: tasksFrom(args.tasks),
+    accept: acceptFrom(args.accept_controls),
+    reject: rejectFrom(args.reject_controls),
   };
 }
 
@@ -525,7 +537,7 @@ export function drafting(
   const put = tool(
     fromHome(home, {
       name: "draft_exam",
-      description: `Put a whole draft of the exam to the host's reading, as the system prompt says.${home === undefined ? "" : ` ${FROM_FILE}`}`,
+      description: "Put a whole draft of the exam to the host's reading, as the system prompt says.",
       parameters: lane === "judged" ? DRAFT_PARAMETERS_JUDGED : DRAFT_PARAMETERS_CODE,
       execute: async (args: DraftArgs) => {
         if (desk.tries >= limits.puts) throw new Error(none);

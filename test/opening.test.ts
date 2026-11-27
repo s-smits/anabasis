@@ -53,6 +53,24 @@ describe("what a campaign runs by", () => {
     );
   });
 
+  it("reads a successor opening written before its parent carried every field, as tuned only after a tune", () => {
+    const carriedAfter = (kind: string) =>
+      openingOf([
+        event("campaign.opened", {
+          ...opened.data,
+          parent: { campaign: "a", revised: "h", kind, carried: { spent: 2, attempts: 1, tunes: 1 } },
+        }),
+      ])?.parent?.carried;
+    expect(carriedAfter("tune")).toEqual({
+      spent: 2,
+      sinceStep: 0,
+      attempts: 1,
+      tunes: 1,
+      tunedThisEpoch: true,
+    });
+    expect(carriedAfter("repair")?.tunedThisEpoch).toBe(false);
+  });
+
   it("plans the operator's cap of promotions as its opening keeps it, and none where lifted or unnamed", () => {
     const capped = (promotions: string) =>
       event("campaign.opened", { ...opened.data, terms: { promotions } });

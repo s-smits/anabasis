@@ -189,16 +189,16 @@ export async function checkStart(
   if (target === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
 }
 
+export type Started = "writing" | "running" | "gone";
+
 export async function start(
   run: Run,
   flags: readonly string[],
   login: string | undefined,
   at: string | undefined,
-): Promise<boolean> {
+): Promise<Started> {
   const env = loginEnv(runtimeProcess.env, login);
-  if (writers(run, processes()).length > 0) {
-    throw new Error(`${run.name} is already being written in ${run.tree}`);
-  }
+  if (writers(run, processes()).length > 0) return "writing";
   const kept = keepers(run.name).length > 0 ? "and its keeper goes on" : "and has no keeper";
   const stands = `${run.name} is not running ${kept}; nothing was started`;
   const { commit, target } = await startable(run, flags, { login, at, stands });
@@ -227,7 +227,7 @@ export async function start(
     `${run.name} in ${run.tree} at ${target.slice(0, 9)}: pid ${String(child.pid)}, ${alive ? "running" : "gone"}; ${out}.err`,
   );
   if (!alive) runtimeProcess.exitCode = 1;
-  return alive;
+  return alive ? "running" : "gone";
 }
 
 function dryRun(run: Run, flags: readonly string[], env: ReturnType<typeof loginEnv>, at: string) {
@@ -248,6 +248,7 @@ function dryRun(run: Run, flags: readonly string[], env: ReturnType<typeof login
 }
 
 export function leaveKeeper(run: Run, logins: readonly string[] | undefined, waitHours: string): void {
+  if (keepers(run.name).length > 0) return;
   const out = keeperLogPath(run);
   const child = capturedSpawn(
     [
@@ -282,8 +283,9 @@ async function launchRunKeeper(
   flags: readonly string[],
   { login, at }: { login: string | undefined; at: string | undefined },
 ): Promise<void> {
-  const running = await start(run, flags, login, at);
-  if (running && keepsItself(runtimeProcess.env, login) && keepers(run.name).length === 0) {
+  const started = await start(run, flags, login, at);
+  if (started === "writing") throw new Error(`${run.name} is already being written in ${run.tree}`);
+  if (started === "running" && keepsItself(runtimeProcess.env, login)) {
     leaveKeeper(run, undefined, WAIT_HOURS);
   }
 }

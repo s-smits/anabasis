@@ -19,8 +19,8 @@ import { type RubricLane, TEXT_FILES } from "./draft.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt, wakeMessage } from "./prompt.ts";
 import { taskHistory, measured } from "./record.ts";
 import { readReviews, REVIEW_EVENT_KINDS } from "./reviews.ts";
-import { readExamTool, type ReviseRunner, reviseTool } from "./revise.ts";
-import { FROM_FILE, fromHome, type Walls } from "./shell.ts";
+import { type ReviseRunner, revisionTools } from "./revise.ts";
+import { fromHome, type Walls } from "./shell.ts";
 
 interface Terms {
   readonly id: string;
@@ -203,7 +203,7 @@ function proposeTool(desk: Desk): AgentTool {
   return tool(
     fromHome(desk.home, {
       name: "propose_tasks",
-      description: `Put task instances to the host's gate. The gate reads the shape of each package: its family, its inputs, and that the checks have what they need to run on it. No solver is put to it there. Of each it says held out, or refused with its reason. A task held out is in the exam from then on, and a comparison scores no other.${filed(desk)}`,
+      description: `Put task instances to the host's gate. The gate reads the shape of each package: its family, its inputs, and that the checks have what they need to run on it. No solver is put to it there. Of each it says held out, or refused with its reason. A task held out is in the exam from then on, and a comparison scores no other.`,
       parameters: Type.Object({
         tasks: Type.Array(GIVEN, { minItems: 1 }),
       }),
@@ -321,7 +321,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
   return tool(
     fromHome(desk.home, {
       name: "try_answer",
-      description: `Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Return an instance reference for proposing this checked content without resending it. A try enters no task in the exam. Where the checks pass, the host keeps the answer on the exam side for the Referee, for a task held with that content before or after the try. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.${filed(desk)}`,
+      description: `Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Return an instance reference for proposing this checked content without resending it. A try enters no task in the exam. Where the checks pass, the host keeps the answer on the exam side for the Referee, for a task held with that content before or after the try. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.`,
       parameters: Type.Object({
         ...SPELLED,
         answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
@@ -365,8 +365,6 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
     }),
   );
 }
-
-const filed = (desk: Desk): string => (desk.home === undefined ? "" : ` ${FROM_FILE}`);
 
 function admittedDrafts(events: readonly LogEvent[]): Task[] {
   const admissions = new Set(eventsOf(events, TASK_ADMISSION).map(({ event }) => event.data.version));
@@ -431,9 +429,7 @@ export function writing(
       exampleTool(() => [...writtenTasks(read(desk.request.log, TRACE_KINDS)), ...desk.request.tasks]),
       reviewsTool(desk),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
-      ...(request.revise === undefined
-        ? []
-        : [readExamTool(request.log), reviseTool(desk, request.revise, request.lane ?? "judged")]),
+      ...(request.revise === undefined ? [] : revisionTools(desk, request.revise, request.lane)),
     ],
     enters: "Nothing in your home enters the exam: a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",

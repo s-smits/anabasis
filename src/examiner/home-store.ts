@@ -68,9 +68,8 @@ function storeBlob(objectsDir: string, source: string): string {
     copyBlob(source, temp);
     chmodSync(temp, 0o644);
     renameSync(temp, blob);
-  } catch (error) {
+  } finally {
     rmSync(temp, { force: true });
-    if (!existsSync(blob)) throw error;
   }
   return digest;
 }

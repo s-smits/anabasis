@@ -12,7 +12,7 @@ import { askedOf, type Plan } from "#src/campaign/state.ts";
 import { type ScheduledAction, decidedLine, short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
-import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/summary.ts";
+import { campaignOf, type Handover, openSteps } from "#src/campaign/summary.ts";
 import { type EventKind, eventsOf, type LogEvent, read as readEvents } from "#src/kernel/log.ts";
 import { type Call, traced } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
@@ -108,7 +108,32 @@ function stepLine(step: Handover, now: number, called: Called): string {
   );
 }
 
-export function viewLines(name: string, campaign: Campaign, now: number, called: Called = short): string[] {
+function lineageLines(events: readonly LogEvent[]): string[] {
+  const parent = openingOf(events)?.parent ?? null;
+  const revised = eventsOf(events, "exam.revised").at(-1)?.event.data;
+  const successor = eventsOf(events, "campaign.ended").at(-1)?.event.data.successor;
+  return [
+    ...(parent === null
+      ? []
+      : [
+          row(
+            "lineage",
+            `from ${parent.campaign} (${parent.kind}, ${parent.revised.slice(0, 8)}) · carried ${dollars(parent.carried.spent)}, ${String(parent.carried.sinceStep)} since step, ${plural(parent.carried.tunes, "tune")}, ${plural(parent.lineageTasks.length, "prior task")}`,
+          ),
+        ]),
+    ...(revised === undefined || !isString(revised.kind)
+      ? []
+      : [row("revised", `${revised.kind} -> ${isString(successor) ? successor : "pending"}`)]),
+  ];
+}
+
+export function viewLines(
+  name: string,
+  events: readonly LogEvent[],
+  now: number,
+  called: Called = short,
+): string[] {
+  const campaign = campaignOf(events);
   const { supply, fails } = campaign;
   const checker =
     supply.faults === null
@@ -124,6 +149,7 @@ export function viewLines(name: string, campaign: Campaign, now: number, called:
       "setup",
       `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} awaiting label · ${String(supply.exhausted)} exhausted · ${checker} · reference: ${campaign.reference === null ? "starter" : called(campaign.reference)}`,
     ),
+    ...lineageLines(events),
     ...campaign.steps.map((step) => stepLine(step, now, called)),
     ...(fails.length === 0
       ? []
@@ -173,34 +199,15 @@ export async function view(args: readonly string[]): Promise<void> {
   const running = processes();
   const events = readEvents(run.path, lifeOf(run, running).writing ? undefined : SKIP_CLOSED);
   for (const line of await runReason(run, runState(run, events, running))) console.log(line);
-  const campaign = campaignOf(events);
   const called = calledBy(namesOf(events));
-  const parent = openingOf(events)?.parent ?? null;
-  const revised = eventsOf(events, "exam.revised").at(-1)?.event.data;
-  const successor = eventsOf(events, "campaign.ended").at(-1)?.event.data.successor;
-  const lineage = [
-    ...(parent === null
-      ? []
-      : [
-          row(
-            "lineage",
-            `from ${parent.campaign} (${parent.kind}, ${parent.revised.slice(0, 8)}) · carried ${dollars(parent.carried.spent)}, ${String(parent.carried.sinceStep)} since step, ${plural(parent.carried.tunes, "tune")}, ${plural(parent.lineageTasks.length, "prior task")}`,
-          ),
-        ]),
-    ...(revised === undefined || !isString(revised.kind)
-      ? []
-      : [row("revised", `${revised.kind} -> ${isString(successor) ? successor : "pending"}`)]),
-  ];
-  const lines = viewLines(name, campaign, Date.now(), called);
-  const open = openSteps(campaign.steps);
+  const lines = viewLines(name, events, Date.now(), called);
+  const open = openSteps(campaignOf(events).steps);
   const decided = decidedOn(events, values);
   const reads = starterReads(events);
   const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called, reads)}`);
   console.log(
     [
-      ...lines.slice(0, 2),
-      ...lineage,
-      ...lines.slice(2),
+      ...lines,
       "Climb summary",
       ...climb,
       ...barLines(events).map((bar) => `  ${bar}`),

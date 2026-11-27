@@ -37,7 +37,7 @@ import { shellQuote } from "../sandbox/isolation.ts";
 
 const FILE_BYTES = 4_000_000;
 
-export const FROM_FILE =
+const FROM_FILE =
   'Any JSON value may be given as { "from_file": "<path>" } relative to your home: .json loads as JSON, a "base64" field loads raw bytes as base64 (for .xlsx/.docx/.pdf/.sqlite/.png), and any other file loads as UTF-8 text.';
 
 export interface Wall extends Walled {
@@ -143,6 +143,7 @@ export function fromHome<Parameters extends TSchema>(
   };
   return {
     ...definition,
+    description: home === undefined ? definition.description : `${definition.description} ${FROM_FILE}`,
     prepareArguments: (spelled) => {
       // SAFETY: a call's arguments are the JSON object the provider parsed, and a file holds JSON.
       const args = expand(spelled as JsonValue) as JsonObject;

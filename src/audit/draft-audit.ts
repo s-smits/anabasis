@@ -74,33 +74,28 @@ export interface DraftAuditFinding {
   readonly error?: string;
 }
 
+type PriorAudit = Pick<DraftAuditFinding, "findings" | "probes">;
+
 export function persistedDraftDefects(
   events: readonly LogEvent[],
   revision?: string,
-): { readonly audits: number; readonly prior: DraftAuditFinding[] } {
-  const matched = eventsOf(events, "referee.draft").filter(
-    ({ event: { data } }) =>
-      (data.verdict === "defects" || data.verdict === "sound") &&
-      (revision === undefined ? !isString(data.revision) : data.revision === revision),
-  );
-  let [audits, prior]: [number, DraftAuditFinding[]] = [0, []];
+): { readonly audits: number; readonly prior: readonly PriorAudit[] } {
+  let [audits, prior]: [number, PriorAudit[]] = [0, []];
   for (const {
     event: { data },
-  } of matched) {
+  } of eventsOf(events, "referee.draft")) {
+    if (data.revision !== revision) continue;
     if (data.verdict === "sound") {
       [audits, prior] = [0, []];
-      continue;
+    } else if (data.verdict === "defects") {
+      audits += 1;
+      prior.push({
+        // SAFETY: `reviewDraft` below writes every `referee.draft` with its findings and probeRows.
+        findings: data.findings as PriorAudit["findings"],
+        // SAFETY: as above.
+        probes: data.probeRows as PriorAudit["probes"],
+      });
     }
-    audits += 1;
-    if (!Array.isArray(data.findings) || data.findings.length === 0) continue;
-    prior.push({
-      verdict: "defects",
-      // SAFETY: `referee.draft` findings and probeRows are written by `reviewDraft` below.
-      findings: data.findings as DraftAuditFinding["findings"],
-      summary: isString(data.summary) ? data.summary : "",
-      // SAFETY: as above.
-      probes: Array.isArray(data.probeRows) ? (data.probeRows as DraftAuditFinding["probes"]) : [],
-    });
   }
   return { audits, prior };
 }
@@ -438,7 +433,7 @@ function reproduces(
 }
 
 export async function replayDraftProbes(
-  prior: DraftAuditFinding,
+  prior: PriorAudit,
   target: Pick<DraftAuditCase, "contract" | "verify" | "tasks" | "controls">,
 ): Promise<{
   readonly stillBroken: readonly string[];

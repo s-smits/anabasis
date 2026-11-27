@@ -485,6 +485,10 @@ export function practiceDue(
   level: number,
 ): { readonly to: number; readonly said: string } | null {
   if (practice === null) return null;
+  const current = epochsOf(events).at(-1);
+  if (current !== undefined && current.reference !== "starter" && current.confirmed !== true) {
+    return null;
+  }
   const sets = taskSets(events);
   const released = sets.released.length;
   const seen = new Set<unknown>();

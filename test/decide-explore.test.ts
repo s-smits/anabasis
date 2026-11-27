@@ -937,6 +937,25 @@ describe("the decision table, searched", () => {
       event(PROMOTED_EVENT, { harness: "h1", from: STARTER, rests: [] }),
       ...Array.from({ length: 16 }, (_, index) => `p-${String(index + 1)}`).flatMap(heldOut),
     ];
-    expect(practiceDue(afterPromo, 6, 0.02)?.to).toBe(8);
+    expect(practiceDue(afterPromo, 6, 0.02)).toBeNull();
+    const afterPromoConfirmed: LogEvent[] = [
+      ...afterPromo,
+      event("comparison.started", { session: "g-2", old: "h1", fresh: STARTER, starter: STARTER }),
+      event(REPORTED_EVENT, {
+        session: "g-2",
+        old: "h1",
+        fresh: STARTER,
+        starter: STARTER,
+        level: 0.02,
+        setting,
+        solves: 2,
+        versions: ["p-1", "p-2", "p-3", "p-4", "p-5", "p-6"],
+        reading: "no-step",
+        scored: { differences: [-1, -1, -1, -1, -1, -1] },
+        valid: { old: [0, 0, 6], fresh: [6, 0, 0] },
+        aside: [],
+      }),
+    ];
+    expect(practiceDue(afterPromoConfirmed, 6, 0.02)?.to).toBe(8);
   });
 });

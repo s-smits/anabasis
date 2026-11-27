@@ -271,7 +271,7 @@ const examineAction =
       });
     context.examining = { session, done };
     return {
-      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}${promotedSince(turn.events) ? "; a compare waits for this session to end" : ""}. Once it ends the host releases any practice owed since the last reading.`,
+      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}${promotedSince(turn.events) ? "; a compare waits for this session to end. Once the owed starter comparison confirms, the host releases any practice owed." : ". Once it ends the host releases any practice owed since the last reading."}`,
     };
   };
 
@@ -290,7 +290,7 @@ async function releaseOnce(context: CampaignContext, cause: string, bench?: Benc
     return false;
   }
   const { turn, decided } = actionTurn(context);
-  if (decided.move === "promote" || decided.move === "end") return false;
+  if (decided.move === "promote" || decided.move === "revert" || decided.move === "end") return false;
   const comparing = (events: readonly LogEvent[]) =>
     comparisonsOf(events).some(({ reported }) => reported === null);
   if (comparing(turn.events)) return false;

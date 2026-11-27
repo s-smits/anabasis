@@ -2,63 +2,52 @@
 /**
  * Mutation oracle for a commit-r pass (step 8): syntactic mutants of high-importance owner files,
  * run against named suites that must first pass unmutated, recording which suites kill each. `list`
- * counts mutants per file. `run` appends one JSON line per mutant to `--out`, skipping recorded
- * ones so an interrupted run resumes; mutants spread over the check places (`checkPlaces`,
- * `tools/runs/host-config.ts`), one worker a slot on its own copy of the tree (`<out>.clone-<k>`,
- * or `--clones <prefix>`), running `bun test --bail` under `--timeout`, or at the one place
- * `ANA_CHECK_HOST` names (this machine for `here`) or this machine where no host is listed;
- * `--fleet` spreads over every listed host whatever `ANA_CHECK_HOST` says (`fleetPlaces`). `--jobs N` caps workers; a place that gives no
- * verdict hands its mutant back and takes no more; `--until` stops taking mutants at that time. A
- * run with no pass, fail or bail count, or one `--timeout` ends, records `null` rather than a kill.
- * `report` tabulates per-file kills across `--old` and the other suites (or solo `killed / survived
- * / unread` counts), and `--survivors` prints surviving IDs, then the unread ones a rerun must
- * bring to a verdict.
+ * counts mutants per file. `run` appends one JSON line per mutant to `--out` (or per-owner outputs
+ * in `--plan`), skipping recorded ones so an interrupted run resumes; pure deterministic suites
+ * screen via in-process mutant schemata (`mutate-schema.ts`) and remaining work spreads over check
+ * places (`mutate-pool.ts`, `tools/runs/host-config.ts`). `report` tabulates per-file kills across
+ * `--old` and the other suites (or solo `killed / survived / unread` counts), and `--survivors`
+ * prints surviving IDs, then the unread ones a rerun must bring to a verdict.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import {
-  appendFileSync,
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "#src/meta/filesystem.ts";
+import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitMaybe } from "#src/meta/git.ts";
-import { keysIf } from "#src/meta/optional-key.ts";
-import { availableParallelism, tmpdir } from "#src/meta/os.ts";
-import { basename, dirname, isAbsolute, join, relative } from "#src/meta/path.ts";
-import { capturedExecPath } from "#src/meta/process.ts";
+import { join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import {
-  checkHost,
-  checkPlaces,
-  fleetPlaces,
-  NO_VERDICT,
-  namedPlaces,
-  type Place,
-  placeEnv,
-  spread,
-} from "#tools/runs/host-config.ts";
-import { PER_TEST_WALL_MS } from "#tools/runtime/test-suite.ts";
+import { checkPlaces, fleetPlaces, namedPlaces, type Place } from "#tools/runs/host-config.ts";
 import * as ts from "typescript5";
+import {
+  BATCH_FILE,
+  cloneTree,
+  type FastWorker,
+  isAway,
+  linkModules,
+  measureCoverage,
+  routed,
+  type VerdictMap,
+} from "./mutate-exec.ts";
+import { type PoolTask, runFleetPool, UNKNOWN_SUITE_MS } from "./mutate-pool.ts";
+import { type SchemaMutant, screenFileWithSchemata } from "./mutate-schema.ts";
 
-interface Mutant {
-  readonly id: string;
-  readonly file: string;
-  readonly line: number;
-  readonly label: string;
-  readonly start: number;
-  readonly end: number;
-  readonly text: string;
-}
+type Mutant = SchemaMutant;
 
 interface Result {
   readonly id: string;
   readonly file: string;
-  readonly killed: Record<string, boolean | null>;
+  readonly killed: VerdictMap;
+}
+
+interface OwnerSpec {
+  readonly file: string;
+  readonly out: string;
+  readonly suites: Record<string, readonly string[]>;
+  readonly ids?: readonly string[];
+}
+
+interface TargetItem {
+  readonly mutant: Mutant;
+  readonly out: string;
+  readonly suites: readonly string[];
 }
 
 const SWAPS = new Map([
@@ -166,524 +155,78 @@ export function mutantsOf(root: string, file: string): Mutant[] {
 const linesOf = (path: string) =>
   existsSync(path) ? readFileSync(path, "utf8").split("\n").filter(Boolean) : [];
 
-interface Worker {
-  readonly place: Place;
-  readonly clone: string;
-  readonly local: boolean;
-}
-
-const BATCH_FILE = "test/.ana-mutate-batch.test.ts";
-const BATCH_MARKER = "__ANA_MUTANT_ROW__";
 const STAMP_FILE = ".ana-clone-stamp";
-const VERDICT_RE = /\n *\d+ (pass|fail)|\nBailed out after \d+ failures?/;
 
-const routed = ({ remote }: Place): boolean =>
-  remote !== undefined || !["", "here"].includes(checkHost()?.trim() ?? "");
-
-const isAway = (worker: Worker): boolean => !worker.local && routed(worker.place);
-
-async function verdict(worker: Worker, paths: readonly string[], seconds: number) {
-  const away = isAway(worker);
-  const wall = `--timeout=${String(PER_TEST_WALL_MS)}`;
-  const bin = away ? "bun" : capturedExecPath;
-  const run = Bun.spawn([bin, "test", "--bail", "--max-concurrency=4", wall, ...paths], {
-    cwd: worker.clone,
-    env: away
-      ? { ...Bun.env, ...placeEnv(worker.place), ANA_RUNNER_WALL: String(seconds) }
-      : { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
-    stdout: "pipe",
-    stderr: "pipe",
-    ...keysIf(!away, () => ({ timeout: seconds * 1000 })),
-  });
-  const said = (await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()])).join(
-    "",
-  );
-  const code = await run.exited;
-  if (away && NO_VERDICT.has(code)) return "elsewhere";
-  if (run.signalCode !== null) return null;
-  // A full run ends on its pass and fail counts; a run `--bail` stopped ends on the line saying so
-  // and prints no counts (Bun 1.4).
-  return VERDICT_RE.test(said) ? code !== 0 : null;
-}
-
-function parseUncovered(root: string, lcov: string, targets: ReadonlySet<string>): Map<string, Set<number>> {
-  const zero = new Map<string, Set<number>>();
-  let current: string | null = null;
-  for (const row of lcov.split("\n")) {
-    if (row.startsWith("SF:")) {
-      const raw = row.slice(3).trim();
-      const norm = isAbsolute(raw) ? relative(root, raw) : raw;
-      current = targets.has(norm) ? norm : null;
-    } else if (current !== null && row.startsWith("DA:")) {
-      const [lineNo = "", hits = ""] = row.slice(3).split(",");
-      if (hits === "0") {
-        const set = zero.get(current) ?? new Set<number>();
-        set.add(Number(lineNo));
-        zero.set(current, set);
-      }
-    } else if (row === "end_of_record") {
-      current = null;
-    }
+function loadSpecs(args: CommandArgs, files: readonly string[]): readonly OwnerSpec[] {
+  const planPath = args.value("plan");
+  if (planPath !== null) {
+    // SAFETY: `--plan` is the JSON owner list written by `nightly.ts`.
+    return JSON.parse(readFileSync(planPath, "utf8")) as OwnerSpec[];
   }
-  return zero;
-}
-
-async function coveragePrune(
-  root: string,
-  files: readonly string[],
-  suites: ReadonlyMap<string, readonly string[]>,
-  seconds: number,
-): Promise<Map<string, Map<string, Set<number>>>> {
-  const dir = mkdtempSync(join(tmpdir(), "ana-cov-"));
-  const targets = new Set(files);
-  const entries = [...suites.entries()];
-  const uncovered = new Map<string, Map<string, Set<number>>>();
-  let index = 0;
-  const runOne = async (): Promise<void> => {
-    for (;;) {
-      const current = entries[index];
-      index += 1;
-      if (current === undefined) return;
-      const [name, paths] = current;
-      const outDir = join(dir, String(index));
-      mkdirSync(outDir, { recursive: true });
-      const wall = `--timeout=${String(PER_TEST_WALL_MS)}`;
-      const run = Bun.spawn(
-        [
-          capturedExecPath,
-          "test",
-          "--bail",
-          "--max-concurrency=4",
-          wall,
-          "--coverage",
-          "--coverage-reporter=lcov",
-          `--coverage-dir=${outDir}`,
-          ...paths,
-        ],
-        {
-          cwd: root,
-          env: { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: seconds * 1000,
-        },
-      );
-      const [said, code] = await Promise.all([
-        Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()]).then((parts) =>
-          parts.join(""),
-        ),
-        run.exited,
-      ]);
-      if (run.signalCode !== null || code !== 0 || !VERDICT_RE.test(said)) continue;
-      const lcovPath = join(outDir, "lcov.info");
-      if (existsSync(lcovPath)) {
-        uncovered.set(name, parseUncovered(root, readFileSync(lcovPath, "utf8"), targets));
-      }
-    }
-  };
-  try {
-    await Promise.all(Array.from({ length: Math.min(availableParallelism(), entries.length) }, runOne));
-    return uncovered;
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-interface BatchPlan {
-  readonly mutant: Mutant;
-  readonly active: readonly string[];
-}
-
-function batchDriverSource(
-  plans: readonly BatchPlan[],
-  suites: ReadonlyMap<string, readonly string[]>,
-  opts: { readonly stopAtKill: boolean; readonly seconds: number; readonly deadline: number },
-): string {
-  const suiteList = [...suites.entries()];
-  const payload = JSON.stringify({
-    plans,
-    suites: suiteList,
-    stopAtKill: opts.stopAtKill,
-    seconds: opts.seconds,
-    deadline: Number.isFinite(opts.deadline) ? opts.deadline : null,
-    perTestWall: PER_TEST_WALL_MS,
-  });
-  const totalMs = Math.min(3_600_000, (opts.seconds * Math.max(1, plans.length) + 60) * 1000);
-  return `import { it } from "bun:test";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-const cfg = ${payload};
-const re = ${VERDICT_RE.toString()};
-const root = process.cwd();
-const originals = new Map();
-for (const { mutant } of cfg.plans) {
-  if (!originals.has(mutant.file)) originals.set(mutant.file, readFileSync(mutant.file, "utf8"));
-}
-async function runIn(dir, plan) {
-  const { mutant, active } = plan;
-  const activeSet = new Set(active);
-  const original = originals.get(mutant.file) ?? "";
-  writeFileSync(join(dir, mutant.file), original.slice(0, mutant.start) + mutant.text + original.slice(mutant.end));
-  const killed = {};
-  try {
-    for (const [name, paths] of cfg.suites) {
-      if (!activeSet.has(name)) {
-        killed[name] = false;
-        continue;
-      }
-      if (cfg.stopAtKill && Object.values(killed).some(Boolean)) {
-        killed[name] = null;
-        continue;
-      }
-      const run = Bun.spawn(
-        [process.execPath, "test", "--bail", "--max-concurrency=4", "--timeout=" + String(cfg.perTestWall), ...paths],
-        {
-          cwd: dir,
-          env: { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: cfg.seconds * 1000,
-        },
-      );
-      const [stdout, stderr, code] = await Promise.all([
-        new Response(run.stdout).text(),
-        new Response(run.stderr).text(),
-        run.exited,
-      ]);
-      const said = stdout + stderr;
-      killed[name] = run.signalCode !== null ? null : re.test(said) ? code !== 0 : null;
-    }
-  } finally {
-    writeFileSync(join(dir, mutant.file), original);
-  }
-  const { id, file, line, label } = mutant;
-  console.log(${JSON.stringify(BATCH_MARKER)} + JSON.stringify({ id, file, line, label, killed }));
-}
-it("mutate batch", async () => {
-  const lanes = Math.min(2, cfg.plans.length);
-  const dirs = [root];
-  const tempDirs = [];
-  for (let i = 1; i < lanes; i += 1) {
-    const copy = mkdtempSync(join(tmpdir(), "ana-m-"));
-    cpSync(root, copy, { recursive: true, filter: (p) => basename(p) !== "node_modules" && basename(p) !== ".git" });
-    if (existsSync(join(root, "node_modules"))) symlinkSync(join(root, "node_modules"), join(copy, "node_modules"));
-    if (existsSync(join(root, ".git"))) symlinkSync(join(root, ".git"), join(copy, ".git"));
-    dirs.push(copy);
-    tempDirs.push(copy);
-  }
-  let next = 0;
-  try {
-    await Promise.all(
-      dirs.map(async (dir) => {
-        for (;;) {
-          if (cfg.deadline !== null && Date.now() >= cfg.deadline) return;
-          const plan = cfg.plans[next];
-          next += 1;
-          if (plan === undefined) return;
-          await runIn(dir, plan);
-        }
-      }),
-    );
-  } finally {
-    for (const copy of tempDirs) rmSync(copy, { recursive: true, force: true });
-  }
-}, ${String(totalMs)});
-`;
-}
-
-async function runBatch(
-  worker: Worker,
-  plans: readonly BatchPlan[],
-  suites: ReadonlyMap<string, readonly string[]>,
-  opts: { readonly stopAtKill: boolean; readonly seconds: number; readonly deadline: number },
-): Promise<{
-  readonly rows: (Result & { readonly line: number; readonly label: string })[];
-  readonly dropped: boolean;
-}> {
-  const driverPath = join(worker.clone, BATCH_FILE);
-  mkdirSync(dirname(driverPath), { recursive: true });
-  writeFileSync(driverPath, batchDriverSource(plans, suites, opts));
-  const batchSeconds = Math.min(3600, opts.seconds * Math.max(1, plans.length) + 60);
-  const away = isAway(worker);
-  try {
-    const run = Bun.spawn([away ? "bun" : capturedExecPath, "test", BATCH_FILE], {
-      cwd: worker.clone,
-      env: away
-        ? { ...Bun.env, ...placeEnv(worker.place), ANA_RUNNER_WALL: String(batchSeconds) }
-        : { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
-      stdout: "pipe",
-      stderr: "pipe",
-      ...keysIf(!away, () => ({ timeout: batchSeconds * 1000 })),
-    });
-    const [stdout, code] = await Promise.all([new Response(run.stdout).text(), run.exited]);
-    const rows = stdout
-      .split("\n")
-      .filter((line) => line.includes(BATCH_MARKER))
-      .map((line) => {
-        const text = line.slice(line.indexOf(BATCH_MARKER) + BATCH_MARKER.length);
-        // SAFETY: every marked line was emitted by `batchDriverSource` above.
-        return JSON.parse(text) as Result & { readonly line: number; readonly label: string };
-      });
-    return { rows, dropped: away && NO_VERDICT.has(code) };
-  } finally {
-    rmSync(driverPath, { force: true });
-  }
-}
-
-async function killsOf(
-  seat: Worker,
-  plan: BatchPlan,
-  opts: {
-    readonly originals: ReadonlyMap<string, string>;
-    readonly suites: ReadonlyMap<string, readonly string[]>;
-    readonly stopAtKill: boolean;
-    readonly seconds: number;
-  },
-): Promise<Record<string, boolean | null> | "elsewhere"> {
-  const { mutant, active } = plan;
-  const activeSet = new Set(active);
-  const original = opts.originals.get(mutant.file) ?? "";
-  writeFileSync(
-    join(seat.clone, mutant.file),
-    original.slice(0, mutant.start) + mutant.text + original.slice(mutant.end),
-  );
-  try {
-    const killed: Record<string, boolean | null> = {};
-    for (const [name, paths] of opts.suites) {
-      if (!activeSet.has(name)) {
-        killed[name] = false;
-        continue;
-      }
-      const stopped = opts.stopAtKill && Object.values(killed).some(Boolean);
-      const said = stopped ? null : await verdict(seat, paths, opts.seconds);
-      if (said === "elsewhere") return said;
-      killed[name] = said;
-    }
-    return killed;
-  } finally {
-    writeFileSync(join(seat.clone, mutant.file), original);
-  }
-}
-
-interface WaveOut {
-  readonly rows: Map<string, Record<string, boolean | null>>;
-  readonly refused: readonly string[];
-  readonly unrun: number;
-}
-
-async function dispatchWave(opts: {
-  readonly places: readonly Place[];
-  readonly workers: readonly Worker[];
-  readonly plans: readonly BatchPlan[];
-  readonly suites: ReadonlyMap<string, readonly string[]>;
-  readonly originals: ReadonlyMap<string, string>;
-  readonly batchCap: number;
-  readonly stopAtKill: boolean;
-  readonly seconds: number;
-  readonly deadline: number;
-  readonly skipLocalQualify: boolean;
-}): Promise<WaveOut> {
-  const { places, workers, plans, suites, originals, batchCap, stopAtKill, seconds, deadline } = opts;
-  const localOnly =
-    places[0] !== undefined && workers[0]?.local === true && plans.length <= places[0].slots
-      ? [places[0]]
-      : places;
-  const activeWorkers = localOnly.length === 1 ? workers.slice(0, localOnly[0]?.slots ?? 0) : workers;
-  const activeSuites = new Map(
-    [...suites.entries()].filter(([name]) => plans.some((plan) => plan.active.includes(name))),
-  );
-  const useBatch = batchCap > 1 && activeWorkers.some(isAway);
-  const chunkSize = useBatch
-    ? Math.max(1, Math.min(batchCap, Math.ceil(plans.length / activeWorkers.length)))
-    : 1;
-  const chunks: BatchPlan[][] = [];
-  for (let at = 0; at < plans.length; at += chunkSize) chunks.push(plans.slice(at, at + chunkSize));
-  const rows = new Map<string, Record<string, boolean | null>>();
-  const worker = (index: number): Worker => {
-    const seat = activeWorkers[index];
-    if (seat === undefined) throw new Error(`no copy for seat ${String(index)}`);
-    return seat;
-  };
-  const { unrun, refused } = await spread(localOnly, chunks, {
-    qualify: async ({ index }) =>
-      opts.skipLocalQualify && !isAway(worker(index)) ? null : unfit(worker(index), activeSuites, seconds),
-    halt: () => Date.now() >= deadline,
-    run: async (chunk, { index }) => {
-      const pending = chunk.filter(({ mutant }) => !rows.has(mutant.id));
-      if (pending.length === 0) return "done";
-      const seat = worker(index);
-      if (useBatch && isAway(seat)) {
-        const { rows: got, dropped } = await runBatch(seat, pending, suites, {
-          stopAtKill,
-          seconds,
-          deadline,
-        });
-        for (const row of got) if (!rows.has(row.id)) rows.set(row.id, row.killed);
-        if (dropped) {
-          console.error(`${seat.place.remote ?? "here"} gave no verdict, so takes no more mutants`);
-          return "elsewhere";
-        }
-        return "done";
-      }
-      for (const plan of pending) {
-        if (Date.now() >= deadline) break;
-        const killed = await killsOf(seat, plan, { originals, suites, stopAtKill, seconds });
-        if (killed === "elsewhere") {
-          console.error(`${seat.place.remote ?? "here"} gave no verdict, so takes no more mutants`);
-          return "elsewhere";
-        }
-        rows.set(plan.mutant.id, killed);
-      }
-      return "done";
-    },
-  });
-  const left = unrun.flat().filter(({ mutant }) => !rows.has(mutant.id)).length;
-  return { rows, refused, unrun: left };
-}
-
-async function planWave(
-  root: string,
-  files: readonly string[],
-  mutants: readonly Mutant[],
-  suites: ReadonlyMap<string, readonly string[]>,
-  opts: { readonly prune: boolean; readonly minForPrune: number; readonly seconds: number },
-): Promise<{
-  readonly plans: BatchPlan[];
-  readonly skipped: Map<string, Record<string, boolean | null>>;
-  readonly pruned: boolean;
-}> {
-  const names = [...suites.keys()];
-  const uncovered =
-    opts.prune && mutants.length >= opts.minForPrune
-      ? await coveragePrune(root, files, suites, opts.seconds)
-      : null;
-  const plans: BatchPlan[] = [];
-  const skipped = new Map<string, Record<string, boolean | null>>();
-  for (const mutant of mutants) {
-    const active =
-      uncovered === null
-        ? names
-        : names.filter((name) => uncovered.get(name)?.get(mutant.file)?.has(mutant.line) !== true);
-    if (active.length === 0) {
-      skipped.set(mutant.id, Object.fromEntries(names.map((name) => [name, false] as const)));
-    } else {
-      plans.push({ mutant, active });
-    }
-  }
-  return { plans, skipped, pruned: uncovered !== null };
-}
-
-const EMPTY_WAVE: WaveOut = { rows: new Map(), refused: [], unrun: 0 };
-
-async function runMutants(args: CommandArgs, root: string, files: readonly string[]): Promise<void> {
   const out = args.required("out");
-  const suites = new Map(
-    // SAFETY: the suites file is the caller's own map of a suite's name to its test paths.
-    Object.entries(JSON.parse(readFileSync(args.required("suites"), "utf8")) as Record<string, string[]>),
-  );
+  // SAFETY: the suites file is the caller's own map of a suite's name to its test paths.
+  const suites = JSON.parse(readFileSync(args.required("suites"), "utf8")) as Record<string, string[]>;
   const only = args.value("only");
-  const wanted = only === null ? null : new Set(linesOf(only));
-  // SAFETY: every line of `out` is one this script appended, a `Result`.
-  const done = new Set(linesOf(out).map((line) => (JSON.parse(line) as Result).id));
-  const todo = files
-    .flatMap((file) => mutantsOf(root, file))
-    .filter(({ id }) => !done.has(id) && (wanted?.has(id) ?? true));
-  const originals = new Map(files.map((file) => [file, readFileSync(join(root, file), "utf8")]));
-  const seconds = args.int("timeout") ?? 300;
-  const until = args.value("until");
-  const deadline = until === null ? Number.POSITIVE_INFINITY : Date.parse(until);
-  if (Number.isNaN(deadline)) return args.die(`--until ${String(until)} is not a time`);
-  const ran = (count: number) =>
-    console.log(`${String(count)} mutants run, ${String(done.size - count)} held before`);
-  if (todo.length === 0) return ran(0);
-  const stopAtKill = args.flag("stop-at-kill");
-  const prune = args.flag("prune");
-  const batchCap = Math.max(1, args.int("batch") ?? 1);
-  const entries = [...suites.entries()];
-  const split = prune && stopAtKill && entries.length >= 2 ? Math.ceil(entries.length / 2) : entries.length;
-  const firstSuites = new Map(entries.slice(0, split));
-  const restSuites = new Map(entries.slice(split));
-  const firstPlan = await planWave(root, files, todo, firstSuites, { prune, minForPrune: 5, seconds });
-  const pool =
-    firstPlan.plans.length > 0 || restSuites.size > 0 ? workersFor(args, root, out, originals) : null;
-  let read = 0;
-  const record = (mutant: Mutant, killed: Record<string, boolean | null>) => {
-    const { id, file, line, label } = mutant;
-    appendFileSync(out, `${JSON.stringify({ id, file, line, label, killed })}\n`);
-    done.add(id);
-    read += 1;
-  };
-  const firstWave =
-    firstPlan.plans.length === 0 || pool === null
-      ? EMPTY_WAVE
-      : await dispatchWave({
-          ...pool,
-          plans: firstPlan.plans,
-          suites: firstSuites,
-          originals,
-          batchCap,
-          stopAtKill,
-          seconds,
-          deadline,
-          skipLocalQualify: firstPlan.pruned,
-        });
-  if (pool !== null && firstWave.refused.length === pool.places.length) {
-    return args.die(firstWave.refused.join("\n"));
-  }
-  for (const why of firstWave.refused) console.error(`${why}; it takes no mutants`);
-  const firstById = new Map([...firstPlan.skipped, ...firstWave.rows]);
-  const survivors: Mutant[] = [];
-  for (const mutant of todo) {
-    const killed = firstById.get(mutant.id);
-    if (killed === undefined) continue;
-    if (restSuites.size === 0 || Object.values(killed).some(Boolean)) {
-      const restNull = Object.fromEntries([...restSuites.keys()].map((name) => [name, null] as const));
-      record(mutant, { ...killed, ...restNull });
-    } else {
-      survivors.push(mutant);
+  const ids = only === null ? undefined : linesOf(only);
+  return files.map((file) => (ids === undefined ? { file, out, suites } : { file, out, suites, ids }));
+}
+
+function collectTargets(
+  root: string,
+  specs: readonly OwnerSpec[],
+): {
+  readonly originals: Map<string, string>;
+  readonly allSuites: Map<string, readonly string[]>;
+  readonly todo: TargetItem[];
+  readonly heldBefore: number;
+} {
+  const originals = new Map<string, string>();
+  const doneByOut = new Map<string, Set<string>>();
+  const allSuites = new Map<string, readonly string[]>();
+  const todo: TargetItem[] = [];
+  for (const spec of specs) {
+    if (!originals.has(spec.file)) originals.set(spec.file, readFileSync(join(root, spec.file), "utf8"));
+    let seen = doneByOut.get(spec.out);
+    if (seen === undefined) {
+      // SAFETY: every line of `spec.out` is one this script appended, a `Result`.
+      seen = new Set(linesOf(spec.out).map((line) => (JSON.parse(line) as Result).id));
+      doneByOut.set(spec.out, seen);
+    }
+    const entries = Object.entries(spec.suites);
+    const names = entries.map(([name]) => name);
+    for (const [name, paths] of entries) allSuites.set(name, paths);
+    const wanted =
+      spec.ids === undefined ? null : new Set(spec.ids.filter((id) => id.startsWith(`${spec.file}:`)));
+    const current = mutantsOf(root, spec.file);
+    if (wanted !== null && wanted.size > 0) {
+      const currentIds = new Set(current.map((mutant) => mutant.id));
+      const stale = [...wanted].filter((id) => !currentIds.has(id)).length;
+      if (stale > 0) {
+        console.error(
+          `stale --only IDs in ${spec.file}: ${String(stale)}/${String(wanted.size)} matched no current mutant (code moved since recorded)`,
+        );
+      }
+    }
+    for (const mutant of current) {
+      if (!seen.has(mutant.id) && (wanted?.has(mutant.id) ?? true)) {
+        todo.push({ mutant, out: spec.out, suites: names });
+      }
     }
   }
-  let left = firstWave.unrun;
-  if (survivors.length > 0 && restSuites.size > 0 && pool !== null) {
-    const restPlan = await planWave(root, files, survivors, restSuites, { prune, minForPrune: 3, seconds });
-    const restWave =
-      restPlan.plans.length === 0
-        ? EMPTY_WAVE
-        : await dispatchWave({
-            ...pool,
-            plans: restPlan.plans,
-            suites: restSuites,
-            originals,
-            batchCap,
-            stopAtKill,
-            seconds,
-            deadline,
-            skipLocalQualify: restPlan.pruned,
-          });
-    if (restWave.refused.length === pool.places.length) return args.die(restWave.refused.join("\n"));
-    for (const why of restWave.refused) console.error(`${why}; it takes no mutants`);
-    const restById = new Map([...restPlan.skipped, ...restWave.rows]);
-    for (const mutant of survivors) {
-      const part1 = firstById.get(mutant.id);
-      const part2 = restById.get(mutant.id);
-      if (part1 !== undefined && part2 !== undefined) record(mutant, { ...part1, ...part2 });
-    }
-    left += restWave.unrun;
-  }
-  ran(read);
-  if (left > 0) {
-    const why = Date.now() >= deadline ? ` at ${String(until)}` : ", since no place gave a verdict";
-    args.die(`${String(left)} mutants left unrun${why}; run again`);
-  }
+  const heldBefore = [...doneByOut.values()].reduce((sum, set) => sum + set.size, 0);
+  return { originals, allSuites, todo, heldBefore };
 }
 
 function workersFor(
   args: CommandArgs,
   root: string,
-  out: string,
+  clonePrefix: string,
   originals: ReadonlyMap<string, string>,
-): { places: readonly Place[]; workers: Worker[] } {
+): {
+  places: readonly Place[];
+  workers: FastWorker[];
+  prepare: (seats: readonly FastWorker[]) => Promise<void>;
+} {
   let places: readonly Place[] = [];
   try {
     places = (args.flag("fleet") ? fleetPlaces : checkPlaces)(root, args.int("jobs") ?? undefined);
@@ -702,47 +245,290 @@ function workersFor(
     .flatMap((place) => Array.from({ length: place.slots }, () => place))
     .map((place, index) => ({
       place,
-      clone: `${args.value("clones") ?? out}.clone-${String(index)}`,
+      clone: `${clonePrefix}.clone-${String(index)}`,
       local: place === localPlace || !routed(place),
     }));
-  const rootModules = join(root, "node_modules");
-  for (const { local, clone } of workers) {
+  const ready = new Set<string>();
+  const prepareOne = async ({ local, clone }: FastWorker): Promise<void> => {
+    if (ready.has(clone)) return;
+    ready.add(clone);
     const stampPath = join(clone, STAMP_FILE);
     const reusable = stamp !== null && existsSync(stampPath) && readFileSync(stampPath, "utf8") === stamp;
     if (!reusable) {
-      cpSync(root, clone, {
-        recursive: true,
-        force: true,
-        filter: (path) => basename(path) !== "node_modules",
-      });
+      await cloneTree(root, clone);
       if (stamp !== null) writeFileSync(stampPath, stamp);
     }
-    const cloneModules = join(clone, "node_modules");
-    if (local && existsSync(rootModules) && !existsSync(cloneModules)) {
-      symlinkSync(rootModules, cloneModules);
-    }
-    if (!local && existsSync(cloneModules)) rmSync(cloneModules, { recursive: true, force: true });
+    linkModules(root, clone, local ? "local" : "remote");
     rmSync(join(clone, BATCH_FILE), { force: true });
     for (const [file, text] of originals) writeFileSync(join(clone, file), text);
-  }
-  return { places, workers };
+  };
+  return {
+    places,
+    workers,
+    prepare: async (seats) => {
+      await Promise.all(seats.map(prepareOne));
+    },
+  };
 }
 
-async function unfit(
-  worker: Worker,
-  suites: ReadonlyMap<string, readonly string[]>,
-  seconds: number,
-): Promise<string | null> {
-  const all = [...new Set([...suites.values()].flat())];
-  if (all.length === 0) return "no suites given";
-  if (suites.size > 1 && (await verdict(worker, all, seconds)) === false) return null;
-  for (const [name, paths] of suites) {
-    const said = await verdict(worker, paths, seconds);
-    if (said === false) continue;
-    const at = worker.place.remote === undefined ? "" : ` on ${worker.place.remote}`;
-    return `baseline suite "${name}" did not pass unmutated (${said === true ? "failed" : "no verdict"})${at}`;
+type KillMode = "stop-at-kill" | "all";
+
+interface PendingItem {
+  readonly item: TargetItem;
+  readonly rest: readonly string[];
+}
+
+function finalizeRow(
+  names: readonly string[],
+  prior: ReadonlyMap<string, boolean | null> | undefined,
+  raw: Readonly<VerdictMap>,
+  mode: KillMode,
+): VerdictMap {
+  const out = new Map<string, boolean | null>();
+  const killed = [...(prior?.values() ?? []), ...Object.values(raw)].some(Boolean);
+  for (const name of names) {
+    if (name in raw) out.set(name, raw[name] ?? null);
+    else if (prior?.has(name) === true) out.set(name, prior.get(name) ?? null);
+    else out.set(name, mode === "stop-at-kill" && killed ? null : false);
   }
-  return null;
+  return Object.fromEntries(out);
+}
+
+async function runSchemataStage(opts: {
+  readonly root: string;
+  readonly todo: readonly TargetItem[];
+  readonly originals: ReadonlyMap<string, string>;
+  readonly allSuites: ReadonlyMap<string, readonly string[]>;
+  readonly seconds: number;
+  readonly stopAtKill: boolean;
+  readonly concurrency: number;
+}) {
+  const priorById = new Map<string, Map<string, boolean | null>>();
+  const localQualified = new Set<string>();
+  const durations = new Map<string, number>();
+  const byFile = Map.groupBy(opts.todo, (item) => item.mutant.file);
+  for (const [file, items] of byFile) {
+    const suiteOrder = [...new Set(items.flatMap((item) => item.suites))];
+    const res = await screenFileWithSchemata({
+      root: opts.root,
+      file,
+      source: opts.originals.get(file) ?? "",
+      mutants: items.map((item) => item.mutant),
+      suites: opts.allSuites,
+      suiteOrder,
+      capSeconds: opts.seconds,
+      stopAtKill: opts.stopAtKill,
+      concurrency: opts.concurrency,
+    });
+    for (const [name, ms] of res.durations) durations.set(name, ms);
+    for (const [id, row] of res.verdicts) priorById.set(id, row);
+  }
+  return { priorById, localQualified, durations };
+}
+
+function splitAfterSchema(
+  todo: readonly TargetItem[],
+  priorById: ReadonlyMap<string, Map<string, boolean | null>>,
+  mode: KillMode,
+  record: (item: TargetItem, killed: VerdictMap) => void,
+): PendingItem[] {
+  const remaining: PendingItem[] = [];
+  for (const item of todo) {
+    const prior = priorById.get(item.mutant.id);
+    if (prior !== undefined && mode === "stop-at-kill" && [...prior.values()].includes(true)) {
+      record(item, finalizeRow(item.suites, prior, {}, "stop-at-kill"));
+      continue;
+    }
+    const rest = prior === undefined ? item.suites : item.suites.filter((name) => !prior.has(name));
+    if (rest.length === 0) record(item, finalizeRow(item.suites, prior, {}, mode));
+    else remaining.push({ item, rest });
+  }
+  return remaining;
+}
+
+function buildPoolTasks(opts: {
+  readonly afterSchema: readonly PendingItem[];
+  readonly priorById: ReadonlyMap<string, Map<string, boolean | null>>;
+  readonly uncovered: ReadonlyMap<string, Map<string, Set<number>>>;
+  readonly durations: ReadonlyMap<string, number>;
+  readonly runCov: boolean;
+  readonly mode: KillMode;
+  readonly record: (item: TargetItem, killed: VerdictMap) => void;
+}): PoolTask[] {
+  const tasks: PoolTask[] = [];
+  for (const { item, rest } of opts.afterSchema) {
+    const active = opts.runCov
+      ? rest.filter((name) => opts.uncovered.get(name)?.get(item.mutant.file)?.has(item.mutant.line) !== true)
+      : rest;
+    if (active.length === 0) {
+      opts.record(item, finalizeRow(item.suites, opts.priorById.get(item.mutant.id), {}, opts.mode));
+    } else {
+      const weightMs = active.reduce((sum, name) => sum + (opts.durations.get(name) ?? UNKNOWN_SUITE_MS), 0);
+      tasks.push({ key: item.mutant.id, plan: { mutant: item.mutant, active }, weightMs });
+    }
+  }
+  return tasks;
+}
+
+async function dispatchRemaining(opts: {
+  readonly args: CommandArgs;
+  readonly root: string;
+  readonly pool: ReturnType<typeof workersFor>;
+  readonly afterSchema: readonly PendingItem[];
+  readonly priorById: ReadonlyMap<string, Map<string, boolean | null>>;
+  readonly localQualified: Set<string>;
+  readonly durations: Map<string, number>;
+  readonly originals: ReadonlyMap<string, string>;
+  readonly allSuites: ReadonlyMap<string, readonly string[]>;
+  readonly prune: boolean;
+  readonly cacheDir: string | null;
+  readonly batchCap: number;
+  readonly mode: KillMode;
+  readonly seconds: number;
+  readonly deadline: number;
+  readonly record: (item: TargetItem, killed: VerdictMap) => void;
+}): Promise<number> {
+  const leadNeeded = new Set(
+    opts.afterSchema.flatMap(({ rest }) => {
+      if (opts.mode !== "stop-at-kill" || rest.length < 2) return rest;
+      const keep = Math.min(rest.length - 1, Math.max(1, Math.floor((rest.length * 2) / 3)));
+      return rest.slice(0, keep);
+    }),
+  );
+  const covSuites = new Map(
+    [...opts.allSuites.entries()].filter(([name]) => leadNeeded.has(name) && !opts.localQualified.has(name)),
+  );
+  const runCov =
+    opts.prune && (opts.afterSchema.length >= 5 || (opts.cacheDir !== null && existsSync(opts.cacheDir)));
+  const localSlots = opts.pool.workers[0]?.local === true ? (opts.pool.places[0]?.slots ?? 1) : 0;
+  const stayLocal = localSlots > 0 && opts.afterSchema.length <= localSlots;
+  const activeWorkers = stayLocal ? opts.pool.workers.slice(0, localSlots) : opts.pool.workers;
+  const [cov] = await Promise.all([
+    runCov
+      ? measureCoverage(opts.root, covSuites, [...opts.originals.keys()], {
+          seconds: opts.seconds,
+          cacheDir: opts.cacheDir,
+        })
+      : Promise.resolve({
+          uncovered: new Map<string, Map<string, Set<number>>>(),
+          covered: new Map<string, Map<string, number>>(),
+          passed: new Set<string>(),
+          durations: new Map<string, number>(),
+        }),
+    opts.pool.prepare(activeWorkers),
+  ]);
+  for (const name of cov.passed) opts.localQualified.add(name);
+  for (const [name, ms] of cov.durations) opts.durations.set(name, ms);
+  const tasks = buildPoolTasks({
+    afterSchema: opts.afterSchema,
+    priorById: opts.priorById,
+    uncovered: cov.uncovered,
+    durations: opts.durations,
+    runCov,
+    mode: opts.mode,
+    record: opts.record,
+  });
+  if (tasks.length === 0) return 0;
+  const byId = new Map(opts.afterSchema.map(({ item }) => [item.mutant.id, item] as const));
+  const finalStayLocal = localSlots > 0 && tasks.length <= localSlots;
+  const finalWorkers = finalStayLocal ? opts.pool.workers.slice(0, localSlots) : opts.pool.workers;
+  if (!finalStayLocal && stayLocal) await opts.pool.prepare(finalWorkers);
+  const { refused, unrun } = await runFleetPool({
+    activeWorkers: finalWorkers,
+    tasks,
+    suites: opts.allSuites,
+    originals: opts.originals,
+    durations: opts.durations,
+    covered: cov.covered,
+    localQualified: opts.localQualified,
+    batchCap: opts.batchCap,
+    stopAtKill: opts.mode === "stop-at-kill",
+    seconds: opts.seconds,
+    deadline: opts.deadline,
+    onResult: (task, raw) => {
+      const item = byId.get(task.plan.mutant.id);
+      if (item !== undefined) {
+        opts.record(item, finalizeRow(item.suites, opts.priorById.get(item.mutant.id), raw, opts.mode));
+      }
+    },
+  });
+  if (refused.length >= (finalStayLocal ? 1 : opts.pool.places.length)) opts.args.die(refused.join("\n"));
+  for (const why of refused) console.error(`${why}; it takes no mutants`);
+  return unrun;
+}
+
+async function runMutants(args: CommandArgs, root: string, files: readonly string[]): Promise<void> {
+  const specs = loadSpecs(args, files);
+  const stopAtKill = args.flag("stop-at-kill");
+  const mode: KillMode = stopAtKill ? "stop-at-kill" : "all";
+  const prune = args.flag("prune");
+  const cacheDir = args.value("cov-cache");
+  const batchCap = Math.max(1, args.int("batch") ?? 1);
+  const seconds = args.int("timeout") ?? 300;
+  const until = args.value("until");
+  const deadline = until === null ? Number.POSITIVE_INFINITY : Date.parse(until);
+  if (Number.isNaN(deadline)) return args.die(`--until ${String(until)} is not a time`);
+  const { originals, allSuites, todo, heldBefore } = collectTargets(root, specs);
+  if (todo.length === 0) {
+    console.log(`0 mutants run, ${String(heldBefore)} held before`);
+    return;
+  }
+  const pool = workersFor(
+    args,
+    root,
+    args.value("clones") ?? specs[0]?.out ?? join(root, ".ana-mutate"),
+    originals,
+  );
+  let read = 0;
+  const record = (item: TargetItem, killed: VerdictMap) => {
+    const { id, file, line, label } = item.mutant;
+    appendFileSync(item.out, `${JSON.stringify({ id, file, line, label, killed })}\n`);
+    read += 1;
+  };
+  const localCount = pool.workers.filter((seat) => !isAway(seat)).length;
+  const useSchemata = prune && stopAtKill && localCount > 0 && Date.now() < deadline;
+  const schema = useSchemata
+    ? await runSchemataStage({
+        root,
+        todo,
+        originals,
+        allSuites,
+        seconds,
+        stopAtKill,
+        concurrency: localCount,
+      })
+    : {
+        priorById: new Map<string, Map<string, boolean | null>>(),
+        localQualified: new Set<string>(),
+        durations: new Map<string, number>(),
+      };
+  const afterSchema = splitAfterSchema(todo, schema.priorById, mode, record);
+  const left =
+    afterSchema.length === 0
+      ? 0
+      : await dispatchRemaining({
+          args,
+          root,
+          pool,
+          afterSchema,
+          priorById: schema.priorById,
+          localQualified: schema.localQualified,
+          durations: schema.durations,
+          originals,
+          allSuites,
+          prune,
+          cacheDir,
+          batchCap,
+          mode,
+          seconds,
+          deadline,
+          record,
+        });
+  console.log(`${String(read)} mutants run, ${String(heldBefore)} held before`);
+  if (left > 0) {
+    const why = Date.now() >= deadline ? ` at ${String(until)}` : ", since no place gave a verdict";
+    args.die(`${String(left)} mutants left unrun${why}; run again`);
+  }
 }
 
 function report(args: CommandArgs, results: readonly string[]): void {
@@ -754,7 +540,7 @@ function report(args: CommandArgs, results: readonly string[]): void {
       ? ({ killed }: Result) => {
           const verdicts = Object.values(killed);
           if (verdicts.includes(true)) return "killed";
-          return verdicts.includes(false) ? "survived" : "unread";
+          return verdicts.length > 0 && verdicts.every((one) => one === false) ? "survived" : "unread";
         }
       : ({ killed }: Result) => {
           const others = new Set(
@@ -780,7 +566,7 @@ function report(args: CommandArgs, results: readonly string[]): void {
 if (import.meta.main) {
   const usage = [
     "usage: mutate.ts list <worktree> <file>...",
-    "       mutate.ts run <worktree> <file>... --out <jsonl> --suites <json> [--fleet] [--jobs N] [--local N] [--batch N] [--prune] [--only <ids>] [--stop-at-kill] [--timeout s] [--until <time>] [--clones <prefix>]",
+    "       mutate.ts run <worktree> [<file>...] --out <jsonl> --suites <json> | --plan <json> [--fleet] [--jobs N] [--local N] [--batch N] [--prune] [--cov-cache <dir>] [--only <ids>] [--stop-at-kill] [--timeout s] [--until <time>] [--clones <prefix>]",
     "       mutate.ts report <jsonl>... [--old <suite>] [--survivors]",
   ].join("\n");
   await runCommand(
@@ -790,32 +576,43 @@ if (import.meta.main) {
       options: {
         out: "text",
         suites: "text",
+        plan: "text",
         fleet: "flag",
         jobs: "int",
         local: "int",
         batch: "int",
         prune: "flag",
+        "cov-cache": "text",
         only: "text",
         "stop-at-kill": "flag",
         timeout: "int",
-        old: "text",
-        survivors: "flag",
         until: "text",
         clones: "text",
+        old: "text",
+        survivors: "flag",
       },
-      positionals: [2, Number.POSITIVE_INFINITY],
+      positionals: [1, Number.POSITIVE_INFINITY],
     },
     async (args: CommandArgs) => {
-      const [mode = "", first = "", ...rest] = args.positionals;
-      if (mode === "report") return report(args, [first, ...rest]);
-      if (mode === "run") return runMutants(args, first, rest);
-      if (mode !== "list") return args.die(usage);
-      for (const [file, list] of Map.groupBy(
-        rest.flatMap((path) => mutantsOf(first, path)),
-        (one) => one.file,
-      )) {
-        console.log(`${file}  ${String(list.length)}`);
+      const [sub, ...rest] = args.positionals;
+      if (sub === "list") {
+        const [root, ...files] = rest;
+        if (root === undefined || files.length === 0) args.die(usage);
+        for (const file of files) console.log(`${file}\t${String(mutantsOf(root, file).length)}`);
+        return;
       }
+      if (sub === "run") {
+        const [root, ...files] = rest;
+        if (root === undefined || (files.length === 0 && args.value("plan") === null)) args.die(usage);
+        await runMutants(args, root, files);
+        return;
+      }
+      if (sub === "report") {
+        if (rest.length === 0) args.die(usage);
+        report(args, rest);
+        return;
+      }
+      args.die(usage);
     },
   );
 }

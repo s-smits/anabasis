@@ -1078,6 +1078,37 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       "final-pass defects: unverified (1), replayed (1)",
     );
     expect(gamingRows(unprobedLog).join("\n")).toContain("audit-unverified-freeze");
+    const unfrozenDefectLog: LogEvent[] = [
+      {
+        at: AT,
+        kind: "referee.draft",
+        data: {
+          session: "d-1",
+          pass: 2,
+          verdict: "defects",
+          findings: [{ kind: "objective-defect", probe: 1 }],
+          probeRows: [{ id: 1 }],
+          turns: 4,
+          billed: 0.5,
+        },
+      },
+      { at: AT, kind: "campaign.ended", data: { ending: "exam", why: "draft did not stand" } },
+    ];
+    expect(gamingRows(unfrozenDefectLog).join("\n")).not.toContain("audit-unverified-freeze");
+    expect(draftAuditRows(unfrozenDefectLog).join("\n")).toContain("final-pass defects: none");
+    const fromFileDraftLog: LogEvent[] = [
+      {
+        at: AT,
+        kind: "draft.call",
+        data: {
+          session: "d-1",
+          turn: 1,
+          tool: "draft_exam",
+          args: { checks: { from_file: "draft/checks.json" }, rules: { from_file: "draft/rules.json" } },
+        },
+      },
+    ];
+    expect(gamingRows(fromFileDraftLog).join("\n")).toContain("checks [none], rules [none]");
     expect(
       overview(unprobedLog).triggers.find((trigger) => trigger.name === "DRAFT AUDIT DEFECTS")?.detail,
     ).toContain("unverified final pass");

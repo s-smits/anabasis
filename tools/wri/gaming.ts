@@ -18,7 +18,6 @@ import {
   emitIf,
   type Index,
   indexOf,
-  items,
   measured,
   percent,
   practiceOf,
@@ -110,7 +109,11 @@ function examinerTelemetry(log: Index, standing: unknown): GamingScan["examiner"
 
 function gamingScanOf(log: Index): GamingScan {
   const puts = callsOf(log.traces, "draft").filter(({ tool }) => tool === "draft_exam");
-  const series = (key: "checks" | "rules") => puts.map(({ args }) => items(asRecord(args)?.[key]).length);
+  const series = (key: "checks" | "rules") =>
+    puts.flatMap(({ args }) => {
+      const raw = asRecord(args)?.[key];
+      return Array.isArray(raw) ? [raw.length] : [];
+    });
   const checksSeries = series("checks");
   const rulesSeries = series("rules");
   const standing = draftOf(log.events);

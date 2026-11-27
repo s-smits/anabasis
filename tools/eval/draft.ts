@@ -90,7 +90,8 @@ function draftAuditGate(given: {
       verifiedFixed.push(...replay.verifiedFixed);
       unverified.push(...replay.unverified);
     }
-    if (audits >= MAX_DRAFT_AUDITS) {
+    const cap = unverified.length > 0 ? MAX_DRAFT_AUDITS + 1 : MAX_DRAFT_AUDITS;
+    if (audits >= cap) {
       return unverified.map(
         (finding) => `${finding} (prior defect probe could not be verified fixed after the audit cap)`,
       );
@@ -110,6 +111,11 @@ function draftAuditGate(given: {
       verifiedFixed,
       log: given.log,
     });
+    if (review.verdict === "skipped") {
+      return review.error === undefined
+        ? [`independent check audit recorded no verdict (${review.summary}); submit the draft again to retry`]
+        : [];
+    }
     if (review.verdict !== "defects" || review.findings.length === 0) {
       priorReviews.length = 0;
       return [];

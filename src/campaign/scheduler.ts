@@ -222,9 +222,12 @@ function exam(ground: Ground): Move | null {
 
 export function unaudited(events: readonly LogEvent[]): string | null {
   const session = events.findLast(({ kind }) => kind === "exam.drafted")?.data.session;
-  const error = events.findLast(({ kind, data }) => kind === "referee.draft" && data.session === session)
-    ?.data.error;
-  return isString(error) ? error : null;
+  const last = events.findLast(
+    ({ kind, data }) => kind === "referee.draft" && data.session === session,
+  )?.data;
+  if (isString(last?.error)) return last.error;
+  if (last?.verdict === "skipped") return isString(last.summary) ? last.summary : "draft audit skipped";
+  return null;
 }
 
 function drafting(events: readonly LogEvent[]): Move {

@@ -16,6 +16,7 @@ import { boundText } from "../meta/bounded-text.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import {
   conclusive,
@@ -115,9 +116,9 @@ const SYSTEM_PROMPT = [
   '- vacuous-pass: corrupt, omit, trivialise, delete a deliverable (`file:<path>` with `value: "null"`), or add conflicting/unrequested content to a domain-critical field or deliverable file in an accept control; if every check still passes, the checks let a bad answer pass.',
   "- check-defect: replace a field or deliverable with a valid domain alternative allowed by the public rules; if a check refuses it or throws on it, the check is over-strict or wrong.",
   "- objective-defect: when the exam declares an objective, perturb a valid accept control into a deliberately hedged, flattened, or degraded valid answer; if it still passes with an equal, better, or barely worse objective score, the objective is gameable or uninformative. When objective.items is declared, inspect individual `scores[id]` items for recall-only/presence bias, unpenalised hedging, constant returns, or always 0 on valid controls (such as un-extractable deliverables).",
-  "- sound: after inspecting the check program and probing across examples, checks, and any objective, no probe-verified defect was found (and any prior findings were confirmed fixed).",
+  "- sound: after inspecting the check program and probing across examples, checks, and any objective, no probe-verified defect was found (and any prior findings were confirmed fixed). When the exam declares an objective, `sound` requires a passing probe whose perturbation moves the objective, and on a multi-item code rubric a passing probe moving each code item.",
   "The holes that matter most change a verdict on a domain answer: a check or code score item that ignores hidden truth, saturates at 1, reads only presence/syntax, or leaves a declared answer field unread; and a check that refuses, or throws on, a valid alternative the public rules allow.",
-  `Every defect you report must cite an executed probe number whose verifier result proves it (vacuous-pass requires changed=pass; check-defect requires changed=fail, or changed=faulty in the named check; objective-defect requires changed=pass with finite objectives on both original and changed, and names the score item that kept its score when the probe scored items). The host refuses ungrounded claims. Do not invent style nits, deliverable-mirror ceremony, or demand code checks for qualitative prose/layout already scored by \`judge\` items or where binary checks are intentionally a feasibility floor paired with an informative objective. You have ${String(TURN_LIMIT)} turns, ${String(PROBE_BUDGET)} probes, and ${String(DEADLINE_SECONDS / 60)} minutes; finish with \`record_draft_review\`.`,
+  `Every defect you report must cite an executed probe number whose verifier result proves it (vacuous-pass requires changed=pass; check-defect requires changed=fail, or changed=faulty in the named check; objective-defect requires changed=pass with finite objectives on both original and changed, names the score item when the probe scored items, and requires the named item or objective to stay within ${String(GAP_FLOOR)} of the original). The host refuses ungrounded claims. Do not invent style nits, deliverable-mirror ceremony, or demand code checks for qualitative prose/layout already scored by \`judge\` items or where binary checks are intentionally a feasibility floor paired with an informative objective. You have ${String(TURN_LIMIT)} turns, ${String(PROBE_BUDGET)} probes, and ${String(DEADLINE_SECONDS / 60)} minutes; finish with \`record_draft_review\`.`,
 ].join("\n");
 
 const PARAMETERS = Type.Object({
@@ -458,7 +459,7 @@ export async function replayDraftProbes(
     const formatted = formatDraftFinding(finding);
     const row = byProbe.get(finding.probe);
     if (row === undefined) {
-      unverified.push(formatted);
+      unverified.push(`${formatted} (replay skipped: recorded probe #${String(finding.probe)} missing)`);
       continue;
     }
     const task =
@@ -500,8 +501,12 @@ export async function replayDraftProbes(
         finding.item !== undefined &&
         replayed.changed.kind === "pass" &&
         ownScore(replayed.changed, finding.item) === undefined;
-      if ((!conclusive(replayed) && !sameThrow) || itemDropped) {
-        unverified.push(formatted);
+      if (itemDropped) {
+        unverified.push(`${formatted} (replay inconclusive: rubric item ${finding.item} no longer present)`);
+      } else if (!conclusive(replayed) && !sameThrow) {
+        unverified.push(
+          `${formatted} (replay inconclusive: changed answer returned ${replayed.changed.kind})`,
+        );
       } else if (
         reproduces(finding, { task: finding.task, ...replayed }, codeObjective(target.contract.objective))
       ) {
@@ -509,8 +514,8 @@ export async function replayDraftProbes(
       } else {
         verifiedFixed.push(formatted);
       }
-    } catch {
-      unverified.push(formatted);
+    } catch (error) {
+      unverified.push(`${formatted} (replay failed: ${errorMessage(error)})`);
     }
   }
   return { stillBroken, verifiedFixed, unverified };

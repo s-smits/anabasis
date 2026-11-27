@@ -412,7 +412,7 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     if (!existsSync(log)) writeFileSync(log, "");
     const given = { ...Bun.env, PATH: `${bin}:${Bun.env.PATH ?? ""}`, ANA_REAL_BUN: capturedExecPath };
     const merged: Record<string, string | undefined> = { ...given, ANA_FAKE_LOG: log, ...env };
-    for (const key of ["ANA_CHECK_HOST", "ANA_RUNNER_ACTIVE", "ANA_HOP"]) {
+    for (const key of ["ANA_CHECK_HOST", "ANA_RUNNER_ACTIVE", "ANA_RUNNER_SPARE_HELD", "ANA_HOP"]) {
       if (!(key in env)) delete merged[key];
     }
     const run = Bun.spawnSync(
@@ -805,6 +805,61 @@ describe("nightly mutation suite selection", () => {
       ),
     ).toEqual({ sub: ["test/sub.test.ts"] });
     expect(readFileSync(join(state, head4, "report.md"), "utf8")).toContain(`(since ${head.slice(0, 9)})`);
+
+    writeFileSync(join(tree, ".gitignore"), ".env\nignored/\n");
+    mkdirSync(join(tree, "ignored"), { recursive: true });
+    mkdirSync(join(tree, ".ana-mutate.stale"), { recursive: true });
+    writeFileSync(join(tree, ".env"), "SECRET=1\n");
+    writeFileSync(join(tree, "ignored", "huge.txt"), "skip-me\n");
+    writeFileSync(join(tree, ".ana-mutate.stale", "old.txt"), "stale\n");
+    const slashRefState = join(root, "nightly-slash-ref");
+    expect(runNightly(tree, slashRefState, ["--diff", "origin/main"]).exitCode).toBe(3);
+    expect(existsSync(join(slashRefState, head4, `tools_sub_run.diff-${head.slice(0, 9)}.jsonl`))).toBe(true);
+    const clone0 = `${join(root, "git-clone.jsonl")}.clone-0`;
+    const gitCloneSuites = join(root, "git-clone-suites.json");
+    writeFileSync(gitCloneSuites, JSON.stringify({ sub: ["test/sub.test.ts"] }));
+    const gitCloneRun = runScript(
+      "run",
+      tree,
+      "tools/sub/run.ts",
+      "--out",
+      join(root, "git-clone.jsonl"),
+      "--suites",
+      gitCloneSuites,
+      "--jobs",
+      "1",
+    );
+    expect(gitCloneRun.exitCode).toBe(0);
+    expect(existsSync(join(clone0, "tools", "sub", "run.ts"))).toBe(true);
+    expect(existsSync(join(clone0, ".env"))).toBe(false);
+    expect(existsSync(join(clone0, "ignored"))).toBe(false);
+    expect(existsSync(join(clone0, ".ana-mutate.stale"))).toBe(false);
+    expect(gitText(clone0, "rev-parse", "HEAD")).toBe(head4);
+    expect(gitText(clone0, "rev-parse", "origin/main")).toBe(head);
+
+    writeFileSync(
+      join(tree, "test", "broken-base.test.ts"),
+      'import { expect, it } from "bun:test";\nit("always fails baseline", () => expect(1).toBe(2));\n',
+    );
+    const mixedPlan = join(root, "mixed-plan.json");
+    const okOut = join(root, "mixed-ok.jsonl");
+    const badOut = join(root, "mixed-bad.jsonl");
+    writeFileSync(
+      mixedPlan,
+      JSON.stringify([
+        { file: "tools/sub/run.ts", out: okOut, suites: { sub: ["test/sub.test.ts"] } },
+        {
+          file: "src/kernel/solve.ts",
+          out: badOut,
+          suites: { broken: ["test/broken-base.test.ts"] },
+        },
+      ]),
+    );
+    const mixed = runScript("run", tree, "--plan", mixedPlan, "--jobs", "2", "--timeout", "30");
+    expect(mixed.exitCode).toBe(2);
+    expect(mixed.stderr.toString()).toContain('baseline suite "broken"');
+    expect(rowsOf(okOut).length).toBeGreaterThan(0);
+    expect(rowsOf(badOut).length).toBe(0);
   }, 60_000);
 
   it("parses unified=0 diff hunks across spaces, deletions, /dev/null, and --/++ content lines", () => {

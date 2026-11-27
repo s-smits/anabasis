@@ -621,19 +621,40 @@ describe.concurrent("live Builder and Examiner coordination", () => {
           ),
           solve: async (...args) => {
             if (cut) throw new Error("PRIVATE-COMPARISON-FAULT check-product t-1");
+            if (of(resumeName, "campaign.word").length === 0) {
+              const counted = of(resumeName, EXAMINED).length + of(resumeName, REPORTED).length;
+              append(campaign.log, "campaign.word", {
+                word: "pause",
+                after: "examined|reported",
+                base: counted,
+              });
+            }
             return by.solve(...args);
           },
         };
       },
     };
     const resumeArgs = [...(await prepared(resumeName)), ...FLAGS, "--budget", "20", "--reserve", "0.01"];
-    expect(await harnessBuilder(resumeArgs, resumeSeats)).toMatchObject({ ending: "environment" });
+    const handover = join(root, "handover-on-environment");
+    expect(await harnessBuilder([...resumeArgs, "--handover", handover], resumeSeats)).toMatchObject({
+      ending: "environment",
+    });
+    expect(existsSync(join(handover, "REPORT.md"))).toBe(true);
     const [start] = of(resumeName, COMPARED);
     expect(said(resumeName, "compare")[0]).not.toContain("PRIVATE-COMPARISON-FAULT");
     cut = false;
     const conversations = of(resumeName, "build.started").length;
-    expect(await harnessBuilder([...resumeArgs, "--moves", "1"], resumeSeats)).toMatchObject({
-      move: "promote",
+    let [now, sleeps] = [Date.now(), 0];
+    await harnessBuilder([...resumeArgs, "--moves", "2"], {
+      ...resumeSeats,
+      host: {
+        ...HOST,
+        now: () => now,
+        sleep: async () => {
+          sleeps += 1;
+          now += 10_000_000;
+        },
+      },
     });
     expect(of(resumeName, "build.started")).toHaveLength(conversations);
     expect(start).toBeDefined();
@@ -641,6 +662,8 @@ describe.concurrent("live Builder and Examiner coordination", () => {
     expect(of(resumeName, REPORTED)).toMatchObject([
       { session: start?.session, old: start?.old, fresh: start?.fresh },
     ]);
+    expect(of(resumeName, "harness.promoted")).toHaveLength(1);
+    expect(sleeps).toBe(0);
 
     const settleName = `${STEM}-settle`;
     const settleArgs = await prepared(settleName);

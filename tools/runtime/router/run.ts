@@ -285,13 +285,13 @@ async function waitForSlot<T>(
     const ordered =
       order === "least-busy"
         ? queues
-            .map((queue, index) => {
+            .map((queue) => {
               const busy = Array.from({ length: queue.count }, (_, at) => at + 1).filter((number) =>
                 slotOccupied(join(queue.folder, `slot-${String(number)}`), "read"),
               ).length;
-              return { queue, index, share: busy / queue.count };
+              return { queue, share: busy / queue.count };
             })
-            .toSorted((a, b) => a.share - b.share || a.index - b.index)
+            .toSorted((a, b) => a.share - b.share)
             .map(({ queue }) => queue)
         : queues;
     for (const { item, folder, count } of ordered) {

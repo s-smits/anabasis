@@ -32,7 +32,6 @@ import { tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { campaignLog, openCampaign, reviewerOf, reviewerReader } from "./campaign.ts";
 import { draftReading } from "./exam.ts";
@@ -362,11 +361,7 @@ export function revisionRunner(config: {
         message: `The revision passed validation and audit and awaits operator approval under --hitl: bun tools/campaign/revise.ts --name ${basename(dirname(config.log))} --candidate ${shortHash} --freeze`,
       };
     }
-    try {
-      append(config.log, "exam.revised", recorded(record));
-    } catch (error) {
-      return { accepted: false, message: `Refused: ${errorMessage(error)}` };
-    }
+    append(config.log, "exam.revised", recorded(record));
     return {
       accepted: true,
       message:

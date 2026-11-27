@@ -68,7 +68,7 @@ export const CRASHES_IN_A_ROW = DRAFTS;
 const SHORT_OF_TASKS = ["no-held", "held-short"] as const;
 const WANTS_TASKS = "comparison admission requires more held-out tasks";
 const BUILDS_AND_ASKS = "Builder continues building and requests tasks";
-const MOST_ASKED_AFTER_PROMOTION = 16;
+const MOST_ASKED_AFTER_PROMOTION = 24;
 const wantsTasks = ({ refused }: Ground): boolean => SHORT_OF_TASKS.some((code) => refused.has(code));
 
 const end = (ending: Ending, why: string) => ({ move: "end" as const, ending, why });

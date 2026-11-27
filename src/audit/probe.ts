@@ -327,8 +327,9 @@ function changedFile(files: readonly AnswerFile[], change: ProbeRow["changes"][n
           rawMembers.map(({ path, data }) => ({ path, text: path === inside ? parsed : data })),
         ).toString("base64")
       : storedZip(updatedEntries).toString("base64");
+  const { text: _staleText, ...rest } = file;
   return files.with(at, {
-    ...file,
+    ...rest,
     base64: rebuiltZip,
     entries: updatedEntries,
   });

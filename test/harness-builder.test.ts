@@ -831,6 +831,24 @@ describe.concurrent("a campaign's recovery from throws and pauses", () => {
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment" }]);
   });
 
+  it("ends on the environment where a Builder conversation throws without a crash", async () => {
+    const name = `${STEM}-builderless`;
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const base = answering([], GRADED_SMALL);
+    const flags = [...seeded(name, SMALL), "--practice", "2", "--target", "5", "--level", "0.125"];
+    await expect(
+      harnessBuilder([...flags, "--moves", "3"], {
+        seated: (campaign, given) => {
+          if (of(name, "campaign.move").some(({ move }) => move === "build")) {
+            append(log, "campaign.word", { word: "stop", why: "a retried conversation would end here" });
+          }
+          return { ...base(campaign, given), builder: null };
+        },
+      }),
+    ).rejects.toThrow("name --builder");
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "build" }]);
+  });
+
   it("holds a pause before an exam is drafted, on the host's default wall", async () => {
     const name = `${STEM}-undrafted`;
     names.push(name);

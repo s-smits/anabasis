@@ -45,7 +45,7 @@ function wroteHours(events: readonly LogEvent[], start: number, end: number, ses
   return (until - from - waitedMs(rests, from, until)) / HOUR_MS;
 }
 
-export function proposedOf(events: readonly LogEvent[], session: string) {
+function proposedOf(events: readonly LogEvent[], session: string) {
   const proposals = proposalsOf(events).filter((each) => each.session === session);
   if (proposals.length === 0) return null;
   const versions = proposals.map(({ version }) => version);
@@ -72,7 +72,6 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
       .map(([word, count]) => `${word} ${String(count)}`)
       .join(", ");
     const gated = Object.values(reading.gates).reduce((sum, count) => sum + count, 0);
-    const turns = reading.turns === null ? "no valid room solve" : `median turns ${String(reading.turns[1])}`;
     const from = events[start];
     const step = from?.kind === "exam.started" ? written.find(({ id }) => id === session) : undefined;
     const asked =
@@ -84,7 +83,7 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
       of === null
         ? ""
         : ` · ${String(of.proposed)} proposed in ${String(of.families)} families, largest ${String(of.largest)}${of.at.at(-1) === 0 ? "" : `, at turns ${of.at.join(", ")}`}`;
-    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"})${asked}${families} · ${turns} · $${billedAll(own).toFixed(2)}`;
+    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"})${asked}${families} · $${billedAll(own).toFixed(2)}`;
   });
 }
 
@@ -100,7 +99,7 @@ function reachedBy(events: readonly LogEvent[], kind: string, from: string | und
   return `${hours.toFixed(1)} h / ${String(solves)} solves / $${billedAll(upto).toFixed(0)}`;
 }
 
-export function campaignLine(events: readonly LogEvent[]): string {
+function campaignLine(events: readonly LogEvent[]): string {
   const opened = events.find((event) => event.kind === "campaign.opened")?.at;
   const count = (kind: string) => events.filter((event) => event.kind === kind).length;
   const { scored, room, onValidity, stepped } = validityOf(campaignOf(events).steps, events);

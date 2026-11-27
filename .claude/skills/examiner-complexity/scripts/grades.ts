@@ -47,10 +47,7 @@ export function outcomesOf(logs: readonly (readonly Parameters<typeof solvesIn>[
   return tasks;
 }
 
-export function gradeLines(
-  grades: ReadonlyMap<string, string>,
-  outcomes: ReturnType<typeof outcomesOf>,
-): string[] {
+function gradeLines(grades: ReadonlyMap<string, string>, outcomes: ReturnType<typeof outcomesOf>): string[] {
   const byGrade = new Map<string, Tally>();
   for (const [task, grade] of grades) {
     const row = outcomes.get(task);

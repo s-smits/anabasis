@@ -2,14 +2,12 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import type { applyContinuation as ApplyContinuation } from "#src/agent/session.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
-import { gateAnswers, measuredGate } from "#tools/wri/gate-era.ts";
 import type { drafting as Drafting } from "#src/examiner/draft.ts";
 import type { writing as Writing } from "#src/examiner/write.ts";
 import type { draftCommand as DraftCommand } from "#tools/eval/draft.ts";
 import type { examineCommand as ExamineCommand } from "#tools/eval/examine.ts";
 import type { solved as Solved } from "#tools/campaign/round.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { GAP_FLOOR } from "#src/kernel/compare.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
@@ -64,10 +62,8 @@ const OPTIONS = {
   json: "flag",
   gates: "int",
 } as const;
-
 const POLL_MS = 5000;
 const QUIET_TICKS = 60;
-const GAP = `gap >= ${String(GAP_FLOOR * 100)}%`;
 const ERROR_LINE = /error|denied|not found|no such|not permitted|timed out|refused|invalid|cannot|failed/iu;
 const SEATED = ["--examiner", "--examiner-effort", "--reviewer", "--reviewer-effort"] as const;
 const THIN = 6;
@@ -96,45 +92,22 @@ interface Reading {
   readonly proposed: number;
   readonly gates: Readonly<Record<string, number>>;
   readonly held: number;
-  readonly ran: readonly number[];
-  readonly gaps: readonly number[];
-  readonly turns: readonly [number, number, number] | null;
   readonly calls: Readonly<Record<string, number>>;
   readonly mentions: Readonly<Record<string, number>>;
 }
 
-const objectiveGaps = (gaps: readonly number[]) => gaps.filter((gap) => gap >= GAP_FLOOR).length;
-
 const MEASURES: readonly (readonly [string, (reading: Reading) => number | null])[] = [
   ["held", ({ held }) => held],
-  ["room on validity", ({ gates }) => (gates.some ?? 0) + (gates["none, proved"] ?? 0)],
-  [GAP, ({ gaps }) => objectiveGaps(gaps)],
-  ["median turns", ({ turns }) => turns?.[1] ?? null],
+  ["proposed", ({ proposed }) => proposed],
 ];
 
-function admissionWord(data: JsonObject): string {
-  if (!measuredGate(data)) return "unread";
-  const reference = asRecord(data.reference);
-  const valid = reference?.valid;
-  const solves = reference?.solves;
-  if (!isNumber(valid) || !isNumber(solves)) return "package";
-  if (valid === solves) return "every";
-  if (valid > 0) return "some";
-  return data.proved === true ? "none, proved" : "none";
-}
-
-function spread(values: readonly number[]): readonly [number, number, number] | null {
-  if (values.length === 0) return null;
-  const sorted = values.toSorted((a, b) => a - b);
-  return [sorted[0] ?? 0, sorted[Math.floor((sorted.length - 1) / 2)] ?? 0, sorted.at(-1) ?? 0];
-}
+const admissionWord = (data: JsonObject): string => (isString(data.outcome) ? data.outcome : "unknown");
 
 const hasDraft = (r: Reading) => r.drafted > 0 || Object.keys(r.audits).length > 0 || r.frozen > 0;
 const hasBuild = (r: Reading) =>
   r.checkpoints > 0 || r.practice.started > 0 || r.promotions > 0 || r.reverts > 0;
 const hasComp = (r: Reading) => r.comparisons.length > 0 || r.reported > 0;
 const hasExam = (r: Reading) => r.proposed > 0 || Object.keys(r.gates).length > 0 || r.held > 0;
-const hasLegacyGate = (r: Reading) => r.ran.length > 0 || r.gaps.length > 0 || r.turns !== null;
 const ratio = ({ finished, started }: { readonly finished: number; readonly started: number }) =>
   `${String(finished)}/${String(started)}`;
 const shortDigest = (value: unknown) => (isString(value) ? value.slice(0, 8) : "?");
@@ -147,9 +120,6 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
   const calls = [...callsOf(traces, "exam"), ...callsOf(traces, "draft"), ...callsOf(traces, "build")];
   const first = stretch[0]?.at;
   const last = stretch.at(-1)?.at;
-  const turns = [...gateAnswers(events, from - 1).values()].flatMap((answers) =>
-    answers.flatMap(({ turns: used }) => (used === null ? [] : [used])),
-  );
   const comparisons = of("comparison.started").flatMap(({ session }) => (isString(session) ? [session] : []));
   const compIds = new Set(comparisons);
   const solveStarts = of("solve.started");
@@ -204,16 +174,6 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
     proposed: of("task.proposed").length,
     gates: countBy(admissions, admissionWord),
     held: admissions.filter(({ outcome }) => heldAtGate(outcome)).length,
-    ran: admissions.flatMap(({ reference }) => {
-      const { ran, solves } = asRecord(reference) ?? {};
-      const count = ran ?? solves;
-      return isNumber(count) && count > 0 ? [count] : [];
-    }),
-    turns: spread(turns),
-    gaps: admissions.flatMap(({ reference }) => {
-      const { gap } = asRecord(reference) ?? {};
-      return isNumber(gap) ? [gap] : [];
-    }),
     calls: countBy(calls, ({ tool }) => tool),
     mentions: Object.fromEntries(
       mentions.map((text) => [
@@ -230,7 +190,6 @@ const listed = (counts: Readonly<Record<string, number>>) =>
     .join(", ") || "none";
 
 export function told(reading: Reading): string[] {
-  const { turns } = reading;
   const builderLine = [
     `checkpoints ${String(reading.checkpoints)}`,
     `practice ${ratio(reading.practice)}`,
@@ -255,17 +214,6 @@ export function told(reading: Reading): string[] {
   if (hasExam(reading)) {
     lines.push(
       `drafts proposed ${String(reading.proposed)}, task admissions ${listed(reading.gates)}; held ${String(reading.held)}`,
-    );
-  }
-  if (reading.ran.length > 0) {
-    const total = reading.ran.reduce((sum, count) => sum + count, 0);
-    lines.push(
-      `task admission ran ${String(total)} solves over ${String(reading.ran.length)} drafts: ${reading.ran.join(", ")}`,
-    );
-  }
-  if (turns !== null) {
-    lines.push(
-      `the reference's valid room-solve answers took ${String(turns[0])} to ${String(turns[2])} turns, median ${String(turns[1])}`,
     );
   }
   if (reading.campaignEnded.length > 0) lines.push(`campaign ended ${reading.campaignEnded.join(", ")}`);
@@ -533,10 +481,6 @@ function compareRows(
       .map((key) => row(`${prefix}${key}`, (reading) => pick(reading)[key] ?? 0));
   const any = (predicate: (reading: Reading) => boolean) =>
     readings.some(({ reading }) => predicate(reading));
-  const medianGap = ({ gaps }: Reading) => {
-    const mid = spread(gaps)?.[1];
-    return mid === undefined ? "none" : `${(mid * 100).toFixed(2)}%`;
-  };
   const rows: Row[] = [
     ["seat", readings.map(({ seat }) => basename(seat))],
     ["commit", readings.map(({ commit }) => commit)],
@@ -571,14 +515,6 @@ function compareRows(
       ...countRows("  ", ({ gates }) => gates),
       row("held", ({ held }) => held),
       row("per held", perHeld),
-    );
-  }
-  if (any(hasLegacyGate)) {
-    rows.push(
-      row("room solves", ({ ran }) => ran.reduce((sum, count) => sum + count, 0)),
-      row("median turns", ({ turns }) => turns?.[1] ?? "none"),
-      row(GAP, ({ gaps }) => `${String(objectiveGaps(gaps))} of ${String(gaps.length)}`),
-      row("median gap", medianGap),
     );
   }
   if (any(({ campaignEnded }) => campaignEnded.length > 0)) {

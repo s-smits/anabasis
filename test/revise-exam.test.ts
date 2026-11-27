@@ -708,6 +708,28 @@ describe("empirical witnesses, adversarial audit cap, and successor A -> B hando
     expect(weakRes.accepted).toBe(false);
     expect(weakRes.message).toContain("no longer fails");
     expect(weakRes.message).not.toContain("s-earned");
+    const blindRes = await runner({
+      session: "x-1",
+      kind: "tune",
+      why: "adds a check that refuses nothing",
+      candidate: candidateDraft(PARENT_DRAFT, {
+        kind: "tune",
+        why: "adds a check that refuses nothing",
+        checks: [
+          ...PARENT_DRAFT.checks.map(({ id, rule, assertion }) => ({ id, rule, assertion })),
+          { id: "check-any", rule: "R2", assertion: "any note" },
+        ],
+        evaluator: PARENT_EVALUATOR.replace(
+          "export const checks = {",
+          'export const checks = {\n  "check-any": () => true,',
+        ),
+      }),
+    });
+    expect(blindRes).toEqual({
+      accepted: false,
+      message:
+        "Revision failed checker validation (1 faults):\n- check-any has refused nothing in this reading",
+    });
 
     const shiftedTune = candidateDraft(PARENT_DRAFT, {
       kind: "tune",
@@ -1079,7 +1101,6 @@ export const scores = {
       earnedChecked: 2,
       earnedRetained: 2,
       defectChecked: 2,
-      defectCleared: 2,
     });
 
     const flipSeed = await seedCampaign({ name: "camp-repair-flip" });
@@ -1346,6 +1367,29 @@ export const scores = {
       }),
     });
     expect(judgedRes).toMatchObject({ accepted: true });
+    expect(eventsOf(read(judgedSeed.log), REVISED).at(-1)?.event.data.witnesses).toEqual({
+      earnedChecked: 0,
+      earnedRetained: 0,
+      defectChecked: 0,
+    });
+
+    const closedSeed = await seedCampaign({ name: "camp-closed", revise: false });
+    let closedAudits = 0;
+    expect(
+      await revisionRunner({
+        log: closedSeed.log,
+        parentBundle: closedSeed.bundle,
+        packages: closedSeed.packages,
+        auditor: async (reader, target) => {
+          closedAudits += 1;
+          return await SOUND_AUDIT(reader, target);
+        },
+      })({ session: "x-1", kind: "tune", why: "reweight", candidate: validTuneCandidate }),
+    ).toEqual({
+      accepted: false,
+      message: "Refused: exam revision is disabled for this campaign (--no-revise)",
+    });
+    expect(closedAudits).toBe(0);
   });
 
   it("opens successor B idempotently across crash prefixes, carries budget/stopRule/harness/lineage, and enforces 1 tune/epoch", async () => {

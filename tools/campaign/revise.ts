@@ -50,7 +50,6 @@ interface WitnessSummary {
   readonly earnedChecked: number;
   readonly earnedRetained: number;
   readonly defectChecked: number;
-  readonly defectCleared: number;
 }
 
 interface Checked {
@@ -190,7 +189,7 @@ async function verifyWitnesses(input: {
       `${String(flips)} historical earned witness${flips === 1 ? "" : "es"} solely on repaired check ${String(repaired)} now pass; probe ${String(repaired)} to verify it still enforces its published rule without over-relaxing.`,
     );
   }
-  const summary = { earnedChecked: earned.length, earnedRetained, defectChecked: 0, defectCleared: 0 };
+  const summary = { earnedChecked: earned.length, earnedRetained, defectChecked: 0 };
   if (repaired === undefined) return { faults, notes, summary };
   const defects = await rerun(defectSolvesFor(events, repaired), "check-defect");
   const uncleared = defects.filter(
@@ -206,7 +205,7 @@ async function verifyWitnesses(input: {
   return {
     faults,
     notes,
-    summary: { ...summary, defectChecked: defects.length, defectCleared: defects.length - uncleared.length },
+    summary: { ...summary, defectChecked: defects.length },
   };
 }
 

@@ -1,1 +1,13 @@
 path	label	source	kind	reason
+tools/runs/pulse.ts	=== -> !==	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	presentation	advisory watch filter only chooses which runs pulse prints; no decision reads it
+tools/runs/pulse.ts	- -> +	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	presentation	advisory recency of closed runs in pulse output; no decision reads it
+tools/runs/pulse.ts	0 -> 1	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	equivalent	missing log has no mtime and readLog returns null so the run is dropped whatever age is computed
+tools/runs/seed.ts	delete if	if (made.examinerHomeFrom !== undefined) {	presentation	guards only a console line naming the restored Examiner home snapshot
+tools/runs/seed.ts	!== -> ===	if (made.examinerHomeFrom !== undefined) {	presentation	selects which console line describes the Examiner home; seed contents unchanged
+tools/runs/seed.ts	delete if	} else if (!made.examinerHome) {	presentation	guards only the console line saying no Examiner home was restored
+tools/runs/seed.ts	drop !	} else if (!made.examinerHome) {	presentation	flips only whether the no-home console line prints; seed contents unchanged
+tools/campaign/seat-fork.ts	800 -> 801	const WRAP_CALL_ARGS_BYTES = 800;	presentation	one-byte shift of the call-args bound in simulation wrap text that no campaign seat reads
+tools/campaign/seat-fork.ts	2400 -> 2401	const WRAP_CALL_TEXT_BYTES = 2400;	presentation	one-byte shift of the call-result bound in simulation wrap text that no campaign seat reads
+tools/campaign/seat-fork.ts	6000 -> 6001	const WRAP_TURN_TEXT_BYTES = 6000;	presentation	one-byte shift of the per-turn bound in simulation wrap text that no campaign seat reads
+tools/campaign/seat-fork.ts	160000 -> 160001	const WRAP_TOTAL_BYTES = 160_000;	presentation	one-byte shift of the total bound in simulation wrap text that no campaign seat reads
+tools/runtime/land.ts	> -> >=	if (starts.length > 1) {	presentation	only gates the printed advisory line about proving several native stacks; what is linked, proved or merged is unchanged

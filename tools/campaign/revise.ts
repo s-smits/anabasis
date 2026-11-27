@@ -1,4 +1,3 @@
-import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import {
   type DraftAuditCase,
   type DraftAuditFinding,
@@ -35,8 +34,7 @@ import { pooled } from "#src/meta/pool.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { modelNamed } from "../m0/stored-sweep.ts";
-import { campaignLog, examinerSession, openCampaign } from "./campaign.ts";
+import { campaignLog, openCampaign, reviewerOf, reviewerReader } from "./campaign.ts";
 import { draftReading } from "./exam.ts";
 import { crossFamilyVendors } from "./round.ts";
 import { openSuccessor } from "./successor.ts";
@@ -212,15 +210,6 @@ async function verifyWitnesses(input: {
   };
 }
 
-function revisionReader(model: string, effort: string): Reader {
-  return {
-    model: modelNamed(model),
-    // SAFETY: effort is validated by the backend on call.
-    effort: effort as ThinkingLevel,
-    models: examinerSession,
-  };
-}
-
 async function auditRevision(input: {
   readonly log: string;
   readonly session: string;
@@ -316,7 +305,7 @@ export function revisionRunner(config: {
   readonly log: string;
   readonly parentBundle: string;
   readonly packages: () => Map<string, Task>;
-  readonly reviewer?: { readonly model?: string | undefined; readonly effort?: string | undefined };
+  readonly flags?: Parameters<typeof reviewerOf>[0];
   readonly auditor?: RevisionAuditor | undefined;
   readonly kill?: AbortSignal | undefined;
 }): ReviseRunner {
@@ -324,8 +313,7 @@ export function revisionRunner(config: {
   return async ({ home, ...asked }) => {
     const events = read(config.log, TRACE_KINDS);
     const opening = openingOf(events);
-    const seat = opening?.seats.reviewer ?? null;
-    const reviewer = config.reviewer?.model ?? seat?.model;
+    const reviewer = reviewerOf(config.flags ?? {}, opening);
     const gate = (logEvents: readonly LogEvent[]) =>
       config.kill?.aborted === true
         ? "session cancelled."
@@ -333,12 +321,12 @@ export function revisionRunner(config: {
             kind: asked.kind,
             check: asked.check,
             candidate: asked.candidate,
-            reviewer: reviewer ?? null,
+            reviewer: reviewer?.model ?? null,
             crossFamily: crossFamilyVendors,
           });
     const refusal = gate(events);
     if (refusal !== null) return { accepted: false, message: `Refused: ${refusal}` };
-    if (reviewer === undefined) {
+    if (reviewer === null) {
       return { accepted: false, message: "Refused: no reviewer is configured to audit the revision." };
     }
     const checked = await withMergedToolchain(config.parentBundle, home, (sourceHome) =>
@@ -359,7 +347,7 @@ export function revisionRunner(config: {
       prompt: opening?.prompt ?? "",
       checked,
       auditor,
-      reader: revisionReader(reviewer, config.reviewer?.effort ?? seat?.effort ?? "high"),
+      reader: reviewerReader(reviewer),
     });
     if (audited !== null) return { accepted: false, message: audited };
     const lateRefusal = gate(read(config.log, TRACE_KINDS));

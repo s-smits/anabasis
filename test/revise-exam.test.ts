@@ -1852,13 +1852,14 @@ export const scores = {
       }),
       finish,
     ]);
+    const successorBuilder = seat("write", [finish]);
     const handoverDir = join(tempDir("ana-rev-handover-"), "out");
     let examineCalls = 0;
     const ended = await harnessBuilder(
-      ["--name", name, "--moves", "1", "--practice", "0", "--handover", handoverDir],
+      ["--name", name, "--moves", "2", "--practice", "0", "--handover", handoverDir],
       {
         seated: () => ({
-          builder: null,
+          builder: { model: successorBuilder.request.model, models: successorBuilder.request.models },
           setting: "scripted",
           solve: async () => {
             throw new Error("unexpected solve");
@@ -1876,9 +1877,9 @@ export const scores = {
     );
     const eventsA = read(log);
     expect(eventsOf(eventsA, "exam.finished").at(-1)?.event.data.crash).toBeNull();
-    expect(ended).toMatchObject({ move: "end", ending: "revise" });
+    expect(ended).toMatchObject({ move: "examine", code: "tasks" });
     expect(existsSync(join(handoverDir, "REPORT.md"))).toBe(true);
-    expect(examineCalls).toBe(1);
+    expect(examineCalls).toBe(2);
     expect(eventsOf(eventsA, "build.started")).toHaveLength(0);
     expect(eventsOf(eventsA, REVISED)).toHaveLength(1);
     expect(endedOf(eventsA)?.ending).toBe("revise");
@@ -1886,6 +1887,7 @@ export const scores = {
     const logB = join(campRoot, nextName, LOG_FILE);
     expect(existsSync(logB)).toBe(true);
     const eventsB = read(logB);
+    expect(eventsOf(eventsB, "build.started").map(({ event }) => event.data.session)).toEqual(["b-1"]);
     expect(openingOf(eventsB)?.parent?.campaign).toBe(name);
     expect(openingOf(eventsB)?.parent?.kind).toBe("repair");
     expect(openingOf(eventsB)?.parent?.carried.tunedThisEpoch).toBe(false);

@@ -5,13 +5,11 @@
  *
  *   bun tools/campaign/session.ts --name truss --session b-2 --builder claude/claude-opus-5-5 --cap 150
  */
-import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { admitSession } from "#src/campaign/admission.ts";
 import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
-import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { hostSession, resolveCheckpoint, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
+import { packNamed, PROMOTED, resolveCheckpoint, seatSession, stayAwake } from "./campaign.ts";
 import {
   campaignFor,
   parentNamed,
@@ -58,12 +56,7 @@ export async function sessionCommand(
   const request: BuildRequest = {
     ...baseRequest,
     ...keysIf(forkPlan.fork !== undefined, () => ({
-      models: hostSession({
-        webSearch: true,
-        cacheTtl: "1h",
-        persistDir: join(dirname(campaign.log), CLAUDE_SESSIONS_DIR),
-        fork: forkPlan.fork,
-      }),
+      models: seatSession(campaign.log, "builder", forkPlan.fork),
     })),
     ...keyIfDefined("continuation", forkPlan.continuation),
   };

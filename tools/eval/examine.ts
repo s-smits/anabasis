@@ -10,7 +10,6 @@
  *   bun tools/eval/examine.ts --name truss --session x-1 --examiner claude/claude-opus-5-5
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
@@ -21,11 +20,12 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import {
   campaignLog,
-  hostSession,
   openCampaign,
   PACK_OPTIONS,
   packNamed,
   REPO,
+  reviewerOf,
+  seatSession,
   stayAwake,
 } from "../campaign/campaign.ts";
 import { type RevisionAuditor, revisionRunner } from "../campaign/revise.ts";
@@ -75,26 +75,18 @@ export async function examineCommand(
   const model = modelNamed(examiner);
   const forkPlan = seatForkPlan(campaign.log, "exam", model, values);
   const canRevise = values.revise ?? opening?.revise ?? true;
-  const lane = rubricLaneOf(values.reviewer ?? opening?.seats.reviewer?.model, opening?.solver?.model);
+  const lane = rubricLaneOf(reviewerOf(values, opening)?.model, opening?.solver?.model);
   const revise = canRevise
     ? revisionRunner({
         log: campaign.log,
         parentBundle: campaign.bundle,
         packages: campaign.packages,
-        reviewer: { model: values.reviewer, effort: values["reviewer-effort"] },
+        flags: values,
         auditor: audit,
         kill,
       })
     : undefined;
-  const models =
-    forkPlan.fork === undefined
-      ? campaign.examiner
-      : hostSession({
-          webSearch: false,
-          cacheTtl: "1h",
-          persistDir: join(dirname(campaign.log), CLAUDE_SESSIONS_DIR),
-          fork: forkPlan.fork,
-        });
+  const models = seatSession(campaign.log, "examiner", forkPlan.fork);
   stayAwake();
   const examined = await session(
     {

@@ -13,7 +13,7 @@ import type { Opening } from "#src/campaign/opening.ts";
 import { formatComparisonHistory } from "#src/builder/past.ts";
 import { seedSavedHarnesses, snapshot } from "#src/builder/store.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
-import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
+import { type Bench, endingWith, PRACTICE_FAULT, waitTool } from "#src/builder/tools.ts";
 import { boundedPause, pendingSignals } from "#src/campaign/signal.ts";
 import { conversing, examine } from "#src/examiner/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
@@ -156,6 +156,8 @@ async function runAction(
   if (move === "examine" && writing != null) {
     return text(`Examiner session ${writing.session} is still writing.`);
   }
+  if (move === "compare") await bench.practising;
+  if (bench.fatal !== null) return text(PRACTICE_FAULT);
   if (move === "compare" && writing != null && promotedSince(read(context.log, TRACE_KINDS))) {
     await bench.within(() => writing.done);
   }

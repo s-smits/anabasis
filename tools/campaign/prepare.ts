@@ -40,7 +40,7 @@ const OPTIONS = {
 
 /** Tasks no gate has read, including one a killed command proposed and left before its gate. */
 export function ungated(campaign: Pick<Campaign, "tasks" | "pack">, events: readonly LogEvent[]) {
-  if (openingOf(events)?.parent !== null) return [];
+  if ((openingOf(events)?.parent ?? null) !== null) return [];
   const gated = admissionsOf(events);
   return campaign.tasks.map(campaign.pack).filter((task) => !gated.has(taskVersion(task)));
 }

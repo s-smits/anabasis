@@ -154,13 +154,33 @@ async function verifyWitnesses(input: {
   const runWitnesses = witnessLoader(log, events, packages);
   const faults: string[] = [];
   const notes: string[] = [];
+  const origBlockingOf = (
+    witness: {
+      readonly task: Task;
+      readonly verdict: {
+        readonly checker?:
+          | { readonly kind: string; readonly blocking?: readonly string[] }
+          | null
+          | undefined;
+      };
+    },
+    result: Awaited<ReturnType<Verifier>>,
+    label: string,
+  ): readonly string[] | null => {
+    if (result.kind === "faulty" || result.kind === "non-result") {
+      faults.push(`${label} witness on ${witness.task.taskId} faulted under candidate: ${result.reason}`);
+      return null;
+    }
+    return witness.verdict.checker?.kind === "fail" ? (witness.verdict.checker.blocking ?? []) : [];
+  };
   const earnedIds = [...standsOf(events).entries()].flatMap(([id, ruling]) =>
     ruling === "earned" ? [id] : [],
   );
   const earnedResults = await runWitnesses(earnedIds, "earned", faults, verify);
   let [earnedRetained, repairedCheckFlips] = [0, 0];
   for (const { witness, result } of earnedResults) {
-    const origBlocking = witness.verdict.checker?.kind === "fail" ? witness.verdict.checker.blocking : [];
+    const origBlocking = origBlockingOf(witness, result, "earned Referee");
+    if (origBlocking === null) continue;
     const untouched =
       kind === "repair" && check !== undefined ? origBlocking.filter((id) => id !== check) : origBlocking;
     const soleRepaired =
@@ -193,13 +213,8 @@ async function verifyWitnesses(input: {
     defectChecked = defectResults.length;
     const uncleared: string[] = [];
     for (const { witness, result } of defectResults) {
-      if (result.kind === "faulty" || result.kind === "non-result") {
-        faults.push(
-          `check-defect witness on ${witness.task.taskId} faulted under candidate: ${result.reason}`,
-        );
-        continue;
-      }
-      const origBlocking = witness.verdict.checker?.kind === "fail" ? witness.verdict.checker.blocking : [];
+      const origBlocking = origBlockingOf(witness, result, "check-defect");
+      if (origBlocking === null) continue;
       const sole = origBlocking.length === 1 && origBlocking[0] === check;
       const cleared = sole
         ? result.kind === "pass"
@@ -427,7 +442,6 @@ export function revisionRunner(config: {
       const name = basename(dirname(config.log));
       return {
         accepted: false,
-        awaited: true,
         message: `The revision passed validation and audit and awaits operator approval under --hitl: bun tools/campaign/revise.ts --name ${name} --candidate ${shortHash} --freeze`,
       };
     }
@@ -488,16 +502,18 @@ export async function freezeCandidate(
   });
   if (refusal !== null) throw new Error(refusal);
   const stagedBundle = join(dirname(log), "revisions", "exams", actualHash.slice(0, 16), "bundle");
-  const checked = await validateCandidate({
-    log,
-    events,
-    candidate: payload.draft,
-    kind: payload.kind,
-    check: payload.check,
-    packages,
-    width: 4,
-    sourceHome: existsSync(stagedBundle) ? stagedBundle : undefined,
-  });
+  const checked = await withMergedToolchain(stagedBundle, undefined, (sourceHome) =>
+    validateCandidate({
+      log,
+      events,
+      candidate: payload.draft,
+      kind: payload.kind,
+      check: payload.check,
+      packages,
+      width: 4,
+      sourceHome,
+    }),
+  );
   if (!checked.ok) throw new Error(checked.message);
   append(log, "exam.revised", parseJsonAs<JsonObject>(capturedJsonStringify(payload)));
   return await openSuccessor(log);

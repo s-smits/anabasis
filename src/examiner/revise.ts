@@ -27,7 +27,6 @@ import { FROM_FILE, fromHome } from "./shell.ts";
 
 interface RevisionOutcome {
   readonly accepted: boolean;
-  readonly awaited?: boolean;
   readonly message: string;
 }
 
@@ -193,6 +192,15 @@ export function revisionFaults(
     } else if (!parent.checks.some(({ id }) => id === check)) {
       faults.push(`check ${check} is not among the parent exam's checks`);
     }
+    if (!sameJsonValue(parent.objective ?? null, candidate.objective ?? null)) {
+      faults.push("repair revision cannot change objective items or rubric; use tune");
+    }
+    if (!sameJsonValue(parent.objectiveTools ?? null, candidate.objectiveTools ?? null)) {
+      faults.push("repair revision cannot change objective tools; use tune");
+    }
+    if (candidate.checks.length !== parent.checks.length) {
+      faults.push("repair revision cannot add new checks; use tune");
+    }
   }
   const byId = new Map(candidate.checks.map((entry) => [entry.id, entry]));
   for (const inherited of parent.checks) {
@@ -232,7 +240,9 @@ export function defectSolvesFor(events: readonly LogEvent[], check: string): str
     const verdict = verdicts.get(solve);
     if (verdict?.task == null || verdict.answer === undefined) continue;
     const blocking = verdict.checker?.kind === "fail" ? verdict.checker.blocking : [];
-    if (data.check === check || blocking.includes(check)) matched.add(solve);
+    const matchedCheck =
+      data.check === check || (data.check == null && blocking.length === 1 && blocking[0] === check);
+    if (matchedCheck) matched.add(solve);
   }
   return [...matched];
 }

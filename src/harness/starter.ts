@@ -132,7 +132,7 @@ ${STARTER.guide.trimEnd()}
 \`\`\`
 
 - **Portable boundary**: external exports keep ONLY text above \`${HOST_ONLY}\` and strip everything below it. Keep the portable section ultra-lean (concise tool usage and high-leverage domain verification habits, never a multi-page checklist—put detailed reference notes in \`.toolchain/\` to read on demand). Put all campaign paths, answer fields, rule IDs, scoring notes and campaign wrappers strictly below \`${HOST_ONLY}\`.
-- **Protect solver depth**: never prescribe turn caps, rushing, or minimal-turn pipelines; thorough workspace discovery, standard diagnostics and independently reopening every deliverable prevent single-criterion omissions.
+- **Protect solver depth**: give the solver room to use its budget for thorough workspace discovery, standard diagnostics and independently reopening every deliverable.
 
 Worked guide:
 

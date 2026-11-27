@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type AnswerFile, textFiles } from "../src/kernel/answer-files.ts";
-import { embeddedImages, EXTRACT, extract, headOf } from "../src/kernel/extract.ts";
+import { answerImages, EXTRACT, extract, headOf } from "../src/kernel/extract.ts";
 
 const zipped = (path: string, entries: Record<string, string>): AnswerFile => {
   const [file] = textFiles([
@@ -223,7 +223,7 @@ describe("the offline file extractor", () => {
     const docRead = extract(doc);
     expect(docRead.text).toBe("Summary\nMetric\tValue\nN\t42");
     expect(docRead.notes).toEqual(["embedded visuals: 1 image(s)"]);
-    expect(embeddedImages(doc).map(({ path }) => path)).toEqual(["report.docx#word/media/image1.png"]);
+    expect(answerImages(doc).map(({ path }) => path)).toEqual(["report.docx#word/media/image1.png"]);
 
     const book = zipped("vis.xlsx", {
       "xl/workbook.xml":
@@ -245,7 +245,7 @@ describe("the offline file extractor", () => {
     };
     const nbFile = plain("diag.ipynb", JSON.stringify(nb));
     expect(extract(nbFile).text).toContain("[image/png output, 4 chars]");
-    expect(embeddedImages(nbFile).map(({ path }) => path)).toEqual(["diag.ipynb#cell-0-out-0.png"]);
+    expect(answerImages(nbFile).map(({ path }) => path)).toEqual(["diag.ipynb#cell-0-out-0.png"]);
 
     const db64 = sqliteBytes((db) => {
       db.run("CREATE TABLE items (id INTEGER PRIMARY KEY, code TEXT)");

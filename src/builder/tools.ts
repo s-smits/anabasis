@@ -6,8 +6,8 @@ import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import { type Contract, hasJudge } from "../kernel/contract.ts";
 import { callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
-import { readAnswerFiles } from "../kernel/answer-files.ts";
-import { embeddedImages, type Extracted, extract, headOf } from "../kernel/extract.ts";
+import { type FileManifest, readAnswerFiles } from "../kernel/answer-files.ts";
+import { answerImages, type Extracted, extract, headOf } from "../kernel/extract.ts";
 import { billedParts } from "../kernel/meter.ts";
 import {
   ended,
@@ -430,6 +430,34 @@ function pageOf(extracted: Extracted, from: number): string {
   ].join("\n");
 }
 
+async function readDeliveredFile(given: {
+  readonly bench: Bench;
+  readonly solve: string;
+  readonly files: readonly FileManifest[];
+  readonly path: string;
+  readonly from: number;
+}) {
+  const { bench, solve, files, path, from } = given;
+  const cut = path.indexOf("#");
+  const basePath = cut === -1 ? path : path.slice(0, cut);
+  const kept = files.find((each) => each.path === basePath);
+  if (kept === undefined) throw new Error(`${solve} delivered no file ${path}`);
+  const [delivered = { path: kept.path, base64: "" }] = readAnswerFiles(bench.request.log, [kept]);
+  const visuals = answerImages(delivered);
+  if (from === 0) {
+    const hit = visuals.find((each) => each.path === path);
+    const image = hit === undefined ? null : await prepareImage(hit.bytes, hit.path, bench.request.model);
+    if (image !== null) {
+      const label = cut === -1 ? headOf(extract(delivered)).join("\n") : path;
+      return { output: [{ type: "text" as const, text: label }, image] };
+    }
+  }
+  if (cut !== -1) throw new Error(`${solve} has no viewable image ${path}`);
+  const refs = visuals.flatMap((each) => (each.path === delivered.path ? [] : [each.path]));
+  const hint = refs.length === 0 ? "" : `\nembedded images: ${refs.join(", ")}`;
+  return text(`${pageOf(extract(delivered), from)}${hint}`);
+}
+
 export function traceTool(bench: Bench): AgentTool {
   return tool({
     name: "read_trace",
@@ -460,32 +488,13 @@ export function traceTool(bench: Bench): AgentTool {
       if (args.call !== undefined) return text(callText(calls, args.call));
       const { answer, files = [] } = verdictsOf(events).get(args.solve) ?? {};
       if (args.file !== undefined) {
-        const cut = args.file.indexOf("#");
-        const basePath = cut === -1 ? args.file : args.file.slice(0, cut);
-        const kept = files.find(({ path }) => path === basePath);
-        if (kept === undefined) throw new Error(`${args.solve} delivered no file ${args.file}`);
-        const [delivered = { path: kept.path, base64: "" }] = readAnswerFiles(bench.request.log, [kept]);
-        if (cut !== -1) {
-          const item = embeddedImages(delivered).find(({ path }) => path === args.file);
-          const image =
-            item === undefined ? null : await prepareImage(item.bytes, item.path, bench.request.model);
-          if (image === null) throw new Error(`${args.solve} has no viewable image ${args.file}`);
-          return { output: [{ type: "text", text: args.file }, image] };
-        }
-        const extracted = extract(delivered);
-        if (extracted.kind === "binary" && (args.from ?? 0) === 0) {
-          const image = await prepareImage(
-            Buffer.from(delivered.base64, "base64"),
-            delivered.path,
-            bench.request.model,
-          );
-          if (image !== null) {
-            return { output: [{ type: "text", text: headOf(extracted).join("\n") }, image] };
-          }
-        }
-        const visuals = extracted.kind === "binary" ? [] : embeddedImages(delivered).map(({ path }) => path);
-        const hint = visuals.length === 0 ? "" : `\nembedded images: ${visuals.join(", ")}`;
-        return text(`${pageOf(extracted, args.from ?? 0)}${hint}`);
+        return await readDeliveredFile({
+          bench,
+          solve: args.solve,
+          files,
+          path: args.file,
+          from: args.from ?? 0,
+        });
       }
       return text(
         [

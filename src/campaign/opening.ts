@@ -6,10 +6,29 @@ import { unadmitted } from "../kernel/acceptance.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import type { Plan } from "./state.ts";
 
+export type RevisionKind = "tune" | "repair";
+export const isRevisionKind = (value: unknown): value is RevisionKind =>
+  value === "tune" || value === "repair";
+
 export interface Seat {
   readonly model: string;
   readonly effort: string;
 }
+interface Carried {
+  readonly spent: number;
+  readonly sinceStep: number;
+  readonly attempts: number;
+  readonly tunes: number;
+}
+
+interface OpeningParent {
+  readonly campaign: string;
+  readonly revised: string;
+  readonly kind: RevisionKind;
+  readonly carried: Carried;
+  readonly lineageTasks: readonly string[];
+}
+
 export interface Opening {
   readonly project: string | null;
   readonly budget: Cap | null;
@@ -17,6 +36,8 @@ export interface Opening {
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
   readonly attended: boolean;
   readonly judged: boolean;
+  readonly revise: boolean;
+  readonly parent: OpeningParent | null;
   readonly prompt: string | null;
   readonly solver: Seat | null;
   readonly terms: Terms;
@@ -46,7 +67,10 @@ export function inFlight(log: string): number {
 
 export function budgetLeft(events: readonly LogEvent[], opening = openingOf(events)): Cap | null {
   const budget = opening?.budget;
-  return budget == null ? null : { dollars: budget.dollars - billedAll(events), reserve: budget.reserve };
+  const carried = opening?.parent?.carried.spent ?? 0;
+  return budget == null
+    ? null
+    : { dollars: budget.dollars - billedAll(events) - carried, reserve: budget.reserve };
 }
 
 export function affords(log: string, count: number): boolean {
@@ -61,6 +85,33 @@ export async function flying<T>(log: string, run: () => Promise<T>): Promise<T> 
   } finally {
     FLYING.set(log, inFlight(log) - 1);
   }
+}
+
+function parseParent(raw: unknown): OpeningParent | null {
+  const rec = asRecord(raw);
+  const carried = asRecord(rec?.carried);
+  if (
+    rec === null ||
+    carried === null ||
+    !isString(rec.campaign) ||
+    !isString(rec.revised) ||
+    !isRevisionKind(rec.kind)
+  ) {
+    return null;
+  }
+  const num = (value: unknown) => (isNumber(value) && Number.isFinite(value) ? value : 0);
+  return {
+    campaign: rec.campaign,
+    revised: rec.revised,
+    kind: rec.kind,
+    carried: {
+      spent: num(carried.spent),
+      sinceStep: num(carried.sinceStep),
+      attempts: num(carried.attempts),
+      tunes: num(carried.tunes),
+    },
+    lineageTasks: Array.isArray(rec.lineageTasks) ? rec.lineageTasks.filter(isString) : [],
+  };
 }
 
 export function openingOf(events: readonly LogEvent[]): Opening | null {
@@ -81,6 +132,8 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: data.attended === true,
     judged: data.judged === true,
+    revise: data.revise !== false,
+    parent: parseParent(data.parent),
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
     terms: Object.fromEntries(
@@ -123,5 +176,6 @@ export function planOf(
     admits: [...new Set([...(beside.admits ?? []), ...autoAuthor, ...autoJudge])],
     practice: beside.practice ?? null,
     promotions: Number.isInteger(cap) && cap > 0 ? cap : null,
+    canRevise: opening?.revise !== false,
   };
 }

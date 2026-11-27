@@ -369,6 +369,12 @@ const STARTS: readonly { name: string; start: readonly LogEvent[]; plan: Plan; d
     plan: PLAN,
     depth: 2,
   },
+  {
+    name: "a revised exam",
+    start: [...OPENED, event("exam.revised", { kind: "tune", why: "refined rubric" })],
+    plan: PLAN,
+    depth: 1,
+  },
 ];
 
 const SEARCHED = STARTS.map(({ name, start, plan, depth }) => ({
@@ -523,6 +529,7 @@ describe("the decision table, searched", () => {
         "exam",
         "no-room",
         "revert",
+        "revised",
         "step",
         "stop",
         "tasks",
@@ -548,6 +555,7 @@ describe("the decision table, searched", () => {
       "exam",
       "no-room",
       "operator",
+      "revise",
       "stop",
     ]);
   });

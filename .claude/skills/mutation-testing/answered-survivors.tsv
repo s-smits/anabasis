@@ -36,3 +36,6 @@ src/examiner/prompt.ts	=== -> !==	...(tasks.reviews === null ? [] : [tasks.revie
 src/examiner/prompt.ts	swap ?:	...(tasks.reviews === null ? [] : [tasks.reviews]),	presentation	adds or drops the reviews line in the Examiner's opening and wake messages only
 tools/runs/pulse.ts	&& -> ||	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	presentation	advisory watch filter only chooses which runs pulse prints; no decision reads it
 tools/runs/pulse.ts	?? -> &&	(before === undefined && onStatus(run, "closed", Date.now() - (fileStat(run.path)?.mtimeMs ?? 0))),	presentation	advisory recency of closed runs in pulse output; no decision reads it
+src/audit/judge.ts	96000 -> 96001	const ANSWER_BYTES = 96_000;	presentation	caps the answer text in the Referee's pair prompt, a seat-visible input kept byte-identical
+src/audit/judge.ts	32000 -> 32001	const TASK_JSON_BYTES = 32_000;	presentation	caps the task JSON in the Referee's pair prompt, a seat-visible input kept byte-identical
+src/audit/judge.ts	1 -> 2	path: Type.String({ minLength: 1 }),	presentation	view_image parameter schema the Referee reads, kept byte-identical as a seat-visible input

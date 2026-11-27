@@ -5,12 +5,13 @@
  */
 import { ORIGINS, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { draftOf } from "#src/examiner/draft.ts";
+import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { testOf } from "#src/kernel/compare.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { callsOf } from "#src/kernel/trace.ts";
 import { objectiveOf } from "#src/kernel/verify.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
+import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { draftAuditPasses, unverifiedFinalPasses } from "./components.ts";
@@ -76,20 +77,10 @@ const listed = (values: readonly (string | number)[], sep = ", "): string =>
 const finalCount = (value: unknown, series: readonly number[]): number =>
   Array.isArray(value) ? value.length : (series.at(-1) ?? 0);
 
-function itemWeights(draft: unknown): Map<string, number> {
-  const objective = asRecord(asRecord(draft)?.objective);
-  const raw = Array.isArray(objective?.items) ? objective.items : [];
-  return new Map(
-    raw.flatMap((one) => {
-      const record = asRecord(one);
-      return record !== null && isString(record.id) && isNumber(record.weight)
-        ? [[record.id, record.weight] as const]
-        : [];
-    }),
-  );
-}
+const itemWeights = (draft: Draft | null): Map<string, number> =>
+  new Map((draft?.objective?.items ?? []).map(({ id, weight }) => [id, weight]));
 
-function examinerTelemetry(log: Index, standing: unknown): GamingScan["examiner"] {
+function examinerTelemetry(log: Index, standing: Draft | null): GamingScan["examiner"] {
   const examCalls = callsOf(log.traces, "exam");
   const readReviews = examCalls.filter(({ tool }) => tool === "read_reviews").length;
   const reviseCalls = examCalls.filter(({ tool }) => tool === "revise_exam").length;
@@ -98,7 +89,8 @@ function examinerTelemetry(log: Index, standing: unknown): GamingScan["examiner"
     return { readReviews, reviseCalls, revised: null };
   }
   const before = itemWeights(standing);
-  const after = itemWeights(rev.draft);
+  const revised = asRecord(rev.draft);
+  const after = itemWeights(revised === null ? null : parseJsonAs<Draft>(revised));
   const ids = new Set([...before.keys(), ...after.keys()]);
   const maxWeightDelta = Math.max(
     0,

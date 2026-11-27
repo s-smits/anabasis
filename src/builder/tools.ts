@@ -623,12 +623,12 @@ function opens(
   const ruleIds = [...new Set(contract.rules.map(({ id }) => id).filter((id) => id !== ""))];
   const info = readHarnessFiles(dir, [...new Set(formatKeys(contract.answerFormat))], ruleIds);
   const { guide, files: toolFiles, lines: toolLines } = info.size ?? { guide: 0, files: 0, lines: 0 };
-  const chars = harness.guide?.length ?? 0;
-  const keptChars = portableGuide(harness.guide ?? "").length;
-  const split = info.hasSplit
-    ? `${String(info.keptLines)} before "${HOST_ONLY}" (${String(keptChars)} portable chars), ${String(Math.max(0, guide - info.keptLines))} under it; ${String(chars)} characters`
-    : `${String(chars)} characters; no "${HOST_ONLY}" heading`;
-  const guideLine = harness.guide === null ? "Guide: none." : `Guide: ${plural(guide, "line")} (${split}).`;
+  const splitOf = (written: string) =>
+    info.hasSplit
+      ? `${String(info.keptLines)} before "${HOST_ONLY}" (${String(portableGuide(written).length)} portable chars), ${String(Math.max(0, guide - info.keptLines))} under it; ${String(written.length)} characters`
+      : `${String(written.length)} characters; no "${HOST_ONLY}" heading`;
+  const guideLine =
+    harness.guide === null ? "Guide: none." : `Guide: ${plural(guide, "line")} (${splitOf(harness.guide)}).`;
   const fileIssues = countPhrases([
     [info.hostPaths, "path", " to this machine"],
     [info.hostShebangs, "host-specific shebang"],

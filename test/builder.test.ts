@@ -360,6 +360,7 @@ describe.concurrent("the Builder running its campaign", () => {
     expect(opened).toBe(1);
     expect(built.ended).toBe("finished");
     expect(s.ran).toHaveLength(1);
+    expect(s.sent[0]).toContain("Advice: examine");
     expect(s.sent[2]).toContain("Examiner returned; practice was refreshed.");
     expect(s.sent[2]).toContain(GUIDE.trim());
     expect(s.sent[2]).not.toContain("Advice: compare");

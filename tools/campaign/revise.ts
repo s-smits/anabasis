@@ -3,8 +3,7 @@ import {
   type DraftAuditCase,
   type DraftAuditFinding,
   formatDraftFinding,
-  persistedDraftDefects,
-  replayDraftProbes,
+  gatedDraftAudit,
   reviewDraft,
 } from "#src/audit/draft-audit.ts";
 import type { Reader } from "#src/audit/auditor.ts";
@@ -233,42 +232,22 @@ async function auditRevision(input: {
 }): Promise<string | null> {
   const { log, session, parentChecks, prompt, checked, auditor, reader } = input;
   const { seen } = checked;
-  const seeded = persistedDraftDefects(read(log, TRACE_KINDS), parentChecks);
-  const [verifiedFixed, unverified]: [string[], string[]] = [[], []];
-  for (const prior of seeded.prior) {
-    const replay = await replayDraftProbes(prior, {
-      contract: seen.contract,
-      verify: seen.verify,
-      tasks: seen.tasks,
-      controls: seen.controls,
-    });
-    if (replay.stillBroken.length > 0) {
-      return [
-        "Revision failed prior audit defect probes:",
-        ...replay.stillBroken.map((fault) => `- ${fault}`),
-      ].join("\n");
-    }
-    verifiedFixed.push(...replay.verifiedFixed);
-    unverified.push(...replay.unverified);
+  const gate = await gatedDraftAudit(
+    read(log, TRACE_KINDS),
+    { session, revision: parentChecks, prompt, log, notes: [...seen.reading.notes, ...checked.notes] },
+    seen,
+    () => MAX_REVISION_AUDITS,
+    async (target) => await auditor(reader, target),
+  );
+  if (gate.kind === "broken") {
+    return ["Revision failed prior audit defect probes:", ...gate.faults.map((fault) => `- ${fault}`)].join(
+      "\n",
+    );
   }
-  if (seeded.audits >= MAX_REVISION_AUDITS) {
-    return `Refused: revision audit cap (${String(MAX_REVISION_AUDITS)}) reached without a sound audit${unverified.length > 0 ? ` (${String(unverified.length)} unverified prior defect findings)` : ""}.`;
+  if (gate.kind === "capped") {
+    return `Refused: revision audit cap (${String(MAX_REVISION_AUDITS)}) reached without a sound audit${gate.unverified.length > 0 ? ` (${String(gate.unverified.length)} unverified prior defect findings)` : ""}.`;
   }
-  const review = await auditor(reader, {
-    session,
-    pass: seeded.audits + 1,
-    revision: parentChecks,
-    prompt,
-    contract: seen.contract,
-    checks: seen.checks,
-    verify: seen.verify,
-    tasks: seen.tasks,
-    controls: seen.controls,
-    notes: [...seen.reading.notes, ...checked.notes],
-    priorFindings: unverified,
-    verifiedFixed,
-    log,
-  });
+  const { review } = gate;
   if (review.verdict === "skipped") {
     return `Refused: adversarial audit skipped (${review.error ?? "reviewer unavailable"}); revision not committed.`;
   }

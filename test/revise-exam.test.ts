@@ -898,7 +898,9 @@ export const scores = {
       candidate: validTuneCandidate,
     });
     expect(fourth.accepted).toBe(false);
-    expect(fourth.message).toContain("revision audit cap (3) reached");
+    expect(fourth.message).toBe(
+      "Refused: revision audit cap (3) reached without a sound audit (3 unverified prior defect findings).",
+    );
     expect(auditPasses).toEqual([1, 2, 3]);
 
     const cleanPass3Seed = await seedCampaign({ name: "camp-clean-pass3" });
@@ -1581,6 +1583,26 @@ export const scores = {
       aside: [],
     });
     expect(revisionRefusal(read(repairChild.log), { kind: "tune" })).toBeNull();
+    const misread = {
+      ...draftB,
+      reject: [
+        ...draftB.reject,
+        {
+          task: 0,
+          answer: { n: 12, score: 10, detail: 9 },
+          files: [{ path: NOTE_FILE, text: "exact:10" }],
+          check: "check-even",
+        },
+      ],
+    };
+    append(repairChild.log, REVISED, {
+      session: "x-2",
+      kind: "repair",
+      why: "a reject control its check passes",
+      draft: requireJsonValue(misread),
+      draftHash: hashJsonValue(misread),
+    });
+    await expect(openSuccessor(repairChild.log)).rejects.toThrow(/failed checker reading: [^;]+$/u);
     expect(draftOf(eventsB)?.checks.some(({ id }) => id === "check-positive")).toBe(true);
 
     expect(replayed(seed.log)).toContain("revised (tune)");

@@ -15,8 +15,7 @@ import {
   type DraftAuditCase,
   type DraftAuditFinding,
   formatDraftFinding,
-  persistedDraftDefects,
-  replayDraftProbes,
+  gatedDraftAudit,
   reviewDraft,
 } from "#src/audit/draft-audit.ts";
 import type { Reader } from "#src/audit/auditor.ts";
@@ -64,8 +63,9 @@ const OPTIONS = {
 
 type DraftSeen = NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
 
-/** Replays prior defect probes at no model cost before spending an audit pass, and still replays
- *  them past `MAX_DRAFT_AUDITS`. */
+/** A draft audited without a seated reviewer stands on its offline reading alone. */
+const UNAUDITED: DraftAuditFinding = { verdict: "sound", findings: [], summary: "no reviewer", probes: [] };
+
 async function auditDraft(
   given: {
     readonly session: string;
@@ -76,41 +76,21 @@ async function auditDraft(
   },
   seen: DraftSeen,
 ): Promise<readonly string[]> {
-  const { audits, prior } = persistedDraftDefects(read(given.log, TRACE_KINDS));
-  const verifiedFixed: string[] = [];
-  const unverified: string[] = [];
-  for (const review of prior) {
-    const replay = await replayDraftProbes(review, {
-      contract: seen.contract,
-      verify: seen.verify,
-      tasks: seen.tasks,
-      controls: seen.controls,
-    });
-    if (replay.stillBroken.length > 0) return replay.stillBroken;
-    verifiedFixed.push(...replay.verifiedFixed);
-    unverified.push(...replay.unverified);
-  }
-  const cap = unverified.length > 0 ? MAX_DRAFT_AUDITS + 1 : MAX_DRAFT_AUDITS;
-  if (audits >= cap) {
-    return unverified.map(
+  const { auditor, reader } = given;
+  const gate = await gatedDraftAudit(
+    read(given.log, TRACE_KINDS),
+    { session: given.session, prompt: given.prompt, log: given.log, notes: seen.reading.notes },
+    seen,
+    (unverified) => (unverified > 0 ? MAX_DRAFT_AUDITS + 1 : MAX_DRAFT_AUDITS),
+    async (target) => (auditor === null || reader === null ? UNAUDITED : await auditor(reader, target)),
+  );
+  if (gate.kind === "broken") return gate.faults;
+  if (gate.kind === "capped") {
+    return gate.unverified.map(
       (finding) => `${finding} (prior defect probe could not be verified fixed after the audit cap)`,
     );
   }
-  if (given.auditor === null || given.reader === null) return [];
-  const review = await given.auditor(given.reader, {
-    session: given.session,
-    pass: audits + 1,
-    prompt: given.prompt,
-    contract: seen.contract,
-    checks: seen.checks,
-    verify: seen.verify,
-    tasks: seen.tasks,
-    controls: seen.controls,
-    notes: seen.reading.notes,
-    priorFindings: unverified,
-    verifiedFixed,
-    log: given.log,
-  });
+  const { review } = gate;
   if (review.verdict === "skipped" && review.error === undefined) {
     return [
       `independent check audit recorded no verdict (${review.summary}); submit the draft again to retry`,

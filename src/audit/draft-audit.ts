@@ -515,3 +515,30 @@ export async function replayDraftProbes(
   }
   return { stillBroken, verifiedFixed, unverified };
 }
+
+type DraftAuditGate =
+  | { readonly kind: "broken"; readonly faults: readonly string[] }
+  | { readonly kind: "capped"; readonly unverified: readonly string[] }
+  | { readonly kind: "reviewed"; readonly review: DraftAuditFinding };
+
+export async function gatedDraftAudit(
+  events: readonly LogEvent[],
+  given: Pick<DraftAuditCase, "session" | "revision" | "prompt" | "log" | "notes">,
+  seen: Pick<DraftAuditCase, "contract" | "checks" | "verify" | "tasks" | "controls">,
+  cap: (unverified: number) => number,
+  audit: (target: DraftAuditCase) => Promise<DraftAuditFinding>,
+): Promise<DraftAuditGate> {
+  const { contract, checks, verify, tasks, controls } = seen;
+  const target = { ...given, contract, checks, verify, tasks, controls };
+  const { audits, prior } = persistedDraftDefects(events, given.revision);
+  const [verifiedFixed, unverified]: [string[], string[]] = [[], []];
+  for (const review of prior) {
+    const replay = await replayDraftProbes(review, target);
+    if (replay.stillBroken.length > 0) return { kind: "broken", faults: replay.stillBroken };
+    verifiedFixed.push(...replay.verifiedFixed);
+    unverified.push(...replay.unverified);
+  }
+  if (audits >= cap(unverified.length)) return { kind: "capped", unverified };
+  const review = await audit({ ...target, pass: audits + 1, priorFindings: unverified, verifiedFixed });
+  return { kind: "reviewed", review };
+}

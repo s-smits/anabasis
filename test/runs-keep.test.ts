@@ -251,6 +251,13 @@ describe("a keeper's looks, scripted", () => {
     await uncounted.look(NOW);
     expect(uncounted.state.acted).toEqual([]);
     expect(uncounted.state.asked).toBe(0);
+
+    const gpt = scripted(["--builder", "openai-codex/gpt-6.1-sol"], null);
+    gpt.state.open = false;
+    gpt.state.live = [{ name: "other", login: "codex", host: "here" }];
+    await gpt.look(NOW);
+    expect(gpt.state.acted).toEqual([]);
+    expect(gpt.state.said[0]).toContain("at most 1 per host");
   });
 
   it("rotates off a login permanently after a non-retryable provider ending, while retrying transient ones", async () => {

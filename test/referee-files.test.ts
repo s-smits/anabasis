@@ -7,7 +7,7 @@ import {
   fauxToolCall,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { type AnswerFile, keepAnswerFiles } from "../src/kernel/answer-files.ts";
+import { type AnswerFile, keepAnswerFiles, textFiles } from "../src/kernel/answer-files.ts";
 import { conditionId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, read } from "../src/kernel/log.ts";
@@ -18,8 +18,9 @@ import { keyIfDefined, keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { storedZip, zipMembers } from "../src/meta/zip.ts";
 import { agreement } from "../src/audit/agreement.ts";
-import { type ProbeRow, probeTool } from "../src/audit/probe.ts";
+import { executeProbe, type ProbeRow, probeTool } from "../src/audit/probe.ts";
 import { auditRejection } from "../src/audit/auditor.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 import { containing, objectWith } from "./helpers/matchers.ts";
@@ -617,5 +618,37 @@ describe("publicInput.files bounding in Referee", () => {
     expect(agree.table["check-defect"]["check-defect"]).toBe(1);
     expect(agree.table.earned["check-defect"]).toBe(0);
     expect(agree.unruled).toEqual(["s-2"]);
+  });
+
+  it("rebuilds archive base64 while preserving binary members when probing an entry inside a zip deliverable", async () => {
+    const binary = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff]);
+    const zip = storedZip([
+      { path: "xl/workbook.xml", text: '<workbook><sheet name="Population"/></workbook>' },
+      { path: "xl/media/chart.png", text: binary },
+    ]);
+    const files = textFiles([{ path: "analysis.xlsx", base64: zip.toString("base64") }]);
+    let seenZip: Buffer | null = null;
+    const verifyZip: Verifier = async (_task, _answer, _signal, received) => {
+      const workbook = received?.find((f) => f.path === "analysis.xlsx");
+      if (workbook === undefined) return { kind: "fail", blocking: ["check-xlsx"] };
+      seenZip = Buffer.from(workbook.base64, "base64");
+      const xml = zipMembers(seenZip, 1024 * 1024).members.find((m) => m.path === "xl/workbook.xml");
+      return (xml?.data.toString("utf8").includes('name="Population"') ?? false)
+        ? { kind: "pass" }
+        : { kind: "fail", blocking: ["check-xlsx"] };
+    };
+    const row = await executeProbe({
+      used: 0,
+      verify: verifyZip,
+      task: TASK,
+      answer: {},
+      files,
+      signal: undefined,
+      original: async () => ({ kind: "pass" }),
+      rawChanges: [{ path: "file:analysis.xlsx/xl/workbook.xml", find: "Population", replace: "Sheet1" }],
+    });
+    expect(row.changed).toEqual({ kind: "fail", blocking: ["check-xlsx"] });
+    const members = seenZip === null ? [] : zipMembers(seenZip, 1024 * 1024).members;
+    expect(members.find((m) => m.path === "xl/media/chart.png")?.data.equals(binary)).toBe(true);
   });
 });

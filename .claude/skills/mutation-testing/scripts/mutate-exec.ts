@@ -577,6 +577,7 @@ export async function runBatch(
   readonly qualified: boolean;
   readonly refused: string | null;
   readonly dropped: boolean;
+  readonly stderr: string;
 }> {
   const driverPath = join(worker.clone, BATCH_FILE);
   mkdirSync(dirname(driverPath), { recursive: true });
@@ -612,7 +613,7 @@ export async function runBatch(
       cwd: worker.clone,
       env: { ...Bun.env, ...placeEnv(worker.place), ANA_RUNNER_WALL: String(batchSeconds) },
       stdout: "pipe",
-      stderr: "ignore",
+      stderr: "pipe",
       detached: true,
     });
     opts.activeProcs.add(run);
@@ -633,7 +634,7 @@ export async function runBatch(
         opts.onRow(row);
       }
     };
-    const [code] = await Promise.all([
+    const [code, , stderr] = await Promise.all([
       run.exited,
       (async () => {
         for await (const chunk of run.stdout) {
@@ -646,9 +647,10 @@ export async function runBatch(
         buf += decoder.decode();
         if (buf.length > 0) handleLine(buf);
       })(),
+      new Response(run.stderr).text(),
     ]);
     opts.activeProcs.delete(run);
-    return { rows, qualified, refused, dropped: NO_VERDICT.has(code) };
+    return { rows, qualified, refused, dropped: NO_VERDICT.has(code), stderr: stderr.trim() };
   } finally {
     if (existsSync(driverPath)) rmSync(driverPath, { force: true });
   }

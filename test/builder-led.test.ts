@@ -649,6 +649,7 @@ describe.concurrent("live Builder and Examiner coordination", () => {
       ...resumeSeats,
       host: {
         ...HOST,
+        load: () => 0,
         now: () => now,
         sleep: async () => {
           sleeps += 1;

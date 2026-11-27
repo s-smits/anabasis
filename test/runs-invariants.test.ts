@@ -8,7 +8,8 @@ import type { JsonObject } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
-import { liveOf, payerOf, seatsIn } from "../tools/runs/live.ts";
+import { append } from "#src/kernel/log.ts";
+import { liveHere, liveOf, payerOf, seatsIn } from "../tools/runs/live.ts";
 import { allowedLogins, asGathered, capOf, startRefusal } from "../tools/runs/logins.ts";
 import type { Host } from "../tools/runs/host-config.ts";
 import { leastOccupied } from "../tools/runs/placement.ts";
@@ -18,6 +19,22 @@ import { decidedOn, planOn } from "../tools/runs/view.ts";
 import { EVENT_FORMATTERS } from "../tools/runs/summary.ts";
 
 describe("each login's live runs, on every host", () => {
+  it("counts a kept run between two starts as live and unwritten, and not once its log has ended", () => {
+    const tree = mkdtempSync(join(tmpdir(), "live-kept-"));
+    try {
+      const run: Run = { name: "kept", tree, path: join(tree, "log.jsonl"), end: "comparison.reported" };
+      writeFileSync(run.path, "");
+      const keeper = { pid: 1, cwd: tree, args: ["bun", "tools/runs/cli.ts", "keep", "kept", "--here"] };
+      expect(liveHere("here", [keeper], [run])).toEqual([
+        { name: "kept", login: null, host: "here", unwritten: true },
+      ]);
+      append(run.path, "campaign.ended", { ending: "finished", why: "fixture" });
+      expect(liveHere("here", [keeper], [run])).toEqual([]);
+    } finally {
+      rmSync(tree, { recursive: true, force: true });
+    }
+  });
+
   it("leaves a host uncounted whose answer is no list of records with logins", () => {
     for (const lines of [[], null, ["usage: bun run runs pulse|zip ..."]]) {
       expect(liveOf("m1", lines)).toBeNull();

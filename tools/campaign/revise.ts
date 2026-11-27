@@ -45,7 +45,7 @@ import { openSuccessor } from "./successor.ts";
 
 export type RevisionAuditor = (reader: Reader, target: DraftAuditCase) => Promise<DraftAuditFinding>;
 
-const MAX_REVISION_AUDITS = 2;
+const MAX_REVISION_AUDITS = 3;
 
 interface WitnessSummary {
   readonly earnedChecked: number;

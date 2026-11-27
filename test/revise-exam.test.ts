@@ -822,15 +822,62 @@ export const scores = {
       packages: skipSeed.packages,
       auditor: failingAudit,
     });
-    const third = await capRunner2({
+    expect(
+      (await capRunner2({ session: "x-2", kind: "tune", why: "t3", candidate: validTuneCandidate })).accepted,
+    ).toBe(false);
+    const fourth = await capRunner2({
       session: "x-2",
       kind: "tune",
-      why: "t3",
+      why: "t4",
       candidate: validTuneCandidate,
     });
-    expect(third.accepted).toBe(false);
-    expect(third.message).toContain("revision audit cap (2) reached");
-    expect(auditPasses).toEqual([1, 2]);
+    expect(fourth.accepted).toBe(false);
+    expect(fourth.message).toContain("revision audit cap (3) reached");
+    expect(auditPasses).toEqual([1, 2, 3]);
+
+    const cleanPass3Seed = await seedCampaign({ name: "camp-clean-pass3" });
+    const cleanParentChecks =
+      eventsOf(read(cleanPass3Seed.log), "contract.frozen").at(-1)?.event.data.checks ?? "";
+    for (const pass of [1, 2]) {
+      append(cleanPass3Seed.log, "referee.draft", {
+        session: "x-0",
+        pass,
+        revision: cleanParentChecks,
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "n=9 passed" }],
+        summary: "probe defect",
+        probeRows: [
+          {
+            id: 1,
+            task: "ex-001",
+            changes: [{ path: "$.n", value: "9", edit: null }],
+            original: { kind: "pass" },
+            changed: { kind: "pass" },
+          },
+        ],
+      });
+    }
+    const cleanSeen: { pass: number | undefined; verifiedFixed: number; unverified: number }[] = [];
+    const cleanRes = await revisionRunner({
+      log: cleanPass3Seed.log,
+      parentBundle: cleanPass3Seed.bundle,
+      packages: cleanPass3Seed.packages,
+      auditor: async (_reader, target) => {
+        cleanSeen.push({
+          pass: target.pass,
+          verifiedFixed: target.verifiedFixed?.length ?? 0,
+          unverified: target.priorFindings?.length ?? 0,
+        });
+        return { verdict: "sound", findings: [], summary: "verified clean fix", probes: [] };
+      },
+    })({
+      session: "x-1",
+      kind: "tune",
+      why: "clean fix after 2 defect passes",
+      candidate: validTuneCandidate,
+    });
+    expect(cleanRes.accepted).toBe(true);
+    expect(cleanSeen).toEqual([{ pass: 3, verifiedFixed: 2, unverified: 0 }]);
 
     const probeSeed = await seedCampaign({ name: "camp-probe-replay" });
     const probeParentChecks =

@@ -175,6 +175,17 @@ describe("scheduler decision boundaries", () => {
       "new error",
     );
     expect(
+      unaudited([
+        ...draftedLog,
+        ev("referee.draft", {
+          session: "d-2",
+          verdict: "skipped",
+          summary: "draft audit recorded no verdict",
+          error: null,
+        }),
+      ]),
+    ).toBe("draft audit recorded no verdict");
+    expect(
       nextAction(
         [...draftedLog, ev("referee.draft", { session: "d-2", error: "Provider is not configured" })],
         PLAN,

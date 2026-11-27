@@ -894,7 +894,7 @@ describe.concurrent("campaign draft lifecycle", () => {
           "--examiner-effort",
           "high",
         ],
-        putting(SOUND, SOUND, SOUND),
+        putting(SOUND, SOUND, SOUND, SOUND),
         async (reader, target) => {
           seenPasses.push({ effort: reader.effort, pass: target.pass, prior: target.priorFindings });
           return {
@@ -905,30 +905,66 @@ describe.concurrent("campaign draft lifecycle", () => {
           };
         },
       ),
-      ...(["sound", "skipped"] as const).map(async (verdict) => {
-        const name = `${STEM}-audit-${verdict}`;
+      (async () => {
+        const name = `${STEM}-audit-sound`;
         let calls = 0;
         await draftCommand(
           [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
           putting(SOUND),
           async () => {
             calls += 1;
-            return { verdict, findings: [], summary: verdict, probes: [] };
+            return { verdict: "sound", findings: [], summary: "sound", probes: [] };
           },
         );
         expect(calls).toBe(1);
         expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
-      }),
+      })(),
+      (async () => {
+        const name = `${STEM}-audit-skipped-no-error`;
+        let calls = 0;
+        await draftCommand(
+          [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1", "--tries", "2"],
+          putting(SOUND, SOUND),
+          async () => {
+            calls += 1;
+            return calls === 1
+              ? { verdict: "skipped", findings: [], summary: "draft audit recorded no verdict", probes: [] }
+              : { verdict: "sound", findings: [], summary: "sound", probes: [] };
+          },
+        );
+        expect(calls).toBe(2);
+        expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
+        const onlySkipped = `${STEM}-audit-skipped-only`;
+        await draftCommand(
+          [
+            ...opened(onlySkipped, false, { model: SOLVER, effort: "medium" }),
+            "--session",
+            "d-1",
+            "--tries",
+            "1",
+          ],
+          putting(SOUND),
+          async () => ({
+            verdict: "skipped",
+            findings: [],
+            summary: "draft audit recorded no verdict",
+            probes: [],
+          }),
+        );
+        expect(draftOf(read(campaignLog(onlySkipped)))).toBeNull();
+      })(),
       draftCommand([...opened(noReviewer), "--session", "d-1"], putting(SOUND), async () => {
         skippedCalls += 1;
         return { verdict: "sound", findings: [], summary: "unused", probes: [] };
       }),
     ]);
-    expect(seenPasses).toHaveLength(2);
+    expect(seenPasses).toHaveLength(3);
     expect(seenPasses[0]).toEqual({ effort: "low", pass: 1, prior: [] });
     expect(seenPasses[1]?.effort).toBe("low");
     expect(seenPasses[1]?.pass).toBe(2);
     expect(seenPasses[1]?.prior?.[0]).toContain("vacuous-pass on ex-001");
+    expect(seenPasses[1]?.prior?.[0]).toContain("replay skipped:");
+    expect(seenPasses[2]?.pass).toBe(3);
     expect(draftOf(read(campaignLog(defectName)))).toBeNull();
     expect(skippedCalls).toBe(0);
     // Deterministic $0 probe replay blocks unfixed revisions without spending an LLM pass and gates post-cap drafts too.
@@ -980,7 +1016,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     const unverifiedRestart = `${STEM}-audit-restart-unverified`;
     const unverifiedLog = campaignLog(unverifiedRestart);
     const unverifiedArgs = opened(unverifiedRestart, false, { model: SOLVER, effort: "low" });
-    for (const pass of [1, 2]) {
+    for (const pass of [1, 2, 3]) {
       append(unverifiedLog, "referee.draft", {
         session: "d-1",
         pass,
@@ -997,6 +1033,57 @@ describe.concurrent("campaign draft lifecycle", () => {
       probes: [],
     }));
     expect(draftOf(read(unverifiedLog))).toBeNull();
+
+    const rewriteName = `${STEM}-audit-unverified-pass`;
+    const rewriteLog = campaignLog(rewriteName);
+    const rewriteArgs = opened(rewriteName, false, { model: SOLVER, effort: "low" });
+    const rewrittenDraft: Draft = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && (req.files ?? []).some((f) => f.path === "report.md" && f.text?.includes("value 1.96")) };\n`,
+      accept: SOUND.accept.map((entry) => ({
+        ...entry,
+        files: [{ path: "report.md", text: "Diagnostics: z=1.96 (value 1.96).\n" }],
+      })),
+    };
+    for (const pass of [1, 2]) {
+      append(rewriteLog, "referee.draft", {
+        session: "d-1",
+        pass,
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "old keyword search" }],
+        summary: "keyword check",
+        probeRows: [
+          {
+            id: 1,
+            task: "ex-001",
+            changes: [
+              {
+                path: "file:report.md",
+                value: null,
+                edit: { find: "old stub phrase", replace: "not performed" },
+              },
+            ],
+            texts: [],
+            original: { kind: "pass" },
+            changed: { kind: "pass" },
+            moved: [],
+          },
+        ],
+      });
+    }
+    const verifySeen: { pass: number | undefined; prior: readonly string[] | undefined }[] = [];
+    await draftCommand(
+      [...rewriteArgs, "--session", "d-2", "--tries", "1"],
+      putting(rewrittenDraft),
+      async (_reader, target) => {
+        verifySeen.push({ pass: target.pass, prior: target.priorFindings });
+        return { verdict: "sound", findings: [], summary: "verified rewrite", probes: [] };
+      },
+    );
+    expect(verifySeen).toHaveLength(1);
+    expect(verifySeen[0]?.pass).toBe(3);
+    expect(verifySeen[0]?.prior?.[0]).toContain("replay failed:");
+    expect(draftOf(read(rewriteLog))).toEqual(rewrittenDraft);
 
     const deletedName = `${STEM}-audit-deleted-example`;
     const fourExamples: Draft = {

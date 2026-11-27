@@ -245,7 +245,7 @@ async function probeReading(
     });
   const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
   const judged = hasJudge(given.brief.objective);
-  const carried = tasks.length > 1 && tasks.every(({ hidden }) => hidden !== null);
+  const carried = tasks.every(({ hidden }) => hidden !== null);
 
   const [swaps, hidden, stripped, changed] = await Promise.all([
     probed(accepted.flatMap((run) => others(run, (other) => other))),

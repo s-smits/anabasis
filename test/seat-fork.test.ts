@@ -155,6 +155,14 @@ describe("seatForkPlan and applyContinuation", () => {
         }),
         line("exam.turn", { session: "x-2", turn: 20, text: "Drafting task 2." }),
         line("exam.turn", { session: "x-2", turn: 21, text: "Should not appear." }),
+        line("exam.call", {
+          session: "x-2",
+          turn: 21,
+          tool: "bash",
+          args: { command: "rm -rf" },
+          isError: false,
+          text: "later-turn-call",
+        }),
       ],
       "no",
     );
@@ -169,6 +177,7 @@ describe("seatForkPlan and applyContinuation", () => {
     expect(wrapped.continuation?.text).toContain("[call bash (ok)]");
     expect(wrapped.continuation?.text).toContain("Drafting task 2.");
     expect(wrapped.continuation?.text).not.toContain("Should not appear.");
+    expect(wrapped.continuation?.text).not.toContain("later-turn-call");
     expect(wrapped.continuation?.text).toContain("Now try non-uniform bounds.");
 
     expect(() => seatForkPlan(log, "exam", claudeModel, { "wrap-turns": "x-2:5" })).toThrow("fewer than 5");

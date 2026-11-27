@@ -206,14 +206,26 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
         row("exam.started", { session: "x-crash" }),
         row("exam.finished", { session: "x-crash", ended: "crashed", running: 1 }),
         row("exam.started", { session: "../evil" }),
-        row("exam.started", { session: "x-2", conversation: "x-1" }),
+        row("build.finished", { session: "b-unrelated-only" }),
+        row("build.finished", { session: "x-2", conversation: "x-wrong-kind" }),
+        row("exam.started", { session: "x-2", conversation: "x-parent-tail" }),
+        row("exam.started", { session: "x-other", conversation: "x-wrong-session" }),
         row("exam.finished", { session: "x-2", ended: "supplied" }),
         row("exam.started", { session: "x-3" }),
         row("exam.finished", { session: "x-3", ended: "supplied" }),
       ].join("\n")}\n`,
     );
     writeFileSync(join(source, "evil.jsonl"), '{"sessionId":"00000000-0000-0000-0000-000000000009"}\n');
-    for (const id of ["d-1", "x-1", "x-2", "x-3"]) {
+    for (const id of [
+      "d-1",
+      "x-1",
+      "x-2",
+      "x-3",
+      "b-unrelated-only",
+      "x-parent-tail",
+      "x-wrong-kind",
+      "x-wrong-session",
+    ]) {
       writeFileSync(join(sessions, `${id}.jsonl`), `{"sessionId":"00000000-0000-0000-0000-000000000001"}\n`);
     }
 
@@ -247,6 +259,10 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "d-1.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-1.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-2.jsonl"))).toBe(true);
+    expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-parent-tail.jsonl"))).toBe(true);
+    expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-wrong-kind.jsonl"))).toBe(false);
+    expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-wrong-session.jsonl"))).toBe(false);
+    expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "b-unrelated-only.jsonl"))).toBe(false);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-3.jsonl"))).toBe(false);
 
     const liveSource = join(root, "live-fallback");
@@ -316,6 +332,23 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
       );
       expect(() => restoreHome(store, id, join(root, `out-${id}`))).toThrow("traverses symlink");
       expect(existsSync(join(outsideSym, "pwn.txt"))).toBe(false);
+    }
+    for (const [id, secondPath] of [
+      ["sym-overwrite", "linkdir"],
+      ["sym-dot-prefix", "./linkdir/pwn.txt"],
+      ["sym-dotdot-norm", "sub/../linkdir/pwn.txt"],
+    ] as const) {
+      writeFileSync(
+        join(store, `${id}.json`),
+        JSON.stringify({
+          session: id,
+          entries: [
+            { path: "linkdir", kind: "symlink", target: outsideSym },
+            { path: secondPath, kind: "dir" },
+          ],
+        }),
+      );
+      expect(() => restoreHome(store, id, join(root, `out-${id}`))).toThrow("traverses symlink");
     }
 
     const invalidManifests: readonly [string, unknown, string][] = [

@@ -8,7 +8,8 @@ import { join } from "../src/meta/path.ts";
 import { openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
 import { codingTools } from "../src/tools/coding.ts";
 import { type CommandSandbox, type NetworkReach, solveDirs } from "../src/tools/command.ts";
-import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solver/prompt.ts";
+import { firstTurn, seedHome, systemPrompt, taskFiles, type Told } from "../src/solver/prompt.ts";
+import { DELIVERABLES } from "../src/kernel/answer-files.ts";
 
 const CONTRACT: Contract = {
   answerFormat: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] },
@@ -252,5 +253,24 @@ describe("what a solve opens with", () => {
     expect(systemPrompt(TOLD)).not.toContain("public/files/");
     expect(systemPrompt({ ...TOLD, files: 2 })).toMatch(/public\/files\/ too, 2 files,/u);
     expect(systemPrompt({ ...TOLD, files: 1 })).toMatch(/public\/files\/ too, 1 file,/u);
+  });
+
+  it("caps taskFiles at exact DELIVERABLES.bytes without spilling past the byte ceiling", () => {
+    const half = "a".repeat(DELIVERABLES.bytes / 2);
+    const exact = taskFiles({
+      files: [
+        { path: "a.txt", text: half },
+        { path: "b.txt", text: half },
+        { path: "c.txt", text: "x" },
+      ],
+    });
+    expect([...exact.keys()]).toEqual(["a.txt", "b.txt"]);
+    const over = taskFiles({
+      files: [
+        { path: "a.txt", text: half },
+        { path: "b.txt", text: `${half}x` },
+      ],
+    });
+    expect([...over.keys()]).toEqual(["a.txt"]);
   });
 });

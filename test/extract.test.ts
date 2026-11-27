@@ -229,5 +229,7 @@ describe("the offline file extractor", () => {
     };
     const nbFile = plain("diag.ipynb", JSON.stringify(nb));
     expect(answerImages(nbFile).map(({ path }) => path)).toEqual(["diag.ipynb#cell-0-out-0.png"]);
+    expect(answerImages({ path: "empty.png", base64: "" })).toEqual([]);
+    expect(answerImages({ path: "pic.png", base64: "AAAA" }).map(({ path }) => path)).toEqual(["pic.png"]);
   });
 });

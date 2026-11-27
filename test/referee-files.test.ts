@@ -21,7 +21,7 @@ import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { storedZip, zipMembers } from "../src/meta/zip.ts";
 import { agreement } from "../src/audit/agreement.ts";
 import { executeProbe, type ProbeRow, probeTool } from "../src/audit/probe.ts";
-import { auditRejection } from "../src/audit/auditor.ts";
+import { auditRejection, boundPublicInput } from "../src/audit/auditor.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 import { containing, objectWith } from "./helpers/matchers.ts";
 
@@ -650,5 +650,35 @@ describe("publicInput.files bounding in Referee", () => {
     expect(row.changed).toEqual({ kind: "fail", blocking: ["check-xlsx"] });
     const members = seenZip === null ? [] : zipMembers(seenZip, 1024 * 1024).members;
     expect(members.find((m) => m.path === "xl/media/chart.png")?.data.equals(binary)).toBe(true);
+  });
+
+  it("bounds base64, invalid base64, archive entries, and non-text rows in boundPublicInput", () => {
+    const raw = Buffer.from("hello").toString("base64");
+    const bounded = boundPublicInput({
+      files: [
+        { path: "ok.bin", base64: raw },
+        { path: "bad.bin", base64: "not-valid-base64!" },
+        {
+          path: "pack.zip",
+          entries: [
+            { path: "a.txt", text: "1" },
+            { path: "b.txt", text: "2" },
+          ],
+        },
+        { path: "empty.txt" },
+        { text: "missing-path" },
+        "raw-entry",
+      ],
+    });
+    expect(bounded).toEqual({
+      files: [
+        { path: "ok.bin", bytes: 5, omittedBytes: 5 },
+        { path: "bad.bin", omittedBytes: 17, invalidBase64: true },
+        { path: "pack.zip", members: 2 },
+        { path: "empty.txt" },
+        { text: "missing-path" },
+        "raw-entry",
+      ],
+    });
   });
 });

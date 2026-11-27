@@ -15,7 +15,7 @@ import {
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { CODING_TOOLS, codingTools, wallExec } from "../src/tools/coding.ts";
+import { CODING_TOOLS, codingTools, prepareImage, wallExec } from "../src/tools/coding.ts";
 import { type CommandSandbox, solveDirs, sandboxBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
 import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
@@ -145,5 +145,22 @@ describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () 
       await expect(running).rejects.toMatchObject({ code: "aborted" });
       await stopped(marker);
     });
+  });
+});
+
+describe("prepareImage capability and MIME gates", () => {
+  it("gates on vision capability, image MIME type, and valid image bytes", async () => {
+    const png1x1 = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const vision: Parameters<typeof prepareImage>[2] = { input: ["text", "image"] };
+    const textOnly: Parameters<typeof prepareImage>[2] = { input: ["text"] };
+    expect(await prepareImage(png1x1, "chart.png", textOnly)).toBeNull();
+    expect(await prepareImage(png1x1, "notes.txt", vision)).toBeNull();
+    expect(await prepareImage(Buffer.from([0x89, 0x50, 0x4e, 0x47]), "broken.png", vision)).toBeNull();
+    const ok = await prepareImage(png1x1, "chart.png", vision);
+    expect(ok).toMatchObject({ type: "image", mimeType: "image/png" });
+    expect(ok?.data.length).toBeGreaterThan(0);
   });
 });

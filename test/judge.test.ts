@@ -231,6 +231,7 @@ describe("the pairwise judge", () => {
     );
     expect(pairPrompts.every((shown) => shown.includes("Include every reconciliation table."))).toBe(true);
     expect(pairPrompts.every((shown) => shown.includes(mid))).toBe(true);
+    expect(pairPrompts.some((shown) => shown.includes("view_image"))).toBe(false);
     expect(Math.max(...pairPrompts.map((shown) => Buffer.byteLength(answerA(shown))))).toBeLessThan(96_500);
   });
 
@@ -248,22 +249,36 @@ describe("the pairwise judge", () => {
       ],
     });
     const sawImage: boolean[] = [];
+    let askedMissing = false;
+    let askedOverflow = false;
     const reply = (context: TranscriptContext) => {
       const shown = JSON.stringify(context);
       const hasImageBlock = shown.includes('"type":"image"');
+      const answer = answerA(shown).includes("report.docx#word/media/chart.png") ? "A" : "B";
+      if (!askedMissing && shown.includes("view_image")) {
+        askedMissing = true;
+        return fauxAssistantMessage(fauxToolCall("view_image", { answer, path: "no-such.png" }), {
+          stopReason: "toolUse",
+        });
+      }
+      if (!askedOverflow && shown.includes("view_image")) {
+        askedOverflow = true;
+        return fauxAssistantMessage(fauxToolCall("view_image", { answer, path: "extra-fifth.png" }), {
+          stopReason: "toolUse",
+        });
+      }
       if (!hasImageBlock && shown.includes("view_image")) {
-        const answer = answerA(shown).includes("report.docx#word/media/chart.png") ? "A" : "B";
         return fauxAssistantMessage(
           fauxToolCall("view_image", { answer, path: "report.docx#word/media/chart.png" }),
           { stopReason: "toolUse" },
         );
       }
       sawImage.push(hasImageBlock);
-      return fauxAssistantMessage(fauxToolCall("record_vote", { better: "A", reason: "visual check" }), {
+      return fauxAssistantMessage(fauxToolCall("record_vote", { better: answer, reason: "visual check" }), {
         stopReason: "toolUse",
       });
     };
-    faux.setResponses(Array.from({ length: 16 }, () => reply));
+    faux.setResponses(Array.from({ length: 18 }, () => reply));
     const models = createModels();
     models.setProvider(faux.provider);
     const log = join(scratch, `judged-vision-${String(++logs)}.jsonl`);
@@ -277,6 +292,9 @@ describe("the pairwise judge", () => {
     const files = keepAnswerFiles(log, [
       { path: "forest.png", base64: png1x1 },
       { path: "report.docx", base64: docx },
+      { path: "third.png", base64: png1x1 },
+      { path: "fourth.png", base64: png1x1 },
+      { path: "extra-fifth.png", base64: png1x1 },
       { path: "stub.png", base64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64") },
     ]);
     append(log, "verdict", {
@@ -300,8 +318,17 @@ describe("the pairwise judge", () => {
       { model: faux.getModel(), effort: "medium", models: () => models },
       { log, comparison: "g-img", task: TASK, contract: oneItem, first: "s-img", second: "s-plain" },
     );
-    const pair = read(log).find(({ kind }) => kind === "referee.pair")?.data;
-    expect(pair?.extracts).toEqual({ files: 3, empty: 1, faults: 0, truncated: 0 });
+    const events = read(log);
+    const pair = events.find(({ kind }) => kind === "referee.pair")?.data;
+    expect(pair?.extracts).toEqual({ files: 6, empty: 2, faults: 0, truncated: 0 });
+    expect(pair).toMatchObject({ judge: 1, holistic: 1 });
+    const viewErrors = events
+      .filter(
+        ({ kind, data }) => kind === "referee.call" && data.tool === "view_image" && data.isError === true,
+      )
+      .map(({ data }) => (isString(data.text) ? data.text : ""));
+    expect(viewErrors.some((msg) => msg.includes("has no viewable image no-such.png"))).toBe(true);
+    expect(viewErrors.some((msg) => msg.includes("has no viewable image extra-fifth.png"))).toBe(true);
     expect(sawImage).toEqual([true, true, true, true]);
   });
 });

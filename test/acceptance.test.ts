@@ -752,6 +752,11 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
     expect(await unread(reads(new Set(optional)), { answerFormat: withOptional })).toEqual([
       "answer fields $.comment",
     ]);
+    const refusesLetter: Verifier = async (t, a) =>
+      asRecord(a)?.v === asRecord(t.publicInput)?.id && asRecord(a)?.note !== "x"
+        ? { kind: "pass", objective: 1 }
+        : { kind: "fail", blocking: ["ok"] };
+    expect(await unread(refusesLetter)).toEqual(["answer fields $.note, $.flags[].ok, $.flags[].why"]);
   });
 });
 

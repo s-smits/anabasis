@@ -3,6 +3,7 @@ import { nextAction, practiceDue, supplyRun, tasksToAskFor, unaudited } from "..
 import type { Plan } from "../src/campaign/state.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 
 const AT = "2026-11-26T00:00:00.000Z";
 const STARTER = "starter-h";
@@ -436,7 +437,7 @@ describe("scheduler decision boundaries", () => {
     const freshNext = nextAction(freshSideNoRoom, PLAN);
     expect(freshNext.move).toBe("examine");
     expect(freshNext.why).toContain("starter confirmation owed");
-    const revertedToStarterNoRoom = [
+    const starterSideNoRoom = [
       ...base,
       checkpoint("b-1", "h-1"),
       ...compared("g-1", STARTER, "h-1", "step", { valid: roomStep() }),
@@ -445,12 +446,16 @@ describe("scheduler decision boundaries", () => {
       ...compared("g-2", "h-1", STARTER, "no-step", {
         versions: ["e-0"],
         scored: { wins: 0, losses: 1, ties: 0 },
+        valid: { old: [1, 1, 0], fresh: [0, 0, 1], informative: { old: 1, fresh: 0 } },
       }),
       ev("harness.reverted", { harness: STARTER, from: "h-1" }),
+      examFin("x-1"),
     ];
-    const starterNext = nextAction(revertedToStarterNoRoom, PLAN);
-    expect(starterNext).toMatchObject({ move: "examine", code: "no-room" });
-    expect(starterNext.why).not.toContain("starter confirmation owed");
+    expect(nextAction(starterSideNoRoom, PLAN)).toMatchObject({
+      move: "examine",
+      code: "no-room",
+      why: "harness starter- is the current reference and comparison g-2 found no informative tasks for it: generating harder tasks with evaluation headroom",
+    });
 
     const revertedWithRoom = [
       ...base,
@@ -577,5 +582,34 @@ describe("scheduler decision boundaries", () => {
       ev("harness.reverted", { harness: STARTER, from: "h-1" }),
     ];
     expect(practiceDue(revertedAfterWrittenEpoch, 3, 0.1)).toBeNull();
+  });
+
+  it("repairs a check-defects reading through the Examiner only while the plan may revise and fewer than two whole exam sessions followed it, over every tail of up to four sessions", () => {
+    const defectLog = [CHECKED, ...manyHeld("t", 8), released("t-0"), checkpoint("b-1", "h-1")];
+    const reading = compared("g-1", STARTER, "h-1", "check-defects");
+    const endings = ["finished", "killed"] as const;
+    const tailsOf = (length: number): (typeof endings)[number][][] =>
+      length === 0 ? [[]] : tailsOf(length - 1).flatMap((head) => endings.map((one) => [...head, one]));
+    let checked = 0;
+    for (const before of [[], ["finished"]]) {
+      for (const tail of [0, 1, 2, 3, 4].flatMap(tailsOf)) {
+        for (const canRevise of [true, false, undefined]) {
+          const log = [
+            ...defectLog,
+            ...before.map((ended, at) => examFin(`x-before-${String(at)}`, [], ended)),
+            ...reading,
+            ...tail.map((ended, at) => examFin(`x-${String(at)}`, [], ended)),
+          ];
+          const repairs = canRevise === true && tail.filter((ended) => ended === "finished").length < 2;
+          expect(
+            nextAction(log, { ...PLAN, patience: 9, ...keyIfDefined("canRevise", canRevise) }),
+          ).toMatchObject(
+            repairs ? { code: "bound", move: "examine" } : { code: "bound", move: "end", ending: "exam" },
+          );
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBe(2 * (1 + 2 + 4 + 8 + 16) * 3);
   });
 });

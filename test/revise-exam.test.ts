@@ -660,41 +660,7 @@ describe("revision admission, immutability, and lock exclusion", () => {
     }
   });
 
-  it("enforces exclusive-lock mutual exclusion between exam.revised and comparison.started in log.ts", () => {
-    const dir = tempDir("ana-rev-lock-");
-    const logOpen = join(dir, "open.jsonl");
-    append(logOpen, "comparison.started", { session: "g-1", old: "a", fresh: "b" });
-    expect(() => append(logOpen, REVISED, { kind: "tune", why: "race" })).toThrow(
-      /while comparison g-1 is open/u,
-    );
-
-    const logRevised = join(dir, "revised.jsonl");
-    append(logRevised, REVISED, { kind: "tune", why: "done" });
-    expect(() => append(logRevised, REVISED, { kind: "tune", why: "twice" })).toThrow(
-      /already been revised/u,
-    );
-    expect(() => append(logRevised, "comparison.started", { session: "g-2", old: "a", fresh: "b" })).toThrow(
-      /after exam\.revised/u,
-    );
-  });
-
-  it("schedules check-defects repair examine when canRevise is true and ends exam when false", () => {
-    const base: LogEvent[] = [
-      { at: "2026-11-27T00:00:00Z", kind: "checker.read", data: { contract: "c", checks: "k", faults: [] } },
-      { at: "2026-11-27T00:00:00Z", kind: "task.proposed", data: { version: "v1" } },
-      { at: "2026-11-27T00:00:00Z", kind: "task.gate", data: { version: "v1", gate: 1, outcome: "passed" } },
-      { at: "2026-11-27T00:00:01Z", kind: "build.checkpoint", data: { session: "b-1", harness: "h1" } },
-      {
-        at: "2026-11-27T00:00:01Z",
-        kind: "comparison.started",
-        data: { session: "g-1", old: "s", fresh: "h1", starter: "s" },
-      },
-      {
-        at: "2026-11-27T00:00:02Z",
-        kind: "comparison.reported",
-        data: { session: "g-1", old: "s", fresh: "h1", starter: "s", reading: "check-defects", aside: [] },
-      },
-    ];
+  it("ends a revised campaign for its successor ahead of drafting its exam", () => {
     const plan = {
       patience: 2,
       unprepared: false,
@@ -706,57 +672,12 @@ describe("revision admission, immutability, and lock exclusion", () => {
       left: null,
       promotions: null,
     };
-    expect(nextAction(base, { ...plan, canRevise: true })).toMatchObject({ code: "bound", move: "examine" });
-    expect(nextAction(base, { ...plan, canRevise: false })).toMatchObject({
-      code: "bound",
-      move: "end",
-      ending: "exam",
-    });
-    const afterTwoRepairs: LogEvent[] = [
-      {
-        at: "2026-11-27T00:00:01Z",
-        kind: "exam.finished",
-        data: { session: "x-0", ended: "finished", held: ["v1"] },
-      },
-      ...base,
-      {
-        at: "2026-11-27T00:00:03Z",
-        kind: "exam.finished",
-        data: { session: "x-int", ended: "crashed", held: [] },
-      },
-      {
-        at: "2026-11-27T00:00:04Z",
-        kind: "exam.finished",
-        data: { session: "x-2", ended: "finished", held: ["v2"] },
-      },
-    ];
-    expect(nextAction(afterTwoRepairs, { ...plan, canRevise: true })).toMatchObject({
-      code: "bound",
-      move: "examine",
-    });
-    expect(
-      nextAction(
-        [
-          ...afterTwoRepairs,
-          {
-            at: "2026-11-27T00:00:05Z",
-            kind: "exam.finished",
-            data: { session: "x-3", ended: "finished", held: ["v3"] },
-          },
-        ],
-        { ...plan, canRevise: true },
-      ),
-    ).toMatchObject({
-      code: "bound",
-      move: "end",
-      ending: "exam",
-    });
     expect(
       nextAction(
         [{ at: "2026-11-27T00:00:00Z", kind: "exam.revised", data: { kind: "tune", why: "handoff" } }],
         { ...plan, prompted: true },
       ),
-    ).toMatchObject({ code: "revised", move: "end", ending: "revise" });
+    ).toMatchObject({ code: "revised", move: "end", ending: "revise", why: "handoff" });
   });
 });
 

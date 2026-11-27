@@ -272,7 +272,7 @@ function bound(ground: Ground): Move | null {
   }
   if (read?.report.reading === "check-defects") {
     const repairAttempts = events
-      .slice(read.reported + 1)
+      .slice(read.reported)
       .filter((event) => event.kind === "exam.finished" && !INTERRUPTED.has(event.data.ended)).length;
     if (plan.canRevise === true && repairAttempts < MAX_REPAIR_ATTEMPTS) {
       return examine(

@@ -236,7 +236,7 @@ function starterSplits(events: readonly LogEvent[], reports: readonly Reported[]
   const bySession = new Map<string, ReturnType<typeof controlOf>>();
   let judgedCount = 0;
   for (const report of reports) {
-    if (starter === null || report.data.fresh !== starter || report.data.old === starter) continue;
+    if (report.data.fresh !== starter || report.data.old === starter) continue;
     if (judged.has(report.session)) {
       judgedCount += 1;
       continue;
@@ -487,8 +487,7 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);
   const opening = openingOf(events);
   const carried = opening?.parent?.carried.attempts ?? 0;
-  const level = Number(opening?.terms.level ?? 0.02);
-  const carriedRisk = carried > 0 && Number.isFinite(level) ? carried * level : 0;
+  const carriedRisk = carried === 0 ? 0 : carried * Number(opening?.terms.level ?? 0.02);
   const total = Math.min(
     1,
     carriedRisk + epochs.reduce((sum, { falsePromotion }) => sum + falsePromotion.union, 0),

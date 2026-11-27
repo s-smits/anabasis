@@ -512,10 +512,12 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     expect(verdicts(run.rows)).toStrictEqual(here);
     expect(run.rows.length).toBe(Object.keys(here).length);
     const on = (place: string) => run.sent.filter((one) => one.place === place);
-    expect([on("b").length, on("d").length]).toEqual([1, 1]);
+    expect([on("b").length, on("d").length]).toEqual([2, 2]);
     expect(on("a").length).toBe(1 + Object.keys(here).length);
     expect(new Set(on("a").map(({ cwd }) => cwd)).size).toBe(2);
-    expect(new Set(run.sent.map(({ spare, wall }) => `${spare} ${wall}`))).toStrictEqual(new Set(["1 30"]));
+    expect(new Set(run.sent.map(({ spare, wall }) => `${spare} ${wall}`))).toStrictEqual(
+      new Set(["1 30", "1 60"]),
+    );
     for (const { cwd } of run.sent) expect(existsSync(join(cwd, "node_modules"))).toBe(false);
   }, 60_000);
 
@@ -589,7 +591,7 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     expect(run.status).not.toBe(0);
     expect(run.stderr).toContain('baseline suite "t" did not pass unmutated (failed) on b');
     expect(existsSync(run.out)).toBe(false);
-    expect(run.sent.length).toBe(1);
+    expect(run.sent.length).toBe(2);
   }, 60_000);
 
   it("runs at the one place an explicit ANA_CHECK_HOST names, without sparing held hosts, whatever the list holds", () => {

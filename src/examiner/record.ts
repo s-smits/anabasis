@@ -17,6 +17,7 @@ import { formatScores, OBJECTIVE, objectiveOf, scoresOf, type Task } from "../ke
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { epochsOf, tasksByEpoch } from "../campaign/climb.ts";
+import { reviewSummariesByTask } from "./reviews.ts";
 
 interface Answered {
   readonly turns: readonly number[];
@@ -261,6 +262,7 @@ export function taskHistory(
   const currentReports = lastReports(events);
   const answered = referenceAnswers(events, allReports, pairsOf);
   const faulted = faultedOf(events);
+  const reviewed = reviewSummariesByTask(events);
   const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
   const budget = isNumber(setting) ? setting : undefined;
   const since = events.findLastIndex(({ kind }) => isReferenceChange(kind));
@@ -282,13 +284,14 @@ export function taskHistory(
     if (block !== "practice") listed.push(version);
     const plain = block === "practice" || block === "earlier-reference" || block === "faulted";
     const clauses = plain ? [] : clausesOf(block, pool, version, answered.get(version), budget);
+    const reviewNote = block === "practice" ? [] : [reviewed.get(taskId)].filter(isString);
     const checks = faulted.get(taskId);
     const fault =
       checks === undefined ? [] : [`ruled at fault on an answer to it: ${[...checks].join(", ")}`];
     const heading = BLOCKS[block];
     lines.set(heading, [
       ...(lines.get(heading) ?? []),
-      [`${taskId} (${family})`, ...clauses, ...fault].join("; "),
+      [`${taskId} (${family})`, ...clauses, ...reviewNote, ...fault].join("; "),
     ]);
   }
   return {

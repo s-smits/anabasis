@@ -16,7 +16,7 @@ import { taskStates } from "../kernel/task.ts";
 import { formatScores, OBJECTIVE, objectiveOf, scoresOf, type Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
-import { tasksByEpoch } from "../campaign/climb.ts";
+import { epochsOf, tasksByEpoch } from "../campaign/climb.ts";
 
 interface Answered {
   readonly turns: readonly number[];
@@ -209,7 +209,11 @@ function promotedLine(events: readonly LogEvent[], since: number, listed: readon
     promotion.kind === "harness.reverted"
       ? "The reference harness was reverted to an earlier harness."
       : `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}.`;
-  return `${lead} ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
+  const owed =
+    promotion.kind === "harness.promoted" && epochsOf(events).at(-1)?.starter_tally === null
+      ? " Its confirmation comparison against the starter has not run yet and needs fresh unseen tasks written after the promotion: write demanding tasks within scope even where the new reference already answers cleanly."
+      : "";
+  return `${lead} ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced.${owed} Files in your home from sessions before then were written while the harness it replaced was the reference.`;
 }
 
 function refusedLines(

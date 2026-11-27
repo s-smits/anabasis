@@ -156,12 +156,7 @@ export async function openSuccessor(
     copyTreeIfMissing(join(dirA, "memory"), join(dirB, "memory"));
     copyTreeIfMissing(join(dirA, SEED_FILE), join(dirB, SEED_FILE));
     const stagedTools = join(dirA, "revisions", "exams", hashJsonValue(rev.draft).slice(0, 16), "bundle");
-    const sourceHome = existsSync(stagedTools)
-      ? stagedTools
-      : existsSync(join(dirA, "examiner-home"))
-        ? join(dirA, "examiner-home")
-        : undefined;
-    stageExam(dirB, rev.draft, sourceHome);
+    stageExam(dirB, rev.draft, stagedTools);
     if (eventsOf(eventsB, "exam.drafted").length === 0) {
       append(logB, "exam.drafted", {
         session: "rev",

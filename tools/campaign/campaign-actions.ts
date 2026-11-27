@@ -424,8 +424,9 @@ function halted(context: CampaignContext, bench: Bench) {
   const reading = actionTurn(context);
   const { decided } = reading;
   const waits = decided.move === "promote" && context.opening.attended;
-  const repairDue = decided.move === "examine" && decided.code === "bound";
-  if (context.used >= context.maxMoves || decided.move === "end" || waits || repairDue) bench.halt.abort();
+  if (context.used >= context.maxMoves || decided.move === "end" || decided.code === "bound" || waits) {
+    bench.halt.abort();
+  }
   return reading;
 }
 

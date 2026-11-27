@@ -15,18 +15,10 @@ import {
   readBrief,
 } from "#src/kernel/verify.ts";
 import { CHECK_BRIEF, EVALUATOR_FILE, TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
-import {
-  cpSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "#src/meta/filesystem.ts";
+import { cpSync, existsSync, lstatSync, mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { dirname, join, resolve } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
@@ -68,13 +60,9 @@ export const exampleId = (index: number): string => `ex-${String(index + 1).padS
  *  `.toolchain/host-tools.json` with `origin: "draft"` and the remaining declared host executables,
  *  so `resolveVerifierTool` dispatches to them directly while drafted checks stay `author` under
  *  rule 10 until admitted. */
-function sameDir(a: string, b: string): boolean {
-  return existsSync(a) && existsSync(b) ? realpathSync(a) === realpathSync(b) : resolve(a) === resolve(b);
-}
-
 function stageTools(bundle: string, draft: Draft, sourceHome?: string): void {
   const toolchain = join(bundle, TOOL_TREE_DIR);
-  if (sourceHome !== undefined && !sameDir(sourceHome, bundle)) {
+  if (sourceHome !== undefined) {
     rmSync(toolchain, { recursive: true, force: true });
     const homeTools = join(sourceHome, TOOL_TREE_DIR);
     const homeStat = lstatSync(homeTools, { throwIfNoEntry: false });

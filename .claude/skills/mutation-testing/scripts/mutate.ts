@@ -28,7 +28,7 @@ import { gitMaybe, gitOutput } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { checkPlaces, fleetPlaces, namedPlaces, type Place } from "#tools/runs/host-config.ts";
+import { checkPlaces, fleetPlaces, hostsFor, namedPlaces, type Place } from "#tools/runs/host-config.ts";
 import * as ts from "typescript5";
 import {
   BATCH_FILE,
@@ -592,6 +592,10 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
   if (todo.length === 0) {
     console.log(`0 mutants run, ${String(heldBefore)} held before`);
     return;
+  }
+  if ((runtimeProcess.env.ANA_HOSTS ?? "") === "") {
+    const known = hostsFor(root);
+    if (known.length > 0) runtimeProcess.env.ANA_HOSTS = JSON.stringify(known);
   }
   const pool = workersFor(
     args,

@@ -378,7 +378,10 @@ export async function runFleetPool(opts: {
       if (got.qualified) for (const name of needQualify) doneQualify.add(name);
       if (got.dropped || missing.length > 0) {
         retired.add(seat.place);
-        console.error(`${hostKey} gave no verdict, so takes no more mutants`);
+        const detail = got.stderr.split("\n").findLast((line) => line.trim() !== "");
+        console.error(
+          `${hostKey} gave no verdict${detail === undefined ? "" : ` (${detail})`}, so takes no more mutants`,
+        );
         pending.unshift(...missing);
         return;
       }

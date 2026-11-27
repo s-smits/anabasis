@@ -301,7 +301,7 @@ async function runPlan(opts: {
       })),
     ),
   );
-  const localSlots = Math.max(2, availableParallelism());
+  const localSlots = Math.max(2, Math.floor((availableParallelism() * 2) / 3));
   const command = [
     MUTATE,
     "run",

@@ -24,6 +24,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-shape.ts";
+import { keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -554,18 +555,27 @@ describe("a campaign against its bars", () => {
   it("reads the starter against itself on the halves of its own solves and falls back to it in honesty only when the reference A/A is unpowered on a non-judged starter read", () => {
     const starterLine = (events: readonly LogEvent[]) => barLines([opened, ...events])[2];
     let solves = 0;
-    const solved = (session: string, task: string, harness: string, valid: readonly boolean[]) => {
+    const solved = (
+      session: string,
+      task: string,
+      harness: string,
+      valid: readonly boolean[],
+      objectives?: readonly number[],
+    ) => {
       const ran = condition(task, harness);
       const id = conditionId(ran);
       return [
         event("condition.recorded", { id, condition: requireJsonValue(ran) }),
-        ...valid.flatMap((each) => {
+        ...valid.flatMap((each, at) => {
           solves += 1;
           const solve = `s-${String(solves)}`;
           const ending = each ? { outcome: "pass" } : { outcome: "fail", kind: "no-answer" };
           return [
             event("solve.started", { solve, condition: id, comparison: session }),
             event("solve.finished", { solve, ending }),
+            ...(each && objectives !== undefined
+              ? [event("verdict", { solve, kind: "pass", objective: objectives[at] ?? 0 })]
+              : []),
           ];
         }),
       ];
@@ -578,21 +588,20 @@ describe("a campaign against its bars", () => {
       each: number,
       extra: {
         readonly starter: (place: number) => readonly boolean[];
+        readonly starterObjectives?: (place: number) => readonly number[];
         readonly noise?: readonly number[];
         readonly judged?: boolean;
       },
     ) => [
-      ...(extra.judged === true
-        ? [
-            event("comparison.started", {
-              session,
-              old,
-              fresh,
-              starter: "S",
-              judge: { weights: { code: 0.5, judge: 0.5, step: 0.5 } },
-            }),
-          ]
-        : []),
+      event("comparison.started", {
+        session,
+        old,
+        fresh,
+        starter: "S",
+        ...keysIf(extra.judged === true, () => ({
+          judge: { weights: { code: 0.5, judge: 0.5, step: 0.5 } },
+        })),
+      }),
       ...TASKS6.flatMap((task, place) => [
         ...solved(
           session,
@@ -600,7 +609,7 @@ describe("a campaign against its bars", () => {
           old,
           Array.from({ length: each }, () => true),
         ),
-        ...solved(session, task, fresh, extra.starter(place)),
+        ...solved(session, task, fresh, extra.starter(place), extra.starterObjectives?.(place)),
       ]),
       event(REPORTED, {
         ...reported(session, old, fresh, extra.noise).data,
@@ -608,6 +617,9 @@ describe("a campaign against its bars", () => {
         setting: SETTING,
         versions: TASKS6,
         scored: { differences: TASKS6.map(() => 0) },
+        ...keysIf(extra.starterObjectives !== undefined, () => ({
+          objective: { direction: "lower" },
+        })),
       }),
     ];
     const promoted = [reported("g-1", "S", "h1"), promotedTo("h1", "S"), ...TASKS6.flatMap(heldOut)];
@@ -695,6 +707,19 @@ describe("a campaign against its bars", () => {
     expect(barLines(objectiveLog(0.05))[3]).toBe(
       "- Rollout consistency: in 1 comparison both arms had uniform validity across all rollouts per task, and in 0 uniform objective scores as well. Observational only.",
     );
+    const objStarterLog = [
+      opened,
+      ...promoted,
+      ...compared("g-2", "h1", "S", 2, {
+        starter: alike,
+        starterObjectives: (place) => (place % 2 === 0 ? [0.2, 0.8] : [0.8, 0.2]),
+        noise: allZero,
+      }),
+    ];
+    expect(epochsOf(objStarterLog)[0]?.falsePromotion.byMeasure).toEqual({
+      validity: { controls: 0, errors: 0 },
+      objective: { controls: 1, errors: 0 },
+    });
     // A difference within the floor the score ties at is no split (1.9e-9 is left unnamed); 2% apart is
     // a split.
     const every = (measures: readonly [number, number]) =>

@@ -39,7 +39,7 @@ interface ParsedEntry {
 
 interface TurnSpan {
   readonly messageId: string;
-  endIndex: number;
+  endUuid: string;
   readonly toolUseIds: Set<string>;
   readonly toolResultIds: Set<string>;
 }
@@ -119,10 +119,10 @@ function assistantTurns(entries: readonly ParsedEntry[]): readonly TurnSpan[] {
     if (assistant !== null) {
       const messageId = isString(assistant.id) ? assistant.id : `anon-${String(index)}`;
       if (current === null || current.messageId !== messageId) {
-        current = { messageId, endIndex: index, toolUseIds: new Set(), toolResultIds: new Set() };
+        current = { messageId, endUuid: entry.uuid, toolUseIds: new Set(), toolResultIds: new Set() };
         turns.push(current);
       }
-      current.endIndex = index;
+      current.endUuid = entry.uuid;
       recordToolUses(entry, current);
       continue;
     }
@@ -130,9 +130,9 @@ function assistantTurns(entries: readonly ParsedEntry[]): readonly TurnSpan[] {
     const toolResults = isToolResultCarrier(entry);
     if (toolResults !== null) {
       recordToolResults(toolResults, current);
-      current.endIndex = index;
+      current.endUuid = entry.uuid;
     } else if (entry.type === "attachment") {
-      current.endIndex = index;
+      current.endUuid = entry.uuid;
     } else if (entry.type === "user") {
       current = null;
     }
@@ -155,8 +155,7 @@ function lastCompleteForkPoint(jsonl: string): {
   if (complete === undefined) {
     throw new Error("the Claude transcript holds no completed assistant turn to fork from");
   }
-  const end = entries[complete.endIndex];
-  return { sdkSessionId, ...keyIfDefined("resumeSessionAt", end?.uuid) };
+  return { sdkSessionId, resumeSessionAt: complete.endUuid };
 }
 
 export function resolveForkPoint(
@@ -180,9 +179,7 @@ export function resolveForkPoint(
       atTurn > 1 ? `fork at turn ${String(atTurn - 1)} instead` : "no earlier completed turn exists";
     throw new Error(`turn ${String(atTurn)} has unanswered tool calls (${missing.join(", ")}); ${earlier}`);
   }
-  const end = entries[chosen.endIndex];
-  if (end === undefined) throw new Error(`turn ${String(atTurn)} resolved to no chain entry`);
-  return { sdkSessionId, resumeSessionAt: end.uuid, turnCount: turns.length };
+  return { sdkSessionId, resumeSessionAt: chosen.endUuid, turnCount: turns.length };
 }
 
 export function stageForkTranscript(
@@ -228,18 +225,17 @@ function persistedSource(
 } | null {
   if (!existsSync(projectDir)) return null;
   if (sdkSessionId !== undefined) {
-    if (sdkSessionId === excludeSessionId) return null;
+    if (sdkSessionId === excludeSessionId || !isSafePathSegment(sdkSessionId)) return null;
     const exact = join(projectDir, `${sdkSessionId}.jsonl`);
     return existsSync(exact) ? { file: exact, sdkSessionId } : null;
   }
   const excludedFile = excludeSessionId === undefined ? undefined : `${excludeSessionId}.jsonl`;
   const candidates = readdirSync(projectDir)
     .filter((name) => name.endsWith(".jsonl") && name !== excludedFile)
-    .map((name) => ({
-      name,
-      path: join(projectDir, name),
-      mtimeMs: statSync(join(projectDir, name)).mtimeMs,
-    }))
+    .map((name) => {
+      const path = join(projectDir, name);
+      return { name, path, mtimeMs: statSync(path).mtimeMs };
+    })
     .toSorted((left, right) => right.mtimeMs - left.mtimeMs);
   const newest = candidates[0];
   if (newest === undefined) return null;

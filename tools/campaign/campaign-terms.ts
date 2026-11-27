@@ -256,17 +256,14 @@ function validateOpening(
   seats: "paid" | "scripted",
   events: readonly LogEvent[],
 ): void {
-  if (seats === "paid" && opening.seats.reviewer === null) {
-    throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
-  }
-  if (
-    seats === "paid" &&
-    frozenChecker(events) !== null &&
-    hasJudge(draftOf(events)?.objective) &&
-    opening.seats.reviewer !== null &&
-    opening.solver !== null
-  ) {
-    assertCrossFamily(opening.seats.reviewer.model, opening.solver.model);
+  if (seats === "paid") {
+    const reviewer = opening.seats.reviewer;
+    if (reviewer === null) {
+      throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
+    }
+    if (frozenChecker(events) !== null && hasJudge(draftOf(events)?.objective) && opening.solver !== null) {
+      assertCrossFamily(reviewer.model, opening.solver.model);
+    }
   }
   counted(
     opening.patience,

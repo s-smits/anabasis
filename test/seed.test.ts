@@ -199,7 +199,9 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
       `${[
         row("draft.started", { session: "d-1" }),
         row("draft.finished", { session: "d-1", ended: "stands" }),
-        row("exam.started", { session: "x-1" }),
+        row("build.started", { session: "b-mem" }),
+        row("build.started", { session: "../evil-mem" }),
+        row("exam.started", { session: "x-1", conversation: "x-parent-before" }),
         row("exam.finished", { session: "x-1", ended: "supplied" }),
         row("exam.started", { session: "x-crash-0" }),
         row("exam.finished", { session: "x-crash-0", ended: "crashed", running: 0 }),
@@ -215,10 +217,14 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
         row("exam.finished", { session: "x-3", ended: "supplied" }),
       ].join("\n")}\n`,
     );
+    mkdirSync(join(source, "memory", "b-mem"), { recursive: true });
+    writeFileSync(join(source, "memory", "b-mem", "MEMORY.md"), "safe memory\n");
+    writeFileSync(join(source, "evil-mem"), "must not copy\n");
     writeFileSync(join(source, "evil.jsonl"), '{"sessionId":"00000000-0000-0000-0000-000000000009"}\n');
     for (const id of [
       "d-1",
       "x-1",
+      "x-parent-before",
       "x-2",
       "x-3",
       "b-unrelated-only",
@@ -234,6 +240,8 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
     expect(made.examinerHome).toBe(true);
     expect(made.examinerHomeFrom).toBe("x-crash-0");
     expect(existsSync(join(seeded, "evil.jsonl"))).toBe(false);
+    expect(existsSync(join(seeded, "evil-mem"))).toBe(false);
+    expect(readFileSync(join(seeded, "memory", "b-mem", "MEMORY.md"), "utf8")).toBe("safe memory\n");
     expect(readFileSync(join(seeded, "examiner-home", "NOTES.md"), "utf8")).toBe("x-1 notes\n");
     expect(readFileSync(join(seeded, "examiner-home", "gen.py"), "utf8")).toBe("print('x-1')\n");
     expect(readFileSync(join(seeded, "examiner-home", "shared.txt"), "utf8")).toBe(
@@ -258,6 +266,7 @@ describe("deduped examiner-home snapshots and claude-session seeding", () => {
 
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "d-1.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-1.jsonl"))).toBe(true);
+    expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-parent-before.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-2.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-parent-tail.jsonl"))).toBe(true);
     expect(existsSync(join(seeded, CLAUDE_SESSIONS_DIR, "x-wrong-kind.jsonl"))).toBe(false);

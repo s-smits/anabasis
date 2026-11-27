@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitOutput } from "#src/meta/git.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { checkPlaces, fleetPlaces, hostsFor, namedPlaces, type Place } from "#tools/runs/host-config.ts";
@@ -244,8 +244,9 @@ async function cloneTree(root: string, dest: string): Promise<void> {
 }
 
 function linkModules(root: string, clone: string, placement: "local" | "remote"): void {
+  const absRoot = resolve(root);
   for (const rel of ["node_modules", join("packages", "ui", "node_modules")]) {
-    const src = join(root, rel);
+    const src = join(absRoot, rel);
     const dst = join(clone, rel);
     if (placement === "local" && existsSync(src) && existsSync(dirname(dst)) && !existsSync(dst)) {
       symlinkSync(src, dst);

@@ -878,6 +878,20 @@ describe("nightly mutation suite selection", () => {
       "@@ -10,0 +10,2 @@",
       "+x",
       "++ j",
+      "@@ -12,2 +12,2 @@",
+      "-first-old",
+      "--- a/spoof.ts",
+      "+first-new",
+      "+++ b/spoof.ts",
+      "@@ -20 +20 @@",
+      "--- a/spoof2.ts",
+      "+@@ -99 +99 @@",
+      "+++ b/spoof2.ts",
+      "--- a/src/direct.ts",
+      "+++ b/src/direct.ts",
+      "@@ -1 +4 @@",
+      "-d0",
+      "+d1",
       "diff --git a/src/has space.ts b/src/has space.ts",
       "--- a/src/has space.ts\t",
       "+++ b/src/has space.ts\t",
@@ -893,8 +907,9 @@ describe("nightly mutation suite selection", () => {
       "-3",
     ].join("\n");
     const parsed = changedLinesInDiff(sample);
-    expect([...parsed.keys()]).toEqual(["src/a.ts", "src/has space.ts"]);
-    expect([...(parsed.get("src/a.ts") ?? [])]).toEqual([8, 10, 11]);
+    expect([...parsed.keys()]).toEqual(["src/a.ts", "src/direct.ts", "src/has space.ts"]);
+    expect([...(parsed.get("src/a.ts") ?? [])]).toEqual([8, 10, 11, 12, 13, 20]);
+    expect([...(parsed.get("src/direct.ts") ?? [])]).toEqual([4]);
     expect([...(parsed.get("src/has space.ts") ?? [])]).toEqual([3]);
   });
 });

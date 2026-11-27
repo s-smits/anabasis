@@ -2,7 +2,7 @@
 // one check, with the draft's controls. The verifier runs behind its wall, so those suites are
 // skipped where the host has none.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { read } from "../src/kernel/log.ts";
+import { append, read } from "../src/kernel/log.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { rmSync } from "../src/meta/filesystem.ts";
 import { isString } from "../src/meta/json-shape.ts";
@@ -139,6 +139,49 @@ suite("acceptance and freezing over a drafted exam", () => {
     expect(unformed.code).toBe(0);
     expect(held(UNFORMED, "contract.frozen")).toHaveLength(1);
     expect(held(UNFORMED, "checker.read").map(({ faults }) => faults)).toEqual([[]]);
+
+    const judgedDraft = {
+      ...DRAFT,
+      objective: {
+        quantity: "quality",
+        direction: "higher" as const,
+        scale: "unit" as const,
+        items: [
+          {
+            id: "clarity",
+            weight: 1,
+            kind: "judge" as const,
+            criterion: "Answer states every calculation step and unit clearly.",
+          },
+        ],
+      },
+    };
+    const [sameFam, crossFam, plainSameFam] = [
+      `${NAME}-judge-same`,
+      `${NAME}-judge-cross`,
+      `${NAME}-plain-same`,
+    ];
+    NAMES.push(sameFam, crossFam, plainSameFam);
+    layOutDraft(folder(sameFam), judgedDraft);
+    layOutDraft(folder(crossFam), judgedDraft);
+    layOutDraft(folder(plainSameFam), DRAFT);
+    const open = (name: string, reviewer: string) =>
+      append(join(folder(name), LOG), "campaign.opened", {
+        solver: { model: "claude/claude-opus-5-5", effort: "high" },
+        seats: { reviewer: { model: reviewer, effort: "high" } },
+      });
+    open(sameFam, "claude/claude-sonnet-5-5");
+    open(crossFam, "openai-codex/gpt-6.1-sol");
+    open(plainSameFam, "claude/claude-sonnet-5-5");
+    const [sameRes, crossRes, plainRes] = await Promise.all([
+      accept(sameFam, ADMIT, "--admit-judge"),
+      accept(crossFam, ADMIT, "--admit-judge"),
+      accept(plainSameFam, ADMIT, "--admit-judge"),
+    ]);
+    expect(sameRes.code).not.toBe(0);
+    expect(sameRes.said).toContain("--admit-judge:");
+    expect(crossRes.code).toBe(0);
+    expect(plainRes.code).toBe(0);
   });
 });
 

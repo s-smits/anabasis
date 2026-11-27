@@ -1,13 +1,15 @@
 // The Examiner command, `tools/eval/examine.ts`, with a scripted session. No paid model runs here.
 import { afterAll, describe, expect, it } from "bun:test";
-import { readdirSync, rmSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, readdirSync, rmSync } from "../src/meta/filesystem.ts";
+import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import { append, LOG_FILE } from "../src/kernel/log.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { inExaminerSandbox } from "../src/examiner/shell.ts";
 import { examineCommand } from "../tools/eval/examine.ts";
 import { REPO } from "../tools/campaign/campaign.ts";
-import { fixtureTasks, layOutPack } from "./helpers/fixture-pack.ts";
+import { fixtureDraft, fixtureTasks, layOutPack } from "./helpers/fixture-pack.ts";
 import { present } from "./helpers/matchers.ts";
 
 const STEM = `test-examine-command-${String(runtimeProcess.pid)}`;
@@ -18,7 +20,7 @@ for (const name of ["home", "judged"]) {
 }
 
 afterAll(() => {
-  for (const name of ["home", "judged"]) {
+  for (const name of ["home", "judged", "unopened"]) {
     rmSync(join(REPO, ".ana", "d2", `${STEM}-${name}`), { recursive: true, force: true });
   }
 });
@@ -45,6 +47,24 @@ describe("the Examiner command", () => {
       });
     }
     expect(offered).toEqual([true, false]);
+  });
+
+  it("offers revision on a drafted log no opening names", async () => {
+    const name = `${STEM}-unopened`;
+    mkdirSync(join(REPO, ".ana", "d2", name), { recursive: true });
+    append(join(REPO, ".ana", "d2", name, LOG_FILE), "exam.drafted", {
+      session: "d-1",
+      draft: parseJsonAs<JsonObject>(capturedJsonStringify(fixtureDraft(fixtureTasks(1)))),
+    });
+    let offered = false;
+    await examineCommand(
+      [...PACK, "--name", name, "--session", "x-1", "--solver", "claude/claude-opus-5-5"],
+      (request) => {
+        offered = request.revise !== undefined;
+        return Promise.resolve(finished());
+      },
+    );
+    expect(offered).toBe(true);
   });
 
   it("judges by the flagged reviewer over the recorded seat", async () => {

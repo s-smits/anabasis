@@ -199,7 +199,7 @@ export function pairsReported(
   if ((sides === "fresh" && noise) || (halved && solves % 2 !== 0)) return [];
   const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
   const wrong = wrongPasses(asRecord(asRecord(data.settled)?.passes) ?? {});
-  const source = wrong.size > 0 ? failWrongPasses(events, wrong) : events;
+  const source = failWrongPasses(events, wrong);
   return pairsOf(
     source,
     versions,

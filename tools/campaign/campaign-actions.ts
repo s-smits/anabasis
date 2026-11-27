@@ -150,8 +150,6 @@ async function runAction(
     bench.halt.abort();
     return text(message);
   };
-  const spent = "The campaign move limit has been reached; the host will stop this conversation.";
-  if (context.used >= context.maxMoves) return halt(spent);
   const aborted = () => signal?.aborted === true;
   if (aborted()) return text("The campaign has been stopped by the host.");
   const writing = context.examining;
@@ -173,7 +171,9 @@ async function runAction(
     if (previous !== undefined) await bench.within(() => previous);
   }
   try {
-    if (context.used >= context.maxMoves) return halt(spent);
+    if (context.used >= context.maxMoves) {
+      return halt("The campaign move limit has been reached; the host will stop this conversation.");
+    }
     if (context.failed !== null) return text("The campaign has been stopped by the host.");
     const { host } = context.seats;
     await waitPaused(context.log, context.began, context.campaign.limits.wallSeconds, {

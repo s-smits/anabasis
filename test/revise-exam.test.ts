@@ -58,6 +58,7 @@ import { keepReading } from "../tools/eval/accept.ts";
 import { examineCommand } from "../tools/eval/examine.ts";
 import { packageOf } from "../tools/m0/stored-sweep.ts";
 import { lastLaunch, writeReceipt } from "../tools/runs/receipt.ts";
+import { BUILDER, CLI, KEEPING } from "../tools/runs/registry.ts";
 import { replayed } from "../tools/runs/replay.ts";
 import { EVENT_FORMATTERS, triggerOf } from "../tools/runs/summary.ts";
 import { gamingRows } from "../tools/wri/gaming.ts";
@@ -1939,9 +1940,11 @@ export const scores = {
       };
     };
     const handoverDir = join(tempDir("ana-rev-handover-"), "out");
-    const spent = `${name}-spent`;
-    ROOTS.push(join(campRoot, spent), join(campRoot, successorName(spent)));
-    cpSync(dir, join(campRoot, spent), { recursive: true });
+    const [spent, written, kept] = [`${name}-spent`, `${name}-written`, `${name}-kept`] as const;
+    for (const copy of [spent, written, kept]) {
+      ROOTS.push(join(campRoot, copy), join(campRoot, successorName(copy)));
+      cpSync(dir, join(campRoot, copy), { recursive: true });
+    }
     const ended = await harnessBuilder(
       ["--name", name, "--moves", "2", "--practice", "0", "--handover", handoverDir],
       repairing(),
@@ -1972,6 +1975,25 @@ export const scores = {
     expect(examineCalls).toBe(3);
     expect(eventsOf(read(spentB), "build.started")).toHaveLength(0);
     expect(openingOf(read(spentB))?.parent?.campaign).toBe(spent);
+    for (const [copy, standIn] of [
+      [written, [join(REPO, BUILDER), "--name", successorName(written)]],
+      [kept, [join(REPO, CLI), "keep", kept, KEEPING]],
+    ] as const) {
+      const other = capturedSpawn([capturedExecPath, "--eval=setTimeout(()=>{},6e4)", ...standIn], {
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      try {
+        expect(
+          await harnessBuilder(["--name", copy, "--moves", "2", "--practice", "0"], repairing()),
+        ).toMatchObject({ move: "end", ending: "revise" });
+      } finally {
+        other.kill();
+        await other.exited;
+      }
+      expect(eventsOf(read(join(campRoot, successorName(copy), LOG_FILE)), "build.started")).toHaveLength(0);
+    }
+    expect(examineCalls).toBe(5);
 
     const noReviseFlagName = `test-no-revise-flag-${String(runtimeProcess.pid)}`;
     const noReviseDir = join(campRoot, noReviseFlagName);

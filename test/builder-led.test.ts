@@ -299,6 +299,16 @@ describe.concurrent("the host's practice release", () => {
     expect(await releasePendingPractice(abortedCtx, "while halted", haltedBench)).toBe(false);
     expect([released(failedCtx), released(cappedCtx), released(abortedCtx)]).toEqual([2, 2, 2]);
   });
+
+  it("hears an operator word after the Builder's tool calls until a move answers it, and not after", async () => {
+    const context = await owing(`${STEM}-word-heard`);
+    append(context.log, "build.call", { session: "b-1", tool: "bash" });
+    const at = read(context.log).length;
+    append(context.log, "campaign.word", { word: "tasks", why: "more tasks" });
+    expect(pendingSignals(turnOf(context).events).map((signal) => signal.at)).toEqual([at]);
+    append(context.log, "campaign.move", { move: "examine", answers: [at] });
+    expect(pendingSignals(turnOf(context).events)).toEqual([]);
+  });
 });
 
 describe.concurrent("live Builder and Examiner coordination", () => {

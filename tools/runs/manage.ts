@@ -27,7 +27,7 @@ import { keysIf } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
-import { lastLaunch, nextRun } from "./receipt.ts";
+import { lastLaunch, launchRun } from "./receipt.ts";
 import { payerOf } from "./live.ts";
 import { LIMITS } from "../campaign/campaign.ts";
 import { recordedSetting } from "../campaign/setting.ts";
@@ -211,20 +211,11 @@ export async function start(
   installAt(run.tree, target);
   const command = dryRun(run, flags, env, target);
   mkdirSync(dirname(run.path), { recursive: true });
-  const out = join(dirname(run.path), `launch-${nextRun(run.path)}`);
-  const child = capturedSpawn(["nice", "-n", "19", ...command], {
-    cwd: run.tree,
-    env,
-    detached: true,
-    stdin: "ignore",
-    stdout: openSync(`${out}.out`, "a"),
-    stderr: openSync(`${out}.err`, "a"),
-  });
-  child.unref();
+  const { pid, err } = launchRun(["nice", "-n", "19", ...command], run.path, { cwd: run.tree, env });
   await Bun.sleep(3000);
-  const alive = processGroupExists(child.pid);
+  const alive = processGroupExists(pid);
   console.log(
-    `${run.name} in ${run.tree} at ${target.slice(0, 9)}: pid ${String(child.pid)}, ${alive ? "running" : "gone"}; ${out}.err`,
+    `${run.name} in ${run.tree} at ${target.slice(0, 9)}: pid ${String(pid)}, ${alive ? "running" : "gone"}; ${err}`,
   );
   if (!alive) runtimeProcess.exitCode = 1;
   return alive ? "running" : "gone";

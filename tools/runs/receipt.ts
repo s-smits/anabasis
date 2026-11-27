@@ -16,12 +16,12 @@
  * `src`, `tools` and `packages`), which survives a restack that rewrites the fix's commits. More
  * than one name is refused, since the first would silently discard the others.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, openSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { compareCodeUnits, hashJsonValue } from "#src/meta/stable-json.ts";
-import { parseArgs } from "#src/meta/process.ts";
+import { capturedSpawn, parseArgs } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { toolchainPathDirs } from "#src/sandbox/policy.ts";
 import { isCampaign, Misused, type Run } from "./registry.ts";
@@ -190,6 +190,24 @@ export const unlaunchedSeed = (run: Pick<Run, "path" | "seed">): boolean =>
 export function nextRun(log: string): string {
   const kept = receipts(log).filter(({ session }) => session.startsWith("run-")).length;
   return `run-${String(kept + 1)}`;
+}
+
+export function launchRun(
+  command: readonly string[],
+  log: string,
+  { cwd, env }: { cwd: string; env: Readonly<Record<string, string | undefined>> },
+) {
+  const out = join(dirname(log), `launch-${nextRun(log)}`);
+  const child = capturedSpawn([...command], {
+    cwd,
+    env,
+    detached: true,
+    stdin: "ignore",
+    stdout: openSync(`${out}.out`, "a"),
+    stderr: openSync(`${out}.err`, "a"),
+  });
+  child.unref();
+  return { pid: child.pid, err: `${out}.err` };
 }
 
 export function sources(log: string, repo: string, fixes: readonly string[]): string[] {

@@ -14,7 +14,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { changedLinesInDiff, gitText } from "../src/meta/git.ts";
+import { changedLines, gitText } from "../src/meta/git.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { asRecord } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -895,54 +895,39 @@ describe("nightly mutation suite selection", () => {
     expect(rowsOf(badOut).length).toBe(0);
   }, 60_000);
 
-  it("parses unified=0 diff hunks across spaces, deletions, /dev/null, and --/++ content lines", () => {
-    const sample = [
-      "+++ b/stray.ts",
-      "@@ -1 +1 @@",
-      "diff --git a/src/a.ts b/src/a.ts",
-      "--- a/src/a.ts",
-      "+++ b/src/a.ts",
-      "@@ -5,2 +5,0 @@",
-      "-a",
-      "-b",
-      "@@ -8 +8 @@",
-      "--- old",
-      "+++ new",
-      "@@ -10,0 +10,2 @@",
-      "+x",
-      "++ j",
-      "@@ -12,2 +12,2 @@",
-      "-first-old",
-      "--- a/spoof.ts",
-      "+first-new",
-      "+++ b/spoof.ts",
-      "@@ -20 +20 @@",
-      "--- a/spoof2.ts",
-      "+@@ -99 +99 @@",
-      "+++ b/spoof2.ts",
-      "--- a/src/direct.ts",
-      "+++ b/src/direct.ts",
-      "@@ -1 +4 @@",
-      "-d0",
-      "+d1",
-      "diff --git a/src/has space.ts b/src/has space.ts",
-      "--- a/src/has space.ts\t",
-      "+++ b/src/has space.ts\t",
-      "@@ -1 +3 @@",
-      "-old",
-      "+new",
-      "diff --git a/src/gone.ts b/src/gone.ts",
-      "--- a/src/gone.ts",
-      "+++ /dev/null",
-      "@@ -1,3 +0,0 @@",
-      "-1",
-      "-2",
-      "-3",
-    ].join("\n");
-    const parsed = changedLinesInDiff(sample);
-    expect([...parsed.keys()]).toEqual(["src/a.ts", "src/direct.ts", "src/has space.ts"]);
-    expect([...(parsed.get("src/a.ts") ?? [])]).toEqual([8, 10, 11, 12, 13, 20]);
-    expect([...(parsed.get("src/direct.ts") ?? [])]).toEqual([4]);
-    expect([...(parsed.get("src/has space.ts") ?? [])]).toEqual([3]);
+  it("reads changed new-side lines through git, immune to --/++/@@ content, spaces and deletions", () => {
+    const repo = join(root, "changed-lines");
+    mkdirSync(join(repo, "src"), { recursive: true });
+    const write = (file: string, rows: readonly string[]) =>
+      writeFileSync(join(repo, file), `${rows.join("\n")}\n`);
+    write("src/a.ts", ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+    write("src/has space.ts", ["old"]);
+    write("src/gone.ts", ["1", "2", "3"]);
+    write("src/trim.ts", ["keep", "drop", "keep"]);
+    gitText(repo, "init");
+    gitText(repo, "add", ".");
+    gitText(repo, "-c", "user.email=t@e", "-c", "user.name=t", "commit", "-m", "seed");
+    write("src/a.ts", [
+      "1",
+      "-- a/x.ts",
+      "++ b/x.ts",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "@@ -9 +99,4 @@",
+      "10",
+      "11",
+      "12",
+    ]);
+    write("src/has space.ts", ["new"]);
+    write("src/trim.ts", ["keep", "keep"]);
+    rmSync(join(repo, "src", "gone.ts"));
+    const changed = changedLines(repo, "HEAD");
+    expect(Object.fromEntries([...changed].map(([file, lines]) => [file, [...lines]]))).toEqual({
+      "src/a.ts": [2, 3, 9, 11, 12],
+      "src/has space.ts": [1],
+    });
   });
 });

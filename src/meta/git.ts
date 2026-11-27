@@ -48,43 +48,30 @@ export function mainTree(repo: string): string {
   return basename(common) === ".git" ? dirname(common) : (worktrees(repo)[0] ?? repo);
 }
 
-export function changedLinesInDiff(diff: string): Map<string, Set<number>> {
+export function changedLines(repo: string, ...range: readonly string[]): Map<string, Set<number>> {
+  const diff = gitOutput(
+    repo,
+    "-c",
+    "core.quotePath=false",
+    "diff",
+    "--unified=0",
+    "--no-color",
+    "--no-prefix",
+    "--no-ext-diff",
+    "--output-indicator-old=<",
+    "--output-indicator-new=>",
+    ...range,
+  );
   const changed = new Map<string, Set<number>>();
-  let lines: Set<number> | undefined;
-  let sawMinus = false;
-  let oldLeft = 0;
+  let file = "";
   for (const row of diff.split("\n")) {
-    if (row.startsWith("diff --git ")) {
-      sawMinus = false;
-      oldLeft = 0;
-      continue;
+    if (row.startsWith("+++ ")) file = row.slice(4).replace(/\t$/u, "");
+    const hunk = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/u.exec(row);
+    if (hunk === null) continue;
+    const start = Number(hunk[1]);
+    for (let line = start; line < start + Number(hunk[2] ?? 1); line += 1) {
+      changed.set(file, (changed.get(file) ?? new Set<number>()).add(line));
     }
-    if (row.startsWith("-") && oldLeft > 0) {
-      oldLeft -= 1;
-      continue;
-    }
-    if (row.startsWith("--- ")) {
-      sawMinus = true;
-      continue;
-    }
-    if (sawMinus && row.startsWith("+++ ")) {
-      sawMinus = false;
-      const file = row.slice(4).replace(/\t$/u, "").replace(/^b\//u, "");
-      if (file === "/dev/null") {
-        lines = undefined;
-      } else {
-        lines = changed.get(file) ?? new Set<number>();
-        changed.set(file, lines);
-      }
-      continue;
-    }
-    sawMinus = false;
-    const hunk = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/u.exec(row);
-    if (hunk === null || lines === undefined) continue;
-    oldLeft = Number(hunk[1] ?? 1);
-    const start = Number(hunk[2]);
-    const count = Number(hunk[3] ?? 1);
-    for (let line = start; line < start + count; line += 1) lines.add(line);
   }
   return changed;
 }

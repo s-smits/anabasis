@@ -6,7 +6,7 @@
 // disk.
 
 import { boundText } from "../../src/meta/bounded-text.ts";
-import { changedLinesInDiff } from "../../src/meta/git.ts";
+import { changedLines } from "../../src/meta/git.ts";
 import { resolve } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
@@ -22,31 +22,17 @@ const PRINTED = 8;
 
 const git = (args: readonly string[]): string => runTextSyncOrThrow(["git", ...args]);
 
-function changedLines(): Map<string, { lines: Set<number>; added: boolean }> {
+function stagedLines(): Map<string, { lines: Set<number>; added: boolean }> {
   const staged = git(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]).split("\n").filter(Boolean);
   const added = new Set(git(["diff", "--cached", "--name-only", "--diff-filter=A"]).split("\n"));
   if (staged.length === 0) return new Map();
-  const parsed = changedLinesInDiff(
-    git([
-      "-c",
-      "core.quotePath=false",
-      "diff",
-      "HEAD",
-      "--unified=0",
-      "--no-color",
-      "--src-prefix=a/",
-      "--dst-prefix=b/",
-      "--no-ext-diff",
-      "--",
-      ...staged,
-    ]),
-  );
+  const parsed = changedLines(".", "HEAD", "--", ...staged);
   return new Map(
     staged.map((path) => [path, { lines: parsed.get(path) ?? new Set<number>(), added: added.has(path) }]),
   );
 }
 
-function touches(site: TreeSite, changed: ReturnType<typeof changedLines>): boolean {
+function touches(site: TreeSite, changed: ReturnType<typeof stagedLines>): boolean {
   if (site.line === 0) return changed.get(site.path)?.added === true;
   return (site.places ?? [{ path: site.path, line: site.line, end: site.line }]).some((place) =>
     [...(changed.get(place.path)?.lines ?? [])].some((line) => place.line <= line && line <= place.end),
@@ -117,7 +103,7 @@ function message(first: TreeSite, touched: readonly TreeSite[], log: string): st
   ].join("\n");
 }
 
-const changed = changedLines();
+const changed = stagedLines();
 const sites = treeFindings().filter((site) =>
   (site.places ?? [site]).some((place) => changed.has(place.path)),
 );

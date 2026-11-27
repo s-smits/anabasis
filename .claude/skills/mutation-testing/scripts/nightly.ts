@@ -11,7 +11,7 @@ import {
   statSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
-import { changedLinesInDiff, gitMaybe, mainTree } from "#src/meta/git.ts";
+import { changedLines, gitMaybe, mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { keyIfNotNull } from "#src/meta/optional-key.ts";
@@ -261,24 +261,14 @@ function diffTargets(
   base: string,
   head: string,
 ): readonly (readonly [string, string[]])[] | null {
-  const raw = gitMaybe(
-    tree,
-    "-c",
-    "core.quotePath=false",
-    "diff",
-    "--unified=0",
-    "--no-color",
-    "--src-prefix=a/",
-    "--dst-prefix=b/",
-    "--no-ext-diff",
-    base,
-    head,
-    "--",
-    ...DIFF_ROOTS,
-  );
-  if (raw === null) return null;
-  return [...changedLinesInDiff(raw)].flatMap(([file, lines]) => {
-    if (!file.endsWith(".ts") || file.endsWith(".test.ts") || lines.size === 0) return [];
+  let changed: Map<string, Set<number>>;
+  try {
+    changed = changedLines(tree, base, head, "--", ...DIFF_ROOTS);
+  } catch {
+    return null;
+  }
+  return [...changed].flatMap(([file, lines]) => {
+    if (!file.endsWith(".ts") || file.endsWith(".test.ts")) return [];
     const full = join(tree, file);
     if (!existsSync(full) || !statSync(full).isFile()) return [];
     const ids = mutantsOf(tree, file)

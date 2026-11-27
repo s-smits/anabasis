@@ -179,7 +179,10 @@ describe("referee.pair extract telemetry", () => {
       conventions: "",
       rules: [],
       scope: "Memos.",
-      objective: unit([judge("cites")]),
+      objective: unit([
+        { ...judge("cites"), weight: 1e308 },
+        { ...judge("depth"), weight: 1e308 },
+      ]),
     };
     await judgePair(
       { model: faux.getModel(), effort: "low", models: () => models },
@@ -194,5 +197,6 @@ describe("referee.pair extract telemetry", () => {
     );
     const pair = read(log).find(({ kind }) => kind === "referee.pair")?.data;
     expect(pair?.extracts).toEqual({ files: 3, empty: 1, faults: 1, truncated: 1 });
+    expect(Number.isFinite(pair?.judge)).toBe(true);
   });
 });

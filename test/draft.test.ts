@@ -893,7 +893,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     expect(seenPasses[1]?.effort).toBe("low");
     expect(seenPasses[1]?.pass).toBe(2);
     expect(seenPasses[1]?.prior?.[0]).toContain("vacuous-pass on ex-001");
-    expect(draftOf(read(campaignLog(defectName)))).toEqual(SOUND);
+    expect(draftOf(read(campaignLog(defectName)))).toBeNull();
     expect(skippedCalls).toBe(0);
     // Deterministic $0 probe replay blocks unfixed revisions without spending an LLM pass and gates post-cap drafts too.
     expect(replayed).toMatchObject({ ended: "stands", puts: 5 });
@@ -903,6 +903,64 @@ describe.concurrent("campaign draft lifecycle", () => {
     expect(replayCalls[1]?.prior).toEqual([]);
     expect(replayCalls[1]?.verifiedFixed?.[0]).toContain("hole1 passed");
     expect(draftOf(read(campaignLog(replayName)))).toEqual(SOUND);
+
+    const restartName = `${STEM}-audit-restart`;
+    let restartAudits = 0;
+    const restartLog = campaignLog(restartName);
+    const restartArgs = opened(restartName, false, { model: SOLVER, effort: "low" });
+    append(restartLog, "referee.draft", {
+      session: "d-1",
+      pass: 1,
+      verdict: "defects",
+      findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "hole1 passed" }],
+      summary: "hole1",
+      probeRows: [probeRow("hole1")],
+    });
+    append(restartLog, "referee.draft", {
+      session: "d-1",
+      pass: 2,
+      verdict: "defects",
+      findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "hole2 passed" }],
+      summary: "hole2",
+      probeRows: [probeRow("hole2")],
+    });
+    await draftCommand(
+      [...restartArgs, "--session", "d-2", "--tries", "2"],
+      putting(holeTwo, SOUND),
+      async () => {
+        restartAudits += 1;
+        return { verdict: "sound", findings: [], summary: "should not run", probes: [] };
+      },
+    );
+    expect(restartAudits).toBe(0);
+    expect(draftOf(read(restartLog))).toEqual(SOUND);
+    const restartCalls = read(restartLog).filter(({ kind }) => kind === "draft.call");
+    expect(
+      restartCalls.some(
+        ({ data }) => isString(data.text) && data.text.includes("prior probe still reproduces"),
+      ),
+    ).toBe(true);
+
+    const unverifiedRestart = `${STEM}-audit-restart-unverified`;
+    const unverifiedLog = campaignLog(unverifiedRestart);
+    const unverifiedArgs = opened(unverifiedRestart, false, { model: SOLVER, effort: "low" });
+    for (const pass of [1, 2]) {
+      append(unverifiedLog, "referee.draft", {
+        session: "d-1",
+        pass,
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 99, reason: "missing probe row" }],
+        summary: "unreplayable",
+        probeRows: [],
+      });
+    }
+    await draftCommand([...unverifiedArgs, "--session", "d-2", "--tries", "1"], putting(SOUND), async () => ({
+      verdict: "sound",
+      findings: [],
+      summary: "should not run",
+      probes: [],
+    }));
+    expect(draftOf(read(unverifiedLog))).toBeNull();
 
     const deletedName = `${STEM}-audit-deleted-example`;
     const fourExamples: Draft = {

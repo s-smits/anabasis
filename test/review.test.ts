@@ -1141,6 +1141,51 @@ describe("draft audit replay of an objective defect", () => {
     expect(res.findings).toMatchObject([{ item: "accuracy" }]);
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(4);
   });
+
+  it("requires a multi-item code rubric sound verdict to probe every code item", async () => {
+    const checks = programs.get(JSON.stringify([SPAN]));
+    if (checks === undefined) throw new Error("missing check program");
+    const multiVerify: Verifier = async (_task, answer) => {
+      const span = asRecord(answer)?.span;
+      const report = span === 13 ? 0.5 : 1;
+      const accuracy = span === 14 ? 0.4 : 0.9;
+      return { kind: "pass", objective: 0.5 * (accuracy + report), scores: { accuracy, report } };
+    };
+    const multiContract = {
+      ...CONTRACT,
+      objective: {
+        quantity: "score",
+        direction: "higher" as const,
+        scale: "unit" as const,
+        items: [
+          { id: "accuracy", weight: 1 },
+          { id: "report", weight: 1 },
+        ],
+      },
+    };
+    const s = setup([
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "13" }] }),
+      reviewCall({ verdict: "sound", findings: [], summary: "only report moved" }),
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "14" }] }),
+      reviewCall({ verdict: "sound", findings: [], summary: "both code items moved" }),
+    ]);
+    const res = await reviewDraft(s.reader, {
+      session: "d-1",
+      pass: 1,
+      prompt: "Keep spans <= 12 m.",
+      contract: multiContract,
+      checks,
+      verify: multiVerify,
+      tasks: [TASK],
+      controls: [CONTROL],
+      notes: [],
+      log: s.log,
+    });
+    expect(res.verdict).toBe("sound");
+    const refused = read(s.log).filter(({ kind }) => kind === "referee.draft.refused");
+    expect(refused).toHaveLength(1);
+    expect(refused[0]?.data.why).toContain("untouched: accuracy");
+  });
 });
 
 describe("hand-label agreement", () => {

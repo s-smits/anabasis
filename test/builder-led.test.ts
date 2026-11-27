@@ -408,6 +408,33 @@ describe.concurrent("live Builder and Examiner coordination", () => {
     expect(of(name, "build.checkpoint")).toHaveLength(2);
   });
 
+  it("hands off without a move when the exam is revised while a compare readies its seats", async () => {
+    const name = `${STEM}-compare-revised`;
+    let comparing = false;
+    const compareStep: Step = {
+      wait: async () => {
+        comparing = true;
+        return ["compare", {}];
+      },
+    };
+    const base = builderScript(winning(), [CHANGE_GUIDE, compareStep, FINISH_IDLE]);
+    const seats: Seats = {
+      seated: (campaign, given) => {
+        if (comparing) append(campaign.log, "exam.revised", { kind: "tune", why: "raced" });
+        comparing = false;
+        return base(campaign, given);
+      },
+    };
+    const flags = await prepared(name);
+    const compares = () => of(name, MOVED).filter(({ move }) => move === "compare").length;
+    const before = compares();
+    await expect(harnessBuilder([...flags, ...FLAGS, "--moves", "4"], seats)).rejects.toThrow();
+    expect(said(name, "compare")).toEqual([
+      containing("The exam was revised; this campaign hands off to its successor."),
+    ]);
+    expect(compares()).toBe(before);
+  });
+
   it("lets Builder practise while Examiner writes, declines unmeasured finish once, and guards practice symlinks", async () => {
     const name = `${STEM}-beside`;
     const log = join(REPO, ".ana", "d2", name, LOG_FILE);

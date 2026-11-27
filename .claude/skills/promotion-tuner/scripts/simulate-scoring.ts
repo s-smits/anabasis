@@ -22,8 +22,8 @@ const OPTIONS = {
   trials: "int",
   tasks: "int",
   solves: "int",
-  level: "text",
-  bias: "text",
+  level: "number",
+  bias: "number",
   weights: "text",
   seed: "int",
 } as const;
@@ -181,8 +181,9 @@ function main(args: CommandArgs): number {
   const trials = args.int("trials") ?? 5000;
   const tasks = args.int("tasks") ?? 24;
   const solves = args.int("solves") ?? 2;
-  const level = Number(args.value("level") ?? 0.02);
-  const bias = Number(args.value("bias") ?? 0.3);
+  const level = args.number("level") ?? 0.02;
+  if (!(level > 0 && level < 1)) args.die("--level must be a number between 0 and 1");
+  const bias = args.number("bias") ?? 0.3;
   const draw = generator(args.int("seed") ?? 1);
   const [code = 1, judge = 1] = (args.value("weights") ?? "1:1").split(":").map(Number);
   const mixed = { code, judge };

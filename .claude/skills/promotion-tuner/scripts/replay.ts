@@ -5,7 +5,7 @@
  * other promotion mechanism read beside the tree's own on one panel. It starts no solve, calls no
  * model and writes nothing of a campaign's.
  */
-import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { type CommandArgs, runCommand, SKILL_REPO } from "#skills/main/cli.ts";
 import { type Found, campaignLogs, rehearsed } from "#skills/main/logs.ts";
 import { falseSteps } from "#skills/main/stats.ts";
 import { short } from "#src/campaign/move.ts";
@@ -14,7 +14,6 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { DAY_MS } from "#src/meta/clock.ts";
 import { type JsonValue, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import { resolve } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { formatTally, FROM, lost, panelMain, treeMechanism, won } from "./panel.ts";
@@ -60,7 +59,6 @@ const OPTIONS = {
   split: "text",
   named: "flag",
 } as const;
-const ROOT = resolve(import.meta.dir, "..", "..", "..", "..");
 const DAYS_BACK = 5;
 const PROMOTED = "harness.promoted";
 const MEASURES = ["validity", "objective", "bill"] as const;
@@ -431,7 +429,7 @@ function totalLines(tree: Tree, totals: Totals): string[] {
 }
 
 async function main(args: CommandArgs): Promise<number> {
-  const tree = await loadTree(args.value("tree") ?? ROOT);
+  const tree = await loadTree(args.value("tree") ?? SKILL_REPO);
   const panel = ["try", "mechanism", "against"].some((name) => args.list(name).length > 0);
   if (panel || args.flag("named") || args.value("split") !== null) {
     return panelMain(args, tree, treeMechanism(tree, "tree"));

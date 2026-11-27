@@ -7,6 +7,7 @@
  * comparison line and any promotion notice, omitting task prose, refusal text and hidden values.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { countsLine } from "#skills/main/print.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { taskHistory } from "#src/examiner/record.ts";
 import { wakeOn } from "#src/examiner/write.ts";
@@ -54,11 +55,7 @@ export function examinerCounts(events: readonly LogEvent[]): string[] {
   const outcomes = countBy([...poolOf(events).outcomes.values()], (outcome) => outcome);
   return [
     `blocks: ${blocksOf(view)}, over ${plural(tasks.length, "task")}`,
-    `outcomes in the last comparison that scored each task: ${
-      Object.entries(outcomes)
-        .map(([outcome, count]) => `${outcome} ${String(count)}`)
-        .join(", ") || "none"
-    }`,
+    `outcomes in the last comparison that scored each task: ${countsLine(outcomes)}`,
     `last: ${view.stood ?? "none"}`,
     `promotion: ${view.promoted ?? "none"}`,
   ];

@@ -9,9 +9,8 @@
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
-import { gitMaybe, gitText } from "#src/meta/git.ts";
+import { gitMaybe, gitText, repoRoot } from "#src/meta/git.ts";
 import { join } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { importsOf, lines } from "#tools/runtime/gate.ts";
 
@@ -222,7 +221,7 @@ if (import.meta.main) {
       options: { base: "text", file: "list" },
     },
     (args: CommandArgs) => {
-      const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
+      const root = repoRoot();
       const absent = absentFrom(root);
       if (absent.length > 0) {
         throw new CommandFailure(

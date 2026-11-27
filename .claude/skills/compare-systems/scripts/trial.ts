@@ -6,8 +6,8 @@ import { ended, ranUnder, rejected, standsOf } from "#src/kernel/solves.ts";
 export function trialTerms(args: CommandArgs) {
   const solves = args.int("solves") ?? 1;
   const count = args.int("tasks");
-  const level = Number(args.value("level") ?? "0.02");
-  const cap = Number(args.value("cap") ?? Number.NaN);
+  const level = args.number("level") ?? 0.02;
+  const cap = args.number("cap");
   // `args.int` refuses what is not a whole number.
   if (solves < 1) args.die("--solves needs a positive whole number");
   if (count !== null && count < 1) args.die("--tasks needs a positive whole number");

@@ -586,9 +586,7 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
   const cacheDir = args.value("cov-cache");
   const batchCap = Math.max(1, args.int("batch") ?? 1);
   const seconds = args.int("timeout") ?? 300;
-  const until = args.value("until");
-  const deadline = until === null ? Number.POSITIVE_INFINITY : Date.parse(until);
-  if (Number.isNaN(deadline)) return args.die(`--until ${String(until)} is not a time`);
+  const deadline = args.time("until") ?? Number.POSITIVE_INFINITY;
   const { originals, allSuites, todo, heldBefore } = collectTargets(root, specs);
   if (todo.length === 0) {
     console.log(`0 mutants run, ${String(heldBefore)} held before`);
@@ -651,7 +649,8 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
         });
   console.log(`${String(read)} mutants run, ${String(heldBefore)} held before`);
   if (left > 0) {
-    const why = Date.now() >= deadline ? ` at ${String(until)}` : ", since no place gave a verdict";
+    const why =
+      Date.now() >= deadline ? ` at ${new Date(deadline).toISOString()}` : ", since no place gave a verdict";
     args.die(`${String(left)} mutants left unrun${why}; run again`);
   }
 }
@@ -711,7 +710,7 @@ if (import.meta.main) {
         only: "text",
         "stop-at-kill": "flag",
         timeout: "int",
-        until: "text",
+        until: "time",
         clones: "text",
         old: "text",
         survivors: "flag",

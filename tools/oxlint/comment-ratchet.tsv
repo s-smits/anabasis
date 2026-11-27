@@ -1,7 +1,7 @@
 path	count
 .claude/skills/campaign-mechanics/scripts/bills.ts	5
 .claude/skills/campaign-mechanics/scripts/conditions.ts	4
-.claude/skills/campaign-mechanics/scripts/ending.ts	5
+.claude/skills/campaign-mechanics/scripts/ending.ts	4
 .claude/skills/codex-gpt-swarm/scripts/gpt-receipts.ts	10
 .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts	12
 .claude/skills/compare-systems/scripts/systems.ts	10
@@ -472,7 +472,7 @@ tools/wri/scores.ts	3
 tools/wri/signals.ts	6
 tools/wri/table-timeline.ts	4
 tools/wri/tasks.ts	4
-tools/wri/time.ts	12
+tools/wri/time.ts	8
 tools/wri/trajectory.ts	9
 tools/wri/transfer.ts	8
 tools/wri/wri.ts	15

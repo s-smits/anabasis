@@ -3,11 +3,22 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { join } from "#src/meta/path.ts";
+import { basename, dirname, join } from "#src/meta/path.ts";
 import { CAMPAIGNS, campaignsIn, type Run } from "#tools/runs/registry.ts";
-import { readableAcross } from "#tools/runs/snapshots.ts";
+import { logAcross, readableAcross } from "#tools/runs/snapshots.ts";
 
 export type Found = Pick<Run, "name" | "path" | "archived">;
+
+export const campaignName = (logPath: string): string => basename(dirname(logPath));
+
+export async function namedLogs(names: readonly string[]): Promise<Found[]> {
+  return Promise.all(
+    names.map(async (named) => {
+      const path = await logAcross(named);
+      return { name: campaignName(path), path };
+    }),
+  );
+}
 
 /** Tail byte window read for a log's last event timestamp without reading the whole file. */
 const [TAIL, NEWLINE] = [65_536, 0x0a];

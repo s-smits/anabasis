@@ -1,5 +1,6 @@
 import { hostTool } from "./host-tool.ts";
 import { basename, dirname } from "./path.ts";
+import { runtimeProcess } from "./process.ts";
 import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "./subprocess.ts";
 
 export interface Worktree {
@@ -23,6 +24,8 @@ export function gitMaybe(repo: string, ...args: readonly string[]): string | nul
     return null;
   }
 }
+
+export const repoRoot = (cwd = runtimeProcess.cwd()): string => gitText(cwd, "rev-parse", "--show-toplevel");
 
 export const worktreeList = (repo: string): Worktree[] =>
   gitText(repo, "worktree", "list", "--porcelain")

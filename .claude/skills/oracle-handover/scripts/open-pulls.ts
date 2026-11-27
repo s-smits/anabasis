@@ -8,6 +8,7 @@
  * `testsNear`, `tools/runtime/gate.ts`) at each chain's top commit.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { printed } from "#skills/main/print.ts";
 import {
   cpSync,
   existsSync,
@@ -16,9 +17,9 @@ import {
   readFileSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
-import { gitOutput, gitText } from "#src/meta/git.ts";
+import { gitOutput, gitText, repoRoot } from "#src/meta/git.ts";
 import { basename, extname, join, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { plural } from "#src/meta/text.ts";
 import { onCheckout } from "#tools/runtime/ci-runs.ts";
 import { DOCUMENTATION, importsOf, lines, short, testsNear, uiTestsNear } from "#tools/runtime/gate.ts";
 import { beneath, chains, openPulls, type Pull, ranksOf } from "#tools/runtime/pulls.ts";
@@ -37,7 +38,6 @@ interface Told {
 
 const nameOf = (pull: Pull): string => `${String(pull.number)}-${basename(pull.headRefName)}`;
 const hash = (pull: Pull): string => `#${String(pull.number)}`;
-const count = (n: number, noun: string): string => `${String(n)} ${noun}${n === 1 ? "" : "s"}`;
 
 /** The files of `sha`'s tree among `changed`, the files one of those imports and the test files
  *  near them (the gate's set, which leaves the documentation out), with a sentence on how many of
@@ -62,7 +62,7 @@ function codeBeside(
     const files = [...there, ...imported, ...tests];
     for (const file of files) cpSync(join(tree, file), join(into, held, file));
     return {
-      said: `the ${count(there.length, "file")} the chain changed that it still has, the ${count(imported.size, "other")} one of them imports, and the ${count(tests.length, "other test file")} near them`,
+      said: `the ${plural(there.length, "file")} the chain changed that it still has, the ${plural(imported.size, "other")} one of them imports, and the ${plural(tests.length, "other test file")} near them`,
       written: files.map((file) => join(held, file)),
     };
   });
@@ -89,15 +89,19 @@ function chainTold(repo: string, into: string, open: readonly Pull[], line: read
       ...(pull.isDraft ? ["draft"] : []),
     ];
     const title = (text.split("\n")[0] ?? "").replaceAll("|", String.raw`\|`);
-    return `| [${hash(pull)}](${how.web}/pull/${String(pull.number)}) | ${title} | \`${short(pull.headRefOid)}\` | ${label.join(", ")} | \`${nameOf(pull)}.md\`, \`.diff\` |`;
+    return [
+      `[${hash(pull)}](${how.web}/pull/${String(pull.number)})`,
+      title,
+      `\`${short(pull.headRefOid)}\``,
+      label.join(", "),
+      `\`${nameOf(pull)}.md\`, \`.diff\``,
+    ];
   });
   const held = `code/${String(top.number)}`;
   const beside = how.code ? codeBeside(repo, [into, held], top.headRefOid, { changed, code }) : null;
   const told = [
     `## On \`${bottom.baseRefName}\`: ${line.length === 1 ? hash(top) : `${hash(bottom)} to ${hash(top)}`}`,
-    ["| pull request | title | head | labels | files |", "| --- | --- | --- | --- | --- |", ...rows].join(
-      "\n",
-    ),
+    printed(["pull request", "title", "head", "labels", "files"], rows),
     ...(beside === null
       ? []
       : [
@@ -158,7 +162,7 @@ export function pullsInto(repo: string, into: string, open: readonly Pull[], how
   );
   const readme = [
     `# The open pull requests of ${how.web}`,
-    `GitHub listed ${count(open.length, "open pull request")} at ${how.at}. Each table is one chain of them, bottom first. A pull request's \`.md\` holds its title, head, base, state, body and changed files as GitHub shows them, and its \`.diff\` is read against the head beneath it, or against its base branch for the bottom one, so a chain's diffs read in order amount to its top against that base. A chain whose base is another pull request's branch forks off the middle of a stack.`,
+    `GitHub listed ${plural(open.length, "open pull request")} at ${how.at}. Each table is one chain of them, bottom first. A pull request's \`.md\` holds its title, head, base, state, body and changed files as GitHub shows them, and its \`.diff\` is read against the head beneath it, or against its base branch for the bottom one, so a chain's diffs read in order amount to its top against that base. A chain whose base is another pull request's branch forks off the middle of a stack.`,
     ...each.flatMap((chain) => chain.told),
   ];
   writeFileSync(join(into, "README.md"), `${readme.join("\n\n")}\n`);
@@ -174,7 +178,7 @@ if (import.meta.main) {
       positionals: 1,
     },
     (args: CommandArgs) => {
-      const repo = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
+      const repo = repoRoot();
       const dir = resolve(args.positionals[0] ?? "");
       const into = join(dir, "pulls");
       if (existsSync(into)) throw new CommandFailure(`${into} is there already: name another folder`);
@@ -187,7 +191,7 @@ if (import.meta.main) {
         told: (number) => pullTold(repo, number),
         code: !args.flag("diffs"),
       });
-      console.log(`${into}: ${count(open.length, "open pull request")}`);
+      console.log(`${into}: ${plural(open.length, "open pull request")}`);
       console.log(madeLine(zipped(dir, maxBytesOf(args))));
       // Beside the zip, not in it, so the zip does not hold everything twice; scanned as the zip was.
       const text = pasted(into, written);

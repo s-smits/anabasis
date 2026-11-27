@@ -10,7 +10,7 @@
  *   bun run follow
  *   bun run follow -- --if-safe    # move only where `hazards` finds nothing, else say why and stay
  */
-import { gitMaybe, gitText } from "#src/meta/git.ts";
+import { gitMaybe, gitText, repoRoot } from "#src/meta/git.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { lstatSync } from "#src/meta/filesystem.ts";
@@ -186,7 +186,7 @@ export function follow(root: string, target: Target): string[] {
 
 function main(argv: readonly string[]): string[] {
   const { values } = parseArgs({ args: [...argv], options: { "if-safe": { type: "boolean" } } });
-  const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
+  const root = repoRoot();
   gitText(root, "fetch", "-q", "--prune", "origin");
   const target = targetOf(firstStack(openPulls(root)), trunkOf(root));
   const moves =

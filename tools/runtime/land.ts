@@ -18,6 +18,7 @@
  * Ruleset 25824510 on main, with no bypass actors, requires `ana/stack-gate`, which only `--merge`
  * posts (`STACK_CONTEXT`). The one gap: a token with admin rights can post that status by hand.
  */
+import { repoRoot } from "../../src/meta/git.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 import { plural, textOr } from "../../src/meta/text.ts";
@@ -639,7 +640,7 @@ async function main(argv: readonly string[]): Promise<number> {
     console.error(USAGE);
     return 2;
   }
-  const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
+  const root = repoRoot();
   const places = whereToProve(root, jobs, say);
   if (places === null) return 2;
   const mode: Mode = {

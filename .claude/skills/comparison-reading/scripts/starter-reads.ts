@@ -5,8 +5,10 @@
  * [--since <date>] [--name <part>]`; `--tasks` adds each read's task rows.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { campaignLogs, namedLogs, rehearsed } from "#skills/main/logs.ts";
+import { formatTally } from "#skills/main/print.ts";
+import { summed } from "#skills/main/stats.ts";
 import { sideGap } from "#tools/wri/pairs.ts";
-import { campaignLogs, rehearsed } from "#skills/main/logs.ts";
 import {
   aloneOf,
   ORIGINS,
@@ -23,10 +25,8 @@ import { type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { poolOf } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { formatTally, summed } from "#tools/wri/folds.ts";
 import { type StepCount, stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 
 interface Composition {
@@ -262,12 +262,7 @@ if (import.meta.main) {
         const match = part === "" ? null : (name: string) => name.includes(part);
         const logs = args.flag("all")
           ? await campaignLogs(null, [], args.value("since") ?? "", match)
-          : await Promise.all(
-              named.map(async (one) => {
-                const path = await logAcross(one);
-                return { name: basename(dirname(path)), path };
-              }),
-            );
+          : await namedLogs(named);
         console.log([...LEGEND, ...acrossLines(logs, rows, args.flag("all") ? "all" : "named")].join("\n"));
         return;
       }

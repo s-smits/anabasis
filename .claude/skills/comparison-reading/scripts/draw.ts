@@ -105,15 +105,16 @@ export function drawLines(
 
 if (import.meta.main) {
   await runCommand(
-    { name: "draw", usage: USAGE, options: { target: "int", level: "text" }, positionals: 1 },
+    { name: "draw", usage: USAGE, options: { target: "int", level: "number" }, positionals: 1 },
     async (args: CommandArgs) => {
       const [named = ""] = args.positionals;
-      const level = args.value("level");
+      const level = args.number("level");
+      if (level !== null && !(level > 0 && level < 1)) args.die("--level must be a number between 0 and 1");
       const target = args.int("target");
       console.log(
         drawLines(logEvents(await logAcross(named)), {
           ...keyIfNotNull("target", target),
-          ...keyIfNotNull("level", level === null ? null : Number(level)),
+          ...keyIfNotNull("level", level),
         }).join("\n"),
       );
     },

@@ -5,11 +5,12 @@
  * expanded with their stored syntheses and `outside-reads.md` rows, `mid` (gap < 3) runs are rolled
  * up by release, and `distant` ones are one count.
  */
+import { campaignName } from "#skills/main/logs.ts";
 import { loadRuns, type Run as SummaryRun } from "#skills/main/runs.ts";
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, mainTree } from "#src/meta/git.ts";
-import { basename, dirname, join } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
 import { receipts } from "#tools/runs/receipt.ts";
@@ -582,7 +583,7 @@ export async function backtrackForLogs(logs: readonly string[], repo: string): P
   const cache = new Map<string, ReleaseRef | null>();
   const targetPairs: (readonly [SummaryRun, string])[] = [];
   for (const log of logs) {
-    const name = basename(dirname(log));
+    const name = campaignName(log);
     const loaded = await loadRuns({ home: dirname(dirname(log)), since: "2020-01-01", names: [name], repo });
     const match = loaded.runs.find((run) => run.name === name);
     if (match !== undefined) targetPairs.push([match, log]);

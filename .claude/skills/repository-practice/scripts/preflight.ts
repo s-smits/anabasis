@@ -9,10 +9,11 @@
  * which the operator and `AGENTS.md` section 11 decide.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { countsLine } from "#skills/main/print.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { gitMaybe, gitOutput, gitText } from "#src/meta/git.ts";
+import { gitMaybe, gitOutput, gitText, repoRoot } from "#src/meta/git.ts";
+import { countBy } from "#src/meta/tally.ts";
 import { treeFault } from "#tools/campaign/campaign.ts";
 import { AUTHORED_ROOTS, sourceTextFindings } from "#tools/loc/source-policy.ts";
 import {
@@ -161,11 +162,10 @@ function proseFindings(path: string, text: string): ProseFinding[] {
 const inside = (file: string, path: string): boolean => file === path || file.startsWith(`${path}/`);
 
 function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance"> {
-  const counts: Record<string, number> = {};
-  for (const file of files.filter((each) => !TEST_FILE.test(each))) {
-    const kind = CATEGORY_OF.find(([pattern]) => pattern.test(file))?.[1] ?? "docs";
-    counts[kind] = (counts[kind] ?? 0) + 1;
-  }
+  const counts = countBy(
+    files.filter((each) => !TEST_FILE.test(each)),
+    (file) => CATEGORY_OF.find(([pattern]) => pattern.test(file))?.[1] ?? "docs",
+  );
   const subjects = Object.entries(counts).filter(([kind]) => !FALLBACK.has(kind));
   const ranked = (subjects.length > 0 ? subjects : Object.entries(counts)).toSorted((a, b) =>
     a[1] === b[1] ? a[0].localeCompare(b[0]) : b[1] - a[1],
@@ -229,9 +229,7 @@ function proseLines(found: readonly ProseFinding[]): string[] {
 }
 
 export function told(owed: Owed): string[] {
-  const counts = Object.entries(owed.category.counts)
-    .map(([label, count]) => `${label} ${String(count)}`)
-    .join(", ");
+  const counts = countsLine(owed.category.counts, "");
   return [
     `changed: ${String(owed.changed)} files${owed.documentationOnly ? ", documentation only: the static steps have nothing to read" : ""}`,
     owed.tests.length === 0
@@ -278,7 +276,7 @@ if (import.meta.main) {
       const commit = args.value("commit");
       const base = args.value("base");
       if (commit !== null && base !== null) args.die("--base and --commit name two diffs; pass one");
-      const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
+      const root = repoRoot();
       const change = changeOf(root, commit === null ? { base: base ?? "HEAD" } : { commit });
       const tree = treeLines(root, args.flag("stack") ? "stack" : "no-stack");
       console.log([...told(requiredChecksOf(root, change)), ...tree].join("\n"));

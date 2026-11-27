@@ -10,7 +10,7 @@
  * the derived views (`tools/wri/ledger.ts`).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { lastAt } from "#skills/main/logs.ts";
+import { campaignName, lastAt } from "#skills/main/logs.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import {
   existsSync,
@@ -22,7 +22,7 @@ import {
 } from "#src/meta/filesystem.ts";
 import { gitMaybe, mainTree } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { CODE_TREES } from "#tools/campaign/campaign.ts";
@@ -130,7 +130,7 @@ const fixed = (dir: string) =>
 
 function runsOf(dir: string): string[] {
   const { logs, log } = parseJsonAs<{ logs?: string[]; log?: string }>(read(join(dir, INVESTIGATION)));
-  return (logs ?? (log === undefined ? [] : [log])).map((each) => basename(dirname(each)));
+  return (logs ?? (log === undefined ? [] : [log])).map(campaignName);
 }
 
 function investigations(root: string): { dir: string; names: string[] }[] {

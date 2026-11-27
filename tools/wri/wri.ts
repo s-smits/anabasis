@@ -24,6 +24,8 @@
  *   bun tools/wri/wri.ts reader <name> --log <log>
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  */
+import { campaignName } from "#skills/main/logs.ts";
+import { printed } from "#skills/main/print.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -138,8 +140,8 @@ const resolvedLogs = await Promise.all(
 );
 /** A campaign's name, and its copy's host folder where two `logs` share the name. */
 const nameOf = (log: string, logs: readonly string[] = resolvedLogs) => {
-  const name = basename(dirname(log));
-  const shared = logs.filter((each) => basename(dirname(each)) === name).length > 1;
+  const name = campaignName(log);
+  const shared = logs.filter((each) => campaignName(each) === name).length > 1;
   return shared ? `${name}@${basename(dirname(dirname(log)))}` : name;
 };
 
@@ -250,9 +252,10 @@ async function start(): Promise<number> {
   const evalReport = formatRegressionsFor(readinessList);
   const regressionsFile = join(out, REGRESSIONS);
   const campaigns = [
-    "| campaign | log | events | checkout |",
-    "| --- | --- | --- | --- |",
-    ...logs.map((log) => `| ${nameOf(log)} | \`${log}\` | ${String(read(log).length)} | \`${REPO}\` |`),
+    printed(
+      ["campaign", "log", "events", "checkout"],
+      logs.map((log) => [nameOf(log), `\`${log}\``, String(read(log).length), `\`${REPO}\``]),
+    ),
     "",
     ...texts.map((text, index) => {
       const host = text.trim().split("\n").at(-1) ?? "";

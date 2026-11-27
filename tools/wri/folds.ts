@@ -5,7 +5,7 @@
 import { JUDGE, unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
-import { type Paired, type Tally, testOf, unsolved as noneAnswered } from "#src/kernel/compare.ts";
+import { type Paired, testOf, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { type Traced, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
@@ -281,18 +281,6 @@ export const strings = (value: JsonValue | undefined): string[] => items(value).
 /** A non-result is in no pair and a rerun replaced it; a solver's flag is its side's own fail. */
 export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
 export const share = (part: number, whole: number): string => `${String(part)} of ${String(whole)}`;
-export function summed(tallies: readonly Tally[]): Tally {
-  const out = { wins: 0, losses: 0, ties: 0 };
-  for (const { wins, losses, ties } of tallies) {
-    out.wins += wins;
-    out.losses += losses;
-    out.ties += ties;
-  }
-  return out;
-}
-
-export const formatTally = ({ wins, losses, ties }: Tally): string =>
-  `${String(wins)}-${String(losses)}-${String(ties)}`;
 export const percent = (part: number): string => `${(part * 100).toFixed(1)}%`;
 export const fired = (name: keyof typeof TRIGGERS, detail: string): Trigger => ({
   lane: TRIGGERS[name],

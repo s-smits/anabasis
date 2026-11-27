@@ -21,8 +21,9 @@ launching, moving, or stopping runs belongs to [run-management](../run-managemen
 
 ## Scripts
 
-Each script resolves a campaign name locally or in the archive, or accepts an absolute path to a
-log file; passing `--host <name>` executes it on a remote host. Although their output omits task
+Each script resolves a campaign name via `logAcross` (locally, in the archive, or across configured
+hosts), or accepts a campaign folder or path to a log file; passing `--host <name>` executes it on a
+remote host. Although their output omits task
 text and check code, it remains exam-side data and must stay out of tracked files.
 
 ```text

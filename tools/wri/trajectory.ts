@@ -12,6 +12,7 @@
  * choose the harness join it. Work hours subtract every recorded wait and any half-hour silence, so
  * they are a lower bound.
  */
+import { waitsOf } from "#skills/main/time.ts";
 import { DIGEST } from "#src/campaign/names.ts";
 import { epochsOf, starterIn } from "#src/campaign/climb.ts";
 import { type HarnessSize, nonblank, ownFiles } from "#src/harness/files.ts";
@@ -20,16 +21,15 @@ import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { practiceRan } from "#src/kernel/solves.ts";
 import { AGENT_DIR, GUIDE_FILE } from "#src/meta/bundle-layout.ts";
-import { HOUR_MS } from "#src/meta/clock.ts";
+import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { median } from "#src/meta/tally.ts";
-import { waitsOf } from "./time.ts";
 
 export const HOURS = [2, 4, 6, 8, 12, 16, 24] as const;
-const SILENCE = 30 * 60 * 1000;
+const SILENCE = 30 * MINUTE_MS;
 const GUIDE_PATH = `${AGENT_DIR}${GUIDE_FILE}`;
 
 type Grades = ReadonlyMap<string, number>;

@@ -16,7 +16,7 @@ const USAGE = `usage:
 --untied    how many untied tasks the test reads, each won or lost by one margin (24)
 --scores    one comparison's task scores, comma-separated, ties as 0: read them as its test does
 --unbilled  the same tasks' scores without the bill, in the same order: whether they read a step`;
-const OPTIONS = { level: "text", untied: "int", scores: "text", unbilled: "text" } as const;
+const OPTIONS = { level: "number", untied: "int", scores: "text", unbilled: "text" } as const;
 const LEVEL = 0.02;
 
 export function sizeOf(untied: number, level: number) {
@@ -91,7 +91,7 @@ function numbersIn(text: string | null, name: string): number[] | null {
 
 if (import.meta.main) {
   await runCommand({ name: "size", usage: USAGE, options: OPTIONS }, (args: CommandArgs) => {
-    const level = Number(args.value("level") ?? LEVEL);
+    const level = args.number("level") ?? LEVEL;
     if (!(level > 0 && level < 1)) args.die("--level must be a number between 0 and 1");
     const untied = args.int("untied") ?? SIZE.tasks;
     if (untied < 0) args.die("--untied must not be negative");

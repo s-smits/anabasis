@@ -470,33 +470,25 @@ export function awaitingLines(campaign: {
  * A Builder keeps WebSearch, since its shell reaches the network anyway; an Examiner's or
  * reviewer's search would be read by nobody.
  */
-export function hostClaude(
-  seat: {
-    readonly webSearch: boolean;
-    readonly cacheTtl: "5m" | "1h";
-    readonly persistDir?: string | undefined;
-    readonly fork?: ClaudeFork | undefined;
-  },
-  home: string,
-  shutdown: AbortSignal,
-  cwd: string | undefined,
-  id: string,
-) {
-  return {
-    ...sweepOptions(home, undefined, shutdown, cwd).claude,
-    webSearch: seat.webSearch,
-    cacheTtl: seat.cacheTtl,
-    ...keyIfDefined(
-      "persist",
-      seat.persistDir === undefined ? undefined : { dir: seat.persistDir, seat: id },
-    ),
-    ...keyIfDefined("fork", seat.fork),
-  };
-}
-
-function hostSession(seat: Parameters<typeof hostClaude>[0]) {
+function hostSession(seat: {
+  readonly webSearch: boolean;
+  readonly cacheTtl: "5m" | "1h";
+  readonly persistDir?: string | undefined;
+  readonly fork?: ClaudeFork | undefined;
+}) {
   return (home: string, shutdown: AbortSignal, cwd: string | undefined, id: string) =>
-    seatBackends({ claude: hostClaude(seat, home, shutdown, cwd, id) });
+    seatBackends({
+      claude: {
+        ...sweepOptions(home, undefined, shutdown, cwd).claude,
+        webSearch: seat.webSearch,
+        cacheTtl: seat.cacheTtl,
+        ...keyIfDefined(
+          "persist",
+          seat.persistDir === undefined ? undefined : { dir: seat.persistDir, seat: id },
+        ),
+        ...keyIfDefined("fork", seat.fork),
+      },
+    });
 }
 
 const examinerSession = hostSession({ webSearch: false, cacheTtl: "1h" });

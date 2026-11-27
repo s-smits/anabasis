@@ -121,22 +121,16 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
     revertMade(log, decided);
     return;
   }
-  if (decided.move === "draft") {
-    if (seats.seated !== solved && seats.draft === undefined) {
+  if (decided.move === "draft" || decided.move === "examine") {
+    const drafting = decided.move === "draft";
+    if (seats.seated !== solved && (drafting ? seats.draft : seats.examine) === undefined) {
       throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
     }
-    const session = nextId(events, "d");
+    const session = nextId(events, drafting ? "d" : "x");
     begin({ session });
-    await draftCommand(examinerRun(turn, session, "draft").args, seats.draft);
-    return;
-  }
-  if (decided.move === "examine") {
-    if (seats.seated !== solved && seats.examine === undefined) {
-      throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
-    }
-    const session = nextId(events, "x");
-    begin({ session });
-    await examineCommand(examinerRun(turn, session, "write").args, seats.examine, undefined, seats.audit);
+    await (drafting
+      ? draftCommand(examinerRun(turn, session, "draft").args, seats.draft)
+      : examineCommand(examinerRun(turn, session, "write").args, seats.examine, undefined, seats.audit));
     return;
   }
   const { session, args } = comparisonOf(decided, turn);

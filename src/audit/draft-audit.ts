@@ -53,6 +53,7 @@ export interface DraftAuditCase {
   readonly notes: readonly string[];
   readonly priorFindings?: readonly string[];
   readonly verifiedFixed?: readonly string[];
+  readonly audited?: string;
   readonly log: string;
 }
 
@@ -375,6 +376,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
     session: target.session,
     pass,
     ...keyIfDefined("revision", target.revision),
+    ...keyIfDefined("audited", target.audited),
     verdict: result.verdict,
     findings: result.findings,
     summary: result.summary,

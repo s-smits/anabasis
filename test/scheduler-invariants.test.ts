@@ -348,6 +348,19 @@ describe("scheduler decision boundaries", () => {
       move: "build",
       code: "build",
     });
+    const supplied = { ...level02, wanted: { ...level02.wanted, target: 8 } };
+    const olderOpen = underSuppliedPromo.toSpliced(
+      underSuppliedPromo.findIndex(({ kind }) => kind === "harness.promoted"),
+      0,
+      ...manyHeld("older", 6),
+    );
+    expect(
+      [3, 4, 5].map((more) => nextAction([...olderOpen, ...manyHeld("more", more)], supplied)),
+    ).toMatchObject([
+      { move: "examine", code: "no-room" },
+      { move: "examine", code: "no-room" },
+      { move: "compare", fresh: "starter", code: "unread" },
+    ]);
 
     const exactSweepLog = [
       CHECKED,

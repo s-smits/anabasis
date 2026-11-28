@@ -229,7 +229,7 @@ describe("the last comparison the reference stood in", () => {
       "reference won 0, candidate won 1, 2 tied",
       "Reference passed every attempt on 1, some on 1, none on 1",
       "1 excluded pending review",
-      "Reference A/A control differed on 2 of 3 tasks; 0 of 3 comparison margins were larger than any A/A margin",
+      "Reference A/A control differed on 2 of 3 tasks, its largest margin 600; 0 of 3 comparison margins were larger.",
     ]) {
       expect(told.stood).toContain(fact);
     }
@@ -270,26 +270,27 @@ describe("the last comparison the reference stood in", () => {
         noise: { differences: [0, 600, -120] },
       });
       expect(taskHistory(log.events, ["a", "b", "c"].map(fixture)).stood).toContain(
-        `; ${String(beyond)} of 3 comparison margins were larger than any A/A margin`,
+        `its largest margin 600; ${String(beyond)} of 3 comparison margins were larger.`,
       );
     }
   });
 
-  it("asks for retirement only when at least ten tasks all passed every attempt and the objective decided none", () => {
+  it("asks for retirement only when at least ten tasks all passed every attempt with a measured objective and no gap", () => {
     const cue = "retire easy tasks with retire_tasks";
     const cases = [
-      [10, [true, true], [true, true], true],
-      [9, [true, true], [true, true], false],
-      [10, [true, false], [true, true], false],
+      [10, [0.9, 0.9], [0.9, 0.9], true],
+      [9, [0.9, 0.9], [0.9, 0.9], false],
+      [10, [0.9, false], [0.9, 0.9], false],
       [10, [0.2, 0.2], [0.9, 0.9], false],
+      [10, [true, true], [true, true], false],
     ] as const;
     for (const [size, first, rest, asked] of cases) {
       const ids = Array.from({ length: size }, (_, nth) => `k${String(nth)}`);
       const log = logged();
       log.hold(ids);
       for (const [nth, id] of ids.entries()) {
-        log.solved("c-1", id, "h1", nth === 0 ? first : [true, true]);
-        log.solved("c-1", id, "h2", nth === 0 ? rest : [true, true]);
+        log.solved("c-1", id, "h1", nth === 0 ? first : [0.9, 0.9]);
+        log.solved("c-1", id, "h2", nth === 0 ? rest : [0.9, 0.9]);
       }
       log.reported("c-1", ["h1", "h2"], ids, { objective: { direction: "higher", scale: "unit" } });
       expect([
@@ -691,16 +692,21 @@ describe("a task the reference passed every attempt on", () => {
     expect(told.revisionCue).toContain('revise_exam (kind "repair")');
   });
 
-  it("includes baseStarter-only starterTrace in metrics and excludes Builder harness solves", () => {
+  it("shows one baseStarter solve as starterTrace, a valid one where any passed, and no Builder harness solve", () => {
     const log = logged();
-    log.hold(["t1"]);
+    log.hold(["t1", "t2"]);
     log.add("comparison.started", { session: "g-1", starter: "h1", old: "h1", fresh: "h-built" });
-    log.solved("g-1", "t1", "h1", [true], [3]);
+    log.solved("g-1", "t1", "h1", [true, false], [3, 5]);
     log.add("solve.call", { solve: "t-1", tool: "bash", args: { command: "python3 solve.py" } });
+    log.add("solve.call", { solve: "t-2", tool: "bash", args: { command: "cat  notes.txt" } });
     log.solved("g-1", "t1", "h-built", [true], [1]);
-    log.add("solve.call", { solve: "t-2", tool: "bash", args: { command: "SECRET_BUILDER_CMD" } });
-    const row = taskHistory(log.events, [fixture("t1")]).metrics.tasks[0];
-    expect(row?.starterTrace).toEqual({ turns: 3, tools: { bash: 1 }, commands: ["python3 solve.py"] });
-    expect(JSON.stringify(row)).not.toContain("SECRET_BUILDER_CMD");
+    log.add("solve.call", { solve: "t-3", tool: "bash", args: { command: "SECRET_BUILDER_CMD" } });
+    log.solved("g-1", "t2", "h1", [false, false], [4, 6]);
+    const [first, second] = taskHistory(log.events, [fixture("t1"), fixture("t2")]).metrics.tasks;
+    expect([first?.starterTrace, second?.starterTrace]).toEqual([
+      { valid: true, turns: 3, tools: { bash: 1 }, firstCommands: ["python3 solve.py"] },
+      { valid: false, turns: 6, tools: {}, firstCommands: [] },
+    ]);
+    expect(JSON.stringify([first, second])).not.toContain("SECRET_BUILDER_CMD");
   });
 });

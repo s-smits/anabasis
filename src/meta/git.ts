@@ -1,4 +1,5 @@
 import { hostTool } from "./host-tool.ts";
+import { parseJsonAs } from "./json-runtime.ts";
 import { basename, dirname } from "./path.ts";
 import { runtimeProcess } from "./process.ts";
 import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "./subprocess.ts";
@@ -55,9 +56,13 @@ export function addedLines(repo: string, ...args: readonly string[]): Map<string
   let header = false;
   for (const row of gitOutput(repo, "-c", "core.quotePath=false", "diff", ...flags, ...args).split("\n")) {
     if (row.startsWith("diff --git ")) [header, lines] = [true, undefined];
-    if (header && row.startsWith("+++ b/")) {
+    if (header && (row.startsWith("+++ b/") || row.startsWith('+++ "b/'))) {
       lines = new Set();
-      changed.set(row.slice(6).replace(/\t$/u, ""), lines);
+      const quoted = row.startsWith('+++ "');
+      changed.set(
+        quoted ? parseJsonAs<string>(row.slice(4)).slice(2) : row.slice(6).replace(/\t$/u, ""),
+        lines,
+      );
     }
     const hunk = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/u.exec(row);
     if (hunk === null) continue;

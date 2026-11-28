@@ -36,6 +36,7 @@ interface ParsedEntry {
 
 interface TurnSpan {
   readonly messageId: string;
+  readonly startIndex: number;
   endUuid: string;
   readonly toolUseIds: Set<string>;
   readonly toolResultIds: Set<string>;
@@ -108,7 +109,13 @@ function assistantTurns(entries: readonly ParsedEntry[]): readonly TurnSpan[] {
     if (assistant !== null) {
       const messageId = isString(assistant.id) ? assistant.id : `anon-${String(index)}`;
       if (current === null || current.messageId !== messageId) {
-        current = { messageId, endUuid: entry.uuid, toolUseIds: new Set(), toolResultIds: new Set() };
+        current = {
+          messageId,
+          startIndex: index,
+          endUuid: entry.uuid,
+          toolUseIds: new Set(),
+          toolResultIds: new Set(),
+        };
         turns.push(current);
       }
       current.endUuid = entry.uuid;
@@ -140,12 +147,21 @@ function lastCompleteForkPoint(jsonl: string): {
   const { sdkSessionId, entries } = parseTranscript(jsonl);
   const turns = assistantTurns(entries);
   if (turns.length === 0) return { sdkSessionId };
-  const complete = turns.findLast((turn) => missingToolIds(turn).length === 0);
+  const compactAt = lastCompactIndexOf(entries);
+  const candidates = compactAt === -1 ? turns : turns.filter(({ startIndex }) => startIndex > compactAt);
+  const complete = candidates.findLast((turn) => missingToolIds(turn).length === 0);
   if (complete === undefined) {
-    throw new Error("the Claude transcript holds no completed assistant turn to fork from");
+    throw new Error(
+      compactAt === -1
+        ? "the Claude transcript holds no completed assistant turn to fork from"
+        : "the Claude transcript holds no completed post-compaction assistant turn to fork from",
+    );
   }
   return { sdkSessionId, resumeSessionAt: complete.endUuid };
 }
+
+const lastCompactIndexOf = (entries: readonly ParsedEntry[]): number =>
+  entries.findLastIndex(({ raw }) => raw.subtype === "compact_boundary");
 
 export function resolveForkPoint(
   jsonl: string,
@@ -160,6 +176,17 @@ export function resolveForkPoint(
   if (chosen === undefined) {
     throw new Error(
       `turn ${String(atTurn)} is out of range: transcript holds ${String(turns.length)} assistant turns`,
+    );
+  }
+  const compactAt = lastCompactIndexOf(entries);
+  if (compactAt !== -1 && chosen.startIndex < compactAt) {
+    const firstAfter = turns.findIndex(({ startIndex }) => startIndex > compactAt) + 1;
+    const hint =
+      firstAfter > 0
+        ? `fork at turn ${String(firstAfter)} or later, or pass --wrap-turns instead`
+        : "no post-compaction assistant turn exists; pass --wrap-turns instead";
+    throw new Error(
+      `turn ${String(atTurn)} precedes the transcript's last compact_boundary (Claude Code SDK cannot resume before compaction); ${hint}`,
     );
   }
   const missing = missingToolIds(chosen);
@@ -190,8 +217,15 @@ export function stageForkTranscript(
     } else {
       const parsed = parseTranscript(raw);
       sdkSessionId = parsed.sdkSessionId;
-      if (!parsed.entries.some(({ uuid }) => uuid === fork.upToUuid)) {
+      const targetIndex = parsed.entries.findIndex(({ uuid }) => uuid === fork.upToUuid);
+      if (targetIndex === -1) {
         throw new Error(`message UUID ${fork.upToUuid} is not in ${fork.transcript}`);
+      }
+      const compactAt = lastCompactIndexOf(parsed.entries);
+      if (compactAt !== -1 && targetIndex < compactAt) {
+        throw new Error(
+          `message UUID ${fork.upToUuid} precedes the transcript's last compact_boundary (Claude Code SDK cannot resume before compaction)`,
+        );
       }
       resumeSessionAt = fork.upToUuid;
     }

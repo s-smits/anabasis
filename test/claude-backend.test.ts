@@ -19,7 +19,11 @@ import {
   servedByClaude,
   SWEEP_COMPACT_WINDOW,
 } from "../src/agent/backends/claude.ts";
-import { CLAUDE_PROJECT_DIR } from "../src/agent/backends/claude-transcript.ts";
+import {
+  CLAUDE_PROJECT_DIR,
+  resolveForkPoint,
+  stageForkTranscript,
+} from "../src/agent/backends/claude-transcript.ts";
 import { runAgent } from "../src/agent/session.ts";
 import type { Spent } from "../src/kernel/meter.ts";
 import {
@@ -907,5 +911,31 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
     } finally {
       noSidFork.shutdown.abort();
     }
+
+    const compacted = `${[
+      row("user", "u0", { message: { role: "user", content: "Open." } }),
+      assistant("a1-pre", "msg_1", [{ type: "text", text: "Before compact." }]),
+      row("system", "cb-1", { subtype: "compact_boundary" }),
+      assistant("a2-post", "msg_2", [{ type: "text", text: "After compact." }]),
+    ].join("\n")}\n`;
+    expect(() => resolveForkPoint(compacted, 1)).toThrow(/compact_boundary.*turn 2 or later/u);
+    expect(resolveForkPoint(compacted, 2)).toEqual({
+      sdkSessionId: sid,
+      resumeSessionAt: "a2-post",
+      turnCount: 2,
+    });
+    const incompletePost = join(persistDir, "incomplete-post.jsonl");
+    writeFileSync(
+      incompletePost,
+      `${[
+        row("user", "u0", { message: { role: "user", content: "Open." } }),
+        assistant("a1-pre", "msg_1", [{ type: "text", text: "Before compact." }]),
+        row("system", "cb-1", { subtype: "compact_boundary" }),
+        assistant("a2-open", "msg_2", [{ type: "tool_use", id: "toolu_open", name: "bash", input: {} }]),
+      ].join("\n")}\n`,
+    );
+    expect(() => stageForkTranscript(join(persistDir, "cfg"), { transcript: incompletePost })).toThrow(
+      /post-compaction/u,
+    );
   });
 });

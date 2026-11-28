@@ -58,8 +58,12 @@ export function formatComparisonHistory(steps: readonly Handover[]): string[] {
       step.validity === null
         ? ""
         : ` Validity differed on ${step.validity === 0 ? "none" : String(step.validity)} of the ${tasks}.`;
+    const pace =
+      step.means === null
+        ? ""
+        : ` Mean solve: $${step.means.fresh.billed.toFixed(2)} / ${step.means.fresh.turns.toFixed(1)} turns vs reference $${step.means.old.billed.toFixed(2)} / ${step.means.old.turns.toFixed(1)} turns.`;
     return [
-      `- Harness ${short(step.fresh)} against harness ${short(step.old)}, one comparison over ${tasks}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.${validity}`,
+      `- Harness ${short(step.fresh)} against harness ${short(step.old)}, one comparison over ${tasks}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.${validity}${pace}`,
     ];
   });
 }

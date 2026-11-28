@@ -341,7 +341,8 @@ function shortBy({ plan, supply, all, events }: Ground): number {
   const promoted = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   const practice = Math.max(0, (plan.practice ?? 0) - releasedSince(events, promoted).length);
   const target = all.length === 0 ? 0 : plan.wanted.target;
-  const owed = Math.max(0, practice + Math.max(target, comparisonFloor(plan.wanted.level)) - supply.held);
+  const floor = Math.max(target, comparisonFloor(plan.wanted.level));
+  const owed = Math.max(0, practice + floor - supply.held);
   return promoted === -1 ? owed : Math.min(owed, MOST_ASKED_AFTER_PROMOTION);
 }
 
@@ -423,15 +424,27 @@ function noRoom(ground: Ground): Move | null {
           .filter((event) => sessionEnded(event) && INTERRUPTED.has(event.data.ended))
           .map(({ data }) => data.session),
       );
-      const writtenForIt = since.some(
-        (event) =>
+      const examSessions = new Set(
+        since.flatMap((event) =>
           (event.kind === "exam.started" || event.kind === "exam.finished") &&
-          !interrupted.has(event.data.session),
+          !interrupted.has(event.data.session) &&
+          isString(event.data.session)
+            ? [event.data.session]
+            : [],
+        ),
       );
-      if (!writtenForIt) {
+      if (examSessions.size === 0) {
         return {
           move: "examine",
           why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has finished writing tasks for it since: tasks are written for each new reference`,
+        };
+      }
+      const needed = comparisonFloor(ground.plan.wanted.level);
+      const writtenAfter = heldOutAfter(events, promotedAt);
+      if (starterOwed && writtenAfter < needed && examSessions.size < MAX_REPAIR_ATTEMPTS) {
+        return {
+          move: "examine",
+          why: `harness ${short(reference ?? "")} was promoted with ${plural(writtenAfter, "new held-out task")} (need at least ${String(needed)} to confirm on written-after tasks): waking Examiner for more tasks`,
         };
       }
     }

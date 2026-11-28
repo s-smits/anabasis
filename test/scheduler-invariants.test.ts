@@ -322,6 +322,32 @@ describe("scheduler decision boundaries", () => {
     expect(
       tasksToAskFor(afterPromo, { ...PLAN, wanted: { target: 8, level: 0.1, solves: 2 }, practice: 2 }),
     ).toBe(9);
+    const underSuppliedPromo = [
+      CHECKED,
+      ...manyHeld("t", 12),
+      released("t-0"),
+      checkpoint("b-1", "h-1"),
+      ...compared("g-1", STARTER, "h-1", "step", { valid: roomStep() }),
+      promotedH1(),
+      ...manyHeld("fresh", 3),
+      examFin("x-1", ["fresh-0", "fresh-1", "fresh-2"]),
+    ];
+    const level02 = { ...PLAN, wanted: { target: 24, level: 0.02, solves: 2 }, practice: 4 };
+    expect(nextAction(underSuppliedPromo, level02)).toMatchObject({ move: "examine", code: "no-room" });
+    expect(
+      nextAction(
+        [
+          ...underSuppliedPromo,
+          ...manyHeld("more", 5),
+          examFin("x-2", ["more-0", "more-1", "more-2", "more-3", "more-4"]),
+        ],
+        level02,
+      ),
+    ).toMatchObject({ move: "compare", fresh: "starter", code: "unread" });
+    expect(nextAction([...underSuppliedPromo, examFin("x-2", [])], level02)).toMatchObject({
+      move: "build",
+      code: "build",
+    });
 
     const exactSweepLog = [
       CHECKED,

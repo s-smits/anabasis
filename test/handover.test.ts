@@ -158,6 +158,7 @@ describe("a campaign's reading", () => {
       cap: 100,
       modelTurns: null,
       points: null,
+      means: null,
       validity: null,
       aside: 0,
       cut: false,
@@ -199,6 +200,7 @@ describe("a campaign's reading", () => {
         repeat: null,
         tally: { wins: 4, losses: 0, ties: 0 },
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
+        means: { old: { billed: 1.5, turns: 14 }, fresh: { billed: 1.5, turns: 14 } },
         rulings: { earned: 1, "check-defect": 0, unclear: 0 },
         billed: 3.5,
         begun: 2,
@@ -501,7 +503,70 @@ describe("the Builder's filter over that reading", () => {
     expect(formatComparisonHistory(campaignOf(c.events()).steps).at(-1)).toMatch(
       /bbbbbbbb.*aaaaaaaa.*4 tasks.*5 turns.*2 won.*0 lost.*2 tied.*no step/u,
     );
-    expect(told.join("\n")).not.toMatch(/s[1-4]\b|0\.0625|valid|earned|\$/);
+    expect(told.join("\n")).not.toMatch(/s[1-4]\b|0\.0625|valid|earned/u);
+    expect(told[0]).toContain("Mean solve: $1.50 / 14.0 turns vs reference $1.50 / 14.0 turns.");
+  });
+
+  it("reports per-side mean solve cost and turns from finished pass/fail solves, excluding non-results", () => {
+    const c = campaign();
+    const setting = settingId(conditionOf("any", "any"));
+    c.record("comparison.started", {
+      session: "g-1",
+      old: HA,
+      fresh: HB,
+      starter: STARTER,
+      setting,
+      solves: 1,
+      level: 0.1,
+      tasks: ["s1", "s2"],
+    });
+    const addSolve = ({
+      solve,
+      task,
+      harness,
+      outcome,
+      billed,
+      turns,
+    }: {
+      solve: string;
+      task: string;
+      harness: string;
+      outcome: "pass" | "fail" | "non-result";
+      billed: number;
+      turns: number;
+    }) => {
+      c.record("solve.started", {
+        solve,
+        condition: recordCondition(c.log, conditionOf(task, harness)),
+        comparison: "g-1",
+      });
+      c.record("solve.finished", {
+        solve,
+        harness,
+        ending: outcome === "pass" ? { outcome } : { outcome, kind: "rejected" },
+        billed,
+        turns,
+        seconds: 60,
+      });
+    };
+    addSolve({ solve: "m-1", task: "s1", harness: HA, outcome: "pass", billed: 1, turns: 8 });
+    addSolve({ solve: "m-2", task: "s2", harness: HA, outcome: "fail", billed: 1.4, turns: 12 });
+    addSolve({ solve: "m-3", task: "s1", harness: HB, outcome: "pass", billed: 2.4, turns: 18 });
+    addSolve({ solve: "m-4", task: "s2", harness: HB, outcome: "non-result", billed: 99, turns: 50 });
+    c.record("comparison.reported", {
+      session: "g-1",
+      old: HA,
+      fresh: HB,
+      starter: STARTER,
+      setting,
+      solves: 1,
+      versions: ["s1", "s2"],
+      reading: "no-step",
+      scored: { wins: 0, losses: 0, ties: 2, p: 0.5, unsolved: 0 },
+      aside: [],
+    });
+    const [told] = formatComparisonHistory(campaignOf(c.events()).steps);
+    expect(told).toContain("Mean solve: $2.40 / 18.0 turns vs reference $1.20 / 10.0 turns.");
   });
 
   it("tells a report that also scored the bill by the tally its step was read on", () => {

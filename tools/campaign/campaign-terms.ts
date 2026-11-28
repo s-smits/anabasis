@@ -40,9 +40,9 @@ import type { DraftAuditor } from "../eval/draft.ts";
 import {
   type Campaign,
   COMPARISON_OPTIONS,
-  assertCrossFamily,
+  assertKnownReviewer,
   capRead,
-  crossFamilyVendors,
+  knownReviewer,
   SESSION_OPTIONS,
   type Seated,
   solved,
@@ -262,8 +262,8 @@ function validateOpening(
     if (reviewer === null) {
       throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
     }
-    if (frozenChecker(events) !== null && hasJudge(draftOf(events)?.objective) && opening.solver !== null) {
-      assertCrossFamily(reviewer.model, opening.solver.model);
+    if (frozenChecker(events) !== null && hasJudge(draftOf(events)?.objective)) {
+      assertKnownReviewer(reviewer.model);
     }
   }
   counted(
@@ -361,9 +361,7 @@ export function opened(
   };
   const attended = values.hitl ?? was?.attended ?? false;
   const revise = values.revise ?? was?.revise ?? true;
-  const crossFamily =
-    resolvedSeats.reviewer !== null && crossFamilyVendors(resolvedSeats.reviewer.model, solver.model);
-  const judged = !attended && crossFamily;
+  const judged = !attended && resolvedSeats.reviewer !== null && knownReviewer(resolvedSeats.reviewer.model);
   const opening: Opening = {
     project: projectOf(log, values.project, was),
     budget,

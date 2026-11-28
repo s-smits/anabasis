@@ -122,7 +122,7 @@ export function seats(model: string, effort: string | undefined): { label: strin
 function preflightSeats(seated: readonly string[], more: readonly string[]): boolean {
   if (more.includes("--admit-judge") || more.includes("--no-admit-judge")) {
     throw new Error(
-      "--admit-judge was removed: the Examiner chooses dynamically during d-1, and unattended cross-family openings auto-admit judged items",
+      "--admit-judge was removed: the Examiner chooses dynamically during d-1, and unattended openings with a first-party reviewer auto-admit judged items",
     );
   }
   const bySeat = seatFlagsOf([...seated, ...more]);

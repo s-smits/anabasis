@@ -466,25 +466,17 @@ export function modelVendor(name: string): string | null {
   }
 }
 
-export function crossFamilyVendors(first: string, second: string): boolean {
-  const left = modelVendor(first);
-  const right = modelVendor(second);
-  return left !== null && right !== null && left !== right;
+export const knownReviewer = (reviewer: string): boolean => modelVendor(reviewer) !== null;
+
+export function rubricLaneOf(reviewer: string | undefined): RubricLane {
+  return reviewer !== undefined && knownReviewer(reviewer) ? "judged" : "code-only";
 }
 
-export function rubricLaneOf(reviewer: string | undefined, solver: string | undefined): RubricLane {
-  return reviewer !== undefined && solver !== undefined && crossFamilyVendors(reviewer, solver)
-    ? "judged"
-    : "code-only";
-}
-
-export function assertCrossFamily(reviewer: string, solver: string, prefix = ""): void {
-  if (crossFamilyVendors(reviewer, solver)) return;
-  const why =
-    modelVendor(reviewer) === null
-      ? `the reviewer ${reviewer} routes to an unknown vendor`
-      : `the reviewer ${reviewer} judges answers by a solver of its own family (${solver})`;
-  throw new Error(`${prefix}${why}; name a reviewer from another family`);
+export function assertKnownReviewer(reviewer: string, prefix = ""): void {
+  if (knownReviewer(reviewer)) return;
+  throw new Error(
+    `${prefix}the reviewer ${reviewer} routes to an unknown vendor; name a first-party reviewer`,
+  );
 }
 
 export async function comparedOn(
@@ -499,9 +491,9 @@ export async function comparedOn(
   const judges = reviewers ?? (seats.judge === undefined ? null : campaign.reviewers(seats.judge));
   if (seats.paid && hasJudge(campaign.contract.objective)) {
     if (judges === null) {
-      throw new Error("name --reviewer: a paid judged comparison needs a cross-family judging reviewer");
+      throw new Error("name --reviewer: a paid judged comparison needs a first-party judging reviewer");
     }
-    assertCrossFamily(judges.reviewer, priceKey(campaign.test.model));
+    assertKnownReviewer(judges.reviewer);
   }
   return {
     starter: await starter(campaign),

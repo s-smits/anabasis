@@ -176,21 +176,21 @@ suite("acceptance and freezing over a drafted exam", () => {
         ...keyIfDefined("solver", solver === null ? undefined : seat(solver)),
         ...keyIfDefined("seats", reviewer === null ? undefined : { reviewer: seat(reviewer) }),
       });
-    open(sameFam, "claude/claude-sonnet-5-5");
-    open(crossFam, "openai-codex/gpt-6.1-sol");
-    open(plainSameFam, "claude/claude-sonnet-5-5");
+    open(sameFam, "openrouter/auto");
+    open(crossFam, "claude/claude-sonnet-5-5");
+    open(plainSameFam, "openrouter/auto");
     open(unseated, null);
     open(unsolved, "claude/claude-sonnet-5-5", null);
-    const [sameRes, crossRes, plainRes, unseatedRes, unsolvedRes] = await Promise.all([
+    const [unknownRes, firstPartyRes, plainRes, unseatedRes, unsolvedRes] = await Promise.all([
       accept(sameFam, ADMIT, "--admit-judge"),
       accept(crossFam, ADMIT, "--admit-judge"),
       accept(plainSameFam, ADMIT, "--admit-judge"),
       accept(unseated, ADMIT, "--admit-judge"),
       accept(unsolved, ADMIT, "--admit-judge"),
     ]);
-    expect(sameRes.code).not.toBe(0);
-    expect(sameRes.said).toContain("--admit-judge:");
-    expect([crossRes.code, plainRes.code, unseatedRes.code]).toEqual([0, 0, 0]);
+    expect(unknownRes.code).not.toBe(0);
+    expect(unknownRes.said).toContain("--admit-judge:");
+    expect([firstPartyRes.code, plainRes.code, unseatedRes.code]).toEqual([0, 0, 0]);
     expect(unsolvedRes.code).not.toBe(0);
     expect(unsolvedRes.said).toContain("neither its opening nor this command names who solves");
   });

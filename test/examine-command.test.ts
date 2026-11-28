@@ -71,10 +71,10 @@ describe("the Examiner command", () => {
     const name = `${STEM}-judged`;
     append(join(REPO, ".ana", "d2", name, LOG_FILE), "campaign.opened", {
       solver: { model: "claude/claude-opus-5-5", effort: "high" },
-      seats: { reviewer: { model: "claude/claude-sonnet-5-5", effort: "high" } },
+      seats: { reviewer: { model: "openrouter/auto", effort: "high" } },
     });
     const lanes: (string | undefined)[] = [];
-    const runs: [string, ...string[]][] = [["x-1"], ["x-2", "--reviewer", "openai-codex/gpt-6.1-sol"]];
+    const runs: [string, ...string[]][] = [["x-1"], ["x-2", "--reviewer", "claude/claude-opus-5-5"]];
     for (const [session, ...flags] of runs) {
       await examineCommand([...PACK, "--name", name, "--session", session, ...flags], (request) => {
         lanes.push(request.lane);

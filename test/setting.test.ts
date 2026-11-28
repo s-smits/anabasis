@@ -22,7 +22,7 @@ import {
 const UNNAMED: Recorded = {
   solver: null,
   minutes: 30,
-  modelTurns: 20,
+  modelTurns: 50,
   target: 24,
   solves: 2,
 };
@@ -44,7 +44,7 @@ describe("what the flags of a setting name", () => {
     expect(longer).toEqual({ ...LIMITS, wallSeconds: 14_400 });
     expect(SETTING_OPTIONS).not.toHaveProperty("solve-turns");
     expect(longer.modelTurns).toBe(LIMITS.modelTurns);
-    expect(settingNamed({ "solve-model-turns": "50" }).limits).toEqual({ ...LIMITS, modelTurns: 50 });
+    expect(settingNamed({ "solve-model-turns": "35" }).limits).toEqual({ ...LIMITS, modelTurns: 35 });
     expect(settingNamed({ solver: "claude/claude-sonnet-5-5", "solver-effort": "low" }).solver).toEqual({
       model: "claude/claude-sonnet-5-5",
       effort: "low",

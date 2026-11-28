@@ -20,6 +20,7 @@ import {
   poolOf,
   referenceOf,
   releaseOrder,
+  supplySaturation,
 } from "../src/kernel/reports.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -978,5 +979,137 @@ describe("the decision table, searched", () => {
       }),
     ];
     expect(practiceDue(afterPromoConfirmed, 6, 0.02)?.to).toBe(8);
+  });
+
+  it("wakes Examiner on supply saturation without granting repeat-compare permission or excusing patience", () => {
+    const tasks = Array.from({ length: 12 }, (_, index) => `sat-${String(index + 1)}`);
+    const setting = cond("sat-1", STARTER).setting;
+    const makeRun = (solvesPerArm: number, refSide: "old" | "fresh") => {
+      const oldH = refSide === "old" ? STARTER : "h1";
+      const freshH = refSide === "old" ? "h1" : STARTER;
+      const solveEvents: LogEvent[] = [];
+      for (const task of tasks) {
+        const cOld = cond(task, oldH);
+        const cFresh = cond(task, freshH);
+        solveEvents.push(cOld.recorded, cFresh.recorded);
+        for (const [side, c, scores] of [
+          ["old", cOld, [0.98, 0.99, 0.98]],
+          ["fresh", cFresh, [0.97, 0.99, 0.98]],
+        ] as const) {
+          for (let k = 0; k < solvesPerArm; k += 1) {
+            const id = `${side}-${task}-${String(k)}`;
+            solveEvents.push(
+              event("solve.started", { solve: id, condition: c.id, comparison: "g-sat" }),
+              event("verdict", {
+                solve: id,
+                task,
+                kind: "pass",
+                objective: scores[k] ?? 0.98,
+              }),
+              event("solve.finished", {
+                solve: id,
+                ending: { outcome: "pass", kind: "submitted" },
+                turns: 3,
+                billed: 0.2,
+              }),
+            );
+          }
+        }
+      }
+      const events: LogEvent[] = [
+        event("checker.read", { contract: "c", checks: "k", faults: [] }),
+        ...tasks.flatMap(heldOut),
+        event("build.finished", { session: "b-1", harness: "h1", changed: true, ended: "finished" }),
+        event("comparison.started", {
+          session: "g-sat",
+          old: oldH,
+          fresh: freshH,
+          starter: STARTER,
+          setting,
+          solves: solvesPerArm,
+        }),
+        ...solveEvents,
+        event(REPORTED_EVENT, {
+          session: "g-sat",
+          old: oldH,
+          fresh: freshH,
+          starter: STARTER,
+          level: PLAN.wanted.level,
+          setting,
+          solves: solvesPerArm,
+          objective: { direction: "higher", scale: "unit" },
+          versions: tasks,
+          reading: "no-step",
+          scored: { differences: tasks.map(() => 0) },
+          valid: {
+            old: [0, 0, tasks.length],
+            fresh: [0, 0, tasks.length],
+            informative: { old: tasks.length, fresh: tasks.length },
+          },
+          aside: [],
+        }),
+      ];
+      return events;
+    };
+
+    const even = makeRun(2, "old");
+    const satEven = supplySaturation(
+      even,
+      { index: even.length - 1, session: "g-sat", data: even.at(-1)?.data ?? {} },
+      "old",
+    );
+    expect(satEven).not.toBeNull();
+    expect(satEven?.aaP75).toBeCloseTo(0.01, 6);
+    const wake = nextAction(even, { ...PLAN, practice: 0, wanted: { target: 12, level: 0.1, solves: 2 } });
+    expect(wake.move).toBe("examine");
+    expect(wake.code).toBe("no-room");
+    expect(stopRule(even).sinceStep).toBe(1);
+
+    const afterExam: LogEvent[] = [
+      ...even,
+      event("exam.finished", {
+        session: "x-2",
+        held: ["n1", "n2", "n3", "n4", "n5", "n6"],
+        proposed: 6,
+        refused: [],
+        ended: "finished",
+      }),
+      ...["n1", "n2", "n3", "n4", "n5", "n6"].flatMap(heldOut),
+    ];
+    const afterWake = nextAction(afterExam, {
+      ...PLAN,
+      practice: 0,
+      wanted: { target: 12, level: 0.1, solves: 2 },
+    });
+    expect(afterWake.move).toBe("build");
+
+    const odd = makeRun(1, "old");
+    const satOdd = supplySaturation(
+      odd,
+      { index: odd.length - 1, session: "g-sat", data: odd.at(-1)?.data ?? {} },
+      "old",
+    );
+    expect(satOdd).not.toBeNull();
+    expect(satOdd?.aaP75).toBeNull();
+
+    const freshRef = makeRun(2, "fresh");
+    const satFresh = supplySaturation(
+      freshRef,
+      { index: freshRef.length - 1, session: "g-sat", data: freshRef.at(-1)?.data ?? {} },
+      "fresh",
+    );
+    expect(satFresh).not.toBeNull();
+    expect(satFresh?.aaP75).toBeCloseTo(0.02, 6);
+
+    const midRange = makeRun(2, "old").map((ev) =>
+      ev.kind === "verdict" ? { ...ev, data: { ...ev.data, objective: 0.5 } } : ev,
+    );
+    expect(
+      supplySaturation(
+        midRange,
+        { index: midRange.length - 1, session: "g-sat", data: midRange.at(-1)?.data ?? {} },
+        "old",
+      ),
+    ).toBeNull();
   });
 });

@@ -75,7 +75,7 @@ export async function examineCommand(
   const model = modelNamed(examiner);
   const forkPlan = seatForkPlan(campaign.log, "exam", model, values);
   const canRevise = values.revise ?? opening?.revise ?? true;
-  const lane = rubricLaneOf(reviewerOf(values, opening)?.model, opening?.solver?.model);
+  const lane = rubricLaneOf(reviewerOf(values, opening)?.model);
   const revise = canRevise
     ? revisionRunner({
         log: campaign.log,

@@ -47,7 +47,7 @@ import { draftReading, stagedExamOf } from "../tools/campaign/exam.ts";
 import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
 import { ungated } from "../tools/campaign/prepare.ts";
 import { freezeCandidate, type RevisionAuditor, revisionRunner } from "../tools/campaign/revise.ts";
-import { crossFamilyVendors } from "../tools/campaign/round.ts";
+import { knownReviewer } from "../tools/campaign/round.ts";
 import {
   openSuccessor,
   rewriteMovesFlag,
@@ -353,7 +353,7 @@ describe("revision admission, immutability, and lock exclusion", () => {
     const seed = await seedCampaign();
     const version0 = [...seed.packages().keys()][0] ?? "";
     recordHistoricalWitnesses(seed.log, version0, { includeDefect: true, reportComp: false });
-    expect(revisionRefusal(read(seed.log), { kind: "tune", crossFamily: crossFamilyVendors })).toContain(
+    expect(revisionRefusal(read(seed.log), { kind: "tune", reviewerAllowed: knownReviewer })).toContain(
       "still open",
     );
 
@@ -367,26 +367,26 @@ describe("revision admission, immutability, and lock exclusion", () => {
       valid: { old: [6, 0], fresh: [0, 6], informative: { old: 6, fresh: 6 } },
       aside: [],
     });
-    expect(revisionRefusal(read(seed.log), { kind: "tune", crossFamily: crossFamilyVendors })).toContain(
+    expect(revisionRefusal(read(seed.log), { kind: "tune", reviewerAllowed: knownReviewer })).toContain(
       "promotion is pending",
     );
 
     append(seed.log, "harness.promoted", { harness: "h1", from: "starter" });
-    expect(revisionRefusal(read(seed.log), { kind: "tune", crossFamily: crossFamilyVendors })).toContain(
+    expect(revisionRefusal(read(seed.log), { kind: "tune", reviewerAllowed: knownReviewer })).toContain(
       "starter confirmation is owed",
     );
     expect(
       revisionRefusal(read(seed.log), {
         kind: "repair",
         check: "check-strict",
-        crossFamily: crossFamilyVendors,
+        reviewerAllowed: knownReviewer,
       }),
     ).toBeNull();
     expect(
       revisionRefusal(read(seed.log), {
         kind: "repair",
         check: "check-even",
-        crossFamily: crossFamilyVendors,
+        reviewerAllowed: knownReviewer,
       }),
     ).toContain("no effective check-defect ruling");
 
@@ -417,10 +417,19 @@ describe("revision admission, immutability, and lock exclusion", () => {
         kind: "repair",
         check: "check-strict",
         candidate: judgedCandidate,
-        reviewer: "claude/claude-opus-5-5",
-        crossFamily: crossFamilyVendors,
+        reviewer: "openrouter/auto",
+        reviewerAllowed: knownReviewer,
       }),
-    ).toContain("cross-family reviewer");
+    ).toContain("first-party judging reviewer");
+    expect(
+      revisionRefusal(read(seed.log), {
+        kind: "repair",
+        check: "check-strict",
+        candidate: judgedCandidate,
+        reviewer: "claude/claude-opus-5-5",
+        reviewerAllowed: knownReviewer,
+      }),
+    ).toBeNull();
 
     const disabled = await seedCampaign({ revise: false });
     expect(revisionRefusal(read(disabled.log), { kind: "tune" })).toContain("--no-revise");
@@ -447,12 +456,12 @@ describe("revision admission, immutability, and lock exclusion", () => {
     );
     expect(
       revisionRefusal(read(exactBudget.log), { kind: "tune", candidate: judgedCandidate, reviewer: null }),
-    ).toContain("cross-family reviewer");
+    ).toContain("first-party judging reviewer");
     expect(
       revisionRefusal(read(exactBudget.log), {
         kind: "tune",
         candidate: judgedCandidate,
-        crossFamily: crossFamilyVendors,
+        reviewerAllowed: knownReviewer,
       }),
     ).toBeNull();
     expect(
@@ -460,7 +469,7 @@ describe("revision admission, immutability, and lock exclusion", () => {
         kind: "tune",
         candidate: judgedCandidate,
         reviewer: "openai-codex/gpt-6.1-sol",
-        crossFamily: crossFamilyVendors,
+        reviewerAllowed: knownReviewer,
       }),
     ).toBeNull();
 

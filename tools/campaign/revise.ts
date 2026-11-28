@@ -35,7 +35,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { campaignLog, openCampaign, reviewerOf, reviewerReader } from "./campaign.ts";
 import { draftReading } from "./exam.ts";
-import { crossFamilyVendors } from "./round.ts";
+import { knownReviewer } from "./round.ts";
 import { openSuccessor } from "./successor.ts";
 
 export type RevisionAuditor = (reader: Reader, target: DraftAuditCase) => Promise<DraftAuditFinding>;
@@ -320,7 +320,7 @@ export function revisionRunner(config: {
             check: asked.check,
             candidate: asked.candidate,
             reviewer: reviewer?.model ?? null,
-            crossFamily: crossFamilyVendors,
+            reviewerAllowed: knownReviewer,
           });
     const refusal = gate(events);
     if (refusal !== null) return { accepted: false, message: `Refused: ${refusal}` };
@@ -402,7 +402,7 @@ export async function freezeCandidate(
     check: staged.check,
     candidate: staged.draft,
   };
-  const refusal = revisionRefusal(events, { ...asked, crossFamily: crossFamilyVendors });
+  const refusal = revisionRefusal(events, { ...asked, reviewerAllowed: knownReviewer });
   if (refusal !== null) throw new Error(refusal);
   const parent = frozenParent(events);
   const auditedSound = eventsOf(events, "referee.draft").some(

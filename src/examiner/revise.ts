@@ -244,7 +244,7 @@ export function revisionRefusal(
     readonly check?: string | undefined;
     readonly candidate?: Draft | undefined;
     readonly reviewer?: string | null | undefined;
-    readonly crossFamily?: ((reviewer: string, solver: string) => boolean) | undefined;
+    readonly reviewerAllowed?: ((reviewer: string) => boolean) | undefined;
   },
 ): string | null {
   const opening = openingOf(events);
@@ -293,10 +293,9 @@ export function revisionRefusal(
   }
   const reviewer = input.reviewer === undefined ? (opening?.seats.reviewer?.model ?? null) : input.reviewer;
   if (hasJudge(input.candidate?.objective)) {
-    if (reviewer === null) return "judged rubric items require a cross-family reviewer";
-    const solver = opening?.solver?.model ?? null;
-    if (solver !== null && input.crossFamily !== undefined && !input.crossFamily(reviewer, solver)) {
-      return `judged rubric items require a cross-family reviewer (reviewer ${reviewer}, solver ${solver})`;
+    if (reviewer === null) return "judged rubric items require a first-party judging reviewer";
+    if (input.reviewerAllowed !== undefined && !input.reviewerAllowed(reviewer)) {
+      return `judged rubric items require a first-party judging reviewer (reviewer ${reviewer} routes to an unknown vendor)`;
     }
   }
   return null;

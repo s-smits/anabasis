@@ -1263,7 +1263,7 @@ describe.concurrent("campaign draft lifecycle", () => {
       },
     };
     expect(draftFaults(judgedDraft)).toEqual([]);
-    expect(draftFaults(judgedDraft, "code-only")[0]).toContain("cross-family judging reviewer");
+    expect(draftFaults(judgedDraft, "code-only")[0]).toContain("first-party judging reviewer");
     const sameFamilyLog = join(root, "same-family-judge", "log.jsonl");
     mkdirSync(dirname(sameFamilyLog), { recursive: true });
     let readings = 0;
@@ -1282,7 +1282,7 @@ describe.concurrent("campaign draft lifecycle", () => {
       },
       async (action) => await action(),
     );
-    expect(codeDesk.system).toContain("no cross-family judging reviewer");
+    expect(codeDesk.system).toContain("no first-party judging reviewer");
     expect(codeDesk.system).not.toContain("pairwise judging");
     expect(() => invoke(toolOf(codeDesk, "draft_exam"), "call-judge", draftArgs(judgedDraft))).toThrow(
       'expected "code"',

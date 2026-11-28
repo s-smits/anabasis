@@ -220,7 +220,7 @@ const FLOOR = `${String(GAP_FLOOR * 100)}%`;
 const LANE_CHOICE =
   'Choose the scoring lane the domain needs: use deterministic `code` items alone when quality is fully mechanical; use a minimal binary `valid` floor plus `kind: "judge"` items (one-line `criterion`, 20-220 chars, never id `"holistic"`, up to 4) for purely qualitative work; or pair graded `[0, 1]` `code` items with non-overlapping `kind: "judge"` items carrying substantial weight whenever both verifiable accuracy and deliverable quality, completeness, diagnostics, presentation and conclusions matter.';
 const LANE_CODE =
-  "Score the objective with deterministic `[0, 1]` `code` items in `scores` (or a single `objective` export): this campaign seats no cross-family judging reviewer, so express every measurable dimension—accuracy, diagnostics, completeness, structural quality and cross-file consistency—as smooth deterministic `[0, 1]` code scores.";
+  "Score the objective with deterministic `[0, 1]` `code` items in `scores` (or a single `objective` export): this campaign seats no first-party judging reviewer, so express every measurable dimension—accuracy, diagnostics, completeness, structural quality and cross-file consistency—as smooth deterministic `[0, 1]` code scores.";
 
 const systemPromptOf = (lane: RubricLane): string =>
   [
@@ -412,7 +412,7 @@ export function draftFaults(draft: Draft, lane: RubricLane = "judged"): string[]
     ...rubricFaults(draft.objective, checkIds),
     ...(lane === "code-only" && hasJudge(draft.objective)
       ? [
-          'kind: "judge" rubric items require a cross-family judging reviewer; this campaign seats none, so express every objective item as a deterministic code item in scores',
+          'kind: "judge" rubric items require a first-party judging reviewer; this campaign seats none, so express every objective item as a deterministic code item in scores',
         ]
       : []),
     ...(again === undefined ? [] : [`${again} is named twice: an id names one rule or one check`]),

@@ -17,7 +17,7 @@ import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { judgePair } from "../src/audit/judge.ts";
-import { crossFamilyVendors, modelVendor } from "../tools/campaign/round.ts";
+import { knownReviewer, modelVendor, rubricLaneOf } from "../tools/campaign/round.ts";
 
 const LINE = "Names each figure's source table and the year it covers.";
 const unit = (items: readonly RubricItem[]): Objective => ({
@@ -118,19 +118,24 @@ describe("the unified rubric", () => {
     expect(modelVendor("moonshotai-cn/kimi-k2")).toBe("moonshot");
     expect(modelVendor("kimi-coding/k2p5")).toBe("moonshot");
     expect(modelVendor("openrouter/auto")).toBeNull();
-    expect(crossFamilyVendors("openrouter/auto", "claude/claude-opus-5-5")).toBe(false);
-    expect(crossFamilyVendors("github-copilot/claude-sonnet-4.5", "anthropic/claude-sonnet-4-5")).toBe(false);
-    expect(crossFamilyVendors("google-vertex/gemini-2.5-pro", "google/gemini-2.5-pro")).toBe(false);
-    expect(
-      crossFamilyVendors("amazon-bedrock/anthropic.claude-sonnet-4-5", "anthropic/claude-sonnet-4-5"),
-    ).toBe(false);
-    expect(crossFamilyVendors("azure-openai-responses/gpt-5", "openai/gpt-5")).toBe(false);
-    expect(crossFamilyVendors("cerebras/gpt-oss-120b", "openai/gpt-5")).toBe(false);
-    expect(crossFamilyVendors("moonshotai-cn/kimi-k2", "kimi-coding/k2p5")).toBe(false);
-    expect(crossFamilyVendors("openai-codex/gpt-6.1-sol", "claude/claude-opus-5-5")).toBe(true);
-    expect(crossFamilyVendors("deepinfra/deepseek-ai/DeepSeek-R1", "openrouter/deepseek/deepseek-r1")).toBe(
-      false,
-    );
+    expect(knownReviewer("openrouter/auto")).toBe(false);
+    expect(knownReviewer("claude/claude-opus-5-5")).toBe(true);
+    expect(knownReviewer("openai-codex/gpt-6.1-sol")).toBe(true);
+    expect(rubricLaneOf("openrouter/auto")).toBe("code-only");
+    expect(rubricLaneOf(undefined)).toBe("code-only");
+    expect(rubricLaneOf("claude/claude-opus-5-5")).toBe("judged");
+    expect(rubricLaneOf("openai-codex/gpt-6.1-sol")).toBe("judged");
+    for (const reseller of [
+      "github-copilot/claude-sonnet-4.5",
+      "google-vertex/gemini-2.5-pro",
+      "amazon-bedrock/anthropic.claude-sonnet-4-5",
+      "azure-openai-responses/gpt-5",
+      "cerebras/gpt-oss-120b",
+    ]) {
+      expect(modelVendor(reseller)).toBeNull();
+      expect(knownReviewer(reseller)).toBe(false);
+      expect(rubricLaneOf(reseller)).toBe("code-only");
+    }
   });
 });
 

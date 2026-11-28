@@ -122,7 +122,7 @@ export async function draftCommand(
   const defaultAuditor: DraftAuditor | null = session === examine ? reviewDraft : null;
   const auditor: DraftAuditor | null = audit === undefined ? defaultAuditor : audit;
   const reviewer = reviewerOf(values, opening);
-  const lane = rubricLaneOf(reviewer?.model, opening?.solver?.model);
+  const lane = rubricLaneOf(reviewer?.model);
   const setting = settingAsked(values, recordedSetting(events));
   const { wallSeconds, modelTurns } = setting.named.limits;
   /** The last entry is the accepted draft's reading. */

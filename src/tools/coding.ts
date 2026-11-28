@@ -74,7 +74,7 @@ function assembleCodingTools(bash: AgentTool, selected: readonly CodingTool[]): 
   const tools: AgentTool[] = [createReadTool({ images }), bash, createEditTool(), createWriteTool()];
   return tools
     .filter((each) => wanted.has(each.name))
-    .map((each) => ({ ...each, executionMode: "sequential" }));
+    .map((each) => (each.name === "read" ? each : { ...each, executionMode: "sequential" }));
 }
 
 export function codingTools(wall: CommandSandbox, selected: readonly CodingTool[]): AgentTool[] {

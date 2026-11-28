@@ -54,7 +54,7 @@ Code owns protocol, walls, limits, verification, pairing, swaps, weights, statis
 
 1. **Supply facts, frame positively, omit numeric targets.** Describe good work, not "do not X" bans or targets (Examiner never sees targets/pass rates); treat each prompt edit as an experiment naming its target failure and the read that would revert it; prune lines without effect.
 2. **Design for frontier models; trust judgement inside clean walls.** Give seats clean primitives and freedom (including lane choice when judged), not count floors, brittle heuristics or handholding; forbid only naming a task, copying its text or embedding its answer.
-3. **Code owns structure, walls and statistics; models own domain judgement.** Code validates schemas, enforces fail-closed contracts (`FIRST_PARTY_VENDORS`; unknown vendors refuse) and never lets a model set limits or identity. Draft audits reuse a seat and block only on mechanical probes. Under `--admit-judge`, a cross-family Referee casts swapped pairwise votes (`referee.pair`, `judgePair` always-swap mean + equal-weight rubric-free `holistic`) on blinded valid pairs via `$0` offline extracts, reading hidden values on criterion votes only; code owns pairing, swaps, weights and statistics (`compare.ts`).
+3. **Code owns structure, walls and statistics; models own domain judgement.** Code validates schemas, enforces `FIRST_PARTY_VENDORS` (unknown vendors refuse) and owns limits/identity. Draft audits reuse a seat and block on probes. Any first-party reviewer (same-family permitted: both arms share one solver) casts swapped pairwise votes (`referee.pair`, `judgePair` + equal-weight `holistic`) on blinded valid pairs via `$0` extracts, reading hidden values on criterion votes only (`compare.ts`).
 4. **Permit full workspace when in doubt** (hiding only hidden values, credentials and other seats' private files: `SolveDirs`, `command.ts`).
 5. **Keep designs as simple as honesty allows.** Prefer first-order mechanisms and native primitives over custom parsers or marginal machinery; every extra line carries cost.
 
@@ -64,7 +64,7 @@ Close gaming channels structurally in code, never with bans:
 - **Practice memorisation** (task IDs, rare codes, verbatim prompts): overfitting blocked by held-out comparisons; `check_harness` (`files.ts`) and WRI `names.ts` flag leaks.
 - **Oracle / hidden-value inversion**: closed by coarse bands (`bandOf`, `GAP_FLOOR`), keeping raw digits in logs.
 - **Measurement softening & fishing** (dropped checks, `vacuous-pass` like `Number("") === 0`, hedgable metrics, noisy re-compares): prevented by mechanical probes (`referee.draft`, `doNothing`, hidden-swap), host-gated fresh comparisons (`decide`, `written-after`) and WRI `gaming.ts`.
-- **Rubric & judge gaming** (bloat, cosmetic fluff, checklist farming): reduced by cross-family seats (self-preference), one criterion per vote, swapped pairwise mean (position) and equal-weight `holistic`; length is only prompted and capped (`fairCap`), unmeasured.
+- **Rubric & judge gaming** (bloat, cosmetic fluff, checklist farming): reduced by blinding (both arms share one solver), one criterion per vote, swapped pairwise mean (position) and equal-weight `holistic`; length is only prompted and capped (`fairCap`), unmeasured.
 
 ## 3. The agents
 
@@ -72,13 +72,13 @@ Close gaming channels structurally in code, never with bans:
 - **Builder** (`src/builder/`): edits `harness/`, reads practice traces and paged extracts (`read_trace`), chooses actions and snapshots candidates (`store.ts`), seeing only §1's five items, `MEMORY.md` and saved checkpoints.
 - **Solver** (`src/solver/`): solves a task via `read`, `bash`, `edit`, `write`, `submit` and installed programs.
 - **Verifier** (`src/kernel/verify.ts`): runs offline checks and `[0, 1]` code items in a fresh offline sandbox.
-- **Auditor** (`src/audit/auditor.ts`, `judge.ts`): rules on reproducible rejections (`earned` solver-fail, `check-defect`, `unclear`) and, on judged rubrics, runs cross-family `referee.pair` (exam side only).
+- **Auditor** (`src/audit/auditor.ts`, `judge.ts`): rules on reproducible rejections (`earned` solver-fail, `check-defect`, `unclear`) and, on judged rubrics, runs first-party `referee.pair` (exam side only).
 
 A content-addressed **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) has three tiers: **`bareSolver`** (`pi-durable` + 4 tools, no guide/programs; external baseline), **`baseStarter`** (`starter.ts`: + minimal `BUILT_AGENTS.md`; + Builder-only `HARNESS.md` = **Starter Pack**), **`builtSolver`** (Builder harness; promotions beat `baseStarter`). Never say "with or without a harness".
 
 ### What waits for the operator
 
-Seven decisions need approval (`operator-and-harness.md`; unattended launch pre-authorises freeze, `--admit-authored`, cross-family judged items and promotion unless `--hitl`): freezing/rejecting contract/checks or admitting authored/judged instruments (`accept.ts --freeze`, `--admit`, `--admit-judge`); blind labels; cap/payer; infeasible tasks; manual promotion (`promote.ts --harness <digest> --yes`, `--despite`); solver inputs/limits (`baseStarter`, env, limits); stopping a live run.
+Seven decisions need approval (`operator-and-harness.md`; unattended launch pre-authorises freeze, `--admit-authored`, first-party judged items and promotion unless `--hitl`): freezing/rejecting contract/checks or admitting authored/judged instruments (`accept.ts --freeze`, `--admit`, `--admit-judge`); blind labels; cap/payer; infeasible tasks; manual promotion (`promote.ts --harness <digest> --yes`, `--despite`); solver inputs/limits (`baseStarter`, env, limits); stopping a live run.
 
 Recommend with evidence while continuing other work. Approval covers only what it names ("keep going" grants none; a cycle covers runs, pauses, stack patches). Host says "a person" solely for these seven.
 

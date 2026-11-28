@@ -204,7 +204,7 @@ describe("live-seat draft visibility", () => {
     expect(out).toContain("=== OPENING");
     expect(out).toContain("=== TOOL draft_exam");
     expect(out).toContain("=== SCHEMA draft_exam");
-    expect(out).not.toContain('"criterion"');
+    expect(out).toContain('"criterion"');
     expect(read(log)).toHaveLength(1);
   });
 });

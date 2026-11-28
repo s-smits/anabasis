@@ -20,6 +20,7 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
 import { type CommandSandbox, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
+import { readHarnessFiles } from "../src/harness/files.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { EXAMPLE, HARNESS_ACCOUNT, HOST_ONLY, portableGuide, writeStarter } from "../src/harness/starter.ts";
 import { solveIsolationPolicy } from "../src/sandbox/base.ts";
@@ -143,12 +144,13 @@ describe("the Starter and its worked harness", () => {
           return { ...result, output: result.output ?? [{ type: "text" as const, text: chunks.join("") }] };
         };
         const within = "ann: 8 of 12 hours, ok\nbo: 6 of 8 hours, ok\n";
-        expect(said(await run("check-rota rota.json public/task.json"))).toContain(within);
-        // The same limits as a plain file of the values alone, as work outside a campaign holds them.
+        // Portable program reads plain workspace files only; campaign adapter in .toolchain/host/ wraps public/task.json.
+        expect(readHarnessFiles(example, [], []).campaignRefs).toBe(0);
         expect(said(await run("check-rota rota.json limits.json"))).toContain(within);
+        expect(said(await run("check-task-rota rota.json public/task.json"))).toContain(within);
         // It opens no file it was not named: without the limits it does not run.
         expect(said(await run("check-rota rota.json"))).toEndWith("Command exited with code 2");
-        const over = await run("check-rota over.json public/task.json");
+        const over = await run("check-task-rota over.json public/task.json");
         expect(said(over)).toContain("ann: 14 of 12 hours, over by 2\nbo: 6 of 8 hours, ok");
         expect(over.isError).toBe(true);
         expect(said(over)).toEndWith("Command exited with code 1");

@@ -1,9 +1,18 @@
-import { AGENT_DIR, GUIDE_FILE, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "../meta/filesystem.ts";
+import { AGENT_DIR, GUIDE_FILE, TOOL_HOST_DIR, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../meta/filesystem.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
-import { join } from "../meta/path.ts";
+import { join, relative } from "../meta/path.ts";
 import { hasWholeToken } from "../meta/text.ts";
-import { portableGuide } from "./starter.ts";
+import { toolTreeSearchDirs } from "../sandbox/isolation.ts";
+import { portableGuide, STARTER_GUIDE } from "./starter.ts";
 
 const INSTALLED = /(^|\/)(site-packages|dist-packages|node_modules|\.?venv|vendor|include|__pycache__)(\/|$)/;
 const SKIP_DIR = /^(?:node_modules|\.?venv|vendor|include|__pycache__)$/;
@@ -17,8 +26,10 @@ const MAX_WRITTEN_BYTES = 256 * 1024;
 const GUIDE_PATH = `${AGENT_DIR}${GUIDE_FILE}`;
 const HOST_PATH_RE = /(?:\/Users\/|\/home\/|\/opt\/homebrew\/|\/private\/tmp\/|\/var\/folders\/|\.ana\/)/gu;
 const HOST_SHEBANG_RE = /^#!\s*\/(?:Users|home|opt\/homebrew|Library)\//u;
-const CAMPAIGN_FILE_RE = /public\/(?:task\.json|files\/|resources\/)|answer\.json/gu;
+export const CAMPAIGN_FILE_RE =
+  /public\/(?:task\.json|files\/|resources\/)|\banswer-format\.json\b|\banswer\.json\b|\bpublicInput\b/gu;
 const HOST_REF_RE = new RegExp(`${CAMPAIGN_FILE_RE.source}|\\bsubmit\\b`, "gu");
+const STARTER_PORTABLE = portableGuide(STARTER_GUIDE);
 const MIN_KEY_LEN = 4;
 const WORD_RE = /[\p{L}\p{N}]+/gu;
 const TOKEN_RE = /[\p{L}\p{N}_](?:[\p{L}\p{N}_.:-]*[\p{L}\p{N}_])?/gu;
@@ -197,7 +208,10 @@ export function formatKeys(node: JsonValue | undefined): string[] {
     ...(key.length >= MIN_KEY_LEN ? [key] : []),
     ...formatKeys(value),
   ]);
-  return [...own, ...formatKeys(held.items)];
+  const enums = Array.isArray(held.enum)
+    ? held.enum.filter((value): value is string => isString(value) && value.length >= MIN_KEY_LEN)
+    : [];
+  return [...own, ...enums, ...formatKeys(held.items)];
 }
 
 export function readHarnessFiles(
@@ -206,27 +220,31 @@ export function readHarnessFiles(
   ruleIds: readonly string[],
 ) {
   const { written, brokenLinks, treeFiles, size } = writtenFiles(stateDir);
+  const examKeys = answerKeys.filter((key) => !hasWholeToken(STARTER_PORTABLE, key));
   let [hostPaths, hostShebangs, plainBins, filesWithKeys, campaignRefs] = [0, 0, 0, 0, 0];
   const matchedKeys = new Set<string>();
   const campaignRefFiles: string[] = [];
   for (const { path, text, executable } of written) {
+    const hostOnly = path.startsWith(`${TOOL_HOST_DIR}/`);
     hostPaths += (text.match(HOST_PATH_RE) ?? []).length;
     hostShebangs += Number(HOST_SHEBANG_RE.test(text));
-    plainBins += Number(path.startsWith("bin/") && !executable);
-    if (path !== "guide") {
+    plainBins += Number((path.startsWith("bin/") || hostOnly) && !executable);
+    if (path !== "guide" && !hostOnly) {
       const refs = (text.match(CAMPAIGN_FILE_RE) ?? []).length;
       campaignRefs += refs;
       if (refs > 0) campaignRefFiles.push(path);
     }
-    const matched = answerKeys.filter((key) => text.includes(key));
-    for (const key of matched) matchedKeys.add(key);
-    filesWithKeys += Number(matched.length > 0);
+    if (!hostOnly) {
+      const matched = examKeys.filter((key) => hasWholeToken(text, key));
+      for (const key of matched) matchedKeys.add(key);
+      filesWithKeys += Number(matched.length > 0);
+    }
   }
   const guideEntry = written.find(({ path }) => path === "guide");
   const kept = guideEntry === undefined ? "" : portableGuide(guideEntry.text);
   const keptHostRefMatches = kept.match(HOST_REF_RE) ?? [];
   const keptHostRefNames = [...new Set(keptHostRefMatches)].toSorted();
-  const keptFormatKeyNames = answerKeys.filter((key) => hasWholeToken(kept, key)).toSorted();
+  const keptFormatKeyNames = examKeys.filter((key) => hasWholeToken(kept, key)).toSorted();
   const keptRuleIdNames = ruleIds.filter((id) => hasWholeToken(kept, id)).toSorted();
   return {
     written,
@@ -249,6 +267,43 @@ export function readHarnessFiles(
     matchedKeys,
     filesWithKeys,
   };
+}
+
+export function stripHostOnly(harnessDir: string): { readonly removed: readonly string[] } {
+  const removed: string[] = [];
+  const guideFile = join(harnessDir, GUIDE_PATH);
+  if (existsSync(guideFile)) {
+    const guide = readFileSync(guideFile, "utf8");
+    const kept = portableGuide(guide);
+    if (kept.length < guide.length) {
+      writeFileSync(guideFile, kept.trim() === "" ? "" : `${kept.trimEnd()}\n`);
+    }
+  }
+  const tree = join(harnessDir, TOOL_TREE_DIR);
+  if (!existsSync(tree)) return { removed };
+  const root = realpathSync(tree);
+  const campaignFiles = new Set(readHarnessFiles(harnessDir, [], []).campaignRefFiles);
+  const hostDir = join(root, TOOL_HOST_DIR);
+  if (existsSync(hostDir)) {
+    for (const entry of readdirSync(hostDir, { withFileTypes: true })) {
+      removed.push(`${TOOL_HOST_DIR}/${entry.name}`);
+    }
+    rmSync(hostDir, { recursive: true, force: true });
+  }
+  for (const dir of toolTreeSearchDirs(root, "portable")) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      const rel = relative(root, full);
+      const isTarget = entry.isSymbolicLink()
+        ? !existsSync(full) || campaignFiles.has(relative(root, realpathSync(full)))
+        : entry.isFile() && campaignFiles.has(rel);
+      if (isTarget) {
+        rmSync(full, { force: true });
+        removed.push(rel);
+      }
+    }
+  }
+  return { removed: removed.toSorted() };
 }
 
 export function stringsIn(value: JsonValue | undefined): string[] {

@@ -31,7 +31,7 @@ import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { directCodingTools, selectedCodingTools } from "#src/tools/coding.ts";
 import { ending, text, tool } from "#src/tools/answer.ts";
 import type { SolveClock } from "#src/tools/command.ts";
-import { readHarnessFiles } from "#src/harness/files.ts";
+import { CAMPAIGN_FILE_RE, readHarnessFiles } from "#src/harness/files.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
 import { portableGuide } from "#src/harness/starter.ts";
@@ -46,7 +46,7 @@ import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 export const TRACE_FILE = "pi-log.jsonl";
 export const RESULT_FILE = "pi-result.json";
 const CREDENTIAL = /TOKEN|API_KEY|SECRET|PASSWORD/u;
-const CAMPAIGN_REF_RE = /\b(?:input|answer)\.json\b|public\/(?:task\.json|files\/|resources\/)/u;
+const CAMPAIGN_REF_RE = new RegExp(`\\binput\\.json\\b|${CAMPAIGN_FILE_RE.source}`, "u");
 
 const OPTIONS = {
   harness: { type: "string" },
@@ -176,8 +176,8 @@ async function solve(ask: Asked) {
   const clock: SolveClock = { started: null, seconds: ask.wallSeconds };
   const harness = await openHarness(ask.harness).catch((error: unknown) => errorMessage(error));
   if (isString(harness)) return { ending: "broken-harness", reason: harness };
-  // The harness's programs first on PATH, in the order a solve's shell has them.
-  const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree);
+  // The harness's portable programs first on PATH, excluding `.toolchain/host/`.
+  const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree, "portable");
   const envScript = toolTreeEnv(harness.toolTree);
   const env = new NodeExecutionEnv({
     cwd,
@@ -188,7 +188,7 @@ async function solve(ask: Asked) {
   const said = { submitted: false };
   // In the order a campaign's solver is given them (`solverTools`, `src/solver/run.ts`).
   const defined = [...directCodingTools(selectedCodingTools(harness.presets), prefix), submitTool(said)];
-  const programs = installedPrograms(harness.toolTree);
+  const programs = installedPrograms(harness.toolTree, "portable");
   const campaignBins = new Set(
     readHarnessFiles(ask.harness, [], []).campaignRefFiles.map((file) => basename(file)),
   );
@@ -228,7 +228,7 @@ async function solve(ask: Asked) {
       harness: harness.digest,
       tools,
       prompt,
-      found: resolved(prefix, programs),
+      found: resolved(prefix, visiblePrograms),
       proxy,
     };
   }

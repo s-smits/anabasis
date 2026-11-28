@@ -2,9 +2,8 @@
  * `bun run runs seed --from <campaign folder> (--points | --name <name> [--before <session> |
  * --events <n>] [--as-ran])`
  */
-import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
-import { EXAMINER_HOMES, hasHomeSnapshot, restoreHome } from "#src/examiner/home-store.ts";
+import { EXAMINER_HOMES, restoreHome } from "#src/examiner/home-store.ts";
 import { lastHost } from "#src/kernel/condition.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
@@ -12,10 +11,8 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { gitMaybe, mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
-import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -136,70 +133,6 @@ export function codeLine(tree: string, folder: string): string {
   return `code: ${here.slice(0, 8)} here, ${ran === here ? "the code" : `not the ${ran.slice(0, 8)}`} its source ran at the cut`;
 }
 
-function restoreExaminerHome(
-  from: string,
-  to: string,
-  events: readonly LogEvent[],
-  tail: readonly string[],
-): { readonly examinerHome: boolean; readonly examinerHomeFrom?: string } {
-  const store = join(from, EXAMINER_HOMES);
-  const lastHome = events.findLast(
-    ({ kind, data }) =>
-      HOME_ENDS.has(kind) &&
-      !(data.ended === "crashed" && Number(data.running) > 0) &&
-      isString(data.session),
-  );
-  const session = isString(lastHome?.data.session) ? lastHome.data.session : undefined;
-  if (session !== undefined && hasHomeSnapshot(store, session)) {
-    restoreHome(store, session, join(to, "examiner-home"));
-    return { examinerHome: true, examinerHomeFrom: session };
-  }
-  const reusable =
-    existsSync(join(from, "examiner-home")) &&
-    !tail.some((line) => HOME_ENDS.has(asRecord(capturedJsonParse(line))?.kind));
-  if (reusable) {
-    cpSync(join(from, "examiner-home"), join(to, "examiner-home"), {
-      recursive: true,
-      verbatimSymlinks: true,
-    });
-  }
-  return { examinerHome: reusable };
-}
-
-function copyClaudeSessions(
-  from: string,
-  to: string,
-  events: readonly LogEvent[],
-  before: string | undefined,
-  tail: readonly string[],
-): void {
-  const sourceDir = join(from, CLAUDE_SESSIONS_DIR);
-  if (!existsSync(sourceDir)) return;
-  const names = new Set<string>();
-  for (const { kind, data } of events) {
-    if (!SESSION_STARTS.has(kind)) continue;
-    if (isString(data.session)) names.add(data.session);
-    if (isString(data.conversation)) names.add(data.conversation);
-  }
-  if (before !== undefined) {
-    names.add(before);
-    const [cutLine] = tail;
-    const cutEvent = cutLine === undefined ? null : asRecord(capturedJsonParse(cutLine));
-    const parent = SESSION_STARTS.has(cutEvent?.kind) ? asRecord(cutEvent?.data)?.conversation : undefined;
-    if (isString(parent)) names.add(parent);
-  }
-  const destDir = join(to, CLAUDE_SESSIONS_DIR);
-  for (const name of names) {
-    if (!isSafePathSegment(name)) continue;
-    for (const ext of [".jsonl", ".json"]) {
-      const source = join(sourceDir, `${name}${ext}`);
-      if (!existsSync(source)) continue;
-      mkdirSync(destDir, { recursive: true });
-      cpSync(source, join(destDir, `${name}${ext}`));
-    }
-  }
-}
-
 /** Copies the campaign in `from` to `to`, its log cut, and says what the seed holds. */
 export function seedCampaign(from: string, to: string, cut: Cut) {
   if (existsSync(to)) throw new Error(`${to} is there already: a seed takes a name of its own`);
@@ -225,20 +158,27 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
     // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
     const events = read(join(to, LOG_FILE));
     for (const { kind, data } of events) {
-      if (kind === "build.started" && isString(data.session) && isSafePathSegment(data.session)) {
-        copy(join("memory", data.session));
-      }
+      if (kind === "build.started" && isString(data.session)) copy(join("memory", data.session));
     }
-    const tail = lines.slice(kept);
-    const { examinerHome, examinerHomeFrom } = restoreExaminerHome(from, to, events, tail);
-    copyClaudeSessions(from, to, events, cut.before, tail);
+    const last = events.findLast(
+      ({ kind, data }) => HOME_ENDS.has(kind) && !(data.ended === "crashed" && Number(data.running) > 0),
+    )?.data.session;
+    const examinerHomeFrom =
+      isString(last) && restoreHome(join(from, EXAMINER_HOMES), last, join(to, "examiner-home"))
+        ? last
+        : null;
+    const examinerHome =
+      examinerHomeFrom !== null ||
+      (existsSync(join(from, "examiner-home")) &&
+        !lines.slice(kept).some((line) => HOME_ENDS.has(asRecord(capturedJsonParse(line))?.kind)));
+    if (examinerHomeFrom === null && examinerHome) copy("examiner-home");
     const origin = {
       from: resolve(from),
       events: kept,
       of: lines.length,
       before: cut.before ?? null,
       examinerHome,
-      ...keyIfDefined("examinerHomeFrom", examinerHomeFrom),
+      examinerHomeFrom,
     };
     writeFileSync(join(to, SEED_FILE), `${capturedJsonStringify(origin, null, 2)}\n`);
     return { ...origin, sets: taskSets(events) };
@@ -296,7 +236,7 @@ export async function seed(args: readonly string[]): Promise<void> {
   console.log(
     `  ${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`,
   );
-  if (made.examinerHomeFrom !== undefined) {
+  if (made.examinerHomeFrom !== null) {
     console.log(`  Examiner home restored from snapshot ${made.examinerHomeFrom}`);
   } else if (!made.examinerHome) {
     console.log("  no Examiner home: the source holds none, or a session after the cut replaced it");

@@ -10,7 +10,6 @@
  *   bun tools/eval/examine.ts --name truss --session x-1 --examiner claude/claude-opus-5-5
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
@@ -30,7 +29,7 @@ import {
 } from "../campaign/campaign.ts";
 import { type RevisionAuditor, revisionRunner } from "../campaign/revise.ts";
 import { rubricLaneOf } from "../campaign/round.ts";
-import { FORK_OPTIONS, seatForkPlan } from "../campaign/seat-fork.ts";
+import { FORK_OPTIONS, seatFork } from "../campaign/seat-fork.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
@@ -73,7 +72,9 @@ export async function examineCommand(
   const opening = openingOf(sofar);
   const before = taskStates(sofar);
   const model = modelNamed(examiner);
-  const forkPlan = seatForkPlan(campaign.log, "exam", model, values);
+  const forked = seatFork(campaign.log, "exam", model, values);
+  const models =
+    forked === null ? campaign.examiner : hostSession({ webSearch: false, cacheTtl: "1h", ...forked.seat });
   const canRevise = values.revise ?? opening?.revise ?? true;
   const lane = rubricLaneOf(values.reviewer ?? opening?.seats.reviewer?.model, opening?.solver?.model);
   const revise = canRevise
@@ -86,15 +87,6 @@ export async function examineCommand(
         kill,
       })
     : undefined;
-  const models =
-    forkPlan.fork === undefined
-      ? campaign.examiner
-      : hostSession({
-          webSearch: false,
-          cacheTtl: "1h",
-          persistDir: join(dirname(campaign.log), CLAUDE_SESSIONS_DIR),
-          fork: forkPlan.fork,
-        });
   stayAwake();
   const examined = await session(
     {
@@ -131,7 +123,7 @@ export async function examineCommand(
       log: campaign.log,
       lane,
       ...keyIfDefined("revise", revise),
-      ...keyIfDefined("continuation", forkPlan.continuation),
+      ...keyIfDefined("resumeWith", forked?.resumeWith),
       ...keyIfDefined("kill", kill),
     },
     {

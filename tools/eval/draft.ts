@@ -32,7 +32,7 @@ import {
   stayAwake,
   worktreesOf,
 } from "../campaign/campaign.ts";
-import { FORK_OPTIONS, seatForkPlan } from "../campaign/seat-fork.ts";
+import { FORK_OPTIONS, seatFork } from "../campaign/seat-fork.ts";
 import { rubricLaneOf } from "../campaign/round.ts";
 import { keepReading } from "../eval/accept.ts";
 import { draftReading } from "../campaign/exam.ts";
@@ -172,13 +172,7 @@ export async function draftCommand(
   const readings: (DraftSeen | undefined)[] = [];
   const auditClean = draftAuditGate({ session: id, prompt, log, auditor, reader: auditReader });
   const model = modelNamed(examiner);
-  const forkPlan = seatForkPlan(log, "draft", model, values);
-  const models = hostSession({
-    webSearch: false,
-    cacheTtl: "1h",
-    persistDir: join(dirname(log), CLAUDE_SESSIONS_DIR),
-    ...keyIfDefined("fork", forkPlan.fork),
-  });
+  const forked = seatFork(log, "draft", model, values);
   stayAwake();
   const drafted = await session(
     {
@@ -200,9 +194,14 @@ export async function draftCommand(
         turns: Number(values.turns),
         puts: Number(values.tries),
       },
-      models,
+      models: hostSession({
+        webSearch: false,
+        cacheTtl: "1h",
+        persistDir: join(dirname(log), CLAUDE_SESSIONS_DIR),
+        ...forked?.seat,
+      }),
       log,
-      ...keyIfDefined("continuation", forkPlan.continuation),
+      ...keyIfDefined("resumeWith", forked?.resumeWith),
     },
     // Kept beside the log so later task-writing sessions inherit the generators and environment made
     // while drafting.

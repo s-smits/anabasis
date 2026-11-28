@@ -45,8 +45,8 @@ import {
   CLAUDE_PROJECT_DIR,
   type ClaudeFork,
   type ClaudePersist,
-  savePersistedTranscript,
-  stageForkTranscript,
+  saveTranscript,
+  stageFork,
 } from "./claude-transcript.ts";
 
 const CLAUDE_PROVIDER = "claude";
@@ -94,9 +94,7 @@ interface Session {
   reading: boolean;
   readonly quiet: number;
   readonly provider: string;
-  readonly configDir: string;
-  readonly persist?: ClaudePersist | undefined;
-  readonly stagedForkId?: string | undefined;
+  readonly persist?: ((sdkSessionId: string) => void) | undefined;
   sdkSessionId?: string | undefined;
 }
 
@@ -287,9 +285,9 @@ function open(
   const effort = claudeEffort(model, options.reasoning);
   const own = getCurrentSystemPrompt(context.messages).trim();
   mkdirSync(claude.home, { recursive: true });
+  const { persist, fork } = claude;
   const configDir = join(claude.home, "claude-config");
-  const staged = claude.fork === undefined ? undefined : stageForkTranscript(configDir, claude.fork);
-  const keepTranscript = claude.persist !== undefined || claude.fork !== undefined;
+  const staged = fork === undefined ? undefined : stageFork(configDir, fork);
   const live = query({
     prompt: prompt.stream,
     options: {
@@ -309,7 +307,7 @@ function open(
       allowDangerouslySkipPermissions: true,
       strictMcpConfig: true,
       settingSources: [],
-      persistSession: keepTranscript,
+      persistSession: persist !== undefined || fork !== undefined,
       includePartialMessages: true,
       abortController: abort,
       env: claudeEnv(claude, { provider: model.provider, token: options.apiKey }),
@@ -324,9 +322,13 @@ function open(
     reading: false,
     quiet: claude.quiet ?? QUIET_MS,
     provider: model.provider,
-    configDir,
-    ...keyIfDefined("persist", claude.persist),
-    ...keyIfDefined("stagedForkId", staged?.resume),
+    ...keyIfDefined(
+      "persist",
+      persist &&
+        ((id: string) => {
+          if (id !== staged?.resume) saveTranscript(configDir, persist, id);
+        }),
+    ),
   };
   sessions.set(key, session);
   claude.shutdown?.addEventListener("abort", () => close(key, session), {
@@ -343,7 +345,7 @@ function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): Effo
 }
 
 function claudeEnv(
-  { cacheTtl, compaction, home, persist, fork }: ClaudeOptions,
+  { cacheTtl, compaction, home }: ClaudeOptions,
   credential: { readonly provider: string; readonly token: string | undefined },
 ): Record<string, string> {
   const account = ACCOUNTS.get(credential.provider);
@@ -360,10 +362,7 @@ function claudeEnv(
     ...keyIfDefined("PATH", Bun.env.PATH),
     ...keyIfDefined("TMPDIR", Bun.env.TMPDIR),
     CLAUDE_CONFIG_DIR: config,
-    ...keyIfDefined(
-      "CLAUDE_CODE_PROJECT_DIR_NAME",
-      persist !== undefined || fork !== undefined ? CLAUDE_PROJECT_DIR : undefined,
-    ),
+    CLAUDE_CODE_PROJECT_DIR_NAME: CLAUDE_PROJECT_DIR,
     [account.variable]: token,
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
@@ -417,17 +416,16 @@ async function readTurn(
   } finally {
     signal?.removeEventListener("abort", interrupt);
     for (const usage of spent) addUsage(turn.usage, usage);
-    trySaveTranscript(session);
+    saveTurn(session);
   }
 }
 
-function trySaveTranscript(session: Session): void {
-  if (session.persist === undefined) return;
-  if (session.stagedForkId !== undefined && session.sdkSessionId === undefined) return;
+function saveTurn({ persist, sdkSessionId }: Session): void {
+  if (persist === undefined || sdkSessionId === undefined) return;
   try {
-    savePersistedTranscript(session.configDir, session.persist, session.sdkSessionId, session.stagedForkId);
+    persist(sdkSessionId);
   } catch (error) {
-    warn(`Claude transcript save skipped for ${session.persist.seat}: ${errorMessage(error)}`);
+    warn(`Claude transcript save skipped: ${errorMessage(error)}`);
   }
 }
 
@@ -535,13 +533,7 @@ function close(key: string, session: Session): void {
   if (sessions.get(key) !== session) return;
   sessions.delete(key);
   session.prompt.end();
-  const end = () => {
-    try {
-      trySaveTranscript(session);
-    } finally {
-      session.abort.abort();
-    }
-  };
+  const end = () => session.abort.abort();
   const interrupted = session.query.interrupt();
   if (session.reading) interrupted.then(end, end);
   else {

@@ -727,10 +727,6 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
       expect(launch.argv).not.toContain("--no-session-persistence");
       expect(launch.env.CLAUDE_CODE_PROJECT_DIR_NAME).toBe(CLAUDE_PROJECT_DIR);
       expect(readFileSync(join(persistDir, "x-1.jsonl"), "utf8")).toBe(transcript);
-      expect(capturedJsonParse(readFileSync(join(persistDir, "x-1.json"), "utf8"))).toEqual({
-        seat: "x-1",
-        sdkSessionId: sid,
-      });
     } finally {
       writer.shutdown.abort();
     }
@@ -757,7 +753,7 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
     const forked = sandbox(
       {
         compaction: "off",
-        fork: { transcript: join(persistDir, "x-1.jsonl"), upToTurn: 1 },
+        fork: { transcript: join(persistDir, "x-1.jsonl"), atTurn: 1 },
         persist: { dir: persistDir, seat: "x-fork" },
       },
       "claude",
@@ -776,45 +772,11 @@ describe.concurrent("Claude SDK 0.3.332 transcript persistence and turn-k forkin
       expect(launch.env.CLAUDE_CODE_PROJECT_DIR_NAME).toBe(CLAUDE_PROJECT_DIR);
       expect(existsSync(join(forkedProject, `${sid}.jsonl`))).toBe(true);
       expect(readFileSync(join(persistDir, "x-fork.jsonl"), "utf8")).toBe("child-transcript\n");
-      expect(capturedJsonParse(readFileSync(join(persistDir, "x-fork.json"), "utf8"))).toEqual({
-        seat: "x-fork",
-        sdkSessionId: childSid,
-      });
       expect(asRecord(launch.stdin.find((line) => line.type === "user")?.message)?.content).toBe(
         "Try non-uniform constraints.",
       );
     } finally {
       forked.shutdown.abort();
-    }
-
-    const noSidFork = sandbox(
-      {
-        compaction: "off",
-        fork: { transcript: join(persistDir, "x-1.jsonl"), upToTurn: 1 },
-        persist: { dir: persistDir, seat: "x-fork-nosid" },
-      },
-      "claude",
-      TEXT,
-      (raw) =>
-        raw
-          .split("\n")
-          .map((entry) => {
-            if (entry.trim() === "") return entry;
-            const parsed = asRecord(capturedJsonParse(entry));
-            if (parsed === null || !("session_id" in parsed)) return entry;
-            const { session_id: _omitted, ...rest } = parsed;
-            return JSON.stringify(rest);
-          })
-          .join("\n"),
-    );
-    const noSidProject = join(noSidFork.home, "claude-config", "projects", CLAUDE_PROJECT_DIR);
-    mkdirSync(noSidProject, { recursive: true });
-    writeFileSync(join(noSidProject, `${childSid}.jsonl`), "should-not-save\n");
-    try {
-      expect((await noSidFork.turn([OPENING])).stopReason).toBe("stop");
-      expect(existsSync(join(persistDir, "x-fork-nosid.jsonl"))).toBe(false);
-    } finally {
-      noSidFork.shutdown.abort();
     }
   });
 });

@@ -5,11 +5,9 @@
  *
  *   bun tools/campaign/session.ts --name truss --session b-2 --builder claude/claude-opus-5-5 --cap 150
  */
-import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { admitSession } from "#src/campaign/admission.ts";
 import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";
-import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { hostSession, resolveCheckpoint, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
 import {
@@ -22,7 +20,7 @@ import {
   sessionNamed,
   solved,
 } from "./round.ts";
-import { FORK_OPTIONS, seatForkPlan } from "./seat-fork.ts";
+import { FORK_OPTIONS, seatFork } from "./seat-fork.ts";
 import { keepSetting } from "./setting.ts";
 
 const OPTIONS = { ...SESSION_OPTIONS, ...FORK_OPTIONS } as const;
@@ -54,19 +52,15 @@ export async function sessionCommand(
       reviewers: reviewersNamed(campaign, values),
     },
   );
-  const forkPlan = seatForkPlan(campaign.log, "build", baseRequest.model, values);
-  const request: BuildRequest = {
-    ...baseRequest,
-    ...keysIf(forkPlan.fork !== undefined, () => ({
-      models: hostSession({
-        webSearch: true,
-        cacheTtl: "1h",
-        persistDir: join(dirname(campaign.log), CLAUDE_SESSIONS_DIR),
-        fork: forkPlan.fork,
-      }),
-    })),
-    ...keyIfDefined("continuation", forkPlan.continuation),
-  };
+  const forked = seatFork(campaign.log, "build", baseRequest.model, values);
+  const request: BuildRequest =
+    forked === null
+      ? baseRequest
+      : {
+          ...baseRequest,
+          models: hostSession({ webSearch: true, cacheTtl: "1h", ...forked.seat }),
+          resumeWith: forked.resumeWith,
+        };
   // Asked last of all that can refuse, and before anything is recorded.
   const notes = admitSession(campaign.log, {
     id: session,

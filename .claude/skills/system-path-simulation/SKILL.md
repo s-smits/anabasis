@@ -56,7 +56,7 @@ bun run runs rehearse --name sim-<what> [--id g-sim --new latest]       # script
 
 | Agent | Seed cut | Command | Reader |
 | --- | --- | --- | --- |
-| Draft | `--before d-1` | `tools/eval/draft.ts --session d-1 --examiner <m> [--reviewer <r>] [--fork-from ... \| --wrap-turns ... \| --nudge ...]` | `live-seat.ts read`, `compare`, `prompt` |
+| Draft | `--before d-1` | `tools/eval/draft.ts --session d-1 --examiner <m> [--reviewer <r>] [--fork-from <id> --at-turn <k>] [--nudge <text>]` | `live-seat.ts read`, `compare`, `prompt` |
 | Examiner | `--before x-<n>` | `tools/eval/examine.ts --session x-<n> --examiner <m> --examiner-effort <e> [--fork-from <id> --at-turn <k>] [--nudge <text>]` | `live-seat.ts read`, `compare`, `pairs`, `prompt` |
 | Builder | `--before b-<n>` | `tools/campaign/session.ts --session b-<n> --builder <m> [--fork-from <id> --at-turn <k>] [--nudge <text>]` | `live-seat.ts read`, `compare` |
 | Comparison | `--before g-<n>` | `tools/campaign/checkpoint.ts --id g-<n> --new latest ...` | `live-seat.ts read`, comparison report |

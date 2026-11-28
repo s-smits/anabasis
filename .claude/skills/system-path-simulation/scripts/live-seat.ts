@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { countsLine } from "#skills/main/print.ts";
-import type { applyContinuation as ApplyContinuation } from "#src/agent/session.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
 import type { drafting as Drafting } from "#src/examiner/draft.ts";
 import type { writing as Writing } from "#src/examiner/write.ts";
@@ -649,13 +648,8 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   }
   const log = seedLog(tree, name, args.die);
   const before = read(log).length;
-  // SAFETY: target Anabasis trees may export `applyContinuation`; older trees omit it cleanly.
-  const sessionMod = (await import(join(tree, "src/agent/session.ts"))) as {
-    applyContinuation?: typeof ApplyContinuation;
-  };
-  const apply = sessionMod.applyContinuation ?? ((opening: string) => opening);
-  const show = (mode: PrintableMode, continuation: Parameters<typeof ApplyContinuation>[1]) =>
-    printMode({ ...mode, opening: apply(mode.opening, continuation) }, log, before, name);
+  const show = (mode: PrintableMode, resumeWith: string | undefined) =>
+    printMode({ ...mode, opening: resumeWith ?? mode.opening }, log, before, name);
   runtimeProcess.chdir(tree);
   if (script === DRAFT) {
     // SAFETY: targets current Anabasis trees exporting `drafting(terms, within, home?)`.
@@ -666,7 +660,7 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
     const composed: Parameters<typeof DraftCommand>[1] = (request) =>
       show(
         drafting(request, async (action) => await action(), undefined),
-        request.continuation,
+        request.resumeWith,
       );
     await draftCommand([...flags, "--name", name], composed, null);
     return 0;
@@ -678,7 +672,7 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
     import(join(tree, ROUND)),
   ])) as [{ examineCommand: typeof ExamineCommand }, { writing: typeof Writing }, { solved: typeof Solved }];
   const composed: Parameters<typeof ExamineCommand>[1] = (request) =>
-    show(writing(request, undefined), request.continuation);
+    show(writing(request, undefined), request.resumeWith);
   // SAFETY: a tree before v0.14 takes its seats third, and the session exits before its first turn.
   await (examineCommand as (...given: unknown[]) => Promise<void>)(
     [...flags, "--name", name],

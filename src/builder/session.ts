@@ -29,14 +29,7 @@ import { openHarness } from "../harness/open.ts";
 import { opened as openedInput, type PublicTask, publicView, taskFiles } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
-import {
-  type AgentRun,
-  type AgentTool,
-  applyContinuation,
-  type Continuation,
-  sessionClock,
-  runAgent,
-} from "../agent/session.ts";
+import { type AgentRun, type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
 import { claimRoot } from "../sandbox/sandbox-root.ts";
 import { openingOf } from "../campaign/opening.ts";
 import { campaignOf } from "../campaign/summary.ts";
@@ -111,7 +104,7 @@ export interface BuildRequest {
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
   readonly packRoots?: readonly string[] | undefined;
-  readonly continuation?: Continuation | undefined;
+  readonly resumeWith?: string | undefined;
   readonly practise: (
     task: PracticeTask,
     harness: string,
@@ -373,10 +366,9 @@ async function converse(
     model,
     effort: request.effort,
     system: systemPrompt(bench.modePrompts, request.contract.objective),
-    opening: applyContinuation(
+    opening:
+      request.resumeWith ??
       [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
-      request.continuation,
-    ),
     tools,
     ...keyIfDefined("env", env),
     trace: { log, of: "build" },

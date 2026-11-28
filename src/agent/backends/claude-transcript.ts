@@ -2,15 +2,12 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   renameSync,
-  statSync,
   writeFileSync,
 } from "../../meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify } from "../../meta/json-runtime.ts";
+import { capturedJsonParse } from "../../meta/json-runtime.ts";
 import { asRecord, isRecord, isString, type JsonObject } from "../../meta/json-shape.ts";
-import { keyIfDefined } from "../../meta/optional-key.ts";
 import { join } from "../../meta/path.ts";
 import { isSafePathSegment } from "../../meta/path-segment.ts";
 import { runtimeProcess } from "../../meta/process.ts";
@@ -27,246 +24,100 @@ export interface ClaudePersist {
 
 export interface ClaudeFork {
   readonly transcript: string;
-  readonly upToTurn?: number | undefined;
-  readonly upToUuid?: string | undefined;
+  readonly atTurn: number;
 }
 
-interface ParsedEntry {
-  readonly uuid: string;
-  readonly type: string;
-  readonly raw: JsonObject;
+interface Turn {
+  end: string;
+  readonly open: Set<string>;
 }
 
-interface TurnSpan {
-  readonly messageId: string;
-  endUuid: string;
-  readonly toolUseIds: Set<string>;
-  readonly toolResultIds: Set<string>;
-}
-
-function parseTranscript(jsonl: string): {
-  readonly sdkSessionId: string;
-  readonly entries: readonly ParsedEntry[];
-} {
-  let sdkSessionId: string | undefined;
-  const entries: ParsedEntry[] = [];
+function entriesOf(jsonl: string): readonly JsonObject[] {
   const lines = jsonl.split("\n").filter((line) => line.trim() !== "");
-  for (const [index, line] of lines.entries()) {
-    let raw: JsonObject | null;
+  return lines.flatMap((line, index) => {
     try {
-      raw = asRecord(capturedJsonParse(line));
+      return [asRecord(capturedJsonParse(line)) ?? {}];
     } catch (error) {
-      if (index === lines.length - 1 && error instanceof SyntaxError) break;
+      if (index === lines.length - 1 && error instanceof SyntaxError) return [];
       throw error;
     }
-    if (raw === null) continue;
-    if (sdkSessionId === undefined && isString(raw.sessionId) && UUID.test(raw.sessionId)) {
-      sdkSessionId = raw.sessionId;
-    }
-    if (
-      isString(raw.uuid) &&
-      isString(raw.type) &&
-      raw.isSidechain !== true &&
-      raw.teamName === undefined &&
-      raw.type !== "progress"
-    ) {
-      entries.push({ uuid: raw.uuid, type: raw.type, raw });
-    }
-  }
-  if (sdkSessionId === undefined) {
-    throw new Error("the Claude transcript records no valid sessionId UUID");
-  }
-  return { sdkSessionId, entries };
+  });
 }
 
-function messageBlocks(entry: JsonObject): readonly JsonObject[] | null {
-  const message = asRecord(entry.message);
-  if (message === null || !Array.isArray(message.content)) return null;
-  return message.content.flatMap((block) => (isRecord(block) ? [block] : []));
+function idsOf(blocks: readonly JsonObject[], type: string, key: string): readonly string[] {
+  return blocks.flatMap((block) => {
+    const id = block[key];
+    return block.type === type && isString(id) ? [id] : [];
+  });
 }
 
-function isAssistantTurnEntry(entry: ParsedEntry): JsonObject | null {
-  if (entry.type !== "assistant") return null;
-  const message = asRecord(entry.raw.message);
-  if (message === null || message.model === "<synthetic>") return null;
-  return message;
-}
-
-function isToolResultCarrier(entry: ParsedEntry): readonly JsonObject[] | null {
-  if (entry.type !== "user") return null;
-  const blocks = messageBlocks(entry.raw);
-  if (blocks === null || blocks.length === 0) return null;
-  return blocks.every((block) => block.type === "tool_result") ? blocks : null;
-}
-
-function recordToolUses(entry: ParsedEntry, turn: TurnSpan): void {
-  for (const block of messageBlocks(entry.raw) ?? []) {
-    if (block.type === "tool_use" && isString(block.id)) turn.toolUseIds.add(block.id);
-  }
-}
-
-function recordToolResults(blocks: readonly JsonObject[], turn: TurnSpan): void {
-  for (const block of blocks) {
-    if (isString(block.tool_use_id)) turn.toolResultIds.add(block.tool_use_id);
-  }
-}
-
-function assistantTurns(entries: readonly ParsedEntry[]): readonly TurnSpan[] {
-  const turns: TurnSpan[] = [];
-  let current: TurnSpan | null = null;
-  for (const [index, entry] of entries.entries()) {
-    const assistant = isAssistantTurnEntry(entry);
-    if (assistant !== null) {
-      const messageId = isString(assistant.id) ? assistant.id : `anon-${String(index)}`;
-      if (current === null || current.messageId !== messageId) {
-        current = { messageId, endUuid: entry.uuid, toolUseIds: new Set(), toolResultIds: new Set() };
+function forkPoint(jsonl: string, atTurn: number): { readonly resume: string; readonly at: string } {
+  const entries = entriesOf(jsonl);
+  const resume = entries.map(({ sessionId }) => sessionId).find((id) => isString(id) && UUID.test(id));
+  if (!isString(resume)) throw new Error("the Claude transcript records no valid sessionId UUID");
+  const turns: Turn[] = [];
+  let current: Turn | null = null;
+  let messageId: string | null = null;
+  let compactedAfter = 0;
+  for (const entry of entries) {
+    if (entry.subtype === "compact_boundary") compactedAfter = turns.length;
+    if (!isString(entry.uuid) || entry.isSidechain === true || entry.teamName !== undefined) continue;
+    const message = asRecord(entry.message);
+    const blocks = Array.isArray(message?.content) ? message.content.filter(isRecord) : [];
+    if (entry.type === "assistant" && message !== null && message.model !== "<synthetic>") {
+      const id = isString(message.id) ? message.id : null;
+      if (current === null || id === null || id !== messageId) {
+        current = { end: entry.uuid, open: new Set() };
         turns.push(current);
       }
-      current.endUuid = entry.uuid;
-      recordToolUses(entry, current);
+      messageId = id;
+      current.end = entry.uuid;
+      for (const use of idsOf(blocks, "tool_use", "id")) current.open.add(use);
+    } else if (current === null) {
       continue;
-    }
-    if (current === null) continue;
-    const toolResults = isToolResultCarrier(entry);
-    if (toolResults !== null) {
-      recordToolResults(toolResults, current);
-      current.endUuid = entry.uuid;
     } else if (entry.type === "attachment") {
-      current.endUuid = entry.uuid;
+      current.end = entry.uuid;
+    } else if (
+      entry.type === "user" &&
+      blocks.length > 0 &&
+      blocks.every(({ type }) => type === "tool_result")
+    ) {
+      for (const answered of idsOf(blocks, "tool_result", "tool_use_id")) current.open.delete(answered);
+      current.end = entry.uuid;
     } else if (entry.type === "user") {
       current = null;
     }
   }
-  return turns;
-}
-
-function missingToolIds(turn: TurnSpan): readonly string[] {
-  return [...turn.toolUseIds].filter((id) => !turn.toolResultIds.has(id));
-}
-
-function lastCompleteForkPoint(jsonl: string): {
-  readonly sdkSessionId: string;
-  readonly resumeSessionAt?: string;
-} {
-  const { sdkSessionId, entries } = parseTranscript(jsonl);
-  const turns = assistantTurns(entries);
-  if (turns.length === 0) return { sdkSessionId };
-  const complete = turns.findLast((turn) => missingToolIds(turn).length === 0);
-  if (complete === undefined) {
-    throw new Error("the Claude transcript holds no completed assistant turn to fork from");
-  }
-  return { sdkSessionId, resumeSessionAt: complete.endUuid };
-}
-
-export function resolveForkPoint(
-  jsonl: string,
-  atTurn: number,
-): { readonly sdkSessionId: string; readonly resumeSessionAt: string; readonly turnCount: number } {
-  if (!Number.isInteger(atTurn) || atTurn < 1) {
-    throw new Error(`--at-turn ${String(atTurn)}: turn number must be a positive integer`);
-  }
-  const { sdkSessionId, entries } = parseTranscript(jsonl);
-  const turns = assistantTurns(entries);
-  const chosen = turns[atTurn - 1];
-  if (chosen === undefined) {
+  const turn = turns[atTurn - 1];
+  if (turn === undefined) {
     throw new Error(
-      `turn ${String(atTurn)} is out of range: transcript holds ${String(turns.length)} assistant turns`,
+      `turn ${String(atTurn)} is out of range: the transcript holds ${String(turns.length)} turns`,
     );
   }
-  const missing = missingToolIds(chosen);
-  if (missing.length > 0) {
-    const earlier =
-      atTurn > 1 ? `fork at turn ${String(atTurn - 1)} instead` : "no earlier completed turn exists";
-    throw new Error(`turn ${String(atTurn)} has unanswered tool calls (${missing.join(", ")}); ${earlier}`);
+  if (turn.open.size > 0) {
+    throw new Error(`turn ${String(atTurn)} has unanswered tool calls (${[...turn.open].join(", ")})`);
   }
-  return { sdkSessionId, resumeSessionAt: chosen.endUuid, turnCount: turns.length };
+  if (atTurn <= compactedAfter) {
+    throw new Error(`turn ${String(atTurn)} precedes the compaction after turn ${String(compactedAfter)}`);
+  }
+  return { resume, at: turn.end };
 }
 
-export function stageForkTranscript(
-  configDir: string,
-  fork: ClaudeFork,
-): { readonly resume: string; readonly resumeSessionAt?: string } {
-  if (fork.upToTurn !== undefined && fork.upToUuid !== undefined) {
-    throw new Error("name upToTurn or upToUuid when forking a Claude transcript, not both");
-  }
-  if (!existsSync(fork.transcript)) {
-    throw new Error(`Claude transcript not found: ${fork.transcript}`);
-  }
+export function stageFork(configDir: string, fork: ClaudeFork) {
   const raw = readFileSync(fork.transcript, "utf8");
-  let sdkSessionId: string;
-  let resumeSessionAt: string | undefined;
-  if (fork.upToTurn === undefined) {
-    if (fork.upToUuid === undefined) {
-      ({ sdkSessionId, resumeSessionAt } = lastCompleteForkPoint(raw));
-    } else {
-      const parsed = parseTranscript(raw);
-      sdkSessionId = parsed.sdkSessionId;
-      if (!parsed.entries.some(({ uuid }) => uuid === fork.upToUuid)) {
-        throw new Error(`message UUID ${fork.upToUuid} is not in ${fork.transcript}`);
-      }
-      resumeSessionAt = fork.upToUuid;
-    }
-  } else {
-    ({ sdkSessionId, resumeSessionAt } = resolveForkPoint(raw, fork.upToTurn));
-  }
+  const { resume, at } = forkPoint(raw, fork.atTurn);
   const projectDir = join(configDir, "projects", CLAUDE_PROJECT_DIR);
   mkdirSync(projectDir, { recursive: true });
-  writeFileSync(join(projectDir, `${sdkSessionId}.jsonl`), raw);
-  return { resume: sdkSessionId, ...keyIfDefined("resumeSessionAt", resumeSessionAt) };
+  writeFileSync(join(projectDir, `${resume}.jsonl`), raw);
+  return { resume, resumeSessionAt: at };
 }
 
-function persistedSource(
-  projectDir: string,
-  sdkSessionId: string | undefined,
-  excludeSessionId: string | undefined,
-): {
-  readonly file: string;
-  readonly sdkSessionId: string | undefined;
-} | null {
-  if (!existsSync(projectDir)) return null;
-  if (sdkSessionId !== undefined) {
-    if (sdkSessionId === excludeSessionId || !isSafePathSegment(sdkSessionId)) return null;
-    const exact = join(projectDir, `${sdkSessionId}.jsonl`);
-    return existsSync(exact) ? { file: exact, sdkSessionId } : null;
-  }
-  const excludedFile = excludeSessionId === undefined ? undefined : `${excludeSessionId}.jsonl`;
-  const candidates = readdirSync(projectDir)
-    .filter((name) => name.endsWith(".jsonl") && name !== excludedFile)
-    .map((name) => {
-      const path = join(projectDir, name);
-      return { name, path, mtimeMs: statSync(path).mtimeMs };
-    })
-    .toSorted((left, right) => right.mtimeMs - left.mtimeMs);
-  const newest = candidates[0];
-  if (newest === undefined) return null;
-  const stem = newest.name.slice(0, -".jsonl".length);
-  return { file: newest.path, sdkSessionId: UUID.test(stem) ? stem : undefined };
-}
-
-export function savePersistedTranscript(
-  configDir: string,
-  persist: ClaudePersist,
-  sdkSessionId: string | undefined,
-  excludeSessionId?: string,
-): boolean {
-  if (!isSafePathSegment(persist.seat)) return false;
-  const found = persistedSource(
-    join(configDir, "projects", CLAUDE_PROJECT_DIR),
-    sdkSessionId,
-    excludeSessionId,
-  );
-  if (found === null) return false;
+export function saveTranscript(configDir: string, persist: ClaudePersist, sessionId: string): void {
+  const source = join(configDir, "projects", CLAUDE_PROJECT_DIR, `${sessionId}.jsonl`);
+  if (!isSafePathSegment(persist.seat) || !isSafePathSegment(sessionId) || !existsSync(source)) return;
   mkdirSync(persist.dir, { recursive: true });
   const target = join(persist.dir, `${persist.seat}.jsonl`);
   const temp = `${target}.${String(runtimeProcess.pid)}.tmp`;
-  copyFileSync(found.file, temp);
+  copyFileSync(source, temp);
   renameSync(temp, target);
-  const meta = join(persist.dir, `${persist.seat}.json`);
-  const metaTemp = `${meta}.${String(runtimeProcess.pid)}.tmp`;
-  writeFileSync(
-    metaTemp,
-    `${capturedJsonStringify({ seat: persist.seat, ...keyIfDefined("sdkSessionId", found.sdkSessionId) })}\n`,
-  );
-  renameSync(metaTemp, meta);
-  return true;
 }

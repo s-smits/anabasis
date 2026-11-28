@@ -1,12 +1,6 @@
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import {
-  type AgentTool,
-  applyContinuation,
-  type Continuation,
-  sessionClock,
-  runAgent,
-} from "../agent/session.ts";
+import { type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { append, CALL_KINDS, read, TRACE_KINDS } from "../kernel/log.ts";
@@ -41,7 +35,7 @@ interface Sitting {
   readonly kill?: AbortSignal;
   readonly opened?: () => void;
   readonly rest?: ((examined: Examined) => Promise<Ask | null>) | undefined;
-  readonly continuation?: Continuation | undefined;
+  readonly resumeWith?: string | undefined;
 }
 
 export type Ask = Extract<ExamRequest, { readonly mode: "write" }>;
@@ -262,7 +256,7 @@ async function examining(
       model,
       effort: request.effort,
       system: mode.system,
-      opening: applyContinuation(mode.opening, request.continuation),
+      opening: request.resumeWith ?? mode.opening,
       tools,
       ...keyIfDefined("env", walls === undefined ? undefined : walledEnv(walls.shell)),
       trace: { log, of: mode.kind, as: () => current.id },

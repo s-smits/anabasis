@@ -191,6 +191,48 @@ describe("the terms", () => {
     expect(told).toContain("8 rollouts");
     expect(told).toContain("about 80 dollars at 10.00 a rollout, the mean of 1 records");
   });
+
+  it("enforces confirmation power floor, baseline, minGain, and sealed professions", () => {
+    const out = join(root, "confirm");
+    const fourTasks = ["p1/task1", "p1/task2", "p2/task1", "p2/task2"];
+    const sixTasks = [...fourTasks, "p3/task1", "p3/task2"];
+    const arms = ["pi:tree:/tmp/cand", "pi:base"];
+    const base = {
+      arms,
+      baseline: "pi:base",
+      minGain: 5,
+      repeats: 2,
+      confirm: true,
+      burned: [] as const,
+    };
+    expect(() => fixTerms(terms(out, "short-4", { ...base, tasks: fourTasks, repeats: 4 }))).toThrow(
+      /needs at least 6 tasks.*got 4/u,
+    );
+    expect(() => fixTerms(terms(out, "no-aa", { ...base, tasks: sixTasks, repeats: 1 }))).toThrow(
+      /--repeats 2/u,
+    );
+    expect(() => fixTerms(terms(out, "zero-gain", { ...base, tasks: sixTasks, minGain: 0 }))).toThrow(
+      /--min-gain above 0/u,
+    );
+    expect(existsSync(join(out, "sealed-professions.json"))).toBe(false);
+
+    const pilot = fixTerms(terms(out, "pilot-4", { arms, tasks: fourTasks, burned: [] }));
+    expect(pilot.join("\n")).toContain("power: 4 held-out tasks can be scored");
+    expect(pilot.join("\n")).toContain("cannot read a step");
+
+    const ok = fixTerms(terms(out, "conf-1", { ...base, tasks: sixTasks }));
+    expect(ok[0]).toContain("minGain 5 pts/task, confirmation sealed");
+    expect(ok.join("\n")).toContain("power: 6 held-out tasks can be scored");
+    expect(capturedJsonParse(readFileSync(join(out, "sealed-professions.json"), "utf8"))).toStrictEqual([
+      "p1",
+      "p2",
+      "p3",
+    ]);
+
+    expect(() => fixTerms(terms(out, "conf-reuse", { ...base, tasks: sixTasks }))).toThrow(
+      /already sealed in a prior confirmation: p1, p2, p3/u,
+    );
+  });
 });
 
 describe("the order", () => {
@@ -258,6 +300,32 @@ describe("the reading", () => {
     const open = readLines(out, "c1", { unblind: true }).join("\n");
     expect(open).toContain("campaign-built");
     expect(open).not.toContain(SECRET);
+  });
+
+  it("checks signed mean delta against minGain when unblinded against baseline", () => {
+    const gainOut = join(root, "signed-gain");
+    const tasks = ["p1/task1", "p1/task2", "p2/task1", "p2/task2", "p3/task1", "p3/task2"];
+    fixTerms(
+      terms(gainOut, "loss", {
+        arms: ["pi:cand", "pi:base"],
+        baseline: "pi:base",
+        minGain: 5,
+        repeats: 2,
+        confirm: true,
+        tasks,
+        burned: [],
+      }),
+    );
+    const { sides: gainSides, key: gainKey } = sidesOf(["pi:cand", "pi:base"], 2, "s4lt");
+    for (const side of gainSides) {
+      const arm = gainKey.get(side.replace(/r\d+$/u, ""));
+      const score = arm === "pi:base" ? 10 : 2;
+      for (const task of tasks) grade(gainOut, side, task, [[10, score]]);
+    }
+    const blind = readLines(gainOut, "loss", { unblind: false }).join("\n");
+    expect(blind).toContain("|mean delta| >= minGain 5; direction needs --unblind");
+    const open = readLines(gainOut, "loss", { unblind: true }).join("\n");
+    expect(open).toContain("mean delta (pi:cand - pi:base) -8.00 pts/task (below minGain 5)");
   });
 });
 
@@ -352,6 +420,20 @@ describe("a derived tree", () => {
     deriveTree(from, guide, into);
     expect(() => deriveTree(from, guide, into)).toThrow("made once");
     expect(() => deriveTree(join(root, "again"), guide, join(root, "no"))).toThrow("no tree");
+  });
+
+  it("derives native pi exported trees by replacing harness/agent/BUILT_AGENTS.md", () => {
+    const piFrom = join(root, "pi-tree");
+    mkdirSync(join(piFrom, "harness", "agent"), { recursive: true });
+    writeFileSync(join(piFrom, "harness", "agent", "BUILT_AGENTS.md"), "# Built pi guide\n");
+    const piInto = join(root, "pi-derived");
+    deriveTree(piFrom, guide, piInto);
+    expect(readFileSync(join(piInto, "harness", "agent", "BUILT_AGENTS.md"), "utf8")).toBe(
+      "the starter's guide",
+    );
+    expect(readFileSync(join(piFrom, "harness", "agent", "BUILT_AGENTS.md"), "utf8")).toBe(
+      "# Built pi guide\n",
+    );
   });
 });
 
@@ -623,4 +705,166 @@ for (const event of [{ type: "system", subtype: "init", cwd: process.cwd(), mode
     );
     expect(decodeOutput(agreed.stdout)).toContain("judged 2 times: 2 rubrics, 0 moved");
   });
+
+  it("plans and dry-runs a sealed native pi confirmation against pi:base", () => {
+    const SCORE = new URL("../studies/harness2/score.ts", import.meta.url).pathname;
+    const piPlace = join(root, "pi-confirm");
+    const [piJb, piOut] = [join(piPlace, "jb"), join(piPlace, "out")];
+    const profs = ["prof1", "prof2", "prof3", "prof4"];
+    for (const prof of profs) {
+      for (const t of ["task1", "task2"]) {
+        mkdirSync(join(piJb, "dataset", "main", prof, t, "task_folder"), { recursive: true });
+        writeFileSync(join(piJb, "dataset", "main", prof, t, "task_folder", "TASK_INSTRUCTIONS.txt"), "Do.");
+        writeFileSync(join(piJb, "dataset", "main", prof, t, "RUBRICS.json"), json({ rubrics: [] }));
+      }
+    }
+    mkdirSync(join(piJb, "eval"), { recursive: true });
+    mkdirSync(join(piJb, ".venv", "bin"), { recursive: true });
+    writeFileSync(join(piJb, "eval", "judge.py"), "# stand-in\n");
+    writeFileSync(join(piJb, ".venv", "bin", "python"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const exported = runSync(
+      [
+        capturedExecPath,
+        SCORE,
+        "tree",
+        "--arm",
+        "pi:starter",
+        "--name",
+        "cand",
+        "--out",
+        piOut,
+        "--for",
+        `${runtimeProcess.platform}-${runtimeProcess.arch}`,
+      ],
+      { env, timeout: 120_000 },
+    );
+    expect(exported.exitCode).toBe(0);
+    const candTree = join(piOut, "trees", "cand");
+    const plannedPi = compare(
+      "plan",
+      "--out",
+      piOut,
+      "--id",
+      "pi-c1",
+      "--jb",
+      piJb,
+      "--arm",
+      `pi:tree:${candTree}`,
+      "--confirm",
+      "--count",
+      "6",
+      "--min-gain",
+      "5",
+      "--salt",
+      "s4lt",
+      "--predict",
+      "starter matches base",
+      "--burned",
+      "",
+    );
+    expect(decodeOutput(plannedPi.stderr)).toBe("");
+    expect(plannedPi.exitCode).toBe(0);
+    expect(decodeOutput(plannedPi.stdout)).toContain("confirmation sealed");
+    const sealedFirst = capturedJsonParse(readFileSync(join(piOut, "sealed-professions.json"), "utf8"));
+    expect(Array.isArray(sealedFirst) ? sealedFirst.length : 0).toBe(3);
+
+    const dryPi = compare(
+      "run",
+      "--out",
+      piOut,
+      "--id",
+      "pi-c1",
+      "--jb",
+      piJb,
+      "--api-base",
+      "http://127.0.0.1:9/v1",
+      "--dry-run",
+    );
+    expect(decodeOutput(dryPi.stderr)).toBe("");
+    expect(dryPi.exitCode).toBe(0);
+    expect(decodeOutput(dryPi.stdout)).toContain("on pi-durable, inside the harness itself");
+
+    const secondPlan = compare(
+      "plan",
+      "--out",
+      piOut,
+      "--id",
+      "pi-c2",
+      "--jb",
+      piJb,
+      "--arm",
+      `pi:tree:${candTree}`,
+      "--confirm",
+      "--count",
+      "6",
+      "--min-gain",
+      "5",
+      "--salt",
+      "s4lt2",
+      "--predict",
+      "insufficient unsealed professions",
+      "--burned",
+      "",
+    );
+    expect(secondPlan.exitCode).not.toBe(0);
+    expect(decodeOutput(secondPlan.stderr)).toContain("reach 2");
+
+    const sealedProfs = Array.isArray(sealedFirst) ? sealedFirst.filter(isString) : [];
+    const explicitReuse = compare(
+      "plan",
+      "--out",
+      piOut,
+      "--id",
+      "pi-c3",
+      "--jb",
+      piJb,
+      "--arm",
+      `pi:tree:${candTree}`,
+      "--confirm",
+      "--tasks",
+      sealedProfs.flatMap((p) => [`${p}/task1`, `${p}/task2`]).join(","),
+      "--min-gain",
+      "5",
+      "--salt",
+      "s4lt3",
+      "--predict",
+      "explicit reuse must refuse",
+      "--burned",
+      "",
+    );
+    expect(explicitReuse.exitCode).not.toBe(0);
+    expect(decodeOutput(explicitReuse.stderr)).toContain("already sealed in a prior confirmation");
+
+    const altGuide = join(piPlace, "alt-guide.md");
+    writeFileSync(altGuide, "# Alternative derived guide\n");
+    const derivedTree = join(piOut, "trees", "cand-derived");
+    deriveTree(candTree, altGuide, derivedTree);
+    const derivedDry = runSync(
+      [
+        capturedExecPath,
+        SCORE,
+        "score",
+        "--arm",
+        `pi:tree:${derivedTree}`,
+        "--name",
+        "pi-derived-check",
+        "--tasks",
+        "prof1/task1",
+        "--out",
+        piOut,
+        "--jb",
+        piJb,
+        "--api-base",
+        "http://127.0.0.1:9/v1",
+        "--dry-run",
+      ],
+      { env, timeout: 120_000 },
+    );
+    expect(decodeOutput(derivedDry.stderr)).toBe("");
+    expect(derivedDry.exitCode).toBe(0);
+    const origExport = capturedJsonParse(readFileSync(join(candTree, "export.json"), "utf8"));
+    const origDigest = isRecord(origExport) && isString(origExport.harness) ? origExport.harness : "";
+    expect(origDigest).not.toBe("");
+    expect(decodeOutput(derivedDry.stdout)).not.toContain(origDigest);
+  }, 120_000);
 });

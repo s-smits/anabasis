@@ -18,6 +18,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -291,24 +292,29 @@ export function piAgent(claude: Claude): Agent {
 }
 
 function piDry(claude: Claude, tree: string): string {
-  const traj = join(tmpdir(), `pi-dry-${String(runtimeProcess.pid)}.jsonl`);
-  const argv = piAgent(claude).argv({ prompt: "A dry run.", treeDir: tree, workspace: tmpdir(), traj });
-  const ran = runSync([...argv, "--dry-run"], { cwd: tmpdir(), env: claude.env });
-  const result = readJson(join(piLogs(traj), RESULT_FILE));
-  rmSync(piLogs(traj), { recursive: true, force: true });
-  if (field(result, "ending") !== "dry-run") {
-    const stderr = decodeOutput(ran.stderr).trim();
-    const detail = [
-      text(result),
-      ...(ran.exitCode === 0 ? [] : [`exit ${String(ran.exitCode)}`]),
-      ...(stderr === "" ? [] : [stderr]),
-    ].join("; ");
-    throw new Error(`pi-solve cannot open ${tree}: ${detail}`);
+  const scratch = mkdtempSync(join(tmpdir(), "pi-dry-"));
+  const traj = join(scratch, `${basename(scratch)}.jsonl`);
+  try {
+    const argv = piAgent(claude).argv({ prompt: "A dry run.", treeDir: tree, workspace: tmpdir(), traj });
+    const ran = runSync([...argv, "--dry-run"], { cwd: tmpdir(), env: claude.env });
+    const result = readJson(join(piLogs(traj), RESULT_FILE));
+    if (field(result, "ending") !== "dry-run") {
+      const stderr = decodeOutput(ran.stderr).trim();
+      const detail = [
+        text(result),
+        ...(ran.exitCode === 0 ? [] : [`exit ${String(ran.exitCode)}`]),
+        ...(stderr === "" ? [] : [stderr]),
+      ].join("; ");
+      throw new Error(`pi-solve cannot open ${tree}: ${detail}`);
+    }
+    const found = text(field(result, "found")).trim().split("\n").filter(Boolean);
+    const missing = found.filter((line) => line.startsWith("missing: "));
+    if (missing.length > 0) throw new Error(`pi-solve missing programs in ${tree}: ${missing.join(", ")}`);
+    return `  pi-solve: tools ${text(field(result, "tools"))}; ${String(found.length)} installed programs${found.length === 0 ? "" : `: ${found.join(", ")}`}`;
+  } finally {
+    rmSync(piLogs(traj), { recursive: true, force: true });
+    rmSync(scratch, { recursive: true, force: true });
   }
-  const found = text(field(result, "found")).trim().split("\n").filter(Boolean);
-  const missing = found.filter((line) => line.startsWith("missing: "));
-  if (missing.length > 0) throw new Error(`pi-solve missing programs in ${tree}: ${missing.join(", ")}`);
-  return `  pi-solve: tools ${text(field(result, "tools"))}; ${String(found.length)} installed programs${found.length === 0 ? "" : `: ${found.join(", ")}`}`;
 }
 
 /** What the sweep in `out` spent to build the harness of `task` before the `except` rollouts. */
@@ -364,6 +370,42 @@ async function exportPiTree(
   renameSync(part, into);
 }
 
+function splitPiArm(raw: string): readonly [string, string | undefined] {
+  const at = raw.lastIndexOf("@");
+  if (at === -1) return [raw, undefined];
+  const suffix = raw.slice(at + 1);
+  return [raw.slice(0, at), suffix === "" ? undefined : suffix];
+}
+
+async function exportedTreeArm(name: string, dir: string, place: ReturnType<typeof placeOf>): Promise<Arm> {
+  if (dir.trim() === "") throw new Error("pi:tree: requires a directory path");
+  const into = resolve(dir);
+  const record = readJson(join(into, "export.json"));
+  if (field(record, "mode") !== "pi") {
+    throw new Error(
+      `${into} is not a native pi tree (mode=${text(field(record, "mode")) || "claude"}); choose another --name`,
+    );
+  }
+  const digest = field(record, "harness") ?? (await openHarness(join(into, HARNESS_DIR))).digest;
+  const toolchain =
+    isRecord(record) && "toolchain" in record ? field(record, "toolchain") : join(HARNESS_DIR, TOOL_TREE_DIR);
+  if (isString(toolchain)) await foreignPrograms(join(into, toolchain), place);
+  const priced = `${into}.build.json`;
+  const build = (() => {
+    if (!existsSync(priced)) return null;
+    const [of, usd] = [field(readJson(priced), "of"), field(readJson(priced), "usd")];
+    if (!isString(of) || !isNumber(usd)) throw new Error(`${priced} names no build`);
+    return { of, usd };
+  })();
+  return {
+    name,
+    harness: isString(digest) ? digest : into,
+    tree: () => into,
+    build: () => build,
+    label: (task) => `${name}__${keyOf(task)}`,
+  };
+}
+
 async function exportedArm(
   name: string,
   from: string,
@@ -377,31 +419,12 @@ async function exportedArm(
   const source = sourceNamed(from, harness);
   const into = join(out, "trees", name);
   if (!existsSync(into)) await exportPiTree(into, source, place);
-  const record = readJson(join(into, "export.json"));
-  if (field(record, "mode") !== "pi") {
-    throw new Error(
-      `${into} is not a native pi tree (mode=${text(field(record, "mode")) || "claude"}); choose another --name`,
-    );
-  }
-  const digest = field(record, "harness") ?? (await openHarness(join(into, HARNESS_DIR))).digest;
-  const toolchain =
-    isRecord(record) && "toolchain" in record ? field(record, "toolchain") : join(HARNESS_DIR, TOOL_TREE_DIR);
-  if (isString(toolchain)) await foreignPrograms(join(into, toolchain), place);
   const priced = `${into}.build.json`;
   if (!existsSync(priced)) {
     const usd = from === "starter" || from === "base" ? 0 : billedAll(read(await logAcross(from)));
     writeFileSync(priced, `${capturedJsonStringify({ of: from, usd })}\n`);
   }
-  const [of, usd] = [field(readJson(priced), "of"), field(readJson(priced), "usd")];
-  if (!isString(of) || !isNumber(usd)) throw new Error(`${priced} names no build`);
-  const build = { of, usd };
-  return {
-    name,
-    harness: isString(digest) ? digest : into,
-    tree: () => into,
-    build: () => build,
-    label: (task) => `${name}__${keyOf(task)}`,
-  };
+  return await exportedTreeArm(name, into, place);
 }
 
 async function armOf(values: Values, out: string, baseHarness: string, place = HERE): Promise<Arm> {
@@ -461,11 +484,16 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
   if (arm === "") throw new Error("name --arm");
   if (!arm.startsWith(PI)) {
     throw new Error(
-      `unknown or legacy --arm '${arm}'; Anabasis arms run natively as --arm pi:<base|starter|campaign>`,
+      `unknown or legacy --arm '${arm}'; Anabasis arms run natively as --arm pi:<base|starter|campaign[@harness]|tree:dir>`,
     );
   }
-  return await exportedArm(name, arm.slice(PI.length), {
-    harness: values.harness,
+  const rest = arm.slice(PI.length);
+  if (rest.startsWith("tree:")) {
+    return await exportedTreeArm(name, rest.slice("tree:".length), place);
+  }
+  const [from, inlineHarness] = splitPiArm(rest);
+  return await exportedArm(name, from, {
+    harness: inlineHarness ?? values.harness,
     out,
     place,
   });

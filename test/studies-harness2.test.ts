@@ -532,6 +532,12 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     // Here `mark` leads the path; the export of this same harness puts it behind the machine's own.
     expect(told).toMatch(/pi-solve: tools \["bash","submit"\]; 1 installed programs: \S+\/bin\/mark/u);
     const tree = join(out, "trees", "pi-tooled");
+    const inlineDry = score("--arm", `pi:${made.log}@${made.child}`, "--name", "pi-inline", "--dry-run");
+    expect(inlineDry.exitCode).toBe(0);
+    expect(decodeOutput(inlineDry.stdout)).toMatch(/1 installed programs: \S+\/bin\/mark/u);
+    const treeDry = score("--arm", `pi:tree:${tree}`, "--name", "pi-reused", "--dry-run");
+    expect(treeDry.exitCode).toBe(0);
+    expect(decodeOutput(treeDry.stdout)).toMatch(/1 installed programs: \S+\/bin\/mark/u);
     expect((await openHarness(join(tree, "harness"))).digest).toBe(made.child);
     expect(existsSync(join(tree, "CLAUDE.md"))).toBe(false);
     expect(

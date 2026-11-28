@@ -24,6 +24,7 @@ import type { Verifier } from "../src/kernel/verify.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -309,13 +310,28 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     writeFileSync(join(keep, "kept.txt"), "kept\n");
     await examine(s.request, { ...WALL, keep });
     await examine({ ...s.request, id: "x-2" }, { ...WALL, keep });
-    expect(s.of(CALLED).filter(({ tool }) => tool === "bash")[1]?.text).toBe("half.txt");
-    expect(readdirSync(keep)).toEqual(["half.txt"]);
+    expect(s.of(CALLED).filter(({ tool }) => tool === "bash")[1]?.text).toBe("half.txt\nmetrics.json");
+    expect(readdirSync(keep).toSorted()).toEqual(["half.txt", "metrics.json"]);
 
     const drafted = seat("draft", [bash("ls; echo gen > generate.py"), PUT.draft, finish]);
     await examine(drafted.request, { ...WALL, keep });
-    expect(drafted.of("draft.call")[0]?.text).toBe("half.txt");
-    expect(readdirSync(keep).toSorted()).toEqual(["generate.py", "half.txt"]);
+    expect(drafted.of("draft.call")[0]?.text).toBe("half.txt\nmetrics.json");
+    expect(readdirSync(keep).toSorted()).toEqual(["generate.py", "half.txt", "metrics.json"]);
+  });
+
+  it("replaces a metrics.json link in the home with its own file and leaves the link's target as it was", async () => {
+    const s = seat("write", [finish]);
+    const keep = join(dirname(s.log), "examiner-home");
+    const outside = join(dirname(s.log), "outside.txt");
+    mkdirSync(keep);
+    writeFileSync(outside, "host\n");
+    symlinkSync(outside, join(keep, "metrics.json"));
+    await examine(s.request, { ...WALL, keep });
+    expect([readFileSync(outside, "utf8"), lstatSync(join(keep, "metrics.json")).isFile()]).toEqual([
+      "host\n",
+      true,
+    ]);
+    expect(readdirSync(keep)).toEqual(["metrics.json"]);
   });
 
   it("keeps an ask's home at its rest, before the conversation it rests in ends", async () => {
@@ -328,13 +344,13 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
         ...s.request,
         wanted: 1,
         rest: async () => {
-          atRest.push(readdirSync(keep));
+          atRest.push(readdirSync(keep).toSorted());
           return null;
         },
       },
       { ...WALL, keep },
     );
-    expect(atRest).toEqual([["first.txt"]]);
+    expect(atRest).toEqual([["first.txt", "metrics.json"]]);
     expect(existsSync(join(dirname(s.log), EXAMINER_HOMES, `${s.request.id}.json`))).toBe(true);
   });
 });
@@ -677,6 +693,7 @@ describe("a session that writes tasks", () => {
     const mode = writing({ ...s.request, id: "x-2", verify }, undefined);
     expect(mode.tools.map(({ name }) => name)).toEqual([
       PROPOSE,
+      "retire_tasks",
       "read_example",
       "read_reviews",
       "try_answer",
@@ -770,6 +787,58 @@ describe("a session that writes tasks", () => {
     ]);
     expect(s.sent[0]).toContain("run by name: fixeng.");
     expect(s.sent[0]).not.toContain("solver-x");
+  });
+
+  it("retires only scored active held-out tasks via retire_tasks and warns when pool drops below 10", async () => {
+    const s = seat("write", [
+      call("retire_tasks", {
+        tasks: ["t-easy", "t-unscored", "t-missing", "t-kept"],
+        reason: "trivial 1.0 ceiling",
+      }),
+      propose(2),
+      finish,
+    ]);
+    const hold = (id: string, version: string) => {
+      append(s.log, "task.proposed", {
+        version,
+        taskId: id,
+        task: { taskId: id, family: "fixture", publicInput: {} },
+      });
+      append(s.log, TASK_ADMISSION, { version, gate: 1, outcome: "passed" });
+      append(s.log, "task.state", { version, state: "held" });
+    };
+    hold("t-kept", "v-kept");
+    append(s.log, "harness.promoted", { harness: "h2", from: "h1" });
+    for (const [id, version] of [
+      ["t-easy", "v-easy"],
+      ["t-unscored", "v-unscored"],
+    ] as const) {
+      hold(id, version);
+    }
+    append(s.log, "comparison.reported", {
+      session: "g-1",
+      old: "h1",
+      fresh: "h2",
+      starter: "h1",
+      setting: "set-1",
+      reading: "no-step",
+      versions: ["v-easy", "v-kept"],
+      scored: { differences: [0, 0] },
+    });
+    await examine({ ...s.request, wanted: 1 });
+    const retiredCall = s.of(CALLED).find(({ tool }) => tool === "retire_tasks");
+    expect(retiredCall?.text).toContain("Retired 1 task: t-easy.");
+    expect(retiredCall?.text).toContain("Skipped t-unscored: not yet scored in a comparison.");
+    expect(retiredCall?.text).toContain("Skipped t-missing: unknown task.");
+    expect(retiredCall?.text).toContain(
+      "Skipped t-kept: kept as a regression check for the promoted harness.",
+    );
+    expect(retiredCall?.text).toContain("below 10");
+    const states = s
+      .of("task.state")
+      .filter(({ version, state }) => version === "v-easy" && state === "refused");
+    expect(states).toHaveLength(1);
+    expect(states[0]).toMatchObject({ by: "examiner", reason: "trivial 1.0 ceiling" });
   });
 });
 

@@ -420,12 +420,11 @@ describe("the starter comparison in an epoch's row", () => {
     const [first, second] = epochsOf(log);
     expect(first?.starter_tally).toBeNull();
     expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1 });
-    expect(epochLine(present(second))).toContain("against the starter 2 won, 1 lost, 1 tied, no step;");
+    expect(epochLine(present(second))).toContain("vs Starter Pack 2 won, 1 lost, 1 tied (no step);");
     expect([first?.confirmed, second?.confirmed]).toEqual([null, false]);
   });
 
-  it("confirms the promotion only where the reference clears the level against the starter without the bill", () => {
-    // Six tasks won on the bill alone are no step without it; six won on validity are one at 0.02.
+  it("confirms promotion only when the reference beats the Starter Pack without billing tiebreaks", () => {
     const onBill = starterRead({
       differences: Array.from({ length: 6 }, () => -0.1),
       unbilled: Array.from({ length: 6 }, () => 0),
@@ -437,10 +436,10 @@ describe("the starter comparison in an epoch's row", () => {
     expect(epochsOf([opened, promoted, onBill])[1]?.confirmed).toBe(false);
     const confirmed = present(epochsOf([opened, promoted, onValidity])[1]);
     expect(confirmed.confirmed).toBe(true);
-    expect(epochLine(confirmed)).toContain("6 won, 0 lost, 0 tied, a step, so its promotion is confirmed");
+    expect(epochLine(confirmed)).toContain("6 won, 0 lost, 0 tied (confirmed against Starter Pack)");
   });
 
-  it("confirms on the epoch's first starter comparison that tallied a task, so a later draw of the pair replaces no reading", () => {
+  it("confirms on the epoch's first scored Starter Pack check without letting later reruns replace it", () => {
     const short = starterRead({
       differences: Array.from({ length: 5 }, () => -1),
       unbilled: Array.from({ length: 5 }, () => -1),
@@ -456,7 +455,7 @@ describe("the starter comparison in an epoch's row", () => {
     expect(epochsOf([opened, promoted, empty, again])[1]?.confirmed).toBe(true);
   });
 
-  it("counts no step of the Starter's over the reference among the steps won by validity", () => {
+  it("counts no step of the Starter Pack over the reference among the steps won by validity", () => {
     const points = { validity: 4 };
     const steps = [
       { reading: "step", fresh: "h2", points },
@@ -466,12 +465,12 @@ describe("the starter comparison in an epoch's row", () => {
     expect(validityOf(steps, [promoted])).toMatchObject({ stepped: 2, onValidity: 2 });
   });
 
-  it("says unread before a starter comparison reports, and nothing in the first epoch", () => {
+  it("shows awaiting Starter Pack check before a check reports, and omits it in epoch 1", () => {
     const [first, second] = epochsOf([opened, promoted]);
     expect(second?.starter_tally).toBeNull();
     expect(second?.confirmed).toBe(false);
-    expect(epochLine(present(second))).toContain("against the starter unread");
-    expect(epochLine(present(first))).not.toContain("against the starter");
+    expect(epochLine(present(second))).toContain("waiting for Starter Pack check");
+    expect(epochLine(present(first))).not.toContain("Starter Pack");
   });
 });
 
@@ -511,7 +510,7 @@ describe("a campaign against its bars", () => {
       promotedTo("h3", "h2"),
     ]);
     expect(climb).toBe(
-      "- Climb: 3 promotions, 1 confirmed (milestone: 6) (on the tasks written after alone, a step 0, a step for the starter 0, no step 0, too few 1); 1 failed starter confirmation, 1 pending confirmation.",
+      "- Climb: 3 promotions, 1 confirmed (milestone: 6) (fresh post-promotion tasks alone: a step 0, a step for the starter 0, no step 0, too few 1); 1 failed Starter Pack check, 1 awaiting Starter Pack check.",
     );
     expect(barLines([opened])[0]).toContain("0 promotions, 0 confirmed");
     const [withReverts] = barLines([

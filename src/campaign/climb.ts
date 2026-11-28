@@ -293,21 +293,21 @@ function falsePromotionOf(
 
 function starterClause({ reference, starter_tally: tally, confirmed }: Epoch, read?: StarterRead): string {
   if (reference === "starter") return "";
-  if (tally === null) return ", against the starter unread";
-  const step = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
+  if (tally === null) return ", waiting for Starter Pack check";
+  const step = confirmed === true ? "confirmed against Starter Pack" : "no step";
   const afterWriters = new Set(
     read?.rows.filter(({ origin }) => origin === ORIGINS[2]).map(({ writer }) => writer),
   ).size;
-  const pooled = `, against the starter ${tallyText(tally)}, ${step}`;
+  const pooled = `, vs Starter Pack ${tallyText(tally)} (${step})`;
   if (read === undefined) return pooled;
-  const unchosenClause = `, on the tasks no step chose ${tallyText(read.unchosen.tally)}, alone ${read.unchosen.read}`;
+  const unchosenClause = `, on unseen tasks ${tallyText(read.unchosen.tally)} (${read.unchosen.read})`;
   if (afterWriters === 0) return `${pooled}${unchosenClause}`;
   const { whole, validity, rest } = read.origins[ORIGINS[2]];
-  return `${pooled}, of which ${tallyText(whole)} (validity differed ${tallyText(validity)}; validity tied ${tallyText(rest)}) on the tasks ${plural(afterWriters, "Examiner session")} wrote after it, alone ${read.after}${unchosenClause}`;
+  return `${pooled}, including ${tallyText(whole)} (validity differed ${tallyText(validity)}; validity tied ${tallyText(rest)}) on fresh post-promotion tasks from ${plural(afterWriters, "Examiner session")} (${read.after})${unchosenClause}`;
 }
 
 export const aloneOf = (reads: readonly Pick<StarterRead, "after">[]) =>
-  `on the tasks written after alone, ${UNSELECTED.map((one) => `${one} ${String(reads.filter(({ after }) => after === one).length)}`).join(", ")}`;
+  `fresh post-promotion tasks alone: ${UNSELECTED.map((one) => `${one} ${String(reads.filter(({ after }) => after === one).length)}`).join(", ")}`;
 
 const tallyOf = (margins: readonly number[]): Tally => {
   const { wins, losses, ties } = testOf(margins);
@@ -526,7 +526,7 @@ export function barLines(events: readonly LogEvent[]): string[] {
       ? ""
       : ` ${String(tied)} of them tied every task (identical reference outcomes across rollouts, unpowered).`;
   return [
-    `- Climb: ${plural(climbed.length, "promotion")}${reverts === 0 ? "" : ` (${plural(reverts, "revert")})`}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
+    `- Climb: ${plural(climbed.length, "promotion")}${reverts === 0 ? "" : ` (${plural(reverts, "revert")})`}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed Starter Pack check, ${String(unread)} awaiting Starter Pack check.`,
     `- Honesty: ${plural(controls.length, "A/A control")}; ${controlCounts(controls)}${fallbackNote}.${tiedNote} Observational; the bar pools a release's.`,
     starterNoiseLine([...splits.bySession.values()], splits.judgedCount),
     repeatLine(reports, pairsOf),

@@ -404,12 +404,11 @@ export interface TaskRow {
   readonly proposedAt: string | null;
 }
 
-/** A held-out task's one place in the draw (`poolOf`): the frontier; the retained set, which holds
- *  every task the reference answered in every solve of its last readings; or out of the draw,
- *  awaiting a label, doubted (a reference rejection that set it aside stands unearned), or both. */
+/** A held-out task's one place in the draw (`poolOf`): the frontier; the retained set of prior-epoch
+ *  regression checks; or out of the draw, awaiting a label, doubted, or both. */
 export type TaskDraw =
   | { readonly place: "frontier" }
-  | { readonly place: "retained"; readonly exhausted: boolean }
+  | { readonly place: "retained" }
   | { readonly place: "out"; readonly awaitingLabel: boolean; readonly doubted: boolean };
 
 export interface TaskCell {

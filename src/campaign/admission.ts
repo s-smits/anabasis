@@ -19,7 +19,6 @@ import { openingOf } from "./opening.ts";
 export interface Supply {
   readonly held: number;
   readonly awaiting: number;
-  readonly exhausted: number;
   readonly released: number;
   readonly faults: number | null;
   readonly frozen: boolean;
@@ -75,12 +74,11 @@ export function billedRate(solves: ReturnType<typeof ended>): number | null {
 }
 
 export function supplyOf(events: readonly LogEvent[]): Supply {
-  const { frontier, awaiting, exhausted } = poolOf(events);
+  const { frontier, awaiting } = poolOf(events);
   const reading = eventsOf(events, "checker.read").at(-1)?.event.data.faults;
   return {
     held: frontier.length,
     awaiting: awaiting.length,
-    exhausted: exhausted.length,
     released: taskSets(events).released.length,
     faults: Array.isArray(reading) ? reading.length : null,
     frozen: frozenChecker(events) !== null,
@@ -159,11 +157,11 @@ function stopVerdict({ stop }: Supply, pastStop: string | undefined) {
   const after = `${String(stop.sinceStep)} moves that could have shown a gain`;
   return {
     refuses: stop.stop && pastStop === undefined,
-    why: `the campaign has had ${after} since its last standing step, and none did: its patience is spent (--patience). To go on all the same, pass --past-stop "<why>", which is logged`,
+    why: `${after} in a row since the last promotion showed no improvement (patience limit reached under --patience). Pass --past-stop "<why>" to continue anyway`,
     notes: holding([
       [
         stop.stop && pastStop !== undefined,
-        `going on past the plan's stop rule, ${after} after the last standing step: ${String(pastStop)}`,
+        `continuing past the patience stop rule (${after} since the last promotion): ${String(pastStop)}`,
       ],
     ]),
   };
@@ -174,28 +172,24 @@ export function refusals(supply: Supply, wanted: SizedWant) {
   const { cap } = wanted;
   const [size = ""] = sizeLines(scored, wanted.level);
   const price = supply.billed === null ? null : test * supply.billed + judging;
-  const askForMore = `An Examiner session writes more held-out tasks (examine, or ${EXAMINE} by hand)`;
+  const askForMore = `Wake Examiner to write more evaluation tasks (examine, or ${EXAMINE} manually)`;
   const stop = stopVerdict(supply, wanted.pastStop);
   const rows = [
     [
       "no-held",
       supply.held === 0,
-      "the log holds no held-out task to score: an Examiner session writes them (examine), or tools/campaign/prepare.ts takes a pack's tasks in",
+      "no hidden evaluation tasks are available to score: wake Examiner to write them (examine), or import a pack via tools/campaign/prepare.ts",
     ],
     [
       "held-short",
       supply.held > 0 && scored < floor,
-      `${size}. A paid comparison needs at least ${String(floor)} frontier tasks, leaving room for one set-aside task and one tie. ${askForMore}${wanted.target < floor ? `. The --target of ${String(wanted.target)} is below ${String(floor)}` : ""}`,
+      `${size}. A paid comparison needs at least ${String(floor)} active evaluation tasks, leaving room for one disputed task and one tie. ${askForMore}${wanted.target < floor ? `. The --target of ${String(wanted.target)} is below ${String(floor)}` : ""}`,
     ],
-    [
-      "unread",
-      supply.faults === null,
-      `${UNREAD}. A comparison on an unread checker pays for rejections nobody can attribute`,
-    ],
+    ["unread", supply.faults === null, `${UNREAD}. Cannot run a comparison before the checker is audited`],
     [
       "cap-short",
       cap !== null && price !== null && cap.dollars < price,
-      `the cap of $${String(cap?.dollars.toFixed(2))} is below the $${String(price?.toFixed(2))} the comparison's test alone costs, ${String(test)} solves at what this campaign's finished solves billed each: it would be cut short and read not-scored`,
+      `budget cap of $${String(cap?.dollars.toFixed(2))} is below the estimated $${String(price?.toFixed(2))} needed for ${String(test)} comparison solves (based on mean spend so far): comparison would be cut short and unscored`,
     ],
     ["stopped", stop.refuses, stop.why],
   ] as const;
@@ -205,7 +199,7 @@ export function refusals(supply: Supply, wanted: SizedWant) {
 function faultNote(supply: Supply): readonly [boolean, string] {
   return [
     (supply.faults ?? 0) > 0 && !supply.frozen,
-    `the checker's last reading holds ${String(supply.faults)} fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/eval/accept.ts)`,
+    `checker audit found ${String(supply.faults)} fault(s) and the exam is not frozen: rejections may be checker bugs (tools/eval/accept.ts)`,
   ];
 }
 
@@ -216,24 +210,17 @@ function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
   return {
     refusals: [
       ...holding([
-        [
-          cap === null,
-          "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
-        ],
+        [cap === null, "no --cap is set: comparisons require a dollar cap to prevent unbounded spend"],
       ]),
       ...refusals(supply, wanted).map(({ why }) => why),
     ],
     notes: [
-      `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(scored)} to score`,
+      `${String(supply.held)} held-out · ${String(supply.released)} practice · ${String(scored)} ready to score`,
       ...sizeLines(scored, wanted.level),
       ...holding([
         [
           supply.awaiting > 0,
-          `${String(supply.awaiting)} held-out task(s) wait for a person's label and are not scored (tools/campaign/prepare.ts)`,
-        ],
-        [
-          supply.exhausted > 0,
-          `${String(supply.exhausted)} held-out task(s) were answered by the reference harness in every solve of their last two comparisons, with no objective telling two valid answers apart, and are scored only as retained tasks: they can only tie again or be lost`,
+          `${String(supply.awaiting)} evaluation task(s) waiting for human review and excluded from scoring (tools/campaign/prepare.ts)`,
         ],
         [wanted.builds && supply.released === 0, UNRELEASED],
         faultNote(supply),

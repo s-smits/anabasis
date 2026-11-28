@@ -15,5 +15,5 @@ export const OUTCOMES: readonly {
   { outcome: "tiedEvery", label: "Tied, reference always valid", color: "var(--ana-out-tied-every)" },
   { outcome: "tiedSome", label: "Tied, reference sometimes valid", color: "var(--ana-out-tied-some)" },
   { outcome: "tiedNone", label: "Tied, reference never valid", color: "var(--ana-out-tied-none)" },
-  { outcome: "aside", label: "Set aside for a label", color: "var(--ana-out-aside)" },
+  { outcome: "aside", label: "Needs human review", color: "var(--ana-out-aside)" },
 ];

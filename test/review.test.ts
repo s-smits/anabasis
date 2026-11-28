@@ -162,26 +162,17 @@ function setup(
 }
 
 describe("answer and file probes", () => {
-  it("blocks root replacement, enforces change-count and readTogether caps, and tracks the 8-probe budget", async () => {
-    let calls = 0;
-    const counted: Verifier = async () => {
-      calls += 1;
-      return { kind: "pass" };
-    };
-    for (const answer of [ANSWER, [1, 2]]) {
-      const rows: ProbeRow[] = [];
-      await expect(
-        invoke(probeTool(counted, TASK, answer, rows), { changes: [{ path: "$", value: "null" }] }),
-      ).rejects.toThrow("scalar root");
-      expect(rows).toHaveLength(0);
-    }
-    expect(calls).toBe(0);
+  it("allows whole-answer replacement, multi-field changes, and large values while enforcing readTogether and the 16-probe budget", async () => {
+    const rootRows: ProbeRow[] = [];
+    const rootTool = probeTool(verify, TASK, ANSWER, rootRows);
+    await invoke(rootTool, {
+      changes: [{ path: "$", value: JSON.stringify({ span: 9, members: [{ area: 5 }] }) }],
+    });
+    expect(rootRows).toHaveLength(1);
+    expect(rootRows[0]?.moved).toEqual(["span"]);
 
     const coupledRows: ProbeRow[] = [];
     const coupled = probeTool(verify, TASK, ANSWER, coupledRows, { readTogether: [[SPAN], [AREA]] });
-    await expect(
-      invoke(coupled, { changes: ["9", "8", "7", "6"].map((value) => ({ path: SPAN, value })) }),
-    ).rejects.toThrow("at most 3 paths");
     await expect(
       invoke(coupled, {
         changes: [
@@ -189,7 +180,7 @@ describe("answer and file probes", () => {
           { path: AREA, value: "4" },
         ],
       }),
-    ).rejects.toThrow("one refusing check reads together");
+    ).rejects.toThrow("read together by one refusing check");
     expect(coupledRows).toHaveLength(0);
 
     const rows: ProbeRow[] = [];
@@ -198,8 +189,8 @@ describe("answer and file probes", () => {
     const moved = await probe(SPAN, "10");
     expect(moved.output).toEqual([objectWith({ text: containing("1 check moved: span") })]);
     expect(JSON.stringify(moved.output)).toContain("$.span replaced with 10");
-    expect(JSON.stringify(moved.output)).toContain("probe 1 of 8: 7 probes left");
-    expect(tool.description).toContain("at most 8 probes");
+    expect(JSON.stringify(moved.output)).toContain("probe 1 of 16: 15 probes left");
+    expect(tool.description).toContain("Up to 16 probes");
     const fileRows: ProbeRow[] = [];
     const fileTool = probeTool(verify, TASK, ANSWER, fileRows, {
       files: [{ path: "report.txt", base64: "YmFk", text: "bad" }],
@@ -210,11 +201,16 @@ describe("answer and file probes", () => {
     await probe(AREA, "5");
     expect(rows.map((r) => r.moved)).toEqual([["span"], []]);
 
+    await invoke(tool, {
+      changes: ["9", "8", "7", "6"].map((value) => ({ path: SPAN, value })),
+    });
+    await probe(SPAN, JSON.stringify("x".repeat(5000)));
+    expect(rows).toHaveLength(4);
+
     for (const [changes, fact] of [
       [[{ path: SPAN, value: "ten" }], /JSON/u],
       [[{ path: "$.depth", value: "1" }], /\$\.depth.*existing field/u],
       [[{ path: SPAN, value: "12" }], /already.*value/u],
-      [[{ path: SPAN, value: JSON.stringify("x".repeat(4000)) }], /4000/u],
       [[], /unchanged/u],
       [
         [
@@ -233,45 +229,10 @@ describe("answer and file probes", () => {
     ] satisfies [JsonObject[], RegExp][]) {
       await expect(invoke(tool, { changes })).rejects.toThrow(fact);
     }
-    expect(rows).toHaveLength(2);
-    while (rows.length < 7) await probe(SPAN, String(rows.length));
-    expect(JSON.stringify((await probe(SPAN, "99")).output)).toMatch(/probe 8 of 8.*none left/u);
-    await expect(probe(SPAN, "1")).rejects.toThrow("at most 8 probes");
-  });
-
-  it("caps replacement length to max(4000, current field, accepted field at same path)", async () => {
-    const members = (area: number) => Array.from({ length: 900 }, () => ({ area }));
-    const long = { span: 12, members: members(3), note: "x".repeat(200) };
-    const longRows: ProbeRow[] = [];
-    const longTool = probeTool(verify, TASK, long, longRows);
-    await invoke(longTool, { changes: [{ path: "$.members", value: JSON.stringify(members(4)) }] });
-    await expect(
-      invoke(longTool, { changes: [{ path: "$.note", value: JSON.stringify("y".repeat(9000)) }] }),
-    ).rejects.toThrow(/4000/u);
-    await expect(
-      invoke(longTool, { changes: [{ path: "$.note", find: "xx", replace: "y".repeat(9000) }] }),
-    ).rejects.toThrow(/4000/u);
-    expect(longRows).toHaveLength(1);
-
-    const wide = members(4);
-    const offered = JSON.stringify(wide);
-    const shortRows: ProbeRow[] = [];
-    await expect(
-      invoke(probeTool(verify, TASK, ANSWER, shortRows), {
-        changes: [{ path: "$.members", value: offered }],
-      }),
-    ).rejects.toThrow(/4000/u);
-    const acceptedTool = probeTool(verify, TASK, ANSWER, shortRows, {
-      accepted: { span: 12, members: wide },
-    });
-    await invoke(acceptedTool, { changes: [{ path: "$.members", value: offered }] });
-    for (const change of [
-      { path: "$.members", value: JSON.stringify([...wide, ...wide]) },
-      { path: SPAN, value: offered },
-    ]) {
-      await expect(invoke(acceptedTool, { changes: [change] })).rejects.toThrow(/4000/u);
-    }
-    expect(shortRows).toHaveLength(1);
+    expect(rows).toHaveLength(4);
+    while (rows.length < 15) await probe(SPAN, String(rows.length + 20));
+    expect(JSON.stringify((await probe(SPAN, "99")).output)).toMatch(/probe 16 of 16.*none left/u);
+    await expect(probe(SPAN, "1")).rejects.toThrow("at most 16 probes");
   });
 
   it("supports multi-example draft probes with cached originals, objective output, and bounded archive previews", async () => {
@@ -331,7 +292,7 @@ describe("host replay shortcuts", () => {
       fault: "span is not a number",
     });
     expect(await auditRejection(empty.reader, empty.fail())).toMatchObject({
-      ruling: "earned",
+      ruling: "solver-fail",
       reason: containing("span is not a number"),
     });
     expect(empty.calls()).toBe(0);
@@ -421,7 +382,7 @@ describe("rejection adjudication and evidence gates", () => {
   it("refuses ungrounded earned and check-defect rulings with logged reasons and accepts grounded coupled edits", async () => {
     // Earned refusal matrix: missing rule, unknown rule, missing field, unread field.
     const earned = (rest: JsonObject) =>
-      ruling({ ruling: "earned", reason: "Over the limit.", probes: [], ...rest });
+      ruling({ ruling: "solver-fail", reason: "Over the limit.", probes: [], ...rest });
     const invalid: JsonObject[] = [
       {},
       { rule: "R9", field: SPAN },
@@ -434,7 +395,7 @@ describe("rejection adjudication and evidence gates", () => {
       earned({ rule: "R1", field: SPAN, probes: [1] }),
     ]);
     expect(await auditRejection(s.reader, s.fail())).toMatchObject({
-      ruling: "earned",
+      ruling: "solver-fail",
       rule: "R1",
       field: SPAN,
       probes: [1],
@@ -454,7 +415,7 @@ describe("rejection adjudication and evidence gates", () => {
       callTool(PROBE, { changes: [{ path: SPAN, value: "11" }] }),
       callTool(PROBE, { changes: [{ path: SPAN, value: "13" }] }),
       callTool(PROBE, { changes: [{ path: SPAN, value: "10" }] }),
-      ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "Inconclusive.", probes: [1] }),
+      ruling({ ruling: "solver-fail", rule: "R1", field: SPAN, reason: "Inconclusive.", probes: [1] }),
       ruling({ ruling: "check-defect", check: "depth", reason: "Wrong check.", probes: [3] }),
       ruling({ ruling: "check-defect", check: "span", reason: "Did not move.", probes: [1, 2] }),
       fauxAssistantMessage("Thinking aloud."),
@@ -470,7 +431,7 @@ describe("rejection adjudication and evidence gates", () => {
         .filter(({ kind }) => kind === "referee.refused")
         .map(({ data }) => data.why),
     ).toEqual([
-      matching(/earned.*\$\.span.*R1.*refusal/u),
+      matching(/solver-fail.*\$\.span.*R1.*refusal/u),
       matching(/refusing checks.*span/u),
       matching(/probe that moved span off its refusal/u),
     ]);
@@ -481,9 +442,9 @@ describe("rejection adjudication and evidence gates", () => {
     const coupled = setup(
       [
         callTool(PROBE, { changes: [edit("$.left")] }),
-        ruling({ ruling: "earned", rule: "R1", field: "$", reason: "Both must match.", probes: [1] }),
+        ruling({ ruling: "solver-fail", rule: "R1", field: "$", reason: "Both must match.", probes: [1] }),
         callTool(PROBE, { changes: [edit("$.left"), edit("$.right")] }),
-        ruling({ ruling: "earned", rule: "R1", field: "$", reason: "Both must match.", probes: [2] }),
+        ruling({ ruling: "solver-fail", rule: "R1", field: "$", reason: "Both must match.", probes: [2] }),
       ],
       JSON.stringify(["$.left", "$.right"]),
     );
@@ -505,7 +466,7 @@ describe("rejection adjudication and evidence gates", () => {
         },
       }),
     );
-    expect(coupledFinding).toMatchObject({ ruling: "earned", field: "$", probes: [2] });
+    expect(coupledFinding).toMatchObject({ ruling: "solver-fail", field: "$", probes: [2] });
     expect(read(coupled.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
     expect(coupledAnswer.left).toEndWith("bad");
   });
@@ -527,10 +488,10 @@ describe("rejection adjudication and evidence gates", () => {
     const s = setup(
       [
         callTool(PROBE, { changes: [{ path: SPAN, value: "10" }] }),
-        ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "Wrong field.", probes: [1] }),
+        ruling({ ruling: "solver-fail", rule: "R1", field: SPAN, reason: "Wrong field.", probes: [1] }),
         callTool(PROBE, { changes: [{ path: "file:report.txt", find: "bad", replace: "good" }] }),
         ruling({
-          ruling: "earned",
+          ruling: "solver-fail",
           rule: "R1",
           field: "file:report.txt",
           reason: "The report.",
@@ -557,7 +518,7 @@ describe("rejection adjudication and evidence gates", () => {
         },
       }),
     );
-    expect(fileFinding).toMatchObject({ ruling: "earned", field: "file:report.txt", probes: [2] });
+    expect(fileFinding).toMatchObject({ ruling: "solver-fail", field: "file:report.txt", probes: [2] });
     expect(seen.slice(0, 2)).toEqual([textFile, textFile]);
     expect(s.sent[0]).toContain("reads file:$");
     expect(s.sent[0]).toContain(String.raw`\"text\":\"bad\"`);
@@ -575,13 +536,13 @@ describe("rejection adjudication and evidence gates", () => {
           callTool(PROBE, { changes: [{ path: `${BOOK}/xl/none.xml`, find: "bad", replace: "good" }] }),
           callTool(PROBE, { changes: [{ path: MEMBER, find: "bad", replace: "good" }] }),
           ruling({
-            ruling: "earned",
+            ruling: "solver-fail",
             rule: "R1",
             field: `${BOOK}/xl/none.xml`,
             reason: "Missing.",
             probes: [1],
           }),
-          ruling({ ruling: "earned", rule: "R1", field, reason: "The label.", probes: [1] }),
+          ruling({ ruling: "solver-fail", rule: "R1", field, reason: "The label.", probes: [1] }),
         ],
         "files",
       );
@@ -606,7 +567,7 @@ describe("rejection adjudication and evidence gates", () => {
             },
           }),
         ),
-      ).toMatchObject({ ruling: "earned", field, probes: [1] });
+      ).toMatchObject({ ruling: "solver-fail", field, probes: [1] });
       expect(read(z.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
       expect(given).toHaveLength(2);
       const probedZip = Buffer.from(given.at(-1)?.[0]?.base64 ?? "", "base64");
@@ -626,7 +587,7 @@ describe("rejection adjudication and evidence gates", () => {
     // Wall timeout aborts verifier signal and records unclear with walled: true.
     const wall = setup([
       callTool(PROBE, { changes: [{ path: SPAN, value: "10" }] }),
-      ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "Too late.", probes: [1] }),
+      ruling({ ruling: "solver-fail", rule: "R1", field: SPAN, reason: "Too late.", probes: [1] }),
     ]);
     let runs = 0;
     const signals: (AbortSignal | undefined)[] = [];
@@ -857,7 +818,7 @@ describe("adversarial draft audit", () => {
       expect((await reviewDraft(open.reader, { ...target, log: open.log })).verdict).toBe("skipped");
     }
 
-    // Objective-bearing exams require at least one passing probe whose perturbation actually moves the objective before `sound`.
+    // Auditor can record `sound` freely on an objective-bearing exam without forced ceremony probes.
     const objectiveContract = { ...CONTRACT, objective: { quantity: "score", direction: "lower" as const } };
     const sensitiveVerify: Verifier = async (_task, answer, _signal, files) => {
       if (asRecord(answer)?.span === -1) return { kind: "fail", blocking: ["span"] };
@@ -865,13 +826,8 @@ describe("adversarial draft audit", () => {
       return { kind: "pass", objective: asRecord(answer)?.span === 999 ? 50 : 10 };
     };
     const gated = setup([
-      reviewCall({ verdict: "sound", findings: [], summary: "premature sound without probe" }),
       callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "-1" }] }),
-      reviewCall({ verdict: "sound", findings: [], summary: "failing probe does not measure objective" }),
-      callTool(PROBE, { task: "t-1", changes: [{ path: "file:results.csv", value: "null" }] }),
-      reviewCall({ verdict: "sound", findings: [], summary: "file probe left objective unchanged" }),
-      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "999" }] }),
-      reviewCall({ verdict: "sound", findings: [], summary: "sound after objective-moving probe" }),
+      reviewCall({ verdict: "sound", findings: [], summary: "sound after inspecting checker" }),
     ]);
     const gatedRes = await reviewDraft(gated.reader, {
       ...target,
@@ -882,7 +838,7 @@ describe("adversarial draft audit", () => {
       log: gated.log,
     });
     expect(gatedRes.verdict).toBe("sound");
-    expect(read(gated.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(3);
+    expect(read(gated.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(0);
     expect(gated.sent[0]).toContain("one replayed probe, not a fresh test");
 
     // `replayDraftProbes` replays the audit as the log persisted it: flags persisting defects, verifies fixed ones at $0, and leaves inconclusive/missing probes unverified.
@@ -1195,7 +1151,7 @@ describe("draft audit replay of an objective defect", () => {
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(4);
   });
 
-  it("requires a multi-item code rubric sound verdict to probe every code item", async () => {
+  it("allows sound on a multi-item code rubric without forcing a probe per code item", async () => {
     const checks = programs.get(JSON.stringify([SPAN]));
     if (checks === undefined) throw new Error("missing check program");
     const multiVerify: Verifier = async (_task, answer) => {
@@ -1218,9 +1174,7 @@ describe("draft audit replay of an objective defect", () => {
     };
     const s = setup([
       callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "13" }] }),
-      reviewCall({ verdict: "sound", findings: [], summary: "only report moved" }),
-      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "14" }] }),
-      reviewCall({ verdict: "sound", findings: [], summary: "both code items moved" }),
+      reviewCall({ verdict: "sound", findings: [], summary: "checked code and probed" }),
     ]);
     const res = await reviewDraft(s.reader, {
       session: "d-1",
@@ -1235,9 +1189,7 @@ describe("draft audit replay of an objective defect", () => {
       log: s.log,
     });
     expect(res.verdict).toBe("sound");
-    const refused = read(s.log).filter(({ kind }) => kind === "referee.draft.refused");
-    expect(refused).toHaveLength(1);
-    expect(refused[0]?.data.why).toContain("untouched: accuracy");
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(0);
   });
 });
 
@@ -1251,28 +1203,28 @@ describe("hand-label agreement", () => {
   const events = [
     ruled("a", "unclear"),
     ruled("a", "check-defect"),
-    ruled("b", "earned"),
-    ruled("c", "earned"),
+    ruled("b", "solver-fail"),
+    ruled("c", "solver-fail"),
     ruled("d", "check-defect"),
     ruled("e", "unclear"),
   ];
   const labels = new Map([
     ["a", "check-defect"],
     ["b", "check-defect"],
-    ["c", "earned"],
-    ["d", "earned"],
-    ["e", "earned"],
+    ["c", "solver-fail"],
+    ["d", "solver-fail"],
+    ["e", "solver-fail"],
   ] as const);
 
   it("scores last rulings against hand labels and enforces the 30-label clearing bar", () => {
     const measured = agreement(events, labels);
-    expect(measured.table["check-defect"]).toEqual({ earned: 1, "check-defect": 1, unclear: 0 });
-    expect(measured.table.earned).toEqual({ earned: 1, "check-defect": 1, unclear: 1 });
+    expect(measured.table["check-defect"]).toEqual({ "solver-fail": 1, "check-defect": 1, unclear: 0 });
+    expect(measured.table["solver-fail"]).toEqual({ "solver-fail": 1, "check-defect": 1, unclear: 1 });
     expect(measured).toMatchObject({
       caught: 0.5,
       unclearEarned: 1,
       unruled: [],
-      specific: { earned: 2 / 5, "check-defect": 2 / 4, unclear: 0 },
+      specific: { "solver-fail": 2 / 5, "check-defect": 2 / 4, unclear: 0 },
     });
     expect(measured.voided).toBeCloseTo(2 / 3);
     expect(measured.observed).toBeCloseTo(2 / 5);
@@ -1280,24 +1232,24 @@ describe("hand-label agreement", () => {
     expect(measured.pabak).toBeCloseTo(0.1);
     const nonZeroKappa = agreement(
       [
-        ruled("k1", "earned"),
-        ruled("k2", "earned"),
+        ruled("k1", "solver-fail"),
+        ruled("k2", "solver-fail"),
         ruled("k3", "check-defect"),
         ruled("k4", "check-defect"),
       ],
       new Map([
-        ["k1", "earned"],
-        ["k2", "earned"],
+        ["k1", "solver-fail"],
+        ["k2", "solver-fail"],
         ["k3", "check-defect"],
-        ["k4", "earned"],
+        ["k4", "solver-fail"],
       ] as const),
     );
     expect(nonZeroKappa.kappa).toBeCloseTo(0.5);
     expect(VERDICT_BAR).toEqual({ caught: 0.75, voided: 0.1 });
     expect(agreement(events, new Map([["e", "check-defect"]] as const)).caught).toBe(1);
     expect(agreement(events, new Map())).toMatchObject({ observed: null, kappa: null, pabak: null });
-    expect(agreement(events, new Map([["c", "earned"]] as const))).toMatchObject({
-      specific: { earned: 1, "check-defect": null, unclear: null },
+    expect(agreement(events, new Map([["c", "solver-fail"]] as const))).toMatchObject({
+      specific: { "solver-fail": 1, "check-defect": null, unclear: null },
       unclearEarned: null,
       observed: 1,
       kappa: null,
@@ -1324,9 +1276,9 @@ describe("hand-label agreement", () => {
     expect(
       clears(agreement(many, new Map([...thirty].filter(([k]) => k !== "c0"))), { caught: 0, voided: 1 }),
     ).toBe(false);
-    expect(clears(agreement(many, new Map([...thirty, ["z", "earned"]])), { caught: 0, voided: 1 })).toBe(
-      false,
-    );
+    expect(
+      clears(agreement(many, new Map([...thirty, ["z", "solver-fail"]])), { caught: 0, voided: 1 }),
+    ).toBe(false);
     const ten = Array.from({ length: 10 }, (_, n) => n);
     const tenfold = ten.flatMap((n) =>
       events.map((e) => ({ ...e, data: { ...e.data, solve: `${e.data.solve}${String(n)}` } })),
@@ -1337,18 +1289,18 @@ describe("hand-label agreement", () => {
       new Map([...fifty].filter(([k]) => !defects.slice(kept).includes(k)));
     expect(clears(agreement(tenfold, keepDefects(8)), { caught: 0, voided: 1 })).toBe(true);
     expect(clears(agreement(tenfold, keepDefects(7)), { caught: 0, voided: 1 })).toBe(false);
-    const noDefects = agreement(many, new Map([...thirty].filter(([, v]) => v === "earned")));
+    const noDefects = agreement(many, new Map([...thirty].filter(([, v]) => v === "solver-fail")));
     expect(noDefects.caught).toBeNull();
     expect(clears(noDefects, { caught: 0, voided: 1 })).toBe(false);
 
-    expect(unclearReport(agreement(events, new Map([["c", "earned"]] as const)))).toBeNull();
+    expect(unclearReport(agreement(events, new Map([["c", "solver-fail"]] as const)))).toBeNull();
     const unclearOf = (earnedCount: number, defectCount: number) => {
       const total = earnedCount + defectCount;
       const evs = Array.from({ length: total }, (_, i) => ruled(`u-${String(i)}`, "unclear"));
       const lbls = new Map(
         Array.from(
           { length: total },
-          (_, i) => [`u-${String(i)}`, i < earnedCount ? "earned" : "check-defect"] as const,
+          (_, i) => [`u-${String(i)}`, i < earnedCount ? "solver-fail" : "check-defect"] as const,
         ),
       );
       return unclearReport(agreement(evs, lbls));

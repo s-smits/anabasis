@@ -58,7 +58,7 @@ const ROWS: readonly {
         );
       }
       return read?.report.reading === "not-scored"
-        ? { move: "build", why: `comparison ${read.id} tallied no task: ${BUILDS_AND_ASKS}` }
+        ? { move: "build", why: `comparison ${read.id} scored no tasks: ${BUILDS_AND_ASKS}` }
         : { move: "build", why: buildsOn(ground) };
     },
   },
@@ -68,8 +68,8 @@ const DRAFTS = 3;
 export const CRASHES_IN_A_ROW = DRAFTS;
 const MAX_REPAIR_ATTEMPTS = 2;
 const SHORT_OF_TASKS = ["no-held", "held-short"] as const;
-const WANTS_TASKS = "comparison admission requires more held-out tasks";
-const BUILDS_AND_ASKS = "Builder continues building and requests tasks";
+const WANTS_TASKS = "need more evaluation tasks before comparing";
+const BUILDS_AND_ASKS = "Builder continues and requests new tasks";
 const MOST_ASKED_AFTER_PROMOTION = 24;
 const wantsTasks = ({ refused }: Ground): boolean => SHORT_OF_TASKS.some((code) => refused.has(code));
 
@@ -94,7 +94,7 @@ export function nextAction(events: readonly LogEvent[], plan: Plan): ScheduledAc
 export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: string): string | null {
   return readStep(campaignState(events, plan), harness)
     ? null
-    : `harness ${short(harness)} has no comparison that read a step against the reference harness`;
+    : `harness ${short(harness)} has not beaten the reference harness in a comparison yet`;
 }
 
 function heldOutAfter(events: readonly LogEvent[], after: number): number {
@@ -150,11 +150,11 @@ function outOfPatience(ground: Ground, wants: "tasks" | "room", why: string): Mo
   const idle = plural(run.length - ids.length, "Examiner session");
   const summary =
     ids.length === 0
-      ? `${idle} in a row held out no task`
-      : `${plural(run.length, "reading")} in a row left nothing to gain: ${ids.length === 1 ? "comparison" : "comparisons"} ${ids.join(", ")} left the reference no room${ids.length === run.length ? "" : ` and ${idle} held out no task`}`;
+      ? `${idle} in a row added no evaluation tasks`
+      : `${plural(run.length, "round")} in a row left no scoring headroom: ${ids.length === 1 ? "comparison" : "comparisons"} ${ids.join(", ")} left the reference no headroom${ids.length === run.length ? "" : ` and ${idle} added no evaluation tasks`}`;
   return wants === "tasks"
-    ? end("exam", `${summary} (${why}): the tasks could not be written`)
-    : end("no-room", `${summary} (${why}): the tasks could not be made to leave room`);
+    ? end("exam", `${summary} (${why}): Examiner could not produce valid tasks`)
+    : end("no-room", `${summary} (${why}): Examiner could not create tasks with scoring headroom`);
 }
 
 function examine(ground: Ground, wants: "tasks" | "room", why: string): Move {
@@ -198,7 +198,7 @@ function exam(ground: Ground): Move | null {
     }
     return {
       move: "accept",
-      why: "nobody has read the campaign's checker: every control and the do-nothing answer are put to the checks before a solve is paid for",
+      why: "checker has not been audited yet: running all control answers and the empty answer before spending on solves",
     };
   }
   const faults = supply.faults ?? 0;
@@ -208,12 +208,12 @@ function exam(ground: Ground): Move | null {
     (id) => !(Array.isArray(admittedBefore) && admittedBefore.includes(id)),
   );
   if (newlyAdmitted.length > 0) {
-    return { move: "accept", why: `the operator admits ${newlyAdmitted.join(", ")}: the exam is read again` };
+    return { move: "accept", why: `operator admitted ${newlyAdmitted.join(", ")}: re-auditing the checker` };
   }
   const undecided = unadmitted(events);
   return end(
     "exam",
-    `the checker's last reading holds ${plural(faults, "fault")} and nobody froze it: the exam is not accepted until its author repairs it, or the operator admits each check by name and freezes (tools/eval/accept.ts)${undecided.length === 0 ? "" : `. No engine the host installed decides ${undecided.join(", ")}, so each stands on the operator's word alone: --admit ${undecided.join(",")}`}`,
+    `checker audit found ${plural(faults, "fault")} and the exam is not frozen: fix the checker or admit each check by name and freeze (tools/eval/accept.ts)${undecided.length === 0 ? "" : `. No installed engine checks ${undecided.join(", ")}, so operator approval is required: --admit ${undecided.join(",")}`}`,
   );
 }
 
@@ -238,13 +238,13 @@ function drafting(events: readonly LogEvent[]): Move {
       move: "draft",
       why:
         tries === 0
-          ? "the campaign opened from a prompt and holds no exam: the Examiner drafts its rules, its checks and its first tasks"
-          : `${plural(tries, "draft")} did not stand at the host's reading, and ${String(DRAFTS - tries)} more may be put`,
+          ? "campaign has no exam yet: Examiner will draft the rules, checks, rubric, and initial examples"
+          : `${plural(tries, "draft")} failed validation (${String(DRAFTS - tries)} attempts left)`,
     };
   }
   return end(
     "exam",
-    `the exam was not accepted: ${plural(tries, "draft")} in ${plural(sessions.length, "session")} did not stand at the host's reading`,
+    `exam was not accepted: ${plural(tries, "draft")} across ${plural(sessions.length, "session")} failed validation`,
   );
 }
 
@@ -261,13 +261,13 @@ function bound(ground: Ground): Move | null {
   if (crashes.count >= CRASHES_IN_A_ROW) {
     return end(
       "environment",
-      `${plural(crashes.count, "session")} in a row crashed (${crashes.crash ?? "the provider gave no reason"}): none held out a task or changed a harness. Run the command again by the campaign's name once the provider is back`,
+      `${plural(crashes.count, "session")} in a row crashed (${crashes.crash ?? "no provider reason"}): no tasks were added and no harness changed. Re-run by campaign name once the provider recovers`,
     );
   }
   if (refused.has("stopped")) {
     return end(
       "stop",
-      `${plural(supply.stop.sinceStep, "move")} in a row could have shown a gain and showed none: the campaign's patience is ${String(plan.patience)}`,
+      `${plural(supply.stop.sinceStep, "comparison")} in a row showed no improvement (patience limit: ${String(plan.patience)})`,
     );
   }
   if (read?.report.reading === "check-defects") {
@@ -287,7 +287,7 @@ function bound(ground: Ground): Move | null {
     );
   }
   if (read?.report.reading === "not-scored" && read.report.capped === true) {
-    return end("budget", `comparison ${read.id} was cut by its dollar cap before it tallied a task`);
+    return end("budget", `comparison ${read.id} hit its dollar cap before scoring any tasks`);
   }
   return refused.has("cap-short") && all.every(({ report }) => report !== null)
     ? end(
@@ -302,20 +302,23 @@ function tasks(ground: Ground): Move | null {
   if (plan.unprepared) {
     return {
       move: "prepare",
-      why: "the pack holds tasks the log does not: each is put to its gate and held out",
+      why: "task pack has new tasks not yet in the log: validating and adding them to the evaluation pool",
     };
   }
   if (taskSets(events).held.length + supply.released === 0) {
-    return examine(ground, "tasks", "the campaign holds no task");
+    return examine(ground, "tasks", "no evaluation tasks exist yet");
   }
   if (supply.released === 0 && supply.held >= 2 && plan.practice !== 0) {
-    return { move: "prepare", why: "no task is released for practice: the contract's draw releases some" };
+    return {
+      move: "prepare",
+      why: "no practice tasks have been released yet: releasing initial practice tasks",
+    };
   }
   const asked = pendingSignals(events).find(({ word }) => word === "tasks");
   if (asked !== undefined && pendingPromotion(ground) === null) {
     return {
       move: "examine",
-      why: `the operator asked for other tasks${asked.why === "" ? "" : `: ${asked.why}`}`,
+      why: `operator requested new tasks${asked.why === "" ? "" : `: ${asked.why}`}`,
       answers: [asked.at],
     };
   }
@@ -324,11 +327,11 @@ function tasks(ground: Ground): Move | null {
   const notYetCompared =
     waiting === null
       ? "no comparison has run yet"
-      : `harness ${short(waiting)} has not been compared under the campaign's setting`;
+      : `harness ${short(waiting)} has not been compared under the current settings`;
   return examine(
     ground,
     "tasks",
-    `the campaign is ${plural(missing, "held-out task")} short of the tasks a first comparison needs and the practice its release draws, and ${notYetCompared}: the Examiner writes more first`,
+    `need ${plural(missing, "more evaluation task")} before the first comparison and initial practice release (${notYetCompared}): waking Examiner to write more`,
   );
 }
 
@@ -355,7 +358,7 @@ function unfinished({ all }: Ground): Move | null {
         id: open.id,
         fresh: open.fresh,
         reference: open.old,
-        why: `comparison ${open.id} began and has not reported: it goes on from its log`,
+        why: `comparison ${open.id} is still in progress: resuming from the log`,
       };
 }
 
@@ -382,7 +385,7 @@ function unconfirmedRevert({ events, reference, starter }: Ground): Move | null 
   return {
     move: "revert",
     harness: target,
-    why: `harness ${short(reference)} did not confirm against the starter in ${current.starter_read ?? "its starter comparison"}: reverting reference to ${target === starter ? "the starter" : short(target)}`,
+    why: `promoted harness ${short(reference)} did not beat the Starter Pack on fresh tasks in ${current.starter_read ?? "its Starter Pack check"}: reverting reference to ${target === starter ? "the Starter Pack" : short(target)}`,
   };
 }
 
@@ -436,7 +439,7 @@ function noRoom(ground: Ground): Move | null {
       if (examSessions.size === 0) {
         return {
           move: "examine",
-          why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has finished writing tasks for it since: tasks are written for each new reference`,
+          why: `harness ${short(reference ?? "")} was promoted: waking Examiner to write new, harder tasks before re-testing it against the Starter Pack`,
         };
       }
       const needed = comparisonFloor(ground.plan.wanted.level);
@@ -444,7 +447,7 @@ function noRoom(ground: Ground): Move | null {
       if (starterOwed && writtenAfter < needed && examSessions.size < MAX_REPAIR_ATTEMPTS) {
         return {
           move: "examine",
-          why: `harness ${short(reference ?? "")} was promoted with ${plural(writtenAfter, "new held-out task")} (need at least ${String(needed)} to confirm on written-after tasks): waking Examiner for more tasks`,
+          why: `harness ${short(reference ?? "")} was promoted with ${plural(writtenAfter, "new task")} (need at least ${String(needed)} new tasks before re-testing against the Starter Pack): waking Examiner for more`,
         };
       }
     }
@@ -455,19 +458,18 @@ function noRoom(ground: Ground): Move | null {
       side,
     );
     if (saturated === null) return null;
-    const aaNote = saturated.aaP75 === null ? "" : ` (reference A/A p75 ${saturated.aaP75.toFixed(3)})`;
     return examine(
       ground,
       "room",
-      `comparison ${last.id} showed no improvement with the reference valid in every solve on ${String(saturated.validEvery)}/${String(saturated.scored)} tasks and mean objective room ${saturated.meanRoom.toFixed(3)}${aaNote}: waking Examiner for harder tasks or exam revision`,
+      `comparison ${last.id} showed no improvement with the reference passing every attempt on ${String(saturated.validEvery)}/${String(saturated.scored)} tasks and mean objective headroom ${saturated.meanRoom.toFixed(3)}: waking Examiner to write harder tasks or revise the exam`,
     );
   }
   const why =
     room === "too-hard"
-      ? `comparison ${last.id} showed no improvement and neither harness produced a valid answer: generating replacement tasks`
+      ? `comparison ${last.id} showed no improvement and neither harness produced a valid answer: waking Examiner to write replacement tasks`
       : side === "old"
-        ? `comparison ${last.id} showed no improvement and no task was informative for the reference harness: generating new tasks`
-        : `harness ${short(reference ?? "")} is the current reference${starterOwed ? " (starter confirmation owed)" : ""} and comparison ${last.id} found no informative tasks for it: generating harder tasks with evaluation headroom`;
+        ? `comparison ${last.id} showed no improvement and no task separated the arms for the reference harness: waking Examiner to write new tasks`
+        : `harness ${short(reference ?? "")} is the current reference${starterOwed ? " (waiting to be re-tested against the Starter Pack)" : ""} and comparison ${last.id} left no scoring headroom for it: waking Examiner to write harder tasks`;
   return examine(ground, "room", why);
 }
 
@@ -482,17 +484,17 @@ function uncomparedTasks(ground: Ground): Move | null {
   const currentEpoch = epochsOf(events).at(-1);
   if (pending && currentEpoch?.starter_tally === null && currentEpoch.confirmed !== true) {
     return compare(
-      `harness ${short(reference)} is the current reference with ${plural(since, "new held-out task")}: running a starter confirmation comparison (prioritizing new tasks) to check evaluation headroom and confirm the gain over starter`,
+      `Examiner set up ${plural(since, "new task")} for promoted harness ${short(reference)}: running the Starter Pack against it (prioritising the new tasks) to verify the gain holds on unseen tasks`,
       "starter",
     );
   }
   if (waiting === null || read === null || !enoughWrittenSince(ground, read)) return null;
-  const later = "and new tasks have been added since";
+  const later = "and Examiner added new tasks since";
   if (read.report.reading === "not-scored") {
-    return compare(`comparison ${read.id} tallied no tasks, ${later}`);
+    return compare(`comparison ${read.id} scored no tasks, ${later}`);
   }
   const whatItLeft = {
-    none: "left no evaluation headroom",
+    none: "left no scoring headroom",
     "too-hard": "produced no valid answers on either arm",
     room: null,
   }[evalHeadroom(read.report)];
@@ -502,13 +504,13 @@ function uncomparedTasks(ground: Ground): Move | null {
 function buildsOn(ground: Ground): string {
   const { read, waiting, reference } = ground;
   if (read?.starterComparison === true) {
-    return `starter confirmation ${read.id} against harness ${short(reference ?? "")} showed evaluation headroom on new held-out tasks: Builder continues building`;
+    return `Starter Pack check ${read.id} confirmed harness ${short(reference ?? "")} still has scoring headroom on new tasks: Builder continues`;
   }
   if (read !== null) {
-    return `comparison ${read.id} showed no significant step despite available headroom: harness ${short(read.fresh)} did not improve over reference`;
+    return `comparison ${read.id} showed no significant step despite available headroom: harness ${short(read.fresh)} did not beat the reference`;
   }
   if (waiting === null) return "no candidate harness differs from the current reference";
-  return `harness ${short(waiting)} has not been evaluated yet: Builder will trigger comparison when ready`;
+  return `harness ${short(waiting)} has not been compared yet: Builder will trigger a comparison when ready`;
 }
 
 function releasedSince(
@@ -555,7 +557,7 @@ export function practiceDue(
   if (count !== 0) {
     const beforeSince = events.slice(0, since + 1);
     const heldAtSince = new Set(taskSets(beforeSince).held);
-    const frontierAtSince = new Set(poolOf(beforeSince).practiceFrontier);
+    const frontierAtSince = new Set(poolOf(beforeSince).frontier);
     nonFrontier = releases.filter(
       (version) => heldAtSince.has(version) && !frontierAtSince.has(version),
     ).length;
@@ -563,7 +565,7 @@ export function practiceDue(
   const allowance =
     released === 0 && promotedAt === -1
       ? Infinity
-      : Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level) - nonFrontier);
+      : Math.max(0, poolOf(events).frontier.length - comparisonFloor(level) - nonFrontier);
   const last = events.findLastIndex(
     ({ kind, data }, at) =>
       at <= since && (isReferenceChange(kind) || (kind === "task.state" && data.state === "released")),
@@ -580,6 +582,6 @@ export function practiceDue(
   if (owed === 0) return null;
   return {
     to: released + owed,
-    said: `${String(count)} of the ${plural(practice, "practice task")} the campaign names are released${since === -1 ? "" : " since the last reading"}`,
+    said: `${String(count)} of ${plural(practice, "practice task")} released${since === -1 ? "" : " since the last comparison"}`,
   };
 }

@@ -800,7 +800,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     expect(draftOf(events)).toBeNull();
     const decided = nextAction(events, PROMPTED);
     expect(decided).toMatchObject({ move: "end", ending: "exam" });
-    expect(decided.why).toContain("3 drafts in 2 sessions did not stand");
+    expect(decided.why).toContain("3 drafts across 2 sessions failed validation");
   });
 
   it("freezes unattended drafts matching openCampaign and holds --hitl drafts for operator admission", async () => {

@@ -183,7 +183,7 @@ async function setup(
     return solve;
   };
   solved("v1", digest, { outcome: "fail", kind: "rejected" });
-  add("referee.finding", { solve: "s-1", ruling: "earned" });
+  add("referee.finding", { solve: "s-1", ruling: "solver-fail" });
   const exam = solved("v3", digest, { outcome: "fail", kind: "rejected" });
   const sent: string[] = [];
   const faux = fauxProvider({
@@ -426,7 +426,7 @@ describe.concurrent("a Builder session", () => {
 
   it("is given the parent's record, practises, reads a trace, and leaves a frozen version", async () => {
     const earned: AuditFinding = {
-      ruling: "earned",
+      ruling: "solver-fail",
       check: null,
       rule: "R1",
       field: "answer",
@@ -1678,7 +1678,12 @@ describe.concurrent("what crosses to the Builder", () => {
             asked: { ruling: "check-defect", check: kept.check, reason: kept.reason, probes: [] },
             why: `a check-defect names one of the refusing checks: ${kept.check}`,
           });
-          append(log, "referee.finding", { solve, ruling: "earned", check: kept.check, reason: kept.reason });
+          append(log, "referee.finding", {
+            solve,
+            ruling: "solver-fail",
+            check: kept.check,
+            reason: kept.reason,
+          });
         } else {
           append(log, "verdict", {
             solve,
@@ -1772,7 +1777,7 @@ describe.concurrent("what crosses to the Builder", () => {
         ...s.request,
         tasks,
         referee: async () => ({
-          ruling: "earned",
+          ruling: "solver-fail",
           check: kept.check,
           rule: "R1",
           field: "answer",

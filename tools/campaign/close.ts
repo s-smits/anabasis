@@ -87,7 +87,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   const promotions = promotionLines(events, comparisons, called);
   const ruled = comparisons.reduce(
     (sum, { rulings }) => ({
-      earned: sum.earned + rulings.earned,
+      earned: sum.earned + rulings["solver-fail"],
       defect: sum.defect + rulings["check-defect"],
       unclear: sum.unclear + rulings.unclear,
     }),
@@ -161,7 +161,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
         : [
             `- What decides a pass: ${plural(authored.length, "check")} of the checker's last reading ${authored.length === 1 ? "is" : "are"} decided by ${authored.length === 1 ? "its" : "their"} author's own computation and no installed instrument; the operator admitted ${String(authored.length - unadmitted(events).length)}. Such a check agrees with its author by construction: nothing outside the exam confirms what it lets pass.`,
           ]),
-      `- Rejected answers: the Referee ruled ${String(ruled.earned)} earned, ${String(ruled.defect)} a check defect and ${String(ruled.unclear)} unclear. A ruling is a model's reading and is not measured against a person's labels here.`,
+      `- Rejected answers: the Auditor ruled ${String(ruled.earned)} solver-fail, ${String(ruled.defect)} check-bug, and ${String(ruled.unclear)} unclear. Auditor rulings are model judgements and are not compared against human labels here.`,
       `- A person's labels settled ${plural(settled.length, "comparison")}, and ${plural(unsettled, "comparison")} ${unsettled === 1 ? "is" : "are"} unsettled: ${unsettled === 1 ? "its packet waits" : "their packets wait"} for a person (settle.ts), and no promotion waited for one. ${plural(supply.awaiting, "held-out task")} ${supply.awaiting === 1 ? "waits" : "wait"} for a person to say whether a valid answer exists.`,
       passes.comparisons === 0
         ? "- No answer that passed was read by anyone: a pass is the checks' word alone."

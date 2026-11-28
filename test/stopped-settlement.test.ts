@@ -121,7 +121,7 @@ function fixture(outcomes: Outcomes = PREFIX, stop: "defect" | "cap" = "defect")
     }
     append(log, "solve.finished", { solve, ending, billed: 1 });
     if (letter === "D" || letter === "R") {
-      const ruling = letter === "D" ? "check-defect" : "earned";
+      const ruling = letter === "D" ? "check-defect" : "solver-fail";
       labels.set(solve, ruling);
       append(log, "referee.finding", { solve, ruling });
     }
@@ -199,7 +199,7 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
   expect(labels.size).toBe(17);
   const measured = agreement(read(s.log), labels);
   expect(measured.table["check-defect"]["check-defect"]).toBe(14);
-  expect(measured.table.earned.earned).toBe(3);
+  expect(measured.table["solver-fail"]["solver-fail"]).toBe(3);
   expect(clears(measured, { caught: 0.75, voided: 0.1 })).toBe(false);
   expect(comparison.swapped(read(s.log), ID)).toBeNull();
   const length = read(s.log).length;
@@ -223,7 +223,7 @@ it("refuses labels outside the stopped comparison and keeps unreported and unfix
   expect(() => settleReading(s.log, ID, s.labels)).toThrow("no report");
   await checkpoint(s.request);
   const before = read(s.log).length;
-  expect(() => settleReading(s.log, ID, new Map([["stray", "earned"]]))).toThrow("no rejected answer");
+  expect(() => settleReading(s.log, ID, new Map([["stray", "solver-fail"]]))).toThrow("no rejected answer");
   expect(() => settleReading(s.log, ID, s.labels, new Map([["stray", "sound"]]))).toThrow(
     "no answer that passed",
   );
@@ -254,7 +254,7 @@ it("recovers completion omitted by an older stopped report at its original cutof
   const settled = settleReading(
     s.log,
     ID,
-    new Map([...s.labels.keys()].map((solve) => [solve, "earned"] as const)),
+    new Map([...s.labels.keys()].map((solve) => [solve, "solver-fail"] as const)),
   );
   unscored(settled);
   expect(settled.short).toEqual(original.short);
@@ -270,7 +270,7 @@ it("keeps a winning completed prefix unscored after earned labels for both defec
     const s = fixture({ ...wins, broken: ["D", ""] }, stop);
     const first = await checkpoint(s.request);
     const fixed = present(comparison.fixedIn(read(s.log), ID));
-    const labels = new Map([...s.labels.keys()].map((solve) => [solve, "earned"] as const));
+    const labels = new Map([...s.labels.keys()].map((solve) => [solve, "solver-fail"] as const));
     // The dangerous counterfactual: the selected prefix would clear the fixed level.
     expect(comparison.compared(read(s.log), fixed, labels).reading).toBe("step");
     const settled = settleReading(s.log, ID, labels);
@@ -296,7 +296,7 @@ it("keeps ordinary settlement and swapped readings for a completed scored compar
 });
 
 it("reads promotion tallies with restored, removed and wrong answers from the settled packet", async () => {
-  for (const label of ["earned", "unclear", "check-defect"] as const) {
+  for (const label of ["solver-fail", "unclear", "check-defect"] as const) {
     const s = fixture({ restored: ["DDDD", "PPPP"], stable: ["LLLL", "PPPP"] });
     const original = await checkpoint({ ...s.request, defects: 100 });
     const passes = new Map([[present(comparison.passesIn(read(s.log), ID).at(-1)), "wrong"]] as const);
@@ -307,7 +307,7 @@ it("reads promotion tallies with restored, removed and wrong answers from the se
       passes,
     );
     expect(original.versions).toEqual(["stable"]);
-    expect(settled.versions).toEqual(label === "earned" ? ["restored", "stable"] : ["stable"]);
+    expect(settled.versions).toEqual(label === "solver-fail" ? ["restored", "stable"] : ["stable"]);
     expect(settled.scored).not.toEqual(original.scored);
     append(s.log, "harness.promoted", { from: "old", harness: "fresh" });
     const events = read(s.log);
@@ -424,7 +424,7 @@ it("draws and settles the stopped comparison through the blind packet command", 
   writeFileSync(
     file,
     JSON.stringify({
-      rejections: Object.fromEntries(Object.keys(packet.rejections).map((solve) => [solve, "earned"])),
+      rejections: Object.fromEntries(Object.keys(packet.rejections).map((solve) => [solve, "solver-fail"])),
       passes: Object.fromEntries(Object.keys(packet.passes).map((solve) => [solve, "sound"])),
     }),
   );

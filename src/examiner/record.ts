@@ -1,4 +1,4 @@
-import { gainOver, type Paired, scoresIn } from "../kernel/compare.ts";
+import { carriedBy, gainOver, type Paired, pointsOf, scoresIn } from "../kernel/compare.ts";
 import { familySizes, proposalsOf } from "../kernel/history.ts";
 import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import {
@@ -16,7 +16,7 @@ import { howOftenValid } from "../kernel/size.ts";
 import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { formatScores, OBJECTIVE, objectiveOf, scoresOf, type Task } from "../kernel/verify.ts";
-import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { epochsOf, tasksByEpoch } from "../campaign/climb.ts";
 import { openingOf } from "../campaign/opening.ts";
@@ -29,16 +29,14 @@ interface Answered {
 }
 
 const BLOCKS = {
-  "reference-none": "The reference harness valid in no solve of the last comparison that scored the task",
-  "reference-some": "Valid in some solves of it",
-  "reference-every": "Valid in every solve of it",
-  closed:
-    "Closed: valid in every solve of its last two comparisons with no room left by the objective, so now scored only as a check against regressions",
+  "reference-none": "Failed every attempt (reference)",
+  "reference-some": "Passed some attempts (reference)",
+  "reference-every": "Passed every attempt (reference)",
   new: "Not yet compared",
-  disputed: "Set aside until a person settles a rejection of an answer to it",
-  faulted: "Disputed: a check was at fault on an answer to it",
-  "earlier-reference": "Last compared between two other harnesses",
-  practice: "In use as practice, and so never scored",
+  disputed: "Awaiting human review on a rejection",
+  faulted: "Quarantined (check bug on an answer)",
+  "earlier-reference": "Last compared between two earlier harnesses",
+  practice: "Released for practice (unscored)",
 } as const;
 const CARRIED = { validity: "on validity", objective: "on the objective" } as const;
 const WON = { reference: "the reference harness", other: "the harness it was compared with" } as const;
@@ -46,7 +44,7 @@ const SCORE_FAULT = /^score ([a-z][a-z0-9-]*) /u;
 
 export const measured = (measure: number): string => String(Number(measure.toPrecision(6)));
 
-function blockOf(state: string | undefined, outcome: Outcome | "closed" | undefined): keyof typeof BLOCKS {
+function blockOf(state: string | undefined, outcome: Outcome | undefined): keyof typeof BLOCKS {
   if (state === "released") return "practice";
   if (state === "disputed") return "faulted";
   return outcome ?? "new";
@@ -59,7 +57,7 @@ function clausesOf(
   { turns, measures, itemMeans }: Answered = { turns: [], measures: [], itemMeans: {} },
   budget?: number,
 ): string[] {
-  const answered = block === "reference-every" || block === "reference-some" || block === "closed";
+  const answered = block === "reference-every" || block === "reference-some";
   const best = pool.bests.get(version);
   const authorItems = pool.bestScores.get(version);
   const sorted = (values: readonly number[]) => values.toSorted((a, b) => a - b);
@@ -160,6 +158,28 @@ interface OutcomeContext {
   readonly reference: string | null;
   readonly bests: ReadonlyMap<string, number>;
   readonly answered: ReadonlyMap<string, Answered>;
+  readonly budget?: number | undefined;
+}
+
+function medianOf(values: readonly number[]): number {
+  const sorted = values.toSorted((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? (sorted[mid] ?? 0) : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+}
+
+function pacingSummary(
+  pairs: readonly Paired[],
+  answered: ReadonlyMap<string, Answered>,
+  budget: number | undefined,
+): string | null {
+  const turns = pairs.flatMap((pair) => answered.get(pair.task)?.turns ?? []);
+  if (turns.length === 0) return null;
+  const med = medianOf(turns);
+  if (budget === undefined || budget <= 0) {
+    return `Reference valid solves used median ${measured(med)} turns.`;
+  }
+  const unused = Math.max(0, Math.round((1 - med / budget) * 100));
+  return `Reference valid solves used median ${measured(med)}/${String(budget)} turns (${String(unused)}% of turn budget unused).`;
 }
 
 function objectiveSummary(
@@ -225,19 +245,31 @@ function formatOutcomeLine(
   const count = (spread: string) => String(spreads.filter((each) => each === spread).length);
   const scores = scoresIn(report.data.scored).map((score) => (side === "fresh" ? score : -score));
   const won = (sign: number) => String(scores.filter((score) => Math.sign(score) === sign).length);
+  const byValidity = pairs.filter((pair) => carriedBy(pointsOf(pair)) === "validity").length;
+  const byObjective = pairs.filter((pair) => carriedBy(pointsOf(pair)) === "objective").length;
+  const decided = byValidity + byObjective;
+  const carrier =
+    decided === 0 ? "" : ` (${String(byValidity)} decided by validity, ${String(byObjective)} by objective)`;
   const aside = Array.isArray(report.data.aside) ? report.data.aside.length : 0;
   const own = side === "old" ? scoresIn(report.data.noise) : [];
   const objLine = objectiveSummary(pairs, side, ctx.bests, ctx.answered);
+  const paceLine = pacingSummary(pairs, ctx.answered, ctx.budget);
   return [
-    `${named}, scored ${plural(spreads.length, "task")}: the reference harness won ${won(1)}, the harness it was compared with won ${won(-1)}, and ${won(0)} tied.`,
-    `The largest family among them held ${String(largest)}.`,
-    `The reference harness was valid in every solve on ${count("every")} of them, in some on ${count("some")} and in none on ${count("none")}; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside.`,
+    `${named}, scored ${plural(spreads.length, "task")}: reference won ${won(1)}, candidate won ${won(-1)}, ${won(0)} tied${carrier}.`,
+    `Largest family: ${String(largest)} tasks.`,
+    `Reference passed every attempt on ${count("every")}, some on ${count("some")}, none on ${count("none")}; ${String(aside)} excluded pending review.`,
+    ...(spreads.length >= 10 && byObjective === 0 && spreads.every((spread) => spread === "every")
+      ? [
+          "All scored tasks passed validity on every attempt and the objective decided none of them; retire easy tasks with retire_tasks before writing harder replacements.",
+        ]
+      : []),
+    ...(paceLine === null ? [] : [paceLine]),
     ...(objLine === null ? [] : [objLine]),
-    ...(report.data.reading === "check-defects" ? ["It stopped on check defects."] : []),
+    ...(report.data.reading === "check-defects" ? ["Comparison stopped on check defects."] : []),
     ...(own.length === 0
       ? []
       : [
-          `Its own solves, set against each other there, differed on ${String(own.filter((score) => score !== 0).length)} of the ${String(own.length)}.`,
+          `Reference A/A control differed on ${String(own.filter((score) => score !== 0).length)} of ${String(own.length)} tasks.`,
         ]),
   ].join(" ");
 }
@@ -276,13 +308,14 @@ function revisionCueOf(
   const cues: string[] = [];
   const reference = referenceOf(events);
   const latest = reports.findLast(({ data }) => data.old === reference || data.fresh === reference);
-  const current = epochsOf(events).at(-1);
+  const epochs = epochsOf(events);
+  const current = epochs.at(-1);
+  const tuned = openingOf(events)?.parent?.carried.tunedThisEpoch === true && epochs.length === 1;
   const starterOwed =
     current !== undefined &&
     current.reference !== "starter" &&
     current.starter_tally === null &&
     current.confirmed !== true;
-  const tuned = openingOf(events)?.parent?.carried.tunedThisEpoch === true && epochsOf(events).length === 1;
   if (latest !== undefined && !starterOwed && !tuned) {
     const side = latest.data.fresh === reference ? "fresh" : "old";
     const sat = supplySaturation(events, latest, side, pool);
@@ -379,14 +412,16 @@ export function taskHistory(
         );
   const lines = new Map<string, string[]>();
   const listed: string[] = [];
+  const metricRows: JsonObject[] = [];
   for (const { taskId, family } of tasks) {
     const version = proposals.get(taskId)?.version ?? "";
     const state = states.get(version);
     if (state === "refused" || compared?.has(version) === false) continue;
-    const block = blockOf(state, pool.exhausted.includes(version) ? "closed" : pool.outcomes.get(version));
+    const block = blockOf(state, pool.outcomes.get(version));
     if (block !== "practice") listed.push(version);
     const plain = block === "practice" || block === "earlier-reference" || block === "faulted";
-    const clauses = plain ? [] : clausesOf(block, pool, version, answered.get(version), budget);
+    const ans = answered.get(version);
+    const clauses = plain ? [] : clausesOf(block, pool, version, ans, budget);
     const reviewNote = block === "practice" ? [] : [reviewed.get(taskId)].filter(isString);
     const checks = faulted.get(taskId);
     const fault =
@@ -396,12 +431,32 @@ export function taskHistory(
       ...(lines.get(heading) ?? []),
       [`${taskId} (${family})`, ...clauses, ...reviewNote, ...fault].join("; "),
     ]);
+    metricRows.push({
+      taskId,
+      family,
+      state: state ?? "unknown",
+      outcome: heading,
+      turns: ans?.turns ?? [],
+      measures: ans?.measures ?? [],
+      bestAuthor: pool.bests.get(version) ?? null,
+      itemMeans: ans?.itemMeans ?? {},
+    });
   }
-  const stood = outcomeSummaryLines(events, currentReports, after, pairsOf, { bests: pool.bests, answered });
+  const stood = outcomeSummaryLines(events, currentReports, after, pairsOf, {
+    bests: pool.bests,
+    answered,
+    budget,
+  });
   return {
     stood,
     revisionCue: after === undefined || stood !== null ? revisionCueOf(events, currentReports, pool) : null,
     reviews: after === undefined || stood !== null ? reviewInventoryLine(events) : null,
+    metrics: {
+      activeFrontier: pool.frontier.length,
+      turnBudget: budget ?? null,
+      summary: stood,
+      tasks: metricRows,
+    },
     groups: Object.values(BLOCKS).flatMap((heading): { heading: string; lines: string[] }[] => {
       const held = lines.get(heading) ?? [];
       return held.length === 0 ? [] : [{ heading, lines: held }];

@@ -8,8 +8,6 @@ interface Result {
 
 export const SIZE = { tasks: 24, solves: 2 } as const;
 
-export const READINGS_IN_A_ROW = { easy: 2, unsolved: 2 } as const;
-
 const RESULTS_SHOWN = 3;
 
 export function howOftenValid(valid: readonly boolean[]): "every" | "some" | "none" {

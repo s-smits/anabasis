@@ -25,20 +25,20 @@ const FILTER_LABELS = new Map([
  *  `src/campaign/scheduler.ts`) or of a leading Builder's ask or conversation; the code stays in the
  *  row's title. */
 const ROW_WORD = new Map([
-  ["stop", "the operator stopped it"],
-  ["exam", "the exam does not stand"],
-  ["bound", "a bound is spent"],
-  ["tasks", "the tasks are not set up"],
-  ["unfinished", "a comparison goes on"],
-  ["step", "a step promotes"],
-  ["no-room", "no room left to gain"],
-  ["short", "too few tasks to compare"],
-  ["unread", "a harness no comparison read"],
-  ["build", "room to gain"],
-  ["practice", "practice is owed"],
-  ["unshown", "the last session had nothing to work on"],
-  ["asked", "the Builder asked"],
-  ["led", "the Builder leads"],
+  ["stop", "operator stopped campaign"],
+  ["exam", "exam failed validation"],
+  ["bound", "budget or patience limit reached"],
+  ["tasks", "initial tasks needed"],
+  ["unfinished", "comparison in progress"],
+  ["step", "ready to promote"],
+  ["no-room", "no scoring headroom left"],
+  ["short", "not enough eval tasks to compare"],
+  ["unread", "new tasks ready for comparison"],
+  ["build", "headroom available"],
+  ["practice", "practice tasks due"],
+  ["unshown", "last session had nothing new to work on"],
+  ["asked", "Builder requested"],
+  ["led", "Builder leads"],
 ]);
 
 const READING_TONES = new Map<string, Toned["tone"]>([
@@ -75,12 +75,12 @@ export function standingOf(move: Move): Toned & { readonly detail: string } {
 
 function handedOver(move: Move, reading: CampaignReading): string {
   if (move.step === "examiner") {
-    return `${String(move.proposed)} proposed · ${String(move.held)} held out · ${String(move.refused)} refused`;
+    return `${String(move.proposed)} proposed · ${String(move.held)} added to eval pool · ${String(move.refused)} refused`;
   }
   if (move.step === "builder") {
     const from = `from ${harnessLabel(reading, move.parent)}`;
     if (move.ended === null) return `${from} · ${plural(move.practiceSolves, "practice solve")} so far`;
-    const left = move.changed ? `left ${harnessLabel(reading, move.harness)}` : "left the harness as it was";
+    const left = move.changed ? `produced ${harnessLabel(reading, move.harness)}` : "no harness changes";
     return `${from}, ${left} · ${plural(move.practiceSolves, "practice solve")}, ${String(move.fails)} failed`;
   }
   const sides = `${harnessLabel(reading, move.fresh)} against ${harnessLabel(reading, move.old)}`;
@@ -89,9 +89,9 @@ function handedOver(move: Move, reading: CampaignReading): string {
   const stepped = bar?.tally ?? move.tally;
   const tally =
     stepped === null
-      ? "no task tallied"
+      ? "no tasks scored"
       : `${String(stepped.wins)} won, ${String(stepped.losses)} lost, ${String(stepped.ties)} tied`;
-  const aside = move.aside > 0 ? ` · ${String(move.aside)} set aside` : "";
+  const aside = move.aside > 0 ? ` · ${String(move.aside)} needs review` : "";
   return `${sides} · ${size} · ${tally}${aside}`;
 }
 
@@ -137,7 +137,7 @@ export function MovesList({
 }) {
   const { moves, promotions } = reading;
   if (moves.length === 0) {
-    return <NoSignal title="No move yet">The log holds no session and no comparison</NoSignal>;
+    return <NoSignal title="No moves yet">No sessions or comparisons recorded yet</NoSignal>;
   }
   const columns: readonly Column<Move>[] = [
     {

@@ -22,8 +22,8 @@ import { plural } from "../../../../src/meta/text.ts";
 type Column = "task" | "comparison" | "side" | "harness" | "ruling";
 
 const RULINGS = {
-  earned: { label: "earned", tone: "bad" },
-  "check-defect": { label: "check defect", tone: "warn" },
+  "solver-fail": { label: "solver fail", tone: "bad" },
+  "check-defect": { label: "check bug", tone: "warn" },
   unclear: { label: "unclear", tone: "neutral" },
 } as const satisfies Record<Ruling, { readonly label: string; readonly tone: Tone }>;
 

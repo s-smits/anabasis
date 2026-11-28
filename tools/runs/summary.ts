@@ -204,7 +204,7 @@ export function climbed(
         ? []
         : [
             {
-              line: `promotion ${nth}, harness ${digest}${read === null ? " (wait for starter confirmation before pausing)" : ""}`,
+              line: `promotion ${nth}, harness ${digest}${read === null ? " (waiting for Starter Pack check on fresh tasks before pausing)" : ""}`,
               look: false,
             },
           ];
@@ -214,7 +214,7 @@ export function climbed(
     return [
       ...promoted,
       {
-        line: `starter confirmation ${read.session} for promotion ${nth} (${digest}): ${read.confirmed ? "confirmed" : "not confirmed"} (${String(wins)}-${String(losses)}-${String(ties)}${after === undefined ? "" : `; written-after ${String(after.wins)}-${String(after.losses)}-${String(after.ties)}`})`,
+        line: `Starter Pack check ${read.session} for promotion ${nth} (${digest}): ${read.confirmed ? "confirmed" : "not confirmed"} (${String(wins)}-${String(losses)}-${String(ties)}${after === undefined ? "" : `; fresh post-promotion tasks ${String(after.wins)}-${String(after.losses)}-${String(after.ties)}`})`,
         look: !read.confirmed,
       },
     ];

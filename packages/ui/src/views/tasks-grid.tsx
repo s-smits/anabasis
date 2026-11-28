@@ -25,31 +25,32 @@ import { OUTCOMES } from "./outcome.ts";
 // the row's note already names its state. The first column and the head stay put while the grid scrolls
 // in its card.
 
-export const AWAITING = "waits for a label";
+export const AWAITING = "needs human review";
 
 const STATES = ["held", "released", "refused", "disputed"];
 const YES_NO = ["yes", "no"];
 const LABEL_WORDS = new Map([
-  ["yes", "Waits for a label"],
-  ["no", "Does not wait"],
+  ["yes", "Needs human review"],
+  ["no", "No review needed"],
 ]);
-const EXHAUSTED_WORDS = new Map([
-  ["yes", "Exhausted"],
-  ["no", "Not exhausted"],
+export const STATE_WORDS = new Map<string, string>([
+  ["held", "held-out"],
+  ["released", "practice"],
+  ["refused", "rejected"],
+  ["disputed", "quarantined"],
 ]);
-const STATE_WORDS = new Map<string, string>();
 const UNSCORED_WORDS = new Map([
   ["released", "practice"],
   ["refused", "not in the exam"],
 ]);
-/** A cell's word: won, lost, tied or set aside; the tint tells the three ties apart. */
+/** A cell's word: won, lost, tied or needs review; the tint tells the three ties apart. */
 const CELL_WORDS = {
   won: "won",
   lost: "lost",
   tiedEvery: "tied",
   tiedSome: "tied",
   tiedNone: "tied",
-  aside: "set aside",
+  aside: "needs review",
 } as const satisfies Record<Outcome, string>;
 const LEFT_OUT_WORDS = {
   disputed: "disputed",
@@ -63,7 +64,7 @@ export function countsOf(cell: TaskCell): string {
 }
 
 export function leftOutWords(cell: TaskLeftOut): string {
-  return `left out, ${LEFT_OUT_WORDS[cell.leftOut]}`;
+  return `excluded, ${LEFT_OUT_WORDS[cell.leftOut]}`;
 }
 
 export function outcomeOf(outcome: Outcome): { readonly label: string; readonly color: string } {
@@ -72,12 +73,12 @@ export function outcomeOf(outcome: Outcome): { readonly label: string; readonly 
 
 export function drawWords(draw: TaskDraw | null): string[] {
   if (draw === null || draw.place === "frontier") return [];
-  if (draw.place === "retained") return draw.exhausted ? ["exhausted", "retained"] : ["retained"];
-  return [...(draw.awaitingLabel ? [AWAITING] : []), ...(draw.doubted ? ["doubted"] : [])];
+  if (draw.place === "retained") return ["regression check"];
+  return [...(draw.awaitingLabel ? [AWAITING] : []), ...(draw.doubted ? ["quarantined"] : [])];
 }
 
 function taskNote(row: TaskRow): string {
-  return [row.state, ...drawWords(row.draw)].join(" · ");
+  return [STATE_WORDS.get(row.state) ?? row.state, ...drawWords(row.draw)].join(" · ");
 }
 
 function Cell({ cell, state }: { cell: TaskCell | TaskLeftOut | null; state: TaskRow["state"] }) {
@@ -97,7 +98,7 @@ function Cell({ cell, state }: { cell: TaskCell | TaskLeftOut | null; state: Tas
   if ("leftOut" in cell) {
     return (
       <td className="ana-grid-cell is-left-out" data-outcome="left-out" data-left-out={cell.leftOut}>
-        <span>left out</span>
+        <span>excluded</span>
         <small>{LEFT_OUT_WORDS[cell.leftOut]}</small>
       </td>
     );
@@ -125,7 +126,6 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
   const [query, setQuery] = useKept("tasks.search", "");
   const [state, setState] = useKept<readonly string[]>("tasks.state", []);
   const [label, setLabel] = useKept<readonly string[]>("tasks.label", []);
-  const [exhausted, setExhausted] = useKept<readonly string[]>("tasks.exhausted", []);
   if (grid.rows.length === 0) {
     return <NoSignal title="No task yet">No task version has been proposed in this campaign</NoSignal>;
   }
@@ -133,28 +133,20 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
   // and the other choices leave, each with its count.
   const choices = [
     {
-      name: "State",
-      every: "Every state",
+      name: "Pool",
+      every: "All pools",
       value: state,
       set: setState,
       of: (row: TaskRow) => row.state,
       words: STATE_WORDS,
     },
     {
-      name: "Label",
+      name: "Human review",
       every: "All tasks",
       value: label,
       set: setLabel,
       of: (row: TaskRow) => (drawWords(row.draw).includes(AWAITING) ? "yes" : "no"),
       words: LABEL_WORDS,
-    },
-    {
-      name: "Exhausted",
-      every: "All tasks",
-      value: exhausted,
-      set: setExhausted,
-      of: (row: TaskRow) => (drawWords(row.draw).includes("exhausted") ? "yes" : "no"),
-      words: EXHAUSTED_WORDS,
     },
   ];
   const searched = grid.rows.filter((row) =>
@@ -181,7 +173,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
               label={name}
               chosen={value}
               onChange={set}
-              values={(name === "State" ? STATES : YES_NO).filter(
+              values={(name === "Pool" ? STATES : YES_NO).filter(
                 (each) => value.includes(each) || counts.has(each),
               )}
               every={{ label: every, detail: String(left.length) }}

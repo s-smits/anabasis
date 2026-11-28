@@ -153,7 +153,7 @@ describe("Builder history messages", () => {
         seconds: 9,
         billed: 1,
       });
-      add("referee.finding", { solve, ruling: "earned" });
+      add("referee.finding", { solve, ruling: "solver-fail" });
     };
     add("build.started", { session: "b-1", parent: STARTER, tasks: ["v-p"] });
     solved("v-p", BUILT, null);
@@ -188,6 +188,6 @@ describe("Builder history messages", () => {
 
   it("excludes held-out tasks, hidden values, rulings and held-out solve ids", () => {
     const told = formatBuilderView(past()).join("\n");
-    for (const canary of [HELD, HIDDEN, "earned", "s-2-1"]) expect(told).not.toContain(canary);
+    for (const canary of [HELD, HIDDEN, "solver-fail", "s-2-1"]) expect(told).not.toContain(canary);
   });
 });

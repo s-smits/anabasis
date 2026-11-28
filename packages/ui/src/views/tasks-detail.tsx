@@ -7,7 +7,7 @@ import type { Navigation } from "../route.ts";
 import { AnswerIssues, DetailHead, enter } from "./drill.tsx";
 import { time } from "./format.ts";
 import { SolveTable } from "./solve-rows.tsx";
-import { AWAITING, countsOf, drawWords, leftOutWords, outcomeOf } from "./tasks-grid.tsx";
+import { AWAITING, countsOf, drawWords, leftOutWords, outcomeOf, STATE_WORDS } from "./tasks-grid.tsx";
 
 /*
  * One task version: what each comparison came to on it, its text where the tier shows it, and its
@@ -52,11 +52,11 @@ export function TaskDetailView({
         kind="Task"
         badges={
           <>
-            <Badge tone={STATE_TONES[row.state]}>{row.state}</Badge>
+            <Badge tone={STATE_TONES[row.state]}>{STATE_WORDS.get(row.state) ?? row.state}</Badge>
             {words
-              .filter((word) => word !== "retained")
+              .filter((word) => word !== "regression check")
               .map((word) => (
-                <Badge key={word} tone={word === "exhausted" ? "neutral" : "warn"}>
+                <Badge key={word} tone="warn">
                   {word}
                 </Badge>
               ))}

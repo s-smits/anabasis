@@ -154,9 +154,14 @@ describe("referee.pair extract telemetry", () => {
       ],
     });
     const reply = () =>
-      fauxAssistantMessage(fauxToolCall("record_vote", { better: "A", reason: "r" }), {
-        stopReason: "toolUse",
-      });
+      fauxAssistantMessage(
+        fauxToolCall("record_vote", {
+          cites: { better: "A", reason: "r" },
+          depth: { better: "A", reason: "r" },
+          holistic: { better: "A", reason: "r" },
+        }),
+        { stopReason: "toolUse" },
+      );
     faux.setResponses(Array.from({ length: 8 }, () => reply));
     const models = createModels();
     models.setProvider(faux.provider);

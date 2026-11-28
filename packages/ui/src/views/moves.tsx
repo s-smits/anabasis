@@ -33,7 +33,7 @@ type Level = 0 | 1 | 2;
 
 const NO_AWAITING: ReadonlySet<string> = new Set();
 const WIDE = "Table row";
-const RULING_KINDS = ["earned", "check-defect", "unclear"] as const;
+const RULING_KINDS = ["solver-fail", "check-defect", "unclear"] as const;
 
 function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
   if (rulings.withheld) {
@@ -168,18 +168,18 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
     ...(bar.sets === null
       ? []
       : ([
-          ["Frontier", `${tallyText(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`],
+          ["Active eval tasks", `${tallyText(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`],
           [
-            "Retained",
+            "Older regression tasks",
             bar.sets.retained === "unmeasured"
-              ? "unmeasured: no retained task was tallied, which is not no loss"
+              ? "unmeasured (no older regression tasks were scored)"
               : tallyText(bar.sets.retained),
           ],
         ] as const)),
     ["Rulings", rulingsText(bar)],
     ...(bar.noise === null
       ? []
-      : ([["Reference against itself", `${tallyText(bar.noise.tally)} · ${pText(bar.noise.p)}`]] as const)),
+      : ([["Reference A/A control", `${tallyText(bar.noise.tally)} · ${pText(bar.noise.p)}`]] as const)),
   ] as const;
   const { terms } = detail;
   const termFacts = [
@@ -187,9 +187,9 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
     ["Dollar cap", money(terms.cap)],
     ["Model turns", terms.modelTurns === null ? "unlimited" : String(terms.modelTurns)],
     ["Objective", terms.objective === null ? "none" : `${terms.objective.direction} is better`],
-    ["Starter", harnessLabel(reading, terms.starter)],
+    ["Starter Pack", harnessLabel(reading, terms.starter)],
     ["Host load", bar.load === null ? "not recorded" : bar.load.toFixed(1)],
-    ["Table row", bar.named === null ? "not recorded" : `${bar.named.code} · ${bar.named.why}`],
+    ["Scheduler trigger", bar.named === null ? "not recorded" : `${bar.named.code} · ${bar.named.why}`],
     ["Prediction", terms.prediction ?? "none"],
   ] as const;
   return (
@@ -202,7 +202,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
           </div>
         ))}
       </dl>
-      <Disclosure title="Terms fixed before the first solve">
+      <Disclosure title="Pre-registered comparison terms">
         <dl className="ana-facts">
           {termFacts.map(([label, value]) => (
             <div key={label}>
@@ -224,12 +224,12 @@ function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
       : ([
           ["Untied in the test", plural(frontier.untied, "task")],
           [
-            "A step one reading detects four times in five",
+            "80% power detectable win rate",
             frontier.detectable === null
               ? "none: too few untied tasks"
               : `the new harness wins ${percent(frontier.detectable)} of them`,
           ],
-          ["False promotion an attempt", percent(frontier.falseRate)],
+          ["False-promotion rate per attempt", percent(frontier.falseRate)],
         ] as const)),
     ...(families === null || frontier === null || frontier.untied === 0
       ? []

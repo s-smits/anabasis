@@ -37,26 +37,31 @@ export type ScheduledAction = (
 export const short = (digest: string): string => digest.slice(0, 8);
 
 export function decidedLine(decided: ScheduledAction): string {
-  const named = (harness: string) => (harness.length > 16 ? short(harness) : `the ${harness} harness`);
+  const named = (harness: string) =>
+    harness.length > 16
+      ? short(harness)
+      : harness === "starter"
+        ? "the Starter Pack"
+        : `the ${harness} harness`;
   const what = (): string => {
     switch (decided.move) {
       case "draft": {
-        return "an Examiner session, to draft the exam";
+        return "Examiner drafts the exam";
       }
       case "accept": {
-        return "read the exam";
+        return "audit the exam checker";
       }
       case "prepare": {
-        return "set the tasks apart";
+        return "prepare and release practice tasks";
       }
       case "examine": {
-        return "an Examiner session";
+        return "wake Examiner";
       }
       case "build": {
-        return "a Builder session";
+        return "run Builder";
       }
       case "compare": {
-        return `a comparison of ${named(decided.fresh)} with ${named(decided.reference)}`;
+        return `compare ${named(decided.fresh)} against ${named(decided.reference)}`;
       }
       case "promote": {
         return `promote harness ${short(decided.harness)}`;
@@ -65,7 +70,7 @@ export function decidedLine(decided: ScheduledAction): string {
         return `revert reference to ${named(decided.harness)}`;
       }
       case "end": {
-        return `the campaign ends (${decided.ending})`;
+        return `campaign ends (${decided.ending})`;
       }
     }
   };

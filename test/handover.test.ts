@@ -75,7 +75,7 @@ function campaign() {
       seconds: 222.4,
       billed: 1.5,
     });
-    if (outcome === "fail") record("referee.finding", { solve, ruling: "earned" });
+    if (outcome === "fail") record("referee.finding", { solve, ruling: "solver-fail" });
     return solve;
   };
   const began = (id: string) => record("build.started", { session: id, parent: STARTER, tasks: ["p1"] });
@@ -106,7 +106,7 @@ function campaign() {
     if (report === null) return;
     solved("s1", sides.fresh, "pass", id);
     const refused = solved("s1", sides.old, "fail", id);
-    record("referee.finding", { solve: refused, ruling: "earned", billed: 0.5 });
+    record("referee.finding", { solve: refused, ruling: "solver-fail", billed: 0.5 });
     record("comparison.reported", { session: id, ...sides, starter: STARTER, versions: HELD, ...report });
   };
   return { log, record, solved, began, built, compared, events: () => read(log) };
@@ -201,7 +201,7 @@ describe("a campaign's reading", () => {
         tally: { wins: 4, losses: 0, ties: 0 },
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
         means: { old: { billed: 1.5, turns: 14 }, fresh: { billed: 1.5, turns: 14 } },
-        rulings: { earned: 1, "check-defect": 0, unclear: 0 },
+        rulings: { "solver-fail": 1, "check-defect": 0, unclear: 0 },
         billed: 3.5,
         begun: 2,
         solved: 2,
@@ -214,7 +214,7 @@ describe("a campaign's reading", () => {
         repeat: { with: "b-1", tasks: 4 },
         tally: null,
         valid: null,
-        rulings: { earned: 0, "check-defect": 0, unclear: 0 },
+        rulings: { "solver-fail": 0, "check-defect": 0, unclear: 0 },
         billed: 0,
         begun: 0,
         solved: 0,
@@ -254,7 +254,7 @@ describe("a led Builder's lifetime and bill", () => {
     c.began("b-1");
     const reading = (reader: string, solve: string, billed: number) => {
       c.record("referee.turn", { reader, turn: 1, usage: { cost: { total: billed } } });
-      c.record("referee.finding", { solve, reader, ruling: "earned", billed });
+      c.record("referee.finding", { solve, reader, ruling: "solver-fail", billed });
     };
     reading("reader-1", c.solved("p1", HA, "fail"), 0.5);
     expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 2 }]);

@@ -68,7 +68,11 @@ describe("a comparison system's trial log", () => {
     expect(
       unruledIn([
         ...events,
-        { at: "", kind: "comparison.reported", data: { session: "g", settled: { labels: { s: "earned" } } } },
+        {
+          at: "",
+          kind: "comparison.reported",
+          data: { session: "g", settled: { labels: { s: "solver-fail" } } },
+        },
       ]),
     ).toEqual([]);
   });

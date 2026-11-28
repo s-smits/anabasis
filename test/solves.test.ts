@@ -42,15 +42,15 @@ const finding = (ruling: string | null): LogEvent => ({
 describe("a rejection's standing", () => {
   it("is its last finding's ruling, and a finding with no ruling leaves it unruled", () => {
     const cases: [LogEvent[], string | null][] = [
-      [[finding("earned")], "earned"],
-      [[finding("earned"), finding(null)], null],
-      [[finding("earned"), finding("unclear")], "unclear"],
-      [[finding(null), finding("earned")], "earned"],
+      [[finding("solver-fail")], "solver-fail"],
+      [[finding("solver-fail"), finding(null)], null],
+      [[finding("solver-fail"), finding("unclear")], "unclear"],
+      [[finding(null), finding("solver-fail")], "solver-fail"],
       [[finding(null)], null],
       [[], null],
     ];
     for (const [findings, ruling] of cases) {
-      expect(rejectionAside(findings, rejection)).toBe(ruling !== "earned");
+      expect(rejectionAside(findings, rejection)).toBe(ruling !== "solver-fail");
       expect(rejections([...solved, ...findings], fixed, new Map())).toEqual([
         { solve: "s-1", task: "t-1", ruling },
       ]);
@@ -69,17 +69,17 @@ describe("a labelled rejection's standing", () => {
   });
   it("is the label of its comparison's last report, over any ruling", () => {
     const cases: [LogEvent[], string | null][] = [
-      [[finding("unclear"), settled("g-1", { "s-1": "earned" })], "earned"],
-      [[finding("earned"), settled("g-1", { "s-1": "check-defect" })], "check-defect"],
-      [[settled("g-1", { "s-1": "unclear" }), finding("earned")], "unclear"],
-      [[settled("g-1", { "s-1": "earned" }), settled("g-1", {})], null],
-      [[finding("earned"), settled("g-2", { "s-2": "unclear" })], "earned"],
+      [[finding("unclear"), settled("g-1", { "s-1": "solver-fail" })], "solver-fail"],
+      [[finding("solver-fail"), settled("g-1", { "s-1": "check-defect" })], "check-defect"],
+      [[settled("g-1", { "s-1": "unclear" }), finding("solver-fail")], "unclear"],
+      [[settled("g-1", { "s-1": "solver-fail" }), settled("g-1", {})], null],
+      [[finding("solver-fail"), settled("g-2", { "s-2": "unclear" })], "solver-fail"],
     ];
     for (const [events, standing] of cases) {
       expect(standsOf(events).get("s-1") ?? null).toBe(standing);
-      expect(rejectionAside(events, rejection)).toBe(standing !== "earned");
+      expect(rejectionAside(events, rejection)).toBe(standing !== "solver-fail");
     }
-    expect(labelsIn([finding("earned"), settled("g-1", { "s-1": "unclear", "s-3": 4 })])).toEqual(
+    expect(labelsIn([finding("solver-fail"), settled("g-1", { "s-1": "unclear", "s-3": 4 })])).toEqual(
       new Map([["s-1", "unclear"]]),
     );
   });

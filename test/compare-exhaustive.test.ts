@@ -26,7 +26,6 @@ import {
   upperBound,
   sweepOf,
   testOf,
-  WEIGHTS,
   wholePoints,
 } from "../src/kernel/compare.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -316,14 +315,12 @@ describe("a task's score", () => {
       const n = pair.old.length * pair.fresh.length;
       const freshOnly = pair.fresh.filter(Boolean).length * pair.old.filter((one) => !one).length;
       const oldOnly = pair.old.filter(Boolean).length * pair.fresh.filter((one) => !one).length;
-      expect(
-        Math.abs(pointsOf(pair).validity - (1000 * WEIGHTS.validity * (freshOnly - oldOnly)) / n),
-      ).toBeLessThan(1e-9);
+      expect(Math.abs(pointsOf(pair).validity - (1000 * (freshOnly - oldOnly)) / n)).toBeLessThan(1e-9);
     }
   });
 
-  it("negates exactly when the sides are exchanged, stays within the weights, and names a carrier only for an untied score", () => {
-    const most = 1000 * (WEIGHTS.validity + WEIGHTS.objective);
+  it("negates exactly when the sides are exchanged, stays within the scale, and names a carrier only for an untied score", () => {
+    const most = 1000;
     for (const pair of every) {
       const score = differenceOf(pair);
       expect(differenceOf(swap(pair))).toBe(score === 0 ? 0 : -score);
@@ -639,8 +636,7 @@ describe("a comparison's size, said before it runs", () => {
 
 describe("the protocol's measured constants", () => {
   it("hold the values chosen from measurement, pinned once, since a check derived from them would only restate them", () => {
-    expect({ WEIGHTS, GAP_FLOOR, SIZE, PATIENCE }).toEqual({
-      WEIGHTS: { validity: 0.6, objective: 0.3 },
+    expect({ GAP_FLOOR, SIZE, PATIENCE }).toEqual({
       GAP_FLOOR: 0.01,
       SIZE: { tasks: 24, solves: 2 },
       PATIENCE: 6,
@@ -682,7 +678,7 @@ describe("the protocol's measured constants", () => {
         fresh: [true],
         objective: { direction: "higher", scale: "unit", old: [0.7], fresh: [0.85] },
       }),
-    ).toBe(45);
+    ).toBe(150);
     expect(objectiveRuleOf({ direction: "higher", scale: "unit" })).toEqual({
       direction: "higher",
       scale: "unit",
@@ -703,7 +699,7 @@ describe("the protocol's measured constants", () => {
         fresh: [true],
         objective: { ...(roundTripped ?? { direction: "higher" }), old: [0], fresh: [0.02] },
       }),
-    ).toBe(6);
+    ).toBe(20);
     expect(
       differenceOf({
         task: "r-zero",
@@ -711,6 +707,6 @@ describe("the protocol's measured constants", () => {
         fresh: [true],
         objective: { direction: "higher", old: [0], fresh: [0.02] },
       }),
-    ).toBe(300);
+    ).toBe(1000);
   });
 });

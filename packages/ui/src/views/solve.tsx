@@ -22,9 +22,9 @@ interface Back {
 }
 
 const BY = {
-  referee: "the Referee",
-  host: "the host, on a verdict that did not repeat",
-  label: "a person's label",
+  referee: "Auditor",
+  host: "host (non-reproducible failure)",
+  label: "human review",
 } as const;
 
 function Verdict({ detail }: { detail: SolveDetail }) {

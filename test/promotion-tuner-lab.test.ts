@@ -65,10 +65,14 @@ describe("knobs at today's values", () => {
   });
 
   it("round a half point as production does", () => {
-    // Validity in two of the four pairings and a quarter's gain in the other two: 300 and 37.5 points.
-    const half = task([solve(1, 75), solve(1, null, false)], [solve(1, 100), solve(1, 100)], "higher");
-    expect(differenceOf(paired(half))).toBe(338);
-    expect(knobbed(TODAY, "today").score(half)).toBe(338);
+    // Validity tied (one valid each) and a 1% gain in that one of four pairings: 2.5 points -> 3.
+    const half = task(
+      [solve(1, 99), solve(1, null, false)],
+      [solve(1, 100), solve(1, null, false)],
+      "higher",
+    );
+    expect(differenceOf(paired(half))).toBe(3);
+    expect(knobbed(TODAY, "today").score(half)).toBe(3);
   });
 
   it("read a step where the sign-flip test does, and nowhere else", () => {
@@ -112,6 +116,6 @@ describe("knobs at today's values", () => {
     expect(rawFlip.test?.(asymmetric.map(rawFlip.score), LEVEL, asymmetric)).toBe(false);
     const noRetained = knobbed(knobsOf("retained=out", fail), "no-retained");
     expect(noRetained.score({ ...validOnlyNew(1), retained: true })).toBe(0);
-    expect(noRetained.score({ ...validOnlyNew(1), retained: false })).toBe(600);
+    expect(noRetained.score({ ...validOnlyNew(1), retained: false })).toBe(1000);
   });
 });

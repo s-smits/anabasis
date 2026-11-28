@@ -114,7 +114,7 @@ function practiceTriggers(
   const fails = round.practice.filter((solve) => solve.outcome === "fail");
   const older = new Set(log.solves.flatMap((solve) => (solve.index < build.from ? [solve.harness] : [])));
   const failed = fails.filter((fail) => fail.harness !== build.parent && !older.has(fail.harness));
-  const earned = failed.filter((fail) => log.stands.get(fail.id) === "earned").length;
+  const earned = failed.filter((fail) => log.stands.get(fail.id) === "solver-fail").length;
   const laterPass = (fail: Solve, bytes: "same" | "other") =>
     round.practice.some(
       (later) =>
@@ -337,7 +337,7 @@ function comparisonTriggers(log: Index): Trigger[] {
     const aside = new Set(strings(own.aside));
     const open = scoring.filter(
       (solve) =>
-        solve.kind === "rejected" && aside.has(solve.version) && log.stands.get(solve.id) !== "earned",
+        solve.kind === "rejected" && aside.has(solve.version) && log.stands.get(solve.id) !== "solver-fail",
     );
     const underOld = open.filter((solve) => solve.harness === own.old).length;
     const level = count(last.level);

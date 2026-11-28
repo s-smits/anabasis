@@ -502,18 +502,18 @@ describe("the decision table, searched", () => {
   // them, so a changed rule for which task is easy or doubted passes and a list that drops, repeats
   // or crosses tasks does not. A release of fewer tasks takes the front of a larger one.
   it("partitions the held tasks into the pool's lists, and releases the front of one order from its pool", () => {
-    const seen = { retained: 0, practiceFrontier: 0, longOrder: 0 };
+    const seen = { retained: 0, frontier: 0, longOrder: 0 };
     for (const { events } of SAMPLED) {
       const { held } = taskSets(events);
       const pool = poolOf(events);
       seen.retained += Math.sign(pool.retained.length);
-      seen.practiceFrontier += Math.sign(pool.practiceFrontier.length);
+      seen.frontier += Math.sign(pool.frontier.length);
       const promotedAt = activePromotionAt(events);
       const inherited = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
       const leftOut = new Set([...pool.awaiting, ...pool.doubted]);
       expect([...pool.scorable, ...leftOut].toSorted()).toEqual(held.toSorted());
       expect([...pool.frontier, ...pool.retained].toSorted()).toEqual(pool.scorable.toSorted());
-      expect(pool.practiceFrontier.filter((task) => inherited.has(task) || leftOut.has(task))).toEqual([]);
+      expect(pool.frontier.filter((task) => inherited.has(task) || leftOut.has(task))).toEqual([]);
       expect(pool.practicePool).toEqual(
         held.filter((task) => !inherited.has(task) && !pool.doubted.includes(task)),
       );
@@ -581,7 +581,7 @@ describe("the decision table, searched", () => {
       const { held } = taskSets(events);
       if (due === null) continue;
       const read = events.some(({ kind }) => kind === REPORTED_EVENT || isReferenceChange(kind));
-      expect(due.said.endsWith(" since the last reading")).toBe(read);
+      expect(due.said.endsWith(" since the last comparison")).toBe(read);
       const promotedAt = events.findLastIndex(
         ({ kind }) => kind === PROMOTED_EVENT || kind === "harness.reverted",
       );
@@ -626,78 +626,15 @@ describe("the decision table, searched", () => {
       event("task.proposed", { version }),
       event("task.gate", { version, gate: 1, outcome: "passed" }),
     ];
-    const cond = (
-      task: string,
-      harness: string,
-    ): { readonly id: string; readonly setting: string; readonly recorded: LogEvent } => {
-      const condition = {
-        contract: "c",
-        harness,
-        task,
-        model: "m",
-        effort: "high",
-        prices: { m: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } },
-        runtime: {},
-        compaction: "off" as const,
-        solverTools: "s",
-        verifierTools: "v",
-        sandbox: "p",
-        limits: { wallSeconds: 60, turns: 10, shellDefaultSeconds: 10, shellMaxSeconds: 20, concurrency: 1 },
-        host: "h",
-        side: "test" as const,
-      };
-      const id = conditionId(condition);
-      return { id, setting: settingId(condition), recorded: event("condition.recorded", { id, condition }) };
-    };
-    const pass = (solve: string, condition: string, comparison: string): LogEvent[] => [
-      event("solve.started", { solve, condition, comparison }),
-      event("solve.finished", { solve, ending: { outcome: "pass" } }),
-    ];
-    // At level 0.1, comparisonFloor(0.1) = 4 + 2 = 6; hold 1 already-released task (t-0),
-    // 7 frontier tasks, and 1 exhausted task (t-ex), so allowance after g-2 is 7 - 6 = 1.
-    const cOld = cond("t-ex", STARTER);
-    const cNew = cond("t-ex", "h1");
+    // At level 0.1, comparisonFloor(0.1) = 4 + 2 = 6; hold 1 already-released task (t-0)
+    // and 7 frontier tasks (t-1..t-7), so allowance is 7 - 6 = 1.
     const base: LogEvent[] = [
-      ...["t-0", "t-ex", "t-1", "t-2", "t-3", "t-4", "t-5", "t-6", "t-7"].flatMap(held),
+      ...["t-0", "t-1", "t-2", "t-3", "t-4", "t-5", "t-6", "t-7"].flatMap(held),
       event("task.state", { version: "t-0", state: "released" }),
-      cOld.recorded,
-      cNew.recorded,
-      ...pass("s-1", cOld.id, "g-1"),
-      ...pass("s-2", cNew.id, "g-1"),
-      event(REPORTED_EVENT, {
-        session: "g-1",
-        old: STARTER,
-        fresh: "h1",
-        starter: STARTER,
-        setting: cOld.setting,
-        solves: 1,
-        versions: ["t-ex"],
-        reading: "no-step",
-        scored: { wins: 0, losses: 0, ties: 1, p: 1, unsolved: 0 },
-        valid: { old: [0, 1], fresh: [0, 1] },
-        aside: [],
-      }),
-      ...pass("s-3", cOld.id, "g-2"),
-      ...pass("s-4", cNew.id, "g-2"),
-      event(REPORTED_EVENT, {
-        session: "g-2",
-        old: STARTER,
-        fresh: "h1",
-        starter: STARTER,
-        setting: cOld.setting,
-        solves: 1,
-        versions: ["t-ex"],
-        reading: "no-step",
-        scored: { wins: 0, losses: 0, ties: 1, p: 1, unsolved: 0 },
-        valid: { old: [0, 1], fresh: [0, 1] },
-        aside: [],
-      }),
     ];
-    expect(poolOf(base).exhausted).toEqual(["t-ex"]);
     expect(practiceDue(base, 3, 0.1)?.to).toBe(2);
-    const afterExhaustedRelease = [...base, event("task.state", { version: "t-ex", state: "released" })];
-    // Releasing t-ex spent the single allowance slot even though practiceFrontier stayed at 7.
-    expect(practiceDue(afterExhaustedRelease, 3, 0.1)).toBeNull();
+    const afterRelease = [...base, event("task.state", { version: "t-1", state: "released" })];
+    expect(practiceDue(afterRelease, 3, 0.1)).toBeNull();
 
     // 2. Post-promotion campaign with practice=0 and only inherited held tasks does not say "holds no task".
     const inheritedOnly: LogEvent[] = [
@@ -762,7 +699,10 @@ describe("the decision table, searched", () => {
   it("counts unchanged Builder sessions with in-epoch practice failures toward stopRule, in chronological order with comparisons", () => {
     const pCond = cond("p-1", STARTER);
     let seq = 0;
-    const practice = (outcome: "pass" | "fail", ruling: "earned" | "check-defect" = "earned"): LogEvent[] => {
+    const practice = (
+      outcome: "pass" | "fail",
+      ruling: "solver-fail" | "check-defect" = "solver-fail",
+    ): LogEvent[] => {
       const solve = `ps-${String(++seq)}`;
       return [
         event("solve.started", { solve, condition: pCond.id }),
@@ -1057,7 +997,6 @@ describe("the decision table, searched", () => {
       "old",
     );
     expect(satEven).not.toBeNull();
-    expect(satEven?.aaP75).toBeCloseTo(0.01, 6);
     const wake = nextAction(even, { ...PLAN, practice: 0, wanted: { target: 12, level: 0.1, solves: 2 } });
     expect(wake.move).toBe("examine");
     expect(wake.code).toBe("no-room");
@@ -1088,7 +1027,6 @@ describe("the decision table, searched", () => {
       "old",
     );
     expect(satOdd).not.toBeNull();
-    expect(satOdd?.aaP75).toBeNull();
 
     const freshRef = makeRun(2, "fresh");
     const satFresh = supplySaturation(
@@ -1097,7 +1035,6 @@ describe("the decision table, searched", () => {
       "fresh",
     );
     expect(satFresh).not.toBeNull();
-    expect(satFresh?.aaP75).toBeCloseTo(0.02, 6);
 
     const midRange = makeRun(2, "old").map((ev) =>
       ev.kind === "verdict" ? { ...ev, data: { ...ev.data, objective: 0.5 } } : ev,

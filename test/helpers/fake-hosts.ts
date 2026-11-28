@@ -11,7 +11,7 @@ import {
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join } from "../../src/meta/path.ts";
-import { capturedExecPath, capturedSpawn } from "../../src/meta/process.ts";
+import { capturedExecPath, capturedSpawn, processAnswers, runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 
 const COMMIT = "a".repeat(40);
@@ -180,4 +180,22 @@ export function fakeHosts() {
     }
   };
   return { root, main, host, env, run, runAsync, runScript, runScriptAsync, recorded, commit: COMMIT };
+}
+
+export function fakeNice(root: string): void {
+  const nice = join(root, "bin", "nice");
+  writeFileSync(
+    nice,
+    `#!${capturedExecPath}\n${RECORD}\nif (args[1] === "19" && process.env.FAKE_LIVES === "1") await Bun.sleep(5000);\n`,
+  );
+  chmodSync(nice, 0o755);
+}
+
+export const startsOf = (recorded: readonly { tool: string; args: string[] }[]): number =>
+  recorded.filter(({ tool, args }) => tool === "nice" && args[1] === "19").length;
+
+export function reapKeepers(out: string): number {
+  const pids = [...out.matchAll(/kept by pid (\d+)/gu)].map(([, pid]) => Number(pid));
+  for (const pid of pids) if (processAnswers(pid)) runtimeProcess.kill(pid, "SIGKILL");
+  return pids.length;
 }

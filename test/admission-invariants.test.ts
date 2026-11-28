@@ -5,6 +5,7 @@ import {
   billedRate,
   Refused,
   refusals,
+  stopRule,
   supplyOf,
 } from "../src/campaign/admission.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
@@ -294,5 +295,58 @@ describe("admission invariants", () => {
     });
     expect(cleanNotes.some((n) => n.includes("no task is released"))).toBe(false);
     expect(cleanNotes.some((n) => n.includes("fault(s)"))).toBe(false);
+  });
+
+  it("counts moves since the epoch's last step, adding a parent's count only before any step or promotion, over every log of up to four moves", () => {
+    const moves = ["step", "flat", "promote"] as const;
+    const logsOf = (length: number): (typeof moves)[number][][] =>
+      length === 0 ? [[]] : logsOf(length - 1).flatMap((head) => moves.map((one) => [...head, one]));
+    const opened = (carried: number | null) =>
+      carried === null
+        ? []
+        : [
+            ev("campaign.opened", {
+              parent: {
+                campaign: "a",
+                revised: "r",
+                kind: "tune",
+                carried: { spent: 0, sinceStep: carried, attempts: 0, tunes: 1 },
+              },
+            }),
+          ];
+    const room = { old: [1, 1, 0], fresh: [1, 1, 0], informative: { old: 1, fresh: 1 } };
+    let logs = 0;
+    for (const carried of [null, 0, 3]) {
+      for (const order of [0, 1, 2, 3, 4].flatMap(logsOf)) {
+        const log = [
+          ...opened(carried),
+          ...order.flatMap((move, at) => {
+            const harness = `h-${String(at)}`;
+            return move === "promote"
+              ? [ev("harness.promoted", { harness: `p-${String(at)}`, from: STARTER })]
+              : [
+                  ev("build.checkpoint", { session: `b-${String(at)}`, harness }),
+                  ev(COMP_REPORTED, {
+                    session: `g-${String(at)}`,
+                    old: STARTER,
+                    fresh: harness,
+                    reading: move === "step" ? "step" : "no-step",
+                    versions: ["t-0"],
+                    scored: { wins: 0, losses: 0, ties: 1 },
+                    valid: room,
+                  }),
+                ];
+          }),
+        ];
+        const promotedAt = order.lastIndexOf("promote");
+        const epoch = order.slice(promotedAt + 1);
+        const lastStep = epoch.lastIndexOf("step");
+        const since = epoch.length - 1 - lastStep;
+        const inherited = promotedAt === -1 && lastStep === -1 ? (carried ?? 0) : 0;
+        expect(stopRule(log).sinceStep).toBe(since + inherited);
+        logs += 1;
+      }
+    }
+    expect(logs).toBe(3 * (1 + 3 + 9 + 27 + 81));
   });
 });

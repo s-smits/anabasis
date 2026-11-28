@@ -314,7 +314,8 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       incapable: 3,
       union: 0.1,
     });
-    if (second === undefined) throw new Error("an epoch");
+    if (first === undefined || second === undefined) throw new Error("two epochs");
+    expect([first.from, second.from]).toEqual([0, 5]);
     expect(epochLine(second)).toContain(
       "estimated false-promotion risk 10%; 0 of 1 powered A/A control triggered a false positive (0 two-sided), plus 3 underpowered at alpha, 3 of them tied on every task (zero reference variance);",
     );

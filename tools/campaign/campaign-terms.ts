@@ -553,24 +553,16 @@ export function comparisonOf(decided: CompareMove, turn: Turn) {
 
 function readForTurn(log: string): LogEvent[] {
   const events: LogEvent[] = [];
-  const heard = new Set<number>();
-  const words: number[] = [];
+  let worded = false;
   eachEvent(
     log,
-    (event, index) => {
+    (event) => {
       events.push(event);
-      if (Array.isArray(event.data.answers)) {
-        for (const at of event.data.answers) {
-          if (isNumber(at)) heard.add(at);
-        }
-      }
-      if (event.kind === "campaign.word" && ANSWERED.some((word) => word === event.data.word)) {
-        words.push(index);
-      }
+      worded ||= event.kind === "campaign.word" && ANSWERED.some((word) => word === event.data.word);
     },
     CALL_KINDS,
   );
-  return words.some((at) => !heard.has(at)) ? read(log) : events;
+  return worded ? read(log) : events;
 }
 
 export function turnOf(source: TurnSource): Turn {

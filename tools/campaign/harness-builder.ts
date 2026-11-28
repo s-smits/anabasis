@@ -278,20 +278,27 @@ async function lead(
   context: CampaignContext,
   named: Exclude<ScheduledAction, { move: "end" }>,
 ): Promise<ScheduledAction | null> {
-  const { log, values, seats } = context;
+  const { log, values, seats, campaign } = context;
   const left = await converse(context, named);
   if (left === null) {
     await waitCrashed(log, seats.host);
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
-  if (left.move === "end" && left.ending !== "revise") {
-    ended(log, read(log), left);
-    if (left.ending !== "environment" && values.handover !== undefined) {
-      await closeCommand([...packOf(values), "--to", values.handover]);
-    }
-  }
+  if (left.move === "end" && left.ending !== "revise") await closeOut(log, values, campaign, left);
   return left;
+}
+
+async function closeOut(
+  log: string,
+  values: Values,
+  campaign: Campaign | null,
+  decided: Extract<ScheduledAction, { move: "end" }>,
+): Promise<void> {
+  ended(log, read(log), decided);
+  if (values.handover !== undefined && campaign !== null) {
+    await closeCommand([...packOf(values), "--to", values.handover]);
+  }
 }
 
 async function handoffRevision(
@@ -477,10 +484,7 @@ export async function harnessBuilder(
           opened: campaign !== null,
         });
       }
-      ended(log, events, decided);
-      if (values.handover !== undefined && campaign !== null) {
-        await closeCommand([...packOf(values), "--to", values.handover]);
-      }
+      await closeOut(log, values, campaign, decided);
       return decided;
     }
     if (values["dry-run"] || made >= most) return decided;

@@ -111,5 +111,7 @@ describe("a value given from a file in the Examiner's home", () => {
       expect(() => prepared({ ...large, answer: { from_file: path } })).toThrow(refusal);
     }
     expect(() => prepared({ ...large, answer: { from_file: "task.json" } }, null)).toThrow("no home");
+    expect(trying().description).toContain("from_file");
+    expect(trying(null).description).not.toContain("from_file");
   });
 });

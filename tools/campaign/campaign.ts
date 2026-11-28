@@ -48,7 +48,7 @@ import { asRecord, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { plural } from "#src/meta/text.ts";
-import { join, resolve } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { gitMaybe, worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
@@ -349,7 +349,6 @@ export async function openCampaign(args: CampaignArgs) {
     });
   };
   const reviewers = (reader: Reader) => reviewersOf(reader, { log: written, contract, checks, verify });
-  const sessionsDir = join(dir, CLAUDE_SESSIONS_DIR);
   return {
     repo: REPO,
     trees,
@@ -386,8 +385,8 @@ export async function openCampaign(args: CampaignArgs) {
       effort,
       models: hostSession({ webSearch: false, cacheTtl: "5m" }),
     }),
-    builder: hostSession({ webSearch: true, cacheTtl: "1h", persistDir: sessionsDir }),
-    examiner: hostSession({ webSearch: false, cacheTtl: "1h", persistDir: sessionsDir }),
+    builder: seatSession(log, "builder"),
+    examiner: seatSession(log, "examiner"),
   };
 }
 
@@ -486,7 +485,7 @@ export function hostSession(seat: {
         cacheTtl: seat.cacheTtl,
         ...keyIfDefined(
           "persist",
-          seat.persistDir !== undefined && id !== undefined ? { dir: seat.persistDir, seat: id } : undefined,
+          seat.persistDir === undefined || id === undefined ? undefined : { dir: seat.persistDir, seat: id },
         ),
         ...keyIfDefined("fork", seat.fork),
       },
@@ -494,6 +493,13 @@ export function hostSession(seat: {
 }
 
 export const examinerSession = hostSession({ webSearch: false, cacheTtl: "1h" });
+
+const seatSession = (log: string, seat: "builder" | "examiner") =>
+  hostSession({
+    webSearch: seat === "builder",
+    cacheTtl: "1h",
+    persistDir: join(dirname(log), CLAUDE_SESSIONS_DIR),
+  });
 
 export function stayAwake(): void {
   if (runtimeProcess.platform === "darwin") {

@@ -264,14 +264,10 @@ export async function judgePair(reader: Reader, given: PairCase): Promise<void> 
     const own = byCriterion.get(one) ?? [];
     return own.reduce((sum, { sign }) => sum + sign, 0) / Math.max(1, own.length);
   };
-  const maxWeight = Math.max(0, ...scored.map(({ weight: own }) => own));
-  const weight = maxWeight === 0 ? 0 : scored.reduce((sum, { weight: own }) => sum + own / maxWeight, 0);
+  const weight = scored.reduce((sum, { weight: own }) => sum + own, 0);
   append(given.log, PAIRED, {
     ...record,
-    judge:
-      weight === 0
-        ? 0
-        : scored.reduce((sum, { id: one, weight: own }) => sum + (own / maxWeight) * mean(one), 0) / weight,
+    judge: scored.reduce((sum, { id: one, weight: own }) => sum + own * mean(one), 0) / weight,
     holistic: mean(HOLISTIC),
     criteria: Object.fromEntries(criteria.map(({ id: one }) => [one, mean(one)])),
     disagreed: criteria.flatMap(({ id: one }) => {

@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { hostRoute, parseCliArgs, runCommand, SKILL_REPO } from "#skills/main/cli.ts";
-import { campaignName, namedLogs } from "#skills/main/logs.ts";
+import { campaignLabel, campaignName, namedLogs } from "#skills/main/logs.ts";
 import { countsLine, formatTally, printed } from "#skills/main/print.ts";
 import { summed } from "#skills/main/stats.ts";
 import { overloadOf, spansOf, unionMs, waitedMs, waitsOf } from "#skills/main/time.ts";
@@ -150,6 +150,26 @@ describe("shared skill library formatting and folds", () => {
     writeFileSync(alphaLog, "");
     writeFileSync(betaLog, "");
     expect(campaignName(alphaLog)).toBe("alpha");
+    const alphaOn = (host: string) => `/runs/${host}/alpha/log.jsonl`;
+    const [a, b, c, other] = [
+      alphaOn("host-a"),
+      alphaOn("host-b"),
+      alphaOn("host-c"),
+      "/runs/host-a/beta/log.jsonl",
+    ];
+    const labelled: [string[], string[], boolean][] = [
+      [[a], ["alpha"], false],
+      [[a, other], ["alpha", "beta"], false],
+      [[a, b], ["alpha@host-a", "alpha@host-b"], false],
+      [[a, b, other], ["alpha@host-a", "alpha@host-b", "beta"], false],
+      [[a, b, c], ["alpha@host-a", "alpha@host-b", "alpha@host-c"], false],
+      [[a, a], ["alpha@host-a", "alpha@host-a"], true],
+    ];
+    for (const [logs, labels, twice] of labelled) {
+      const named = logs.map((log) => campaignLabel(log, logs));
+      expect(named).toEqual(labels);
+      expect(new Set(named).size < logs.length).toBe(twice);
+    }
     expect(await namedLogs([alpha, betaLog])).toEqual([
       { name: "alpha", path: alphaLog },
       { name: "beta", path: betaLog },

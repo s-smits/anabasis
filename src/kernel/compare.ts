@@ -138,12 +138,12 @@ function scaledMargins(differences: readonly number[]) {
 
 function stepThreshold(sizes: readonly number[], level: number): number {
   const fair = plusTotalChances(sizes, 0.5);
-  let [from, tail] = [fair.length, 0];
-  while (from > 0 && tail + (fair[from - 1] ?? 0) <= level) {
-    from -= 1;
-    tail += fair[from] ?? 0;
+  let tail = 0;
+  for (const [back, chance] of fair.toReversed().entries()) {
+    tail += chance;
+    if (tail > level) return fair.length - back;
   }
-  return from;
+  return 0;
 }
 
 export function rawFlipP(differences: readonly number[]): number {
@@ -263,7 +263,7 @@ export function gainOver(
 ): number {
   if (!isNumber(one) || !isNumber(other)) return 0;
   const delta = rule.direction === "lower" ? other - one : one - other;
-  if (rule.scale === "unit") return Math.max(-1, Math.min(1, delta));
+  if (rule.scale === "unit") return delta;
   const larger = Math.max(Math.abs(one), Math.abs(other));
   if (larger < ZERO_FLOOR) return 0;
   return Math.max(-1, Math.min(1, delta / larger));

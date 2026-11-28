@@ -111,7 +111,7 @@ async function scoreDone(values: {
       ]);
       mkdirSync(join(store, "scored"), { recursive: true });
       const file = join(store, "scored", `${label}.txt`);
-      writeFileSync(file, table.endsWith("\n") ? table : `${table}\n`);
+      writeFileSync(file, table);
       const arms = table
         .split("\n")
         .filter((line) => / score \d+\/\d+/u.test(line))

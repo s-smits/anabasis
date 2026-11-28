@@ -43,8 +43,10 @@ import { reportIndex, reportOf, ROWS, sessionsOf } from "../tools/wri/investigat
 import { buildPackets } from "../tools/wri/packets.ts";
 import { pairRows, sideGap } from "../tools/wri/pairs.ts";
 import { portabilityRows } from "../tools/wri/portability.ts";
+import { spentTo } from "../tools/wri/promotion.ts";
 import { overview } from "../tools/wri/read.ts";
 import { scoreRows } from "../tools/wri/scores.ts";
+import { clockOf } from "../tools/wri/trajectory.ts";
 import { transferRows } from "../tools/wri/transfer.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 import { wriCampaign } from "./helpers/wri-campaign.ts";
@@ -1109,6 +1111,14 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       },
     ];
     expect(gamingRows(fromFileDraftLog).join("\n")).toContain("checks [none], rules [none]");
+    const items = (weight: number) => ({
+      objective: { quantity: "score", direction: "higher", items: [{ id: "a", weight }] },
+    });
+    const revisedLog: LogEvent[] = [
+      { at: AT, kind: "exam.drafted", data: { session: "d-1", draft: items(1) } },
+      { at: AT, kind: "exam.revised", data: { kind: "tune", why: "w", draft: items(3) } },
+    ];
+    expect(gamingRows(revisedLog).join("\n")).toContain("revised (tune)");
     expect(
       overview(unprobedLog).triggers.find((trigger) => trigger.name === "DRAFT AUDIT DEFECTS")?.detail,
     ).toContain("unverified final pass");
@@ -1947,6 +1957,31 @@ describe("the findings ledger", () => {
       expect(byDomain.runs.map(({ name }) => name)).toEqual(["jobstat-live"]);
     } finally {
       rmSync(runsDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the hours between two events", () => {
+  it("counts each gap under thirty minutes as work and each longer one as silence, and an unreadable time as no hours, over every log of up to three gaps", () => {
+    const at = (minutes: number) => new Date(Date.UTC(2026, 10, 1) + minutes * 60_000).toISOString();
+    const verdict = (when: string): LogEvent => ({ at: when, kind: "verdict", data: { pass: true } });
+    const gapsOf = (length: number): number[][] =>
+      length === 0
+        ? [[]]
+        : gapsOf(length - 1).flatMap((head) => [29, 30, 31, 45].map((gap) => [...head, gap]));
+    let logs = 0;
+    for (const gaps of [1, 2, 3].flatMap(gapsOf)) {
+      const times = [0, ...gaps.map((_, upTo) => gaps.slice(0, upTo + 1).reduce((sum, gap) => sum + gap, 0))];
+      const last = times.at(-1) ?? 0;
+      const timed = times.map((minutes) => verdict(at(minutes)));
+      const worked = gaps.filter((gap) => gap < 30).reduce((sum, gap) => sum + gap, 0);
+      expect(clockOf(timed)(at(last))).toBeCloseTo(worked / 60, 9);
+      expect(spentTo(indexOf(timed), 0, timed.length)).toBe(`${(last / 60).toFixed(1)} h and $0`);
+      logs += 1;
+    }
+    expect(logs).toBe(4 + 16 + 64);
+    for (const unreadable of [[], [verdict("later"), verdict(at(90))], [verdict(at(0)), verdict("later")]]) {
+      expect(spentTo(indexOf(unreadable), 0, unreadable.length)).toBe("0.0 h and $0");
     }
   });
 });

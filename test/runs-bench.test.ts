@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import {
   bench,
@@ -143,13 +144,12 @@ describe("runs bench", () => {
     expect(ran.some((words) => words.includes("--yes"))).toBe(false);
   });
 
-  test("completedBenchPairs handles both base- and starter- baselines with exact task matching", async () => {
+  test("completedBenchPairs pairs base- and starter- baselines by exact tasks until a store scoring covers them", async () => {
     const store = mkdtempSync(join(tmpdir(), "ana-bench-scores-"));
     scratch.push(store);
     const put = (arm: string, task: string, runtime?: string) => {
       mkdirSync(join(store, "judged", arm), { recursive: true });
-      const body = runtime === undefined ? "{}\n" : `${JSON.stringify({ runtime })}\n`;
-      writeFileSync(join(store, "judged", arm, `${task}.json`), body);
+      writeFileSync(join(store, "judged", arm, `${task}.json`), `${JSON.stringify({ task, runtime })}\n`);
     };
     put("ref-a1", "t1");
     put("starter-ref-a1", "t1");
@@ -179,6 +179,24 @@ describe("runs bench", () => {
       { label: "pi-a2", baseline: "base-pi-a2" },
       { label: "ref-a1", baseline: "starter-ref-a1" },
     ]);
+    const elsewhere = mkdtempSync(join(tmpdir(), "ana-bench-elsewhere-"));
+    scratch.push(elsewhere);
+    for (const arm of ["ref-b1", "starter-ref-b1"]) {
+      mkdirSync(join(elsewhere, "judged", arm), { recursive: true });
+      writeFileSync(join(elsewhere, "judged", arm, "t1.json"), `${JSON.stringify({ task: "t1" })}\n`);
+    }
+    const local = (name: string, at: string) => ({ ...STATS, name, host: "here", store: at });
+    const given = runtimeProcess.env.EVAL_RUNNER;
+    runtimeProcess.env.EVAL_RUNNER = JSON.stringify([local("own", store), local("elsewhere", elsewhere)]);
+    try {
+      await bench(["--bench", "own"]);
+    } finally {
+      if (given === undefined) delete runtimeProcess.env.EVAL_RUNNER;
+      else runtimeProcess.env.EVAL_RUNNER = given;
+    }
+    expect(completedBenchPairs(store)).toEqual([]);
+    expect(completedBenchPairs(elsewhere)).toEqual([{ label: "ref-b1", baseline: "starter-ref-b1" }]);
+    expect(readFileSync(join(store, "scored", "ref-a1.txt"), "utf8")).toStartWith("all 2\n");
     await expect(bench(["--bench", "no-such-bench"])).rejects.toThrow("no benchmark no-such-bench");
   });
 

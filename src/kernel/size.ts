@@ -1,5 +1,5 @@
 import { plural } from "../meta/text.ts";
-import { detectable, flipP, power, sweepOf } from "./compare.ts";
+import { detectable, isSignificant, power, sweepOf } from "./compare.ts";
 
 interface Result {
   readonly wins: number;
@@ -22,10 +22,12 @@ function equalMargins(wins: number, losses: number): number[] {
 
 export function smallestSteps(tasks: number, level: number): Result[] {
   const results: Result[] = [];
-  let wins = 0;
-  for (let losses = 0; wins + losses <= tasks; losses += 1) {
-    while (wins + losses <= tasks && flipP(equalMargins(wins, losses)) > level) wins += 1;
-    if (wins + losses <= tasks) results.push({ wins, losses });
+  let [wins, losses] = [1, 0];
+  for (let total = 1; total <= tasks; total += 1) {
+    if (isSignificant(equalMargins(wins, losses), level)) {
+      results.push({ wins, losses });
+      losses += 1;
+    } else wins += 1;
   }
   return results;
 }

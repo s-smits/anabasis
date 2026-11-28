@@ -30,6 +30,7 @@ import { HOST } from "../tools/campaign/host.ts";
 import type { Seated } from "../tools/campaign/round.ts";
 import { settleCommand } from "../tools/campaign/settle.ts";
 import { wordCommand } from "../tools/campaign/signal.ts";
+import { successorName } from "../tools/campaign/revise.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import {
   type FixtureTask,
@@ -40,7 +41,7 @@ import {
   type Step,
   scriptedModel,
 } from "./helpers/fixture-pack.ts";
-import { containing } from "./helpers/matchers.ts";
+import { containing, present } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const STEM = `test-bl-${String(runtimeProcess.pid)}`;
@@ -298,6 +299,16 @@ describe.concurrent("the host's practice release", () => {
     expect(await releasePendingPractice(abortedCtx, "while halted", haltedBench)).toBe(false);
     expect([released(failedCtx), released(cappedCtx), released(abortedCtx)]).toEqual([2, 2, 2]);
   });
+
+  it("hears an operator word after the Builder's tool calls until a move answers it, and not after", async () => {
+    const context = await owing(`${STEM}-word-heard`);
+    append(context.log, "build.call", { session: "b-1", tool: "bash" });
+    const at = read(context.log).length;
+    append(context.log, "campaign.word", { word: "tasks", why: "more tasks" });
+    expect(pendingSignals(turnOf(context).events).map((signal) => signal.at)).toEqual([at]);
+    append(context.log, "campaign.move", { move: "examine", answers: [at] });
+    expect(pendingSignals(turnOf(context).events)).toEqual([]);
+  });
 });
 
 describe.concurrent("live Builder and Examiner coordination", () => {
@@ -406,6 +417,34 @@ describe.concurrent("live Builder and Examiner coordination", () => {
     expect(fresh).not.toContain("already scored in comparison");
     expect(of(name, COMPARED)).toHaveLength(2);
     expect(of(name, "build.checkpoint")).toHaveLength(2);
+  });
+
+  it("hands off without a move when the exam is revised while a compare readies its seats", async () => {
+    const name = `${STEM}-compare-revised`;
+    let comparing = false;
+    const compareStep: Step = {
+      wait: async () => {
+        comparing = true;
+        return ["compare", {}];
+      },
+    };
+    const base = builderScript(winning(), [CHANGE_GUIDE, compareStep, FINISH_IDLE]);
+    const seats: Seats = {
+      seated: (campaign, given) => {
+        if (comparing) append(campaign.log, "exam.revised", { kind: "tune", why: "raced" });
+        comparing = false;
+        return base(campaign, given);
+      },
+    };
+    const flags = await prepared(name);
+    names.push(successorName(name));
+    const compares = () => of(name, MOVED).filter(({ move }) => move === "compare").length;
+    const before = compares();
+    await expect(harnessBuilder([...flags, ...FLAGS, "--moves", "4"], seats)).rejects.toThrow();
+    expect(said(name, "compare")).toEqual([
+      containing("The exam was revised; this campaign hands off to its successor."),
+    ]);
+    expect(compares()).toBe(before);
   });
 
   it("lets Builder practise while Examiner writes, declines unmeasured finish once, and guards practice symlinks", async () => {
@@ -550,29 +589,32 @@ describe.concurrent("live Builder and Examiner coordination", () => {
     expect(errText).not.toContain("private examiner failure");
     expect(errText).not.toContain("check-product");
 
-    const limitName = `${STEM}-limit`;
-    const reset = Math.floor(Date.now() / 1000) + 60;
-    let asked = 0;
-    const slept: number[] = [];
-    const limitEnding = await harnessBuilder([...seeded(limitName), "--target", "8", "--practice", "3"], {
-      seated: builderScript(winning(), [["wait", {}], ["examine", {}], ["examine", {}], FINISH_IDLE]),
-      examine: (request, wall) => {
-        asked += 1;
-        if (asked === 2) throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
-        return unwritten(request, wall);
-      },
-      host: {
-        ...HOST,
-        sleep: async (ms: number) => {
-          slept.push(ms);
+    for (const opening of [false, true]) {
+      const limitName = `${STEM}-limit${opening ? "-opened" : ""}`;
+      const reset = Math.floor(Date.now() / 1000) + 60;
+      let asked = 0;
+      const slept: number[] = [];
+      const limitEnding = await harnessBuilder([...seeded(limitName), "--target", "8", "--practice", "3"], {
+        seated: builderScript(winning(), [["wait", {}], ["examine", {}], ["examine", {}], FINISH_IDLE]),
+        examine: (request, wall) => {
+          asked += 1;
+          if (asked !== 2) return unwritten(request, wall);
+          if (opening) request.opened?.();
+          throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
         },
-      },
-    });
-    expect(limitEnding).toMatchObject({ move: "end", ending: "exam", code: "tasks" });
-    expect(slept).toHaveLength(1);
-    expect(of(limitName, "campaign.waited")).toMatchObject([{ for: "provider" }]);
-    expect(said(limitName, "examine")[0]).toContain("call examine again");
-    expect(said(limitName, "examine")[0]).not.toContain("usage limit");
+        host: {
+          ...HOST,
+          sleep: async (ms: number) => {
+            slept.push(ms);
+          },
+        },
+      });
+      expect(limitEnding).toMatchObject({ move: "end", ending: "exam", code: "tasks" });
+      expect(slept).toHaveLength(1);
+      expect(of(limitName, "campaign.waited")).toMatchObject([{ for: "provider" }]);
+      expect(said(limitName, "examine")[0]).toContain(opening ? "is writing tasks" : "call examine again");
+      expect(said(limitName, "examine")[0]).not.toContain("usage limit");
+    }
 
     const resumeName = `${STEM}-resume`;
     const base = winning();
@@ -589,19 +631,41 @@ describe.concurrent("live Builder and Examiner coordination", () => {
           ),
           solve: async (...args) => {
             if (cut) throw new Error("PRIVATE-COMPARISON-FAULT check-product t-1");
+            if (of(resumeName, "campaign.word").length === 0) {
+              const counted = of(resumeName, EXAMINED).length + of(resumeName, REPORTED).length;
+              append(campaign.log, "campaign.word", {
+                word: "pause",
+                after: "examined|reported",
+                base: counted,
+              });
+            }
             return by.solve(...args);
           },
         };
       },
     };
     const resumeArgs = [...(await prepared(resumeName)), ...FLAGS, "--budget", "20", "--reserve", "0.01"];
-    expect(await harnessBuilder(resumeArgs, resumeSeats)).toMatchObject({ ending: "environment" });
+    const handover = join(root, "handover-on-environment");
+    expect(await harnessBuilder([...resumeArgs, "--handover", handover], resumeSeats)).toMatchObject({
+      ending: "environment",
+    });
+    expect(existsSync(join(handover, "REPORT.md"))).toBe(true);
     const [start] = of(resumeName, COMPARED);
     expect(said(resumeName, "compare")[0]).not.toContain("PRIVATE-COMPARISON-FAULT");
     cut = false;
     const conversations = of(resumeName, "build.started").length;
-    expect(await harnessBuilder([...resumeArgs, "--moves", "1"], resumeSeats)).toMatchObject({
-      move: "promote",
+    let [now, sleeps] = [Date.now(), 0];
+    await harnessBuilder([...resumeArgs, "--moves", "2"], {
+      ...resumeSeats,
+      host: {
+        ...HOST,
+        load: () => 0,
+        now: () => now,
+        sleep: async () => {
+          sleeps += 1;
+          now += 10_000_000;
+        },
+      },
     });
     expect(of(resumeName, "build.started")).toHaveLength(conversations);
     expect(start).toBeDefined();
@@ -609,6 +673,8 @@ describe.concurrent("live Builder and Examiner coordination", () => {
     expect(of(resumeName, REPORTED)).toMatchObject([
       { session: start?.session, old: start?.old, fresh: start?.fresh },
     ]);
+    expect(of(resumeName, "harness.promoted")).toHaveLength(1);
+    expect(sleeps).toBe(0);
 
     const settleName = `${STEM}-settle`;
     const settleArgs = await prepared(settleName);
@@ -898,6 +964,54 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
     expect(promoted).toBeGreaterThan(word);
     expect(answered).toBeGreaterThan(promoted);
     expect(pendingSignals(events)).toEqual([]);
+
+    const pauseName = `${STEM}-pause-reached`;
+    let now = Date.now();
+    await harnessBuilder([...(await prepared(pauseName)), ...FLAGS], {
+      seated: builderScript(winning(), [
+        {
+          wait: async () => {
+            append(join(REPO, ".ana", "d2", pauseName, LOG_FILE), "campaign.word", {
+              word: "pause",
+              after: "examined",
+              base: of(pauseName, "exam.finished").length - 1,
+            });
+            return ["examine", {}];
+          },
+        },
+      ]),
+      host: {
+        ...HOST,
+        now: () => now,
+        sleep: async () => {
+          now += 200_000;
+        },
+      },
+    });
+    expect(said(pauseName, "examine")).toEqual([
+      containing("The campaign reached its operator pause point; no further action may start."),
+    ]);
+
+    const repairName = `${STEM}-repair-due`;
+    await harnessBuilder([...(await prepared(repairName)), ...FLAGS], {
+      seated: builderScript(passing(), [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        {
+          wait: async () => {
+            const log = join(REPO, ".ana", "d2", repairName, LOG_FILE);
+            const last = present(of(repairName, REPORTED).at(-1));
+            const owed = { session: "g-9", old: present(last.fresh), fresh: present(last.starter) };
+            append(log, COMPARED, { ...of(repairName, COMPARED).at(-1), ...owed });
+            append(log, REPORTED, { ...last, ...owed, reading: "check-defects" });
+            return ["campaign_status", {}];
+          },
+        },
+        ["campaign_status", {}],
+      ]),
+      examine: unwritten,
+    });
+    expect(said(repairName, "campaign_status")).toHaveLength(1);
   });
 
   const everythingRead = async (
@@ -1043,6 +1157,7 @@ describe.concurrent("a campaign's endings", () => {
       }),
     ).toMatchObject({ move: "end", ending: "no-room" });
     expect(of(liveName, EXAMINED)).toMatchObject([{ held: [] }, { held: [] }]);
+    expect(said(liveName, "examine")).toHaveLength(2);
 
     const turnsName = `${STEM}-turns`;
     expect(

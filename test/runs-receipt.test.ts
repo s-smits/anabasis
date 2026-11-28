@@ -4,7 +4,9 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../
 import { gitText } from "../src/meta/git.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { ranWith, source, writeReceipt } from "../tools/runs/receipt.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "../src/meta/subprocess.ts";
+import { launchRun, ranWith, source, writeReceipt } from "../tools/runs/receipt.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-runs-receipt-")));
 const repo = join(root, "repo");
@@ -97,6 +99,23 @@ describe("run provenance selectors", () => {
     ]) {
       expect(await selected(...selectors)).toBe("");
       expect(await selected("single", ...selectors)).toBe("");
+    }
+  });
+});
+
+describe("a launched run", () => {
+  it("runs in a process group of its own, its output named for the log's next run", async () => {
+    campaign("launched", ["c1"]);
+    const log = join(repo, "data", "runs", "here", "launched", "log.jsonl");
+    const { pid, err } = launchRun([capturedExecPath, "--eval=setTimeout(()=>{},3e4)"], log, {
+      cwd: root,
+      env: runtimeProcess.env,
+    });
+    try {
+      expect(err).toBe(join(repo, "data", "runs", "here", "launched", "launch-run-2.err"));
+      expect(runTextSyncOrThrow(["ps", "-o", "pgid=", "-p", String(pid)]).trim()).toBe(String(pid));
+    } finally {
+      expect(await terminateAndReapProcessGroupId(pid)).toBe(true);
     }
   });
 });

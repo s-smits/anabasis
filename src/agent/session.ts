@@ -38,8 +38,10 @@ import { releaseRoot } from "../sandbox/sandbox-root.ts";
 
 export type AgentTool = ToolRegistration;
 
+export type SeatModels = (home: string, shutdown: AbortSignal, cwd?: string, seat?: string) => Models;
+
 export interface AgentSpec {
-  readonly models: (home: string, shutdown: AbortSignal, cwd?: string, seat?: string) => Models;
+  readonly models: SeatModels;
   readonly home?: string;
   readonly cwd?: string;
   readonly id: string;

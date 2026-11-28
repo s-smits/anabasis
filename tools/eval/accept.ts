@@ -19,6 +19,7 @@ import {
 } from "#src/kernel/acceptance.ts";
 import { hasJudge } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
+import { priceKey } from "#src/kernel/meter.ts";
 import { OBJECTIVE, readBrief } from "#src/kernel/verify.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
@@ -112,11 +113,9 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
   if (unknown.length > 0) {
     throw new Error(`--admit names ${unknown.join(", ")}, and the check program holds no such check`);
   }
-  if (values["admit-judge"] && hasJudge(contract.objective)) {
-    const opening = openingOf(read(log));
-    if (opening?.seats.reviewer != null && opening.solver != null) {
-      assertCrossFamily(opening.seats.reviewer.model, opening.solver.model, "--admit-judge: ");
-    }
+  const reviewer = openingOf(read(log))?.seats.reviewer;
+  if (values["admit-judge"] && hasJudge(contract.objective) && reviewer != null) {
+    assertCrossFamily(reviewer.model, priceKey(campaign.test.model), "--admit-judge: ");
   }
   const reading = await readChecker({
     verify: campaign.verify,

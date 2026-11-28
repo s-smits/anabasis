@@ -144,10 +144,7 @@ function campaignsOf(dir: string): string[] {
   const json = textAt(join(dir, INVESTIGATION));
   const read = asRecord(json === null ? null : capturedJsonParse(json));
   const listed = [read?.logs, read?.peers].flatMap((each) => (Array.isArray(each) ? each : []));
-  const logs = [read?.log, ...listed].filter(isString);
-  if (logs.length > 0) return [...new Set(logs.map(campaignName))];
-  const overview = textAt(join(dir, OVERVIEW)) ?? "";
-  return [...overview.matchAll(/^## (\S+)$/gmu)].flatMap(([, name]) => name ?? []);
+  return [...new Set([read?.log, ...listed].filter(isString).map(campaignName))];
 }
 
 function findingsOf(synthesis: string): Counts | null {

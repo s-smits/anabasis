@@ -20,6 +20,8 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { callPrograms } from "#src/kernel/call-programs.ts";
 
+export const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
+
 export interface Trigger {
   readonly lane: number;
   readonly name: keyof typeof TRIGGERS;

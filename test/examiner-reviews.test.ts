@@ -272,14 +272,18 @@ describe("Examiner review projection (read_reviews)", () => {
 
     const all = readReviews(log.file());
     const shown = [
-      "Showing the newest 6 of 6 matching review records.",
+      "Showing 1-7 of 7 matching review records",
       "[pair] c-1 | task=t-1 | cross | judge-gap=1 holistic-gap=1 (opposed)",
       "Answer A states exact error bars and units.",
+      "check=check-unseen-primary",
+      "extracts: 4 files (1 empty, 1 faults, 2 truncated)",
       "[pair] c-1 | task=t-1 | mirror |",
       "reason unavailable",
       "[pair] c-1 | task=t-1 | cross | incomplete",
-      "[finding] c-1 | task=t-2 | ruling=check-defect | standing=earned | check=check-units",
-      "[draft] d-1 pass=1 | verdict=defects",
+      "ruling=check-defect | standing=earned | check=check-units | evidence=replayed (+1 reused)",
+      "probe #1: fail->pass moved=[check-units]",
+      "[draft] d-1 pass=1 | verdict=defects | probes=1",
+      "[draft] d-1 pass=2 | verdict=skipped",
       "summary: draft audit skipped",
     ];
     for (const line of shown) expect([line, all.includes(line)]).toEqual([line, true]);
@@ -296,7 +300,6 @@ describe("Examiner review projection (read_reviews)", () => {
       "judge-secret-1",
       "c-open",
       "check-hidden-unfinished",
-      "check-unseen-primary",
       "errored vote must be ignored",
       "non-vote tool must be ignored",
       "unfinished comparison secret",
@@ -307,14 +310,25 @@ describe("Examiner review projection (read_reviews)", () => {
       expect([forbidden, all.includes(forbidden)]).toEqual([forbidden, false]);
     }
     const filtered: readonly [Parameters<typeof readReviews>[1], string][] = [
-      [{ source: "pair", outcome: "holistic-oppose" }, "newest 1 of 1"],
+      [{ source: "pair", outcome: "holistic-oppose" }, "Showing 1-1 of 1"],
       [{ source: "pair", outcome: "disagreed" }, "| mirror |"],
       [{ source: "finding", outcome: "earned" }, "standing=earned"],
-      [{ source: "finding", outcome: "check-defect" }, "No reported review records match."],
+      [
+        { source: "finding", outcome: "check-defect" },
+        "No review records match (source=finding, outcome=check-defect).",
+      ],
       [{ source: "draft", outcome: "skipped" }, "draft audit skipped"],
-      [{ source: "draft", limit: 1 }, "newest 1 of 2"],
+      [{ source: "draft", limit: 1 }, "Showing 1-1 of 2"],
     ];
     for (const [query, expected] of filtered) expect(readReviews(log.file(), query)).toContain(expected);
+    log.add("referee.finding", {
+      solve: "s-orphan-without-start",
+      task: "t-2",
+      ruling: "check-defect",
+      check: "check-orphan",
+      reason: "orphan truncated finding",
+    });
+    expect(readReviews(log.file())).not.toContain("check-orphan");
   });
 
   it("is byte-identical under perturbations of stripped identifiers, raw probe payloads, and A/B arm mapping", () => {
@@ -416,9 +430,9 @@ describe("Examiner review projection (read_reviews)", () => {
       });
     }
     const file = big.file();
-    expect(readReviews(file)).toContain("newest 10 of 20");
+    expect(readReviews(file)).toContain("Showing 1-10 of 20 matching review records");
     const two = readReviews(file, { limit: 2 });
-    expect(two).toContain("newest 2 of 20");
+    expect(two).toContain("Showing 1-2 of 20");
     expect(two.indexOf("[draft] d-big-20 ")).toBeLessThan(two.indexOf("[draft] d-big-19 "));
   });
 
@@ -534,7 +548,9 @@ describe("Examiner review projection (read_reviews)", () => {
     expect(allLines.find((line) => line.startsWith("graded "))).toContain("holistic opposed clarity");
     expect(allLines.find((line) => line.startsWith("tied "))).toContain("reviews 1/1 pairs (all tied)");
     expect(allLines.find((line) => line.startsWith("prac "))).toBe("prac (fixture)");
-    expect(told.reviews).toBe("Reported reviews in read_reviews (newest first): 8 pairs.");
+    expect(told.reviews).toBe(
+      "Reported reviews in read_reviews (newest first): 8 pairs (1 swap-disagreed, 1 holistic-opposed).",
+    );
     expect(reviewInventoryLine([])).toBeNull();
   });
 
@@ -579,8 +595,13 @@ describe("Examiner review projection (read_reviews)", () => {
     );
   });
 
-  it("exposes read_reviews inside live Examiner writing sessions ", async () => {
-    const s = seat("write", [call("read_reviews", { source: "draft" }), finish, finish]);
+  it("exposes read_reviews inside live Examiner writing sessions and refuses unknown fields", async () => {
+    const s = seat("write", [
+      call("read_reviews", { source: "draft" }),
+      call("read_reviews", { query: "probes" }),
+      finish,
+      finish,
+    ]);
     append(s.log, "referee.draft", {
       session: "d-1",
       pass: 1,
@@ -591,8 +612,10 @@ describe("Examiner review projection (read_reviews)", () => {
     });
     append(s.log, "solve.call", { solve: "s-noise", tool: "bash", args: { command: "echo hi" }, text: "hi" });
     await examine(s.request);
-    const reviewCall = s.of("exam.call").find((entry) => entry.tool === "read_reviews");
+    const [reviewCall, stale] = s.of("exam.call").filter((entry) => entry.tool === "read_reviews");
     expect(reviewCall?.isError).toBe(false);
     expect(isString(reviewCall?.text) && reviewCall.text).toContain("All code and judge probes checked out.");
+    expect(stale?.isError).toBe(true);
+    expect(isString(stale?.text) && stale.text).toContain("query: unknown field");
   });
 });

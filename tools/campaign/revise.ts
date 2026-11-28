@@ -24,17 +24,27 @@ import { endedData, endedOf, latestBuilt, promoted } from "#src/kernel/reports.t
 import { ranUnder, standsOf, verdictsOf } from "#src/kernel/solves.ts";
 import type { Task, Verifier } from "#src/kernel/verify.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
+import { parseArgs } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { keepReading } from "../eval/accept.ts";
 import { type DraftAuditor, draftAuditGate } from "../eval/draft.ts";
 import { lastLaunch, writeReceipt } from "../runs/receipt.ts";
 import { SEED_FILE } from "../runs/registry.ts";
+import { campaignLog, openCampaign } from "./campaign.ts";
 import { draftReading } from "./exam.ts";
 import { importHarness } from "./import.ts";
 
@@ -68,12 +78,17 @@ function revisionRefusal(events: readonly LogEvent[], repair: string | undefined
       ? "this epoch opened from a tune; earn a promotion before tuning again, or repair a check-defect"
       : null;
   }
+  return defectsOn(events, repair).length > 0 ? null : `no standing check-defect ruling names ${repair}`;
+}
+
+function defectsOn(events: readonly LogEvent[], repair: string): string[] {
   const stands = standsOf(events);
-  const ruled = eventsOf(events, "referee.finding").some(
-    ({ event: { data } }) =>
-      data.check === repair && isString(data.solve) && stands.get(data.solve) === "check-defect",
+  const solves = eventsOf(events, "referee.finding").flatMap(({ event: { data } }) =>
+    data.check === repair && isString(data.solve) && stands.get(data.solve) === "check-defect"
+      ? [data.solve]
+      : [],
   );
-  return ruled ? null : `no standing check-defect ruling names ${repair}`;
+  return [...new Set(solves)];
 }
 
 interface RevisionSetup {
@@ -86,7 +101,7 @@ interface RevisionSetup {
 }
 
 async function witnessed(
-  setup: RevisionSetup,
+  setup: Pick<RevisionSetup, "log" | "packages" | "kill">,
   events: readonly LogEvent[],
   verify: Verifier,
   repair?: string,
@@ -94,34 +109,52 @@ async function witnessed(
   const packages = setup.packages();
   const verdicts = verdictsOf(events);
   const versionOf = new Map(ranUnder(events).map(({ id, under }) => [id, under.task]));
-  const earned = [...standsOf(events)].flatMap(([solve, ruling]) => (ruling === "earned" ? [solve] : []));
-  const rows = await pooled(earned, 4, async (solve) => {
+  const replay = async (solve: string, kind: string) => {
     const verdict = verdicts.get(solve);
     const task =
       packages.get(versionOf.get(solve) ?? "") ??
       [...packages.values()].find(({ taskId }) => taskId === verdict?.task);
     if (verdict?.answer === undefined || task === undefined) {
-      return `earned witness on ${verdict?.task ?? "an unknown task"} could not be loaded`;
+      return `${kind} witness on ${verdict?.task ?? "an unknown task"} could not be loaded`;
     }
     const files =
       (verdict.files ?? []).length > 0 ? readAnswerFiles(setup.log, verdict.files ?? []) : undefined;
     const result = await verify(task, verdict.answer, setup.kill, files);
+    if (result.kind === "faulty" || result.kind === "non-result") {
+      return `${kind} witness on ${task.taskId} faulted under the candidate: ${result.reason}`;
+    }
     const blocking = verdict.checker?.kind === "fail" ? verdict.checker.blocking : [];
-    const [untouched, now] = [
-      blocking.filter((id) => id !== repair),
-      result.kind === "fail" ? result.blocking : [],
-    ];
-    if (blocking.length > 0 && untouched.length === 0) return now.includes(repair ?? "") ? null : "flipped";
-    return result.kind === "fail" && (untouched.length === 0 || untouched.some((id) => now.includes(id)))
+    return { task: task.taskId, blocking, now: result.kind === "fail" ? result.blocking : null };
+  };
+  const earned = [...standsOf(events)].flatMap(([solve, ruling]) => (ruling === "earned" ? [solve] : []));
+  const rows = await pooled(earned, 4, async (solve) => {
+    const row = await replay(solve, "earned");
+    if (isString(row)) return row;
+    const { task, blocking, now } = row;
+    const untouched = blocking.filter((id) => id !== repair);
+    const sole = blocking.length > 0 && untouched.length === 0;
+    if (sole) return now?.includes(repair ?? "") === true ? null : "flipped";
+    return now !== null && (untouched.length === 0 || untouched.some((id) => now.includes(id)))
       ? null
-      : `earned witness on ${task.taskId} is no longer refused by ${untouched.join(", ") || "the checks"} (${result.kind})`;
+      : `earned witness on ${task} is no longer refused by ${untouched.join(", ") || "the checks"} (${now === null ? "pass" : "fail"})`;
   });
   const flipped = rows.filter((row) => row === "flipped").length;
   const note = `${String(flipped)} historical earned witness(es) solely on repaired check ${String(repair)} now pass; probe ${String(repair)} to verify it still enforces its published rule without over-relaxing.`;
-  return {
-    faults: rows.filter((row): row is string => row !== null && row !== "flipped"),
-    notes: flipped === 0 ? [] : [note],
-  };
+  const faults = rows.filter((row): row is string => row !== null && row !== "flipped");
+  if (repair !== undefined) {
+    const defects = await pooled(defectsOn(events, repair), 4, (solve) => replay(solve, "check-defect"));
+    const uncleared = defects.flatMap((row) => {
+      if (isString(row)) return [row];
+      const sole = row.blocking.length === 1 && row.blocking[0] === repair;
+      return row.now !== null && (sole || row.now.includes(repair)) ? [row.task] : [];
+    });
+    if (uncleared.length > 0) {
+      faults.push(
+        `the repair leaves ${String(uncleared.length)} of ${String(defects.length)} check-defect witnesses on ${repair} refused or unloaded (${[...new Set(uncleared)].join(", ")})`,
+      );
+    }
+  }
+  return { faults, notes: flipped === 0 ? [] : [note] };
 }
 
 const failed = (head: string, faults: readonly string[]) => ({
@@ -129,26 +162,41 @@ const failed = (head: string, faults: readonly string[]) => ({
   message: [`${head} (${String(faults.length)} faults):`, ...faults.map((fault) => `- ${fault}`)].join("\n"),
 });
 
+const refused = (why: string) => ({ accepted: false, message: `Refused: ${why}` });
+
+async function examined(
+  setup: Pick<RevisionSetup, "log" | "packages" | "kill">,
+  events: readonly LogEvent[],
+  candidate: Draft,
+  repair: string | undefined,
+  tools: string | undefined,
+) {
+  const early = revisionRefusal(events, repair);
+  if (early !== null) return { fault: refused(early) };
+  const revisions = join(dirname(setup.log), "revisions");
+  const { read: seen, faults } = await draftReading(revisions, candidate, 4, tools);
+  if (seen === undefined || faults.length > 0) {
+    return { fault: failed("Revision failed checker validation", faults) };
+  }
+  const replayed = await witnessed(setup, events, seen.verify, repair);
+  if (replayed.faults.length > 0) {
+    return { fault: failed("Revision failed historical witness checks", replayed.faults) };
+  }
+  return { seen, notes: replayed.notes };
+}
+
 export function revisionRunner(config: RevisionSetup): ReviseRunner {
   const { log, kill } = config;
-  const refused = (why: string) => ({ accepted: false, message: `Refused: ${why}` });
   return async ({ session, why, repair, candidate, home }) => {
     const events = read(log, TRACE_KINDS);
     const frozen = frozenChecker(events);
     if (frozen === null) return refused("the exam is not drafted and frozen");
-    const early = revisionRefusal(events, repair);
-    if (early !== null) return refused(early);
     const tools = [home, config.parentBundle].find(
       (dir) => dir !== undefined && existsSync(join(dir, TOOL_TREE_DIR)),
     );
-    const { read: seen, faults } = await draftReading(join(dirname(log), "revisions"), candidate, 4, tools);
-    if (seen === undefined || faults.length > 0) {
-      return failed("Revision failed checker validation", faults);
-    }
-    const replayed = await witnessed(config, events, seen.verify, repair);
-    if (replayed.faults.length > 0) {
-      return failed("Revision failed historical witness checks", replayed.faults);
-    }
+    const checked = await examined(config, events, candidate, repair, tools);
+    if ("fault" in checked) return checked.fault;
+    const { seen, notes } = checked;
     const found = await draftAuditGate({
       session,
       prompt: openingOf(events)?.prompt ?? "",
@@ -157,12 +205,12 @@ export function revisionRunner(config: RevisionSetup): ReviseRunner {
       reader: config.reader,
       revision: frozen.checks,
       required: true,
-    })({ ...seen, reading: { ...seen.reading, notes: [...seen.reading.notes, ...replayed.notes] } });
+    })({ ...seen, reading: { ...seen.reading, notes: [...seen.reading.notes, ...notes] } });
     if (found.length > 0) {
       return failed("Revision failed adversarial audit", found);
     }
     if (kill?.aborted === true) return refused("session cancelled");
-    append(log, REVISED, {
+    const revised = {
       session,
       kind: repair === undefined ? "tune" : "repair",
       why,
@@ -170,9 +218,51 @@ export function revisionRunner(config: RevisionSetup): ReviseRunner {
       parent: { checks: frozen.checks },
       draft: parseJsonAs<JsonObject>(capturedJsonStringify(candidate)),
       draftHash: hashJsonValue(candidate),
-    });
+    };
+    if (openingOf(events)?.attended === true) {
+      const short = revised.draftHash.slice(0, 16);
+      mkdirSync(join(dirname(log), "revisions"), { recursive: true });
+      writeFileSync(join(dirname(log), "revisions", `${short}.json`), `${capturedJsonStringify(revised)}\n`);
+      return {
+        accepted: false,
+        message: `The revision passed validation and audit and awaits operator approval under --hitl: bun tools/campaign/revise.ts --name ${basename(dirname(log))} --candidate ${short} --freeze`,
+      };
+    }
+    append(log, REVISED, revised);
     return { accepted: true, message: "The exam revision stands; a successor campaign continues under it." };
   };
+}
+
+export async function freezeCandidate(log: string, candidate: string, packages: () => Map<string, Task>) {
+  const file = join(dirname(log), "revisions", `${candidate}.json`);
+  if (!/^[a-f0-9]{16}$/u.test(candidate) || !existsSync(file)) {
+    throw new Error(`no staged revision candidate ${candidate} at ${file}`);
+  }
+  const staged = parseJsonAs<JsonObject>(readFileSync(file, "utf8"));
+  const record = asRecord(staged.draft);
+  // SAFETY: the runner staged this record from a draft that passed `draftReading`; its hash is checked next.
+  const draft = record === null ? null : parseJsonAs<Draft>(record);
+  const hash = draft === null ? null : hashJsonValue(draft);
+  if (draft === null || hash !== staged.draftHash || hash?.startsWith(candidate) !== true) {
+    throw new Error(`candidate ${candidate} does not hash to its name`);
+  }
+  const events = read(log, TRACE_KINDS);
+  const frozen = frozenChecker(events);
+  if (frozen === null || asRecord(staged.parent)?.checks !== frozen.checks) {
+    throw new Error(`candidate ${candidate} was not staged against the frozen checks`);
+  }
+  const sound = eventsOf(events, "referee.draft").some(
+    ({ event: { data } }) =>
+      data.verdict === "sound" && data.revision === frozen.checks && data.session === staged.session,
+  );
+  if (!sound) throw new Error(`candidate ${candidate} has no sound audit on record for ${frozen.checks}`);
+  const repair = isString(staged.check) ? staged.check : undefined;
+  const bundle = join(dirname(log), "revisions", "exams", candidate, "bundle");
+  const tools = existsSync(join(bundle, TOOL_TREE_DIR)) ? bundle : undefined;
+  const checked = await examined({ log, packages }, events, draft, repair, tools);
+  if ("fault" in checked) throw new Error(checked.fault.message);
+  append(log, REVISED, staged);
+  return await openSuccessor(log);
 }
 
 export function successorName(name: string): string {
@@ -288,3 +378,18 @@ export async function openSuccessor(logA: string, remainingMoves?: number) {
   }
   return { name: nameB, log: logB };
 }
+
+async function reviseCommand(args: readonly string[]): Promise<void> {
+  const { values } = parseArgs({
+    args: [...args],
+    options: { name: { type: "string" }, candidate: { type: "string" }, freeze: { type: "boolean" } },
+  });
+  if (values.name === undefined || values.candidate === undefined || values.freeze !== true) {
+    throw new Error("usage: bun tools/campaign/revise.ts --name <campaign> --candidate <hash> --freeze");
+  }
+  const campaign = await openCampaign({ name: values.name });
+  const next = await freezeCandidate(campaignLog(values.name), values.candidate, campaign.packages);
+  console.log(`revision frozen; successor campaign ${next.name} opened at ${next.log}`);
+}
+
+if (import.meta.main) await reviseCommand(Bun.argv.slice(2));

@@ -256,23 +256,26 @@ function reviewsTool(desk: Desk): AgentTool {
   return tool({
     name: "read_reviews",
     description:
-      "Read reported Reviewer outputs for this campaign, newest first: pairwise judge votes and reasons, rejection rulings, and draft audits. Unfinished comparisons are omitted, and internal solve/harness identifiers and raw answers are stripped.",
-    parameters: Type.Object({
-      source: Type.Optional(
-        Type.Union([Type.Literal("pair"), Type.Literal("finding"), Type.Literal("draft")], {
-          description: "Restrict to pairwise judge votes, rejection findings, or draft audits.",
-        }),
-      ),
-      outcome: Type.Optional(
-        Type.String({
-          description:
-            "Filter by ruling, verdict, or flag (earned, check-defect, unclear, disagreed, holistic-oppose, incomplete, skipped).",
-        }),
-      ),
-      limit: Type.Optional(
-        Type.Integer({ minimum: 1, maximum: 20, description: "Most records returned (default 10)." }),
-      ),
-    }),
+      "Read reported Reviewer outputs for this campaign (newest first): pairwise judge votes and reasons, rejection audit rulings and probe summaries, and draft audit history. Unfinished comparisons are omitted, and internal solve/harness identifiers and raw answer patches are stripped.",
+    parameters: Type.Object(
+      {
+        source: Type.Optional(
+          Type.Union([Type.Literal("pair"), Type.Literal("finding"), Type.Literal("draft")], {
+            description: "Restrict to pairwise judge votes, rejection findings, or draft audits.",
+          }),
+        ),
+        outcome: Type.Optional(
+          Type.String({
+            description:
+              "Filter by ruling, verdict, or flag (earned, check-defect, unclear, disagreed, holistic-oppose, incomplete, skipped).",
+          }),
+        ),
+        limit: Type.Optional(
+          Type.Integer({ minimum: 1, maximum: 20, description: "Most records returned (default 10)." }),
+        ),
+      },
+      { additionalProperties: false },
+    ),
     execute: async (args) => text(readReviews(desk.request.log, args)),
   });
 }

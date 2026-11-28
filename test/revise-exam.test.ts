@@ -30,12 +30,18 @@ import { keyIfDefined, keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { hashJsonValue, requireJsonValue } from "../src/meta/stable-json.ts";
 import { REPO } from "../tools/campaign/campaign.ts";
 import { draftReading } from "../tools/campaign/exam.ts";
 import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
 import { ungated } from "../tools/campaign/prepare.ts";
-import { openSuccessor, revisionRunner, successorName, withFlag } from "../tools/campaign/revise.ts";
+import {
+  freezeCandidate,
+  openSuccessor,
+  revisionRunner,
+  successorName,
+  withFlag,
+} from "../tools/campaign/revise.ts";
 import { keepReading } from "../tools/eval/accept.ts";
 import { type DraftAuditor, draftAuditReader } from "../tools/eval/draft.ts";
 import { examineCommand } from "../tools/eval/examine.ts";
@@ -183,6 +189,7 @@ type Seed = Awaited<ReturnType<typeof seedCampaign>>;
 async function seedCampaign(opts?: {
   readonly name?: string;
   readonly revise?: boolean;
+  readonly attended?: boolean;
   readonly budget?: { readonly dollars: number; readonly reserve: number };
 }) {
   const name = opts?.name ?? "camp-a";
@@ -200,6 +207,7 @@ async function seedCampaign(opts?: {
     },
     judged: true,
     ...keysIf(opts?.revise === false, () => ({ revise: false })),
+    ...keysIf(opts?.attended === true, () => ({ attended: true })),
     prompt: "Build an even-target exam.",
     solver: { model: SONNET, effort: "high" },
     terms: { level: "0.02", practice: "6" },
@@ -545,6 +553,16 @@ describe("historical witnesses and the adversarial audit", () => {
         candidate,
         home: undefined,
       });
+    const unfixed = candidateDraft(PARENT_DRAFT, {
+      why: "restate the note rule",
+      repair: "check-strict",
+      evaluator: evaluatorWith(
+        STRICT.replace('"exact:" + String(hidden.target)', "`exact:${String(hidden.target)}`"),
+      ),
+    });
+    expect((await repairWith(unfixed)).message).toContain(
+      "check-defect witnesses on check-strict refused or unloaded (ex-001)",
+    );
     expect(await repairWith(GOOD_REPAIR)).toEqual({
       accepted: true,
       message: "The exam revision stands; a successor campaign continues under it.",
@@ -632,6 +650,30 @@ describe("historical witnesses and the adversarial audit", () => {
 });
 
 describe("successor campaign", () => {
+  it("stages an audited revision for the operator under --hitl and freezes it only on their word", async () => {
+    const seed = await seedCampaign({ name: "hitl-a", attended: true });
+    const staged = await seed.runner(SOUND_AUDIT)(TUNE_INPUT);
+    const short = hashJsonValue(TUNE).slice(0, 16);
+    expect(staged).toEqual({
+      accepted: false,
+      message: `The revision passed validation and audit and awaits operator approval under --hitl: bun tools/campaign/revise.ts --name hitl-a --candidate ${short} --freeze`,
+    });
+    expect(eventsOf(read(seed.log), REVISED)).toHaveLength(0);
+    await expect(freezeCandidate(seed.log, "0".repeat(16), seed.packages)).rejects.toThrow(
+      "no staged revision candidate",
+    );
+    append(seed.log, STARTED, { session: "g-open", old: "starter", fresh: "h1" });
+    await expect(freezeCandidate(seed.log, short, seed.packages)).rejects.toThrow(
+      "a comparison is still open",
+    );
+    report(seed.log, "g-open", { old: "starter", fresh: "h1", reading: "no-step" });
+    const next = await freezeCandidate(seed.log, short, seed.packages);
+    expect(next.name).toBe("hitl-a-rev2");
+    expect(eventsOf(read(seed.log), REVISED).map(({ event: { data } }) => data.draftHash)).toEqual([
+      hashJsonValue(TUNE),
+    ]);
+  });
+
   it("names successors and rewrites launch flags", () => {
     expect(["a", "a-rev2", "a-rev9"].map(successorName)).toEqual(["a-rev2", "a-rev3", "a-rev10"]);
     const cases: readonly [string[], string, string, string[]][] = [

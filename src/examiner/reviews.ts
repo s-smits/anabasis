@@ -24,10 +24,13 @@ const [PAIR, FINDING, DRAFT] = ["referee.pair", "referee.finding", "referee.draf
 const [DEFAULT_LIMIT, MAX_LIMIT, REASON_BYTES] = [10, 20, 600];
 const HOLISTIC = "holistic";
 
+const num = (value: unknown): number => (isNumber(value) ? value : 0);
 const str = (value: unknown): string | null => (isString(value) ? value : null);
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter(isString) : []);
 const fmt = (value: number): string => String(Number(Math.abs(value).toPrecision(4)));
 const clip = (value: unknown): string => boundText(str(value) ?? "", REASON_BYTES).shown;
+const named = (row: JsonObject, keys: readonly string[], join: string): string[] =>
+  keys.flatMap((key) => (isString(row[key]) ? [`${key}${join}${row[key]}`] : []));
 
 function relation(score: unknown, holistic: unknown): "aligned" | "opposed" | "tie" | null {
   if (!isNumber(score) || !isNumber(holistic)) return null;
@@ -47,11 +50,31 @@ function votesOf(events: readonly LogEvent[]): Map<string, string> {
     eventsOf(events, "referee.call").flatMap(({ event: { data } }) => {
       const args = asRecord(data.args);
       const [reader, better, reason] = [str(data.reader), str(args?.better), str(args?.reason)];
-      return data.tool !== "record_vote" || data.isError === true || reader === null || better === null
+      const recorded = data.tool === "record_vote" && data.isError !== true;
+      return !recorded || reader === null || better === null || reason === null
         ? []
         : [[reader, `better=${better}; ${clip(reason)}`] as const];
     }),
   );
+}
+
+function probeOf(raw: unknown): { readonly id: unknown; readonly text: string } | null {
+  const row = asRecord(raw);
+  if (row === null) return null;
+  const moved = strings(row.moved);
+  const [before, after] = [str(asRecord(row.original)?.kind) ?? "?", str(asRecord(row.changed)?.kind) ?? "?"];
+  const id = isNumber(row.id) ? String(row.id) : "?";
+  return {
+    id: row.id,
+    text: `probe #${id}: ${before}->${after}${moved.length === 0 ? "" : ` moved=[${moved.join(", ")}]`}`,
+  };
+}
+
+function extractNote(data: JsonObject): string {
+  const ext = asRecord(data.extracts);
+  if (ext === null) return "";
+  const [files, empty, faults, truncated] = [ext.files, ext.empty, ext.faults, ext.truncated].map(num);
+  return ` | extracts: ${String(files)} files (${String(empty)} empty, ${String(faults)} faults, ${String(truncated)} truncated)`;
 }
 
 function pairReview(data: JsonObject, kind: "mirror" | "cross", votes: ReadonlyMap<string, string>): Review {
@@ -59,22 +82,27 @@ function pairReview(data: JsonObject, kind: "mirror" | "cross", votes: ReadonlyM
   const complete = isNumber(judge) && isNumber(holistic);
   const criteria = asRecord(data.criteria) ?? {};
   const disagreed = new Set(strings(data.disagreed));
-  const readers = Map.groupBy(strings(data.readers), (id) => id.split(":").at(-2) ?? "");
+  const readers = Map.groupBy(
+    strings(data.readers).filter((id) => id.split(":").length >= 3),
+    (id) => id.split(":").at(-2) ?? "",
+  );
   const opposed: string[] = [];
+  let missing = false;
   const lines = [...new Set([...Object.keys(criteria), ...readers.keys()])].flatMap((item) => {
-    if (item === "") return [];
     const score = criteria[item];
     const vs = item === HOLISTIC ? null : relation(score, holistic);
     if (vs === "opposed") opposed.push(item);
     const gap = score === 0 ? "tie" : isNumber(score) ? `gap=${fmt(score)}` : "incomplete";
     const swap = disagreed.has(item) ? "swap-disagreed" : "swap-consistent";
-    return [
-      `  - ${item}: ${gap}, ${swap}${vs === null ? "" : `, holistic=${vs}`}`,
-      ...(readers.get(item) ?? []).map(
-        (id, at) =>
-          `    pass ${String(at + 1)}${at === 0 ? "" : " (swapped)"}: ${votes.get(id) ?? "reason unavailable"}`,
-      ),
-    ];
+    const passes = (readers.get(item) ?? []).map((id, at) => {
+      const vote = votes.get(id);
+      missing ||= vote === undefined;
+      const pass = `    pass ${String(at + 1)}`;
+      return vote === undefined
+        ? `${pass}: reason unavailable`
+        : `${pass}${at === 0 ? "" : " (swapped)"}: ${vote}`;
+    });
+    return [`  - ${item}: ${gap}, ${swap}${vs === null ? "" : `, holistic=${vs}`}`, ...passes];
   });
   const status = complete
     ? `judge-gap=${fmt(judge)} holistic-gap=${fmt(holistic)} (${relation(judge, holistic) ?? "tie"})`
@@ -88,49 +116,70 @@ function pairReview(data: JsonObject, kind: "mirror" | "cross", votes: ReadonlyM
       ...(opposed.length > 0 ? ["holistic-oppose"] : []),
     ],
     text: [
-      `[pair] ${str(data.comparison) ?? "unknown"} | task=${str(data.task) ?? "unknown"} | ${kind} | ${status}`,
+      `[pair] ${str(data.comparison) ?? "unknown"} | task=${str(data.task) ?? "unknown"} | ${kind} | ${status}${extractNote(data)}`,
       ...lines,
+      ...(missing ? ["  note: some vote reasons are unavailable in this log"] : []),
     ].join("\n"),
   };
 }
 
-function findingReview(data: JsonObject, comparison: string, standing: string): Review {
+function findingReview(data: JsonObject, comparison: string, standing: string, reusedBy: number): Review {
   const ruling = str(data.ruling) ?? "unruled";
+  const reused = isString(data.reusedFrom);
+  const evidence = `${reused ? "reused" : "replayed"}${reusedBy > 0 ? ` (+${String(reusedBy)} reused)` : ""}`;
   const meta = [
     `ruling=${ruling}`,
     ...(standing === ruling ? [] : [`standing=${standing}`]),
-    ...(["check", "rule", "field"] as const).flatMap((key) =>
-      isString(data[key]) ? [`${key}=${data[key]}`] : [],
-    ),
+    ...named(data, ["check", "rule", "field"], "="),
+    `evidence=${evidence}`,
   ];
-  const reason = clip(data.reason);
+  const reason =
+    reused || /^reused\b/u.test(str(data.reason) ?? "")
+      ? `reused ${ruling}${isString(data.check) ? ` on ${data.check}` : ""} in ${comparison}`
+      : clip(data.reason);
+  const probes = (Array.isArray(data.probeRows) ? data.probeRows : []).flatMap((row) => {
+    const probe = probeOf(row);
+    return probe === null ? [] : [`  ${probe.text}`];
+  });
   return {
     source: "finding",
-    outcomes: [standing],
+    outcomes: [
+      standing,
+      ...(standing === ruling ? [] : [`originally-${ruling}`]),
+      reused ? "reused" : "replayed",
+    ],
     text: [
       `[finding] ${comparison} | task=${str(data.task) ?? "unknown"} | ${meta.join(" | ")}`,
       ...(reason === "" ? [] : [`  reason: ${reason}`]),
+      ...probes,
     ].join("\n"),
   };
 }
 
 function draftReview(data: JsonObject): Review {
   const verdict = str(data.verdict) ?? "unknown";
+  const rows = Array.isArray(data.probeRows) ? data.probeRows : [];
+  const probes = new Map(
+    rows.flatMap((row) => {
+      const probe = probeOf(row);
+      return probe === null || !isNumber(probe.id) ? [] : [[probe.id, probe.text] as const];
+    }),
+  );
   const findings = (Array.isArray(data.findings) ? data.findings : []).flatMap((value) => {
     const one = asRecord(value);
     if (one === null) return [];
-    const named = (["task", "check", "item"] as const).flatMap((key) =>
-      isString(one[key]) ? [`${key}=${one[key]}`] : [],
-    );
-    return [`  - ${[str(one.kind) ?? "defect", ...named].join(" ")}: ${clip(one.reason)}`];
+    const probe = isNumber(one.probe) ? probes.get(one.probe) : undefined;
+    const head = [str(one.kind) ?? "defect", ...named(one, ["task", "check", "item"], "=")].join(" ");
+    return [`  - ${head}: ${clip(one.reason)}${probe === undefined ? "" : ` (${probe})`}`];
   });
   const summary = verdict === "skipped" ? "draft audit skipped" : clip(data.summary);
   const pass = isNumber(data.pass) ? ` pass=${String(data.pass)}` : "";
+  const probed = rows.length > 0 ? ` | probes=${String(rows.length)}` : "";
   return {
     source: "draft",
     outcomes: [verdict],
     text: [
-      `[draft] ${str(data.session) ?? "draft"}${pass} | verdict=${verdict}`,
+      `[draft] ${str(data.session) ?? "draft"}${pass} | verdict=${verdict}${probed}`,
       ...(summary === "" ? [] : [`  summary: ${summary}`]),
       ...findings,
     ].join("\n"),
@@ -143,6 +192,20 @@ function reviewsOf(events: readonly LogEvent[]): Review[] {
   const votes = votesOf(events);
   const comparisonOf = new Map(solvesIn(events).map(({ id, start }) => [id, str(start.comparison)]));
   const stands = standsOf(events);
+  const findings = eventsOf(events, FINDING).flatMap(({ event: { data } }) => {
+    const comparison = comparisonOf.get(str(data.solve) ?? "");
+    return comparison === undefined || (comparison !== null && !reported.has(comparison)) ? [] : [data];
+  });
+  const reuses = Map.groupBy(
+    findings.filter((data) => isString(data.reusedFrom)),
+    (data) => str(data.reusedFrom),
+  );
+  const [primaries, shown] = [new Set<string>(), new Set<JsonObject>()];
+  for (const data of findings) {
+    const from = str(data.reusedFrom);
+    if (from === null) primaries.add(str(data.solve) ?? "");
+    if (from === null || !primaries.has(from)) shown.add(data);
+  }
   return eventsOf(events, [PAIR, FINDING, DRAFT])
     .flatMap(({ event: { kind, data } }): Review[] => {
       if (kind === DRAFT) return [draftReview(data)];
@@ -151,31 +214,46 @@ function reviewsOf(events: readonly LogEvent[]): Review[] {
           ? [pairReview(data, mirrored(harnessOf, data) ? "mirror" : "cross", votes)]
           : [];
       }
+      if (!shown.has(data)) return [];
       const solve = str(data.solve) ?? "";
-      const comparison = comparisonOf.get(solve);
-      if (comparison === undefined || isString(data.reusedFrom)) return [];
-      if (comparison !== null && !reported.has(comparison)) return [];
-      return [
-        findingReview(data, comparison ?? "practice", stands.get(solve) ?? str(data.ruling) ?? "unruled"),
-      ];
+      const standing = stands.get(solve) ?? str(data.ruling) ?? "unruled";
+      const comparison = comparisonOf.get(solve) ?? "practice";
+      return [findingReview(data, comparison, standing, reuses.get(solve)?.length ?? 0)];
     })
     .toReversed();
 }
 
+const INVENTORY = [
+  [
+    "pair",
+    "pair",
+    [
+      ["disagreed", "swap-disagreed"],
+      ["holistic-oppose", "holistic-opposed"],
+    ],
+  ],
+  [
+    "finding",
+    "finding",
+    [
+      ["check-defect", "check-defect"],
+      ["earned", "earned"],
+    ],
+  ],
+  ["draft", "draft audit", []],
+] as const;
+
 export function reviewInventoryLine(events: readonly LogEvent[]): string | null {
   const reviews = reviewsOf(events);
-  const count = (source: Source, outcome?: string) =>
-    reviews.filter(
-      (one) => one.source === source && (outcome === undefined || one.outcomes.includes(outcome)),
-    ).length;
-  const defects = count("finding", "check-defect");
-  const chunks = (
-    [
-      [count("pair"), "pair", ""],
-      [count("finding"), "finding", defects === 0 ? "" : ` (${String(defects)} check-defect)`],
-      [count("draft"), "draft audit", ""],
-    ] as const
-  ).flatMap(([n, noun, tail]) => (n === 0 ? [] : [`${plural(n, noun)}${tail}`]));
+  const chunks = INVENTORY.flatMap(([source, noun, flags]) => {
+    const mine = reviews.filter((one) => one.source === source);
+    const detail = flags.flatMap(([outcome, label]) => {
+      const n = mine.filter((one) => one.outcomes.includes(outcome)).length;
+      return n === 0 ? [] : [`${String(n)} ${label}`];
+    });
+    if (mine.length === 0) return [];
+    return [`${plural(mine.length, noun)}${detail.length === 0 ? "" : ` (${detail.join(", ")})`}`];
+  });
   return chunks.length === 0
     ? null
     : `Reported reviews in read_reviews (newest first): ${chunks.join(", ")}.`;
@@ -205,8 +283,8 @@ function pairClause(pairs: readonly JsonObject[]): string {
   const opposed = new Set<string>();
   for (const row of pairs) {
     const extracts = asRecord(row.extracts);
-    faults += isNumber(extracts?.faults) ? extracts.faults : 0;
-    truncated += isNumber(extracts?.truncated) ? extracts.truncated : 0;
+    faults += num(extracts?.faults);
+    truncated += num(extracts?.truncated);
     if (!isNumber(row.judge) || !isNumber(row.holistic)) continue;
     done += 1;
     if (row.judge !== 0 || row.holistic !== 0) splits += 1;
@@ -226,16 +304,23 @@ function pairClause(pairs: readonly JsonObject[]): string {
 }
 
 export function readReviews(log: string, query: ReviewQuery = {}): string {
+  const filters = (["source", "outcome"] as const).flatMap((key) =>
+    query[key] === undefined || query[key] === "" ? [] : [`${key}=${query[key]}`],
+  );
   const matched = reviewsOf(read(log, (kind) => kind !== "referee.call" && TRACE_KINDS.has(kind))).filter(
     (one) =>
       (query.source === undefined || one.source === query.source) &&
-      (query.outcome === undefined || one.outcomes.includes(query.outcome)),
+      (query.outcome === undefined || query.outcome === "" || one.outcomes.includes(query.outcome)),
   );
-  if (matched.length === 0) return "No reported review records match.";
+  if (matched.length === 0) {
+    return filters.length === 0
+      ? "No reported review records exist yet."
+      : `No review records match (${filters.join(", ")}).`;
+  }
   const cap = Math.min(Math.max(1, Math.floor(query.limit ?? DEFAULT_LIMIT)), MAX_LIMIT);
   const page = matched.slice(0, cap).map(({ text }) => text);
   return [
-    `Showing the newest ${String(page.length)} of ${String(matched.length)} matching review records.`,
+    `Showing 1-${String(page.length)} of ${String(matched.length)} matching review records`,
     ...page,
   ].join("\n\n");
 }

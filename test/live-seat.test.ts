@@ -181,7 +181,7 @@ describe("live-seat draft visibility", () => {
       seats: {
         builder: { model: "claude/claude-opus-5-5", effort: "medium" },
         examiner: { model: "claude/claude-opus-5-5", effort: "medium" },
-        reviewer: { model: "claude/claude-opus-5-5", effort: "medium" },
+        reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "medium" },
       },
       solver: { model: "claude/claude-opus-5-5", effort: "medium" },
     });

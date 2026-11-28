@@ -1,6 +1,6 @@
 import { carriedBy, gainOver, type Paired, pointsOf, scoresIn } from "../kernel/compare.ts";
 import { familySizes, proposalsOf } from "../kernel/history.ts";
-import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
+import { eventsOf, isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import {
   lastReports,
   objectiveCeiling,
@@ -10,16 +10,14 @@ import {
   referenceOf,
   type Reported,
   type Standing,
-  supplySaturation,
 } from "../kernel/reports.ts";
 import { howOftenValid } from "../kernel/size.ts";
-import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
+import { ranUnder, solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { formatScores, OBJECTIVE, objectiveOf, scoresOf, type Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
-import { epochsOf, tasksByEpoch } from "../campaign/climb.ts";
-import { openingOf } from "../campaign/opening.ts";
+import { epochsOf, starterIn, tasksByEpoch } from "../campaign/climb.ts";
 import { reviewInventoryLine, reviewSummariesByTask } from "./reviews.ts";
 
 interface Answered {
@@ -300,39 +298,52 @@ function outcomeSummaryLines(
     .join("\n\n");
 }
 
-function revisionCueOf(
-  events: readonly LogEvent[],
-  reports: readonly Reported[],
-  pool: ReturnType<typeof poolOf>,
-): string | null {
-  const cues: string[] = [];
-  const reference = referenceOf(events);
-  const latest = reports.findLast(({ data }) => data.old === reference || data.fresh === reference);
-  const epochs = epochsOf(events);
-  const current = epochs.at(-1);
-  const tuned = openingOf(events)?.parent?.carried.tunedThisEpoch === true && epochs.length === 1;
-  const starterOwed =
-    current !== undefined &&
-    current.reference !== "starter" &&
-    current.starter_tally === null &&
-    current.confirmed !== true;
-  if (latest !== undefined && !starterOwed && !tuned) {
-    const side = latest.data.fresh === reference ? "fresh" : "old";
-    const sat = supplySaturation(events, latest, side, pool);
-    if (sat !== null) {
-      cues.push(
-        `In ${latest.session}, the reference harness was valid in every solve on ${String(sat.validEvery)}/${String(sat.scored)} tasks with mean objective room ${measured(sat.meanRoom)}. Author tasks with wider headroom or inspect the active check program with read_exam and propose a rubric or scoring revision via revise_exam (kind "tune").`,
-      );
+function revisionCueOf(events: readonly LogEvent[]): string | null {
+  const refereeFaulted = refereeFaultedOf(events);
+  if (refereeFaulted.size < 2) return null;
+  const checks = [...new Set([...refereeFaulted.values()].flatMap((set) => [...set]))].toSorted();
+  return `${plural(refereeFaulted.size, "task")} hold Referee-ruled check defects (${checks.join(", ")}). Inspect the active check program with read_exam and repair faulty checks via revise_exam (kind "repair").`;
+}
+
+function starterTracesOf(events: readonly LogEvent[]): Map<string, JsonObject> {
+  const starter = starterIn(events);
+  if (starter === null) return new Map();
+  const latest = new Map<string, ReturnType<typeof ranUnder>[number]>();
+  for (const solve of ranUnder(events, solvesIn(events))) {
+    if (solve.under.harness === starter && solve.under.side === "test" && solve.end !== null) {
+      latest.set(solve.under.task, solve);
     }
   }
-  const refereeFaulted = refereeFaultedOf(events);
-  if (refereeFaulted.size >= 2) {
-    const checks = [...new Set([...refereeFaulted.values()].flatMap((set) => [...set]))].toSorted();
-    cues.push(
-      `${plural(refereeFaulted.size, "task")} hold Referee-ruled check defects (${checks.join(", ")}). Inspect the active check program with read_exam and repair faulty checks via revise_exam (kind "repair").`,
-    );
+  if (latest.size === 0) return new Map();
+  const wanted = new Set([...latest.values()].map(({ id }) => id));
+  const tools = new Map<string, Record<string, number>>();
+  const cmds = new Map<string, string[]>();
+  for (const {
+    event: { data },
+  } of eventsOf(events, "solve.call")) {
+    const id = isString(data.solve) ? data.solve : null;
+    if (id === null || !wanted.has(id)) continue;
+    const name = isString(data.tool) ? data.tool : "unknown";
+    const counts = tools.get(id) ?? {};
+    counts[name] = (counts[name] ?? 0) + 1;
+    tools.set(id, counts);
+    if (name === "bash") {
+      const cmd = asRecord(data.args)?.command;
+      const list = cmds.get(id) ?? [];
+      if (isString(cmd) && list.length < 4) list.push(cmd.replaceAll(/\s+/gu, " ").trim().slice(0, 120));
+      cmds.set(id, list);
+    }
   }
-  return cues.length === 0 ? null : cues.join("\n");
+  return new Map(
+    [...latest].map(([task, solve]) => [
+      task,
+      {
+        turns: isNumber(solve.end?.turns) ? solve.end.turns : null,
+        tools: tools.get(solve.id) ?? {},
+        commands: cmds.get(solve.id) ?? [],
+      },
+    ]),
+  );
 }
 
 function promotedLine(events: readonly LogEvent[], since: number, listed: readonly string[]): string | null {
@@ -397,6 +408,7 @@ export function taskHistory(
   const allReports = lastReports(events, "all");
   const currentReports = lastReports(events);
   const answered = referenceAnswers(events, allReports, pairsOf);
+  const starterTraces = starterTracesOf(events);
   const faulted = faultedOf(events);
   const reviewed = reviewSummariesByTask(events);
   const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
@@ -440,6 +452,7 @@ export function taskHistory(
       measures: ans?.measures ?? [],
       bestAuthor: pool.bests.get(version) ?? null,
       itemMeans: ans?.itemMeans ?? {},
+      starterTrace: starterTraces.get(version) ?? null,
     });
   }
   const stood = outcomeSummaryLines(events, currentReports, after, pairsOf, {
@@ -449,7 +462,7 @@ export function taskHistory(
   });
   return {
     stood,
-    revisionCue: after === undefined || stood !== null ? revisionCueOf(events, currentReports, pool) : null,
+    revisionCue: after === undefined || stood !== null ? revisionCueOf(events) : null,
     reviews: after === undefined || stood !== null ? reviewInventoryLine(events) : null,
     metrics: {
       activeFrontier: pool.frontier.length,

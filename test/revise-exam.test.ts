@@ -28,6 +28,7 @@ import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts"
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
+import { errorMessage } from "../src/meta/runtime-values.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { hashJsonValue, requireJsonValue } from "../src/meta/stable-json.ts";
@@ -190,6 +191,7 @@ async function seedCampaign(opts?: {
   readonly name?: string;
   readonly revise?: boolean;
   readonly attended?: boolean;
+  readonly reviewer?: string;
   readonly budget?: { readonly dollars: number; readonly reserve: number };
 }) {
   const name = opts?.name ?? "camp-a";
@@ -203,7 +205,7 @@ async function seedCampaign(opts?: {
     seats: {
       builder: { model: OPUS, effort: "high" },
       examiner: { model: OPUS, effort: "high" },
-      reviewer: { model: CROSS, effort: "high" },
+      reviewer: { model: opts?.reviewer ?? CROSS, effort: "high" },
     },
     judged: true,
     ...keysIf(opts?.revise === false, () => ({ revise: false })),
@@ -673,6 +675,29 @@ describe("successor campaign", () => {
     expect(eventsOf(read(seed.log), REVISED).map(({ event: { data } }) => data.draftHash)).toEqual([
       hashJsonValue(TUNE),
     ]);
+  });
+
+  it("freezes a judged revision only where the campaign seats a first-party judging reviewer", async () => {
+    const judged = candidateDraft(PARENT_DRAFT, {
+      why: "judge clarity",
+      ...rubric(codeItem("accuracy", 1), {
+        id: "clarity",
+        weight: 1,
+        kind: "judge",
+        criterion: "Reports methodology and assumptions clearly.",
+      }),
+    });
+    const short = hashJsonValue(judged).slice(0, 16);
+    const frozenUnder = async (reviewer: string) => {
+      const seed = await seedCampaign({ name: `judged-${reviewer.length}`, attended: true, reviewer });
+      await seed.runner(SOUND_AUDIT)({ ...TUNE_INPUT, candidate: judged });
+      return await freezeCandidate(seed.log, short, seed.packages).then(
+        () => eventsOf(read(seed.log), REVISED).length,
+        (error: unknown) => errorMessage(error),
+      );
+    };
+    expect(await frozenUnder("acme/judge-1")).toContain("seats no first-party judging reviewer");
+    expect(await frozenUnder(CROSS)).toBe(1);
   });
 
   it("names successors and rewrites launch flags", () => {

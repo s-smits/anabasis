@@ -47,6 +47,7 @@ import { SEED_FILE } from "../runs/registry.ts";
 import { campaignLog, openCampaign } from "./campaign.ts";
 import { draftReading } from "./exam.ts";
 import { importHarness } from "./import.ts";
+import { knownReviewer } from "./round.ts";
 
 const REVISED = "exam.revised";
 const COPY = { recursive: true, verbatimSymlinks: true } as const;
@@ -258,6 +259,12 @@ export async function freezeCandidate(log: string, candidate: string, packages: 
       data.verdict === "sound" && data.revision === frozen.checks && data.session === staged.session,
   );
   if (!sound) throw new Error(`candidate ${candidate} has no sound audit on record for ${frozen.checks}`);
+  const reviewer = openingOf(events)?.seats.reviewer ?? null;
+  if (hasJudge(draft.objective) && (reviewer === null || !knownReviewer(reviewer.model))) {
+    throw new Error(
+      `candidate ${candidate} scores judged items, and the campaign seats no first-party judging reviewer to compare them`,
+    );
+  }
   const repair = isString(staged.check) ? staged.check : undefined;
   const bundle = join(dirname(log), "revisions", "exams", candidate, "bundle");
   const tools = existsSync(join(bundle, TOOL_TREE_DIR)) ? bundle : undefined;

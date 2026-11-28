@@ -13,7 +13,7 @@ Simulate a PR or stack before launching a full campaign or merging. Use model-fr
 | --- | --- | --- | --- | --- |
 | **Model-free checks** | Archive replays (`runs replay`, `promotion-tuner/scripts/replay.ts`), `live-seat.ts prompt`, `seat-view.ts`, `wall-probe.ts`, and scripted rehearsals (`runs rehearse` on `faux/script`) | \$0 (use freely) | Log compatibility, score parity, prompt/schema diffs, sandbox boundaries, command joins, endings | [before-after](cases/before-after.md), [rehearsal](cases/rehearsal.md), [rubric-and-verifier](cases/rubric-and-verifier.md) |
 | **Subagent simulation** | Read-only subagent given the PR diff and owning modules to step through the changed system end to end (or a multi-agent simulation for major redesigns) | No campaign spend (use freely) | Tracing state transitions, resume and recovery paths, subtle interactions, and schema-to-consumer gaps | `swarm-simulation-agentic-system` |
-| **Live-model simulation** | Real model runs on seeded campaign cuts via `scripts/live-seat.ts` | Operator-approved spend | Checking how real models behave under updated prompts, schemas, tools, or scoring | [live-seat](cases/live-seat.md), [optimize](cases/optimize.md) |
+| **Live-model simulation** | Real model runs on seeded campaign cuts via `scripts/live-seat.ts` | Bounded spend (autonomous) | Checking how real models behave under updated prompts, schemas, tools, or scoring | [live-seat](cases/live-seat.md), [optimize](cases/optimize.md) |
 
 Use [stack-contracts.md](../run-improvement-campaign/references/stack-contracts.md) to pick the contract seams each change touches.
 
@@ -26,14 +26,15 @@ When a PR changes model-facing prompts, schemas, agent flows, or scoring, do not
 - **Concurrency:** run **at most 2** live simulations concurrently on a quiet host.
 - **Bounds:** keep each live angle short and bounded (`--cap`, `--minutes`, `--tries`, `--proposals`, `--moves`). Use [optimize](cases/optimize.md) only for deliberate paired prompt/parameter sweeps.
 
-### Autonomous parameter selection once live simulation is requested
+### Autonomous live-model simulation
 
-Never start unprompted paid runs when the operator has not asked for live-model simulation. Once the operator asks to run live simulations (for example, "simulate with real models", "run 4–6 live angles", or "continue" on an approved live-simulation plan) without spelling out every parameter, determine the omitted values from recent history rather than pausing to ask:
+Launch bounded live-model simulations autonomously whenever simulating a PR or stack that changes model-facing prompts, schemas, agent flows, backend/tool wiring, or scoring. Do not pause to ask for operator permission unless the operator explicitly restricts spend, asks for model-free checks only, or sets explicit constraints (which always take precedence). Determine any omitted parameters from current capacity and recent history:
 
-1. **Angles:** pick the 1–2 (small PR) or 4–8 (large PR / stack) highest-signal angles covering every changed seam plus a control domain. Where code refuses a seat combination on the chosen backend (for example, same-family judged pairs), state that in one line and substitute an angle that runs cleanly on the chosen backend alone.
-2. **Model and effort:** the operator determines each backend — never choose, keep, or switch to another backend on your own (ask if no backend was named). Within the operator-named backend, infer omitted model tier or effort from recent `.ana/wri/sim-*` records, prior session history, and `tools/runs/fresh.ts` (`NAMED`), keeping all seats on that backend unless the operator named a split.
-3. **Login and host:** run `bun run runs usage`, `bun run runs active`, and `bun run runs loadwatch --once` (never print `--env-file`). Pick an open login with headroom (preferring the most remaining weekly quota / earliest reset among open logins within plan concurrency caps) and a quiet non-benchmark host.
-4. **Dollar and minute caps:** derive a bounded per-angle cap from prior `.ana/wri/sim-*` sittings of the same seat kind (typically \$15 to \$50 and 20 to 30 minutes per bounded seat, scaled to seat scope). Record the chosen angles, model, effort, cap, and falsifiers in `.ana/wri/sim-<date>-<topic>/predictions.md` before launch, then start Wave 1 immediately.
+1. **Angles:** pick the 1–2 (small PR) or 4–8 (large PR / stack) highest-signal angles covering every changed seam plus a control domain. Where code refuses a seat combination on the chosen backend (for example, same-family judged pairs), state that in one line and substitute an angle that runs cleanly on that backend alone.
+2. **Backend, model, and effort:** honour any backend, model, or effort the operator explicitly named (never override an explicit choice or silently mix backends). When omitted, infer backend, model tier, and effort from open capacity, recent `.ana/wri/sim-*` records, prior session history, and `tools/runs/fresh.ts` (`NAMED`), keeping all seats on one backend unless a split was named.
+3. **Login and host:** run `bun run runs usage`, `bun run runs active`, and `bun run runs loadwatch --once` (never print `--env-file`). Pick an open login or backend with headroom (preferring the most remaining weekly quota / earliest reset within concurrency caps) and a quiet non-benchmark host.
+4. **Dollar and minute caps:** derive a bounded per-angle cap from prior `.ana/wri/sim-*` sittings of the same seat kind (typically \$15 to \$50 and 20 to 30 minutes per bounded seat, scaled to seat scope; smaller caps for focused probes). Record the chosen angles, backend, model, effort, cap, and falsifiers in `.ana/wri/sim-<date>-<topic>/predictions.md` before launch, then start Wave 1 immediately.
+5. **3-minute check:** 3 minutes after launching each live wave, manually inspect the running seats (`live-seat.ts read` / task log / `log.jsonl` tail) to verify they are holding up — advancing cleanly, hitting the intended seam, and not stalled, error-looping, or burning budget off-target. Stop early via `live-seat.ts stop` if a seat is wedged or already answered the question.
 
 ## Practical rules
 

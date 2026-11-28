@@ -1,5 +1,6 @@
 import {
   detectable,
+  flipP,
   power,
   type ObjectiveRule,
   objectiveRuleIn,
@@ -71,6 +72,14 @@ export interface Report {
     | (Tested & {
         readonly flips: number | null;
         readonly detectable?: number | null;
+        readonly spread?: {
+          readonly p75: number;
+          readonly max: number;
+          readonly aboveP75: number;
+          readonly aboveMax: number;
+          readonly zeroedP: number;
+          readonly zeroedStep: boolean;
+        };
       })
     | null;
   readonly counted: Tested | null;
@@ -344,12 +353,31 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Labels)
         pairs.map(({ task }) => task),
       ),
     );
+  const aaSpread = (aaDiffs: readonly number[], abDiffs: readonly number[]) => {
+    const absAa = aaDiffs.map(Math.abs).toSorted((one, other) => one - other);
+    const max = absAa.at(-1) ?? 0;
+    const p75 = absAa.length === 0 ? 0 : (absAa[Math.floor((absAa.length - 1) * 0.75)] ?? 0);
+    const zeroed = abDiffs.map((diff) => (Math.abs(diff) <= max ? 0 : diff));
+    return {
+      p75,
+      max,
+      aboveP75: abDiffs.filter((diff) => Math.abs(diff) > p75).length,
+      aboveMax: abDiffs.filter((diff) => Math.abs(diff) > max).length,
+      zeroedP: flipP(zeroed),
+      zeroedStep: isSignificant(zeroed, fixed.level),
+    };
+  };
+  const tested = scored(pairs);
   const mirroredOf = (halves: readonly Paired[]) => {
     const aa = scored(halves);
-    return { ...aa, flips: flipsOf(halves), detectable: detectable(aa.differences, fixed.level) };
+    return {
+      ...aa,
+      flips: flipsOf(halves),
+      detectable: detectable(aa.differences, fixed.level),
+      spread: aaSpread(aa.differences, tested.differences),
+    };
   };
   const mirrored = fixed.solves % 2 === 0 ? mirroredOf(againstItself()) : null;
-  const tested = scored(pairs);
   const stepped = isSignificant(tested.differences, fixed.level);
   const reading: Reading = pairs.length === 0 ? "not-scored" : stepped ? "step" : "no-step";
   const solves = pairs.length === 0 ? [] : solvesIn(events);

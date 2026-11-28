@@ -177,13 +177,14 @@ export async function prepareCommand(
   const pool = currentPool.practicePool;
   const missing = labels.length > 0 || heldBack(events) ? 0 : Math.max(0, practice - before.released.length);
   const released = Math.min(missing, Math.floor(pool.length / 2));
-  for (const [version, why] of releaseOrder(events, pool, released, `${contractHash(contract)}:practice`)) {
+  const picked = releaseOrder(events, pool, released, `${contractHash(contract)}:practice`);
+  for (const [version, why] of picked) {
     record("task.state", { version, state: "released" });
     console.log(`${packages.get(version)?.taskId ?? version}${why} released for practice, and never scored`);
   }
-  if (released < missing) {
+  if (picked.length < missing) {
     console.log(
-      `practice is ${String(missing - released)} short of ${values.practice}: a release takes at most half of the ${String(pool.length)} held out, so that a comparison has tasks to score`,
+      `practice is ${String(missing - picked.length)} short of ${values.practice}: a release takes whole families up to half of the ${String(pool.length)} held out, so that a comparison has tasks to score`,
     );
   }
 

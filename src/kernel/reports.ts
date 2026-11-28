@@ -13,7 +13,7 @@ import {
   differenceOf,
   gapAgainst,
 } from "./compare.ts";
-import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
+import { failWrongPasses, proposalsOf, wrongPasses, wrongPassesIn } from "./history.ts";
 import { type EventKind, eventsOf, isReferenceChange, type LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
@@ -533,10 +533,45 @@ export function releaseOrder(
   const failedSet = new Set(failed);
   const takenSet = new Set(releasedFirst);
   const rest = pool.filter((version) => !takenSet.has(version) && !failedSet.has(version));
-  const chosen = [
-    ...releasedFirst.slice(0, count),
-    ...draw(rest, Math.min(rest.length, Math.max(0, count - releasedFirst.length)), seed),
-  ];
+  const familyByVersion = new Map(
+    proposalsOf(events).flatMap(({ version, family }) =>
+      family !== null && family !== "" ? [[version, family] as const] : [],
+    ),
+  );
+  const familyOf = (version: string) => familyByVersion.get(version) ?? version;
+  const membersByFamily = new Map<string, string[]>();
+  for (const version of pool) {
+    const family = familyOf(version);
+    membersByFamily.set(family, [...(membersByFamily.get(family) ?? []), version]);
+  }
+  const failedLimit = Math.floor(failed.length / 2);
+  const chosen: string[] = [];
+  if (membersByFamily.size <= 1) {
+    chosen.push(
+      ...releasedFirst.slice(0, count),
+      ...draw(rest, Math.min(rest.length, Math.max(0, count - releasedFirst.length)), seed),
+    );
+  } else {
+    let failedReleased = 0;
+    const seenFamilies = new Set<string>();
+    for (const version of [...releasedFirst, ...draw(rest, rest.length, seed)]) {
+      if (chosen.length >= count) break;
+      const family = familyOf(version);
+      if (seenFamilies.has(family)) continue;
+      seenFamilies.add(family);
+      const members = membersByFamily.get(family) ?? [];
+      const famFailed = members.filter((member) => failedSet.has(member)).length;
+      if (
+        members.length === 0 ||
+        chosen.length + members.length > count ||
+        failedReleased + famFailed > failedLimit
+      ) {
+        continue;
+      }
+      chosen.push(...members);
+      failedReleased += famFailed;
+    }
+  }
   return chosen.map((version) => [
     version,
     unansweredSet.has(version)

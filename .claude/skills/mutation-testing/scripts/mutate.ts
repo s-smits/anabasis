@@ -10,7 +10,9 @@
  * listed host whatever `ANA_CHECK_HOST` says (`fleetPlaces`) and `--local N` adds N slots here.
  * `--jobs N` caps workers. Each place first runs every suite unmutated: a suite that fails there
  * reads `null` there, and a place where none passes takes no mutants; a suite run here that starts
- * no process reads `false`, unrun, for a mutant on a line its coverage shows it never runs. A place
+ * no process reads `false`, unrun, for a mutant on a line its coverage shows it never runs. Under
+ * `--stop-at-kill` a mutant tries first the suites that killed most per run and per millisecond on
+ * its file so far. A place
  * that gives no verdict hands its mutant back and takes no more; `--until` stops taking mutants at that time. A run with
  * no pass, fail or bail count, or one past its wall (`--timeout`, at most ten times the suite's
  * unmutated time plus 30 s), records `null` rather than a kill. `report` tabulates per-file kills
@@ -356,6 +358,7 @@ export async function runMutants(root: string, jobs: readonly Job[], settings: S
   const suites = new Map(jobs.flatMap((job) => Object.entries(job.suites)));
   const took = new Map<Place, ReadonlyMap<string, number | null>>();
   const idle = new Map<string, Map<string, Set<number>>>();
+  const yields = new Map<string, { readonly runs: number; readonly kills: number }>();
   let read = 0;
   const { unrun, refused } = await spread(places, tasks, {
     qualify: async ({ place }) => {
@@ -373,9 +376,19 @@ export async function runMutants(root: string, jobs: readonly Job[], settings: S
       const path = join(worker.clone, mutant.file);
       const original = originals.get(mutant.file) ?? "";
       writeFileSync(path, original.slice(0, mutant.start) + mutant.text + original.slice(mutant.end));
-      const killed: Record<string, boolean | null> = {};
+      const killed: Record<string, boolean | null> = Object.fromEntries(
+        Object.keys(job.suites).map((name) => [name, null]),
+      );
+      const yieldOf = (name: string) => yields.get(`${mutant.file}\0${name}`) ?? { runs: 0, kills: 0 };
+      const odds = (name: string) => {
+        const { runs, kills } = yieldOf(name);
+        return (kills + 0.1) / ((runs + 1) * Math.max(50, took.get(place)?.get(name) ?? 0));
+      };
+      const order = Object.entries(job.suites).toSorted(([a], [b]) =>
+        settings.stopAtKill ? odds(b) - odds(a) : 0,
+      );
       try {
-        for (const [name, paths] of Object.entries(job.suites)) {
+        for (const [name, paths] of order) {
           const ms = took.get(place)?.get(name) ?? null;
           const stopped = ms === null || (settings.stopAtKill && Object.values(killed).includes(true));
           const wall = Math.min(settings.seconds, 30 + Math.ceil((ms ?? 0) / 100));
@@ -386,6 +399,9 @@ export async function runMutants(root: string, jobs: readonly Job[], settings: S
             return "elsewhere";
           }
           killed[name] = said;
+          if (said === null || unreached) continue;
+          const { runs, kills } = yieldOf(name);
+          yields.set(`${mutant.file}\0${name}`, { runs: runs + 1, kills: kills + Number(said) });
         }
       } finally {
         writeFileSync(path, original);

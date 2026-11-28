@@ -108,6 +108,40 @@ describe("the mutation oracle", () => {
     );
   }, 60_000);
 
+  it("tries first, under --stop-at-kill, the suite that has killed on the file, leaving one that never has unread", () => {
+    const tree = join(root, "order-tree");
+    mkdirSync(tree);
+    writeFileSync(join(tree, "a.ts"), "export const above = (x: number) => x > 1 && x < 9;\n");
+    writeFileSync(
+      join(tree, "blind.test.ts"),
+      'import { expect, it } from "bun:test";\nit("passes", () => expect(1).toBe(1));\n',
+    );
+    writeFileSync(
+      join(tree, "pins.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { above } from "./a.ts";\nit("pins", () => expect([1, 2, 8, 9].map(above)).toEqual([false, true, true, false]));\n',
+    );
+    const suites = join(root, "order-suites.json");
+    writeFileSync(suites, JSON.stringify({ blind: ["blind.test.ts"], pins: ["pins.test.ts"] }));
+    const out = join(root, "order.jsonl");
+    const run = runScript(
+      "run",
+      tree,
+      "a.ts",
+      "--out",
+      out,
+      "--suites",
+      suites,
+      "--jobs",
+      "1",
+      "--stop-at-kill",
+    );
+    expect(run.exitCode).toBe(0);
+    const rows = rowsOf(out);
+    expect(rows.length).toBeGreaterThan(2);
+    expect(rows.map(({ killed }) => killed.pins)).toStrictEqual(rows.map(() => true));
+    expect(rows.slice(1).map(({ killed }) => killed.blind)).toStrictEqual(rows.slice(1).map(() => null));
+  }, 60_000);
+
   it("records a mutant that hangs past --timeout as unread, never as a kill", () => {
     const tree = join(root, "hang-tree");
     mkdirSync(tree);

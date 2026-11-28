@@ -24,6 +24,7 @@ import {
   count,
   EXAM_END,
   EXAM_START,
+  FILE_WRITERS,
   fired,
   emitIf,
   type Index,
@@ -72,7 +73,6 @@ type PracticeCandidate = { readonly harness: string; readonly began: number } & 
 );
 
 const FEW_CALLS = 3;
-export const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
 
 interface PractisedSession {
   readonly build: Build;

@@ -176,6 +176,9 @@ function scriptedBuilder() {
       [changed, compared, examined] = [true, false, true];
       return fauxAssistantMessage(fauxToolCall("examine", {}), TOOL_USE);
     }
+    if (compared && last.includes("call compare again")) {
+      return fauxAssistantMessage(fauxToolCall("compare", {}), TOOL_USE);
+    }
     const finish =
       compared ||
       (changed && !comparing) ||

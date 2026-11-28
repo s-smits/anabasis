@@ -688,6 +688,25 @@ describe.concurrent("a Builder session", () => {
     expect(built.ended).toBe("finished");
   });
 
+  it("remembers every untried digest across A -> B -> A so returning to an already-warned digest does not re-warn", async () => {
+    const s = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      call("write", { path: "harness/agent/BUILT_AGENTS.md", content: "Digest A.\n" }),
+      finish,
+      call("write", { path: "harness/agent/BUILT_AGENTS.md", content: "Digest B.\n" }),
+      finish,
+      call("write", { path: "harness/agent/BUILT_AGENTS.md", content: "Digest A.\n" }),
+      finish,
+    ]);
+    const built = await session(s.request, s, s.walled);
+    const finishes = s.of(BUILD_CALL).filter(({ tool: name }) => name === "finish");
+    expect(finishes).toHaveLength(3);
+    expect(finishes[0]?.text).toContain("harness/ has changed since your last practice solve");
+    expect(finishes[1]?.text).toContain("harness/ has changed since your last practice solve");
+    expect(finishes[2]?.text).toContain("Finished.");
+    expect(built.ended).toBe("finished");
+  });
+
   it("sets aside unestablished practice rejections in results, traces and later records, and takes a check defect's task out of practice", async () => {
     for (const ruling of ["unclear", "check-defect", null, "absent", "crashed"] as const) {
       const s = await setup(

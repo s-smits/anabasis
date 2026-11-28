@@ -18,8 +18,7 @@ import { callsOf } from "#src/kernel/trace.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { type Build, type Index, indexOf, practiceOf, type Solve, tally } from "./folds.ts";
-import { FILE_WRITERS } from "./read.ts";
+import { type Build, FILE_WRITERS, type Index, indexOf, practiceOf, type Solve, tally } from "./folds.ts";
 import { proposedTasks } from "./tasks.ts";
 
 const USAGE = "usage: bun tools/wri/practice.ts (<log> | --log <log>) [--session <id>]";

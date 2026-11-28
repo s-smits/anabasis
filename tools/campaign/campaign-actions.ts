@@ -13,7 +13,13 @@ import type { Opening } from "#src/campaign/opening.ts";
 import { formatComparisonHistory } from "#src/builder/past.ts";
 import { seedSavedHarnesses, snapshot } from "#src/builder/store.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
-import { type Bench, endingWith, PRACTICE_FAULT, waitTool } from "#src/builder/tools.ts";
+import {
+  type Bench,
+  endingWith,
+  PRACTICE_FAULT,
+  untriedCompareNotice,
+  waitTool,
+} from "#src/builder/tools.ts";
 import { boundedPause, pendingSignals } from "#src/campaign/signal.ts";
 import { conversing, examine } from "#src/examiner/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
@@ -331,7 +337,7 @@ async function comparedOf(
     return { refused: "harness/ does not open, so it cannot be compared: check_harness says why." };
   }
   const reference = (await resolveCheckpoint(context.campaign, "--reference", PROMOTED)).digest;
-  return selectComparison({
+  const selected = selectComparison({
     events,
     plan,
     decided,
@@ -341,6 +347,9 @@ async function comparedOf(
     hasExaminer: context.seats.seated === solved || context.seats.examine !== undefined,
     examiningSession: context.examining?.session ?? null,
   });
+  if ("refused" in selected || selected.move === decided) return selected;
+  const untried = untriedCompareNotice(bench, events, working, reference);
+  return untried === null ? selected : { refused: untried };
 }
 
 const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>

@@ -20,7 +20,18 @@ import { join } from "#src/meta/path.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { hasWholeToken, plural } from "#src/meta/text.ts";
-import { EXAM_END, emitIf, type Index, items, percent, share, tally, text, type Trigger } from "./folds.ts";
+import {
+  EXAM_END,
+  emitIf,
+  FILE_WRITERS,
+  type Index,
+  items,
+  percent,
+  share,
+  tally,
+  text,
+  type Trigger,
+} from "./folds.ts";
 
 interface DraftAuditPass {
   readonly index: number;
@@ -47,6 +58,14 @@ interface RoleRow {
 const EXAM_HASH_PREFIX = 16;
 const CHECK_ID_RE = /^check-[a-z0-9-]+$/u;
 const INTERNAL_KIND_RE = /\b(?:referee\.finding|referee\.draft(?:\.refused)?|campaign\.word)\b/u;
+const BUILDER_PROGRAM_FILE_RE = /(?:^|\/)\.toolchain\/(?:bin|host)\/([a-z0-9][a-z0-9._-]*)$/u;
+const HARNESS_PATH_RE = /(?:^|\/)harness\//u;
+const BASH_HARNESS_TARGET_RE =
+  /(?:^|[\s"'=/])(?:harness\/|agent\/BUILT_AGENTS\.md|\.toolchain\/(?:bin|host)\/)/u;
+const BASH_WRITE_PROGRAM_RE =
+  /(?:>>?|\b(?:tee|install|cp|mv|touch|ln|chmod)\b)[^\n;|&]*\.toolchain\/(?:bin|host)\/([a-z0-9][a-z0-9._-]*)(?![a-z0-9._-])/gu;
+const PRACTICE_PROGRAMS_RUN_RE = /Harness programs run: [^.\n]+\./gu;
+const TRACE_BASH_PREVIEW_RE = /^\d+ bash \([^)]+\): /u;
 const NON_SOLVER_SKEW = 0.4;
 const MIN_SKEW_DOLLARS = 10;
 const MIN_TASK_ID_LEN = 4;
@@ -263,15 +282,78 @@ function wallTargetsOf(events: readonly LogEvent[]) {
   };
 }
 
+function programPathId(path: string): string | null {
+  return BUILDER_PROGRAM_FILE_RE.exec(path)?.[1] ?? null;
+}
+
+function recordBuilderPrograms(
+  created: Map<string, number>,
+  index: number,
+  toolName: string,
+  args: ReturnType<typeof asRecord>,
+): void {
+  if (FILE_WRITERS.has(toolName)) {
+    const name = programPathId(text(args?.path));
+    if (name !== null && !created.has(name)) created.set(name, index);
+    return;
+  }
+  if (toolName !== "bash") return;
+  for (const match of text(args?.command).matchAll(BASH_WRITE_PROGRAM_RE)) {
+    const name = match[1];
+    if (name !== undefined && !created.has(name)) created.set(name, index);
+  }
+}
+
+function isOwnProgramMention(
+  created: ReadonlyMap<string, number>,
+  call: {
+    readonly index: number;
+    readonly toolName: string;
+    readonly args: ReturnType<typeof asRecord>;
+    readonly body: string;
+  },
+  id: string,
+): boolean {
+  const { index, toolName, args, body } = call;
+  const madeAt = created.get(id);
+  if (madeAt === undefined) return false;
+  if (FILE_WRITERS.has(toolName)) {
+    return index >= madeAt && HARNESS_PATH_RE.test(text(args?.path));
+  }
+  if (index <= madeAt) return false;
+  if (toolName === "check_harness") return true;
+  if (toolName === "read") return HARNESS_PATH_RE.test(text(args?.path));
+  if (toolName === "bash") return BASH_HARNESS_TARGET_RE.test(text(args?.command));
+  if (toolName === "practice") return !hasWholeToken(body.replace(PRACTICE_PROGRAMS_RUN_RE, ""), id);
+  if (toolName === "read_trace") {
+    const outsideBashPreview = body
+      .split("\n")
+      .filter((line) => !TRACE_BASH_PREVIEW_RE.test(line))
+      .join("\n");
+    return !hasWholeToken(outsideBashPreview, id);
+  }
+  return false;
+}
+
 function wallScanOf(events: readonly LogEvent[]) {
   const { checkList, heldTasks, digestList, shortDigests } = wallTargetsOf(events);
+  const createdPrograms = new Map<string, number>();
   let [buildCheckIds, buildHeldTasks, buildInternalKinds, examHarnessDigests, examInternalKinds] = [
     0, 0, 0, 0, 0,
   ];
   for (const { index, event } of eventsOf(events, ["build.call", "exam.call"])) {
     const body = text(event.data.text);
     if (event.kind === "build.call") {
-      if (body.includes("check-") && checkList.some((id) => hasWholeToken(body, id))) buildCheckIds += 1;
+      const toolName = text(event.data.tool);
+      const args = asRecord(event.data.args);
+      recordBuilderPrograms(createdPrograms, index, toolName, args);
+      const call = { index, toolName, args, body };
+      if (
+        body.includes("check-") &&
+        checkList.some((id) => hasWholeToken(body, id) && !isOwnProgramMention(createdPrograms, call, id))
+      ) {
+        buildCheckIds += 1;
+      }
       if (heldTasks.some(({ taskId, releasedAt: at }) => index < at && hasWholeToken(body, taskId))) {
         buildHeldTasks += 1;
       }

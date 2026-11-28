@@ -41,7 +41,6 @@ import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { HOST_ONLY, portableGuide } from "../harness/starter.ts";
 import { clockText } from "../solver/run.ts";
-import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } from "./store.ts";
 import { type Listed, measuredClause, type ModePrompts, shellWalls } from "./prompt.ts";
@@ -63,7 +62,7 @@ export interface Bench extends Freezing {
   readonly within: <T>(action: () => Promise<T>) => Promise<T>;
   fatal: Error | null;
   note: string | null;
-  readonly told: Map<"broken" | "untried" | "unread", string>;
+  readonly told: Map<"broken" | "untried" | "unread", Set<string>>;
 }
 
 type Unmeasured = (digest: string) => Promise<string | null>;
@@ -84,6 +83,7 @@ interface FoldedPractice {
 }
 
 const BAND_EDGES = [GAP_FLOOR, 0.1, 0.5, 0.9] as const;
+const PRACTICE_SOLVE = "practice solve";
 const EMPTY_RECORD: { readonly solves: readonly string[]; readonly passed: number } = {
   solves: [],
   passed: 0,
@@ -539,33 +539,49 @@ export function traceTool(bench: Bench): AgentTool {
   });
 }
 
+function rememberTold(told: Bench["told"], key: "broken" | "untried" | "unread", value: string): boolean {
+  const seen = told.get(key) ?? new Set<string>();
+  if (seen.has(value)) return false;
+  seen.add(value);
+  told.set(key, seen);
+  return true;
+}
+
+const hasPractiseableTask = (bench: Pick<Bench, "tasks" | "faulty">): boolean =>
+  bench.tasks.some(({ version }) => !bench.faulty.has(version));
+
+export function untriedCompareNotice(
+  bench: Bench,
+  events: readonly LogEvent[],
+  working: string,
+  reference: string,
+): string | null {
+  if (working === reference || working === bench.parent || !hasPractiseableTask(bench)) return null;
+  const left = practiceLeft(bench, events);
+  if (left <= 0 || hasPractice(bench, events, working)) return null;
+  if (!rememberTold(bench.told, "untried", working)) return null;
+  return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, PRACTICE_SOLVE)} ${left === 1 ? "is" : "are"} left. Practise it first, or call compare again to compare it untried.`;
+}
+
 async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
   const { request, told } = bench;
   const again = "or call finish again to end the session as it is";
   const now = await harnessNow(bench);
   if (!isString(now)) {
     const why = errorMessage(now);
-    if (told.get("broken") === why) return null;
-    told.set("broken", why);
+    if (!rememberTold(told, "broken", why)) return null;
     const { unpractised, practised } = bench.modePrompts.broken;
     return `${why}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
   }
   const events = read(request.log, CALL_KINDS);
   const left = practiceLeft(bench, events);
-  const tried =
-    bench.opened === null ||
-    now === bench.parent ||
-    hasPractice(bench, events, now) ||
-    eventsOf(events, COMPARISON_STARTED).some(
-      ({ event: { data } }) => data.old === now || data.fresh === now,
-    );
-  const untried = !tried && left > 0 && told.get("untried") !== now;
+  const tried = bench.opened === null || now === bench.parent || hasPractice(bench, events, now);
+  const untried = !tried && left > 0 && hasPractiseableTask(bench) && rememberTold(told, "untried", now);
   const unreadKey = `${now}@${bench.reference.harness.digest}`;
-  const unread = told.get("unread") === unreadKey ? null : ((await unmeasured?.(now)) ?? null);
-  if (unread !== null) told.set("unread", unreadKey);
+  const unread = told.get("unread")?.has(unreadKey) === true ? null : ((await unmeasured?.(now)) ?? null);
+  if (unread !== null) rememberTold(told, "unread", unreadKey);
   if (untried) {
-    told.set("untried", now);
-    return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.modePrompts.untried}.${unread === null ? "" : ` ${unread}`}`;
+    return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, PRACTICE_SOLVE)} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.modePrompts.untried}.${unread === null ? "" : ` ${unread}`}`;
   }
   return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
 }

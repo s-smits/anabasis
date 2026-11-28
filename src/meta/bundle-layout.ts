@@ -19,6 +19,8 @@ export const GENERATED_TOOLS_FILE = "agent/tools.ts";
 
 export const TOOL_TREE_DIR = ".toolchain";
 
+export const TOOL_HOST_DIR = "host";
+
 export const TOOL_TREE_ENV = "env.sh";
 
 export const BYTECODE = /(^|\/)__pycache__(\/|$)/;

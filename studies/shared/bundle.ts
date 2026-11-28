@@ -24,6 +24,7 @@ import { tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join, relative } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { stripHostOnly } from "#src/harness/files.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { writeBare, writeStarter } from "#src/harness/starter.ts";
@@ -139,8 +140,10 @@ export async function bundleArm(
   const part = `${into}.part-${String(process.pid)}-${String(Date.now())}`;
   mkdirSync(part, { recursive: true });
   const origin = await placeHarness(join(part, HARNESS_DIR), source);
+  const keptDigest = (await openHarness(join(part, HARNESS_DIR))).digest;
+  const { removed } = stripHostOnly(join(part, HARNESS_DIR));
   await foreignPrograms(join(part, HARNESS_DIR, TOOL_TREE_DIR));
-  const opened = await openHarness(join(part, HARNESS_DIR));
+  await openHarness(join(part, HARNESS_DIR));
   runTextSyncOrThrow([
     capturedExecPath,
     "build",
@@ -150,10 +153,15 @@ export async function bundleArm(
     "--outfile",
     join(part, SOLVER_FILE),
   ]);
-  const record = { harness: opened.digest, ...origin, target: TARGET };
+  const record = {
+    harness: keptDigest,
+    ...origin,
+    target: TARGET,
+    ...keyIfDefined("stripped", removed.length > 0 ? removed : undefined),
+  };
   writeFileSync(join(part, MOUNT_RECORD), `${capturedJsonStringify(record, null, 2)}\n`);
   renameSync(part, into);
-  return { digest: opened.digest, origin };
+  return { digest: keptDigest, origin };
 }
 
 export async function ownPython(tree: string, env: Readonly<Record<string, string>>): Promise<string | null> {

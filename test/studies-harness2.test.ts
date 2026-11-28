@@ -32,8 +32,11 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
+import { stripHostOnly } from "../src/harness/files.ts";
 import { openHarness, treeContent } from "../src/harness/open.ts";
 import { EXAMPLE, HOST_ONLY, writeBare, writeStarter } from "../src/harness/starter.ts";
+import { TOOL_HOST_DIR, TOOL_TREE_DIR } from "../src/meta/bundle-layout.ts";
+import { shellQuote, toolTreeSearchDirs } from "../src/sandbox/isolation.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
 /** A harness of the shell and one program, `mark`. */
@@ -644,6 +647,116 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
       else runtimeProcess.env.ANA_SOLVER_WRAP = prevWrap;
     }
   });
+
+  it("strips .toolchain/host/ and legacy campaign adapters on export so only portable programs resolve and run", async () => {
+    const scoreScript = join(import.meta.dir, "..", "studies", "harness2", "score.ts");
+    const out = join(root, "export-boundary-out");
+    const hostSplit = await campaign("export-host-split", () => undefined, EXAMPLE);
+    const legacy = await campaign("export-legacy", () => undefined, {
+      spec: { presets: ["bash"], tools: [] },
+      programs: {
+        "ws-scan": "#!/bin/sh\necho portable-scan-ok\n",
+        "check-deliverables": "#!/bin/sh\n# reads publicInput and answer-format.json\necho adapter\n",
+        "check-answer": "#!/bin/sh\n# reads answer.json\necho adapter\n",
+      },
+      guide: `# Operating Guide\n\nRun ws-scan.\n\n${HOST_ONLY}\nRun check-deliverables.\n`,
+    });
+    const linkedDir = join(root, "linked-export");
+    writeHarness(linkedDir, {
+      spec: { presets: ["bash"], tools: [] },
+      programs: { "ws-scan": "#!/bin/sh\necho linked-portable-ok\n" },
+      hostPrograms: { "run-host": "#!/bin/sh\necho host\n" },
+    });
+    mkdirSync(join(linkedDir, TOOL_TREE_DIR, "lib"), { recursive: true });
+    writeFileSync(join(linkedDir, TOOL_TREE_DIR, "lib", "check_lib.sh"), "#!/bin/sh\ncat answer.json\n", {
+      mode: 0o755,
+    });
+    symlinkSync("../lib/check_lib.sh", join(linkedDir, TOOL_TREE_DIR, "bin", "check-link"));
+    symlinkSync("../host/run-host", join(linkedDir, TOOL_TREE_DIR, "bin", "host-link"));
+    const linkedRemoved = stripHostOnly(linkedDir).removed;
+    expect(linkedRemoved).toStrictEqual(["bin/check-link", "bin/host-link", "host/run-host"]);
+    expect(existsSync(join(linkedDir, TOOL_TREE_DIR, "bin", "check-link"))).toBe(false);
+    expect(existsSync(join(linkedDir, TOOL_TREE_DIR, "bin", "host-link"))).toBe(false);
+    expect(existsSync(join(linkedDir, TOOL_TREE_DIR, "bin", "ws-scan"))).toBe(true);
+    const exportTree = (log: string, digest: string, name: string) => {
+      const ran = runSync(
+        [
+          capturedExecPath,
+          scoreScript,
+          "tree",
+          "--arm",
+          `pi:${log}`,
+          "--harness",
+          digest,
+          "--name",
+          name,
+          "--out",
+          out,
+          "--for",
+          `${runtimeProcess.platform}-${runtimeProcess.arch}`,
+        ],
+        { timeout: 120_000 },
+      );
+      expect(decodeOutput(ran.stderr)).toBe("");
+      expect(ran.exitCode).toBe(0);
+      return join(out, "trees", name);
+    };
+    const hostTree = exportTree(hostSplit.log, hostSplit.child, "host-split");
+    const legacyTree = exportTree(legacy.log, legacy.child, "legacy-migrated");
+
+    expect(
+      parseJsonAs<{ harness: string; stripped?: string[] }>(
+        readFileSync(join(hostTree, "export.json"), "utf8"),
+      ),
+    ).toMatchObject({ harness: hostSplit.child, stripped: ["host/check-task-rota"] });
+    expect(existsSync(join(hostTree, "harness", TOOL_TREE_DIR, TOOL_HOST_DIR))).toBe(false);
+    expect(existsSync(join(hostTree, "harness", TOOL_TREE_DIR, "bin", "check-rota"))).toBe(true);
+    expect(readFileSync(join(hostTree, "harness", "agent", "BUILT_AGENTS.md"), "utf8")).not.toContain(
+      "check-task-rota",
+    );
+
+    expect(
+      parseJsonAs<{ harness: string; stripped?: string[] }>(
+        readFileSync(join(legacyTree, "export.json"), "utf8"),
+      ),
+    ).toMatchObject({
+      harness: legacy.child,
+      stripped: ["bin/check-answer", "bin/check-deliverables"],
+    });
+    expect(existsSync(join(legacyTree, "harness", TOOL_TREE_DIR, "bin", "check-deliverables"))).toBe(false);
+    expect(existsSync(join(legacyTree, "harness", TOOL_TREE_DIR, "bin", "check-answer"))).toBe(false);
+    expect(existsSync(join(legacyTree, "harness", TOOL_TREE_DIR, "bin", "ws-scan"))).toBe(true);
+    expect(readFileSync(join(legacyTree, "harness", "agent", "BUILT_AGENTS.md"), "utf8")).not.toContain(
+      "check-deliverables",
+    );
+
+    const shellIn = (tree: string, cmd: string) => {
+      const dirs = toolTreeSearchDirs(join(tree, "harness", TOOL_TREE_DIR), "portable");
+      const prefix = `export PATH=${shellQuote(dirs.join(":"))}:"$PATH"`;
+      return runSync(["/bin/bash", "-c", `${prefix}; ${cmd}`], { cwd: root });
+    };
+    expect(shellIn(hostTree, "command -v check-task-rota").exitCode).not.toBe(0);
+    expect(decodeOutput(shellIn(hostTree, "check-rota --help").stdout)).toContain("usage: check-rota");
+    expect(shellIn(legacyTree, "command -v check-deliverables").exitCode).not.toBe(0);
+    expect(shellIn(legacyTree, "command -v check-answer").exitCode).not.toBe(0);
+    const scan = shellIn(legacyTree, "ws-scan");
+    expect(scan.exitCode).toBe(0);
+    expect(decodeOutput(scan.stdout).trim()).toBe("portable-scan-ok");
+
+    const traj = join(root, `pi-legacy-${String(runtimeProcess.pid)}.jsonl`);
+    const argv = piAgent(pilot).argv({ prompt: "Solve task.", treeDir: legacyTree, workspace: root, traj });
+    expect(runSync([...argv, "--dry-run"], { cwd: root }).exitCode).toBe(0);
+    const logs = argv[argv.indexOf("--logs") + 1] ?? "";
+    const dry = parseJsonAs<{ ending: string; prompt: string; found: string }>(
+      readFileSync(join(logs, RESULT_FILE), "utf8"),
+    );
+    expect(dry.ending).toBe("dry-run");
+    expect(dry.prompt).toContain("ws-scan");
+    expect(dry.prompt).not.toContain("check-deliverables");
+    expect(dry.prompt).not.toContain("check-answer");
+    expect(dry.found).toContain("ws-scan");
+    expect(dry.found).not.toContain("check-deliverables");
+  }, 120_000);
 });
 
 describe("the arms table over a store of judged records", () => {

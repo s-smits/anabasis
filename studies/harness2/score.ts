@@ -8,6 +8,7 @@
  * and judge (`eval/judge.py`); records land in `<out>/judged/<name>/` with file-length cuts (`cut`)
  * and workspace escape needles (`peeked`).
  */
+import { stripHostOnly } from "#src/harness/files.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { read } from "#src/kernel/log.ts";
@@ -339,8 +340,9 @@ async function exportPiTree(
 ): Promise<void> {
   const part = `${into}.part-${String(runtimeProcess.pid)}`;
   const origin = await placeHarness(join(part, HARNESS_DIR), source);
-  // Hash the kept harness before cross-platform Python rebuilds mutate `.toolchain/`.
+  // Hash the kept harness before export stripping or cross-platform Python rebuilds mutate it.
   const harnessDigest = (await openHarness(join(part, HARNESS_DIR))).digest;
+  const { removed } = stripHostOnly(join(part, HARNESS_DIR));
   const toolTree = join(part, HARNESS_DIR, TOOL_TREE_DIR);
   const hasTools = existsSync(toolTree);
   const rebuilt = hasTools ? await rebuildForeignPython(toolTree, place, uvPython(place)) : null;
@@ -352,6 +354,7 @@ async function exportPiTree(
         mode: "pi",
         ...origin,
         toolchain: hasTools ? join(HARNESS_DIR, TOOL_TREE_DIR) : null,
+        ...keyIfDefined("stripped", removed.length > 0 ? removed : undefined),
         ...keyIfNotNull("rebuilt", rebuilt === null ? null : { for: place.name, ...rebuilt }),
       },
       null,

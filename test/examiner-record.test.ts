@@ -640,4 +640,17 @@ describe("a task the reference passed every attempt on", () => {
     expect(told.revisionCue).toContain("2 tasks hold Referee-ruled check defects (check-a, check-b)");
     expect(told.revisionCue).toContain('revise_exam (kind "repair")');
   });
+
+  it("includes baseStarter-only starterTrace in metrics and excludes Builder harness solves", () => {
+    const log = logged();
+    log.hold(["t1"]);
+    log.add("comparison.started", { session: "g-1", starter: "h1", old: "h1", fresh: "h-built" });
+    log.solved("g-1", "t1", "h1", [true], [3]);
+    log.add("solve.call", { solve: "t-1", tool: "bash", args: { command: "python3 solve.py" } });
+    log.solved("g-1", "t1", "h-built", [true], [1]);
+    log.add("solve.call", { solve: "t-2", tool: "bash", args: { command: "SECRET_BUILDER_CMD" } });
+    const row = taskHistory(log.events, [fixture("t1")]).metrics.tasks[0];
+    expect(row?.starterTrace).toEqual({ turns: 3, tools: { bash: 1 }, commands: ["python3 solve.py"] });
+    expect(JSON.stringify(row)).not.toContain("SECRET_BUILDER_CMD");
+  });
 });

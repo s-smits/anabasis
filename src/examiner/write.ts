@@ -5,7 +5,15 @@ import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-fi
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
-import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
+import {
+  append,
+  CALL_KINDS,
+  type EventKind,
+  eventsOf,
+  type LogEvent,
+  read,
+  TRACE_KINDS,
+} from "../kernel/log.ts";
 import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import { objectiveOf, scoresOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { mkdtempSync, renameSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
@@ -23,6 +31,10 @@ import { taskHistory, measured } from "./record.ts";
 import { readReviews } from "./reviews.ts";
 import { readExamTool, type ReviseRunner, reviseTool } from "./revise.ts";
 import { FROM_FILE, fromHome, type Walls } from "./shell.ts";
+
+const OPENING_KINDS: ReadonlySet<EventKind> = new Set(
+  [...CALL_KINDS].filter((kind) => kind !== "solve.call"),
+);
 
 interface Terms {
   readonly id: string;
@@ -445,7 +457,7 @@ export function writing(
   { stop = new AbortController().signal, rest = async () => null, home }: Lent = {},
 ) {
   const { verify } = request;
-  const before = read(request.log, CALL_KINDS);
+  const before = read(request.log, OPENING_KINDS);
   const openedOn = (asked: Terms, events: readonly LogEvent[]) => {
     const history = taskHistory(events, asked.tasks);
     if (home !== undefined) {
@@ -520,7 +532,7 @@ export function writing(
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
     ask: (next: Terms) => {
       Object.assign(desk, { request: next, proposed: 0, revised: false, held: [], refused: [] });
-      const events = read(next.log, CALL_KINDS);
+      const events = read(next.log, OPENING_KINDS);
       told = openedOn(next, events);
       return wakeOn(events, next.tasks, next.limits, next.revise === undefined ? "fixed" : "revisable");
     },

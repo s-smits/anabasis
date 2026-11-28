@@ -1525,6 +1525,72 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(firedNames).not.toContain("EXAMINER NEVER FINISHED");
   });
 
+  it("ignores Builder-created program names in own harness tools after creation while catching genuine leaks of the same name", () => {
+    const STAMP = "2026-11-28T00:00:00.000Z";
+    const callEv = (
+      turn: number,
+      tool: string,
+      args: Record<string, string | readonly string[]>,
+      text: string,
+    ): LogEvent => ({
+      at: STAMP,
+      kind: "build.call",
+      data: { session: "b-1", turn, tool, args, text, isError: false },
+    });
+    const base: readonly LogEvent[] = [
+      { at: STAMP, kind: "campaign.opened", data: { budget: { dollars: 100, reserve: 1 } } },
+      {
+        at: STAMP,
+        kind: EXAM_DRAFTED,
+        data: {
+          draft: {
+            rules: [{ id: "R1", statement: "Rule" }],
+            answerFormat: { type: "object" },
+            checks: [{ id: "check-answer", assertion: "valid" }],
+          },
+        },
+      },
+      callEv(
+        2,
+        "write",
+        { path: "harness/.toolchain/host/check-answer", content: "#!/bin/sh\necho ok\n" },
+        "Wrote harness/.toolchain/host/check-answer",
+      ),
+      callEv(
+        3,
+        "check_harness",
+        {},
+        "Host-only programs (.toolchain/host/, omitted on export): check-answer.",
+      ),
+      callEv(4, "bash", { command: "chmod +x harness/.toolchain/host/check-answer" }, "check-answer ok"),
+      callEv(5, "read", { path: "harness/agent/BUILT_AGENTS.md" }, "Run `check-answer --task t.json`."),
+      callEv(6, "practice", { tasks: ["ex-001"] }, "ex-001: pass. Harness programs run: check-answer 1."),
+      callEv(
+        7,
+        "read_trace",
+        { solve: "s-1" },
+        "ending: pass\n4 bash (120 characters, 1.0 s): check-answer --task public/task.json",
+      ),
+    ];
+    expect(wallAuditRows(base).join("\n")).toContain("check-ids 0");
+
+    const withLeaks: readonly LogEvent[] = [
+      ...base.slice(0, 2),
+      callEv(1, "bash", { command: "echo probe" }, "leaked before creation: check-answer"),
+      ...base.slice(2),
+      callEv(8, "read_trace", { solve: "s-1" }, "ending: fail (check-answer)"),
+      callEv(9, "practice", { tasks: ["ex-001"] }, "ex-001: fail (check-answer)."),
+      callEv(10, "bash", { command: "cat /tmp/leaked" }, "blocking check check-answer"),
+    ];
+    expect(wallAuditRows(withLeaks).join("\n")).toContain("check-ids 4");
+
+    const bashReadBeforeWrite: readonly LogEvent[] = [
+      ...base.slice(0, 2),
+      callEv(1, "bash", { command: "ls harness/.toolchain/host/check-answer" }, "leaked check-answer"),
+    ];
+    expect(wallAuditRows(bashReadBeforeWrite).join("\n")).toContain("check-ids 1");
+  });
+
   it("matches whole identifier-bounded tokens without regex escapes and detects pause overshoots across padded traces", () => {
     for (const [haystack, needle, expected] of [
       ["", "", false],

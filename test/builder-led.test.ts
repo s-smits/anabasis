@@ -80,6 +80,10 @@ const CHANGE_AGAIN: readonly [string, JsonObject] = [
   "bash",
   { command: `printf '\\nA second live change.\\n' >> "$HOME/harness/agent/BUILT_AGENTS.md"` },
 ];
+const COMPARE_UNTRIED: readonly Step[] = [
+  ["compare", {}],
+  ["compare", {}],
+];
 const FINISH_IDLE: Step = ["finish", { note: "Nothing further." }];
 const IDLE: readonly Step[] = [FINISH_IDLE, FINISH_IDLE];
 const LEVEL = ["--level", "0.125", "--patience", "3"];
@@ -403,27 +407,81 @@ describe.concurrent("live Builder and Examiner coordination", () => {
       seated: builderScript(tied, [
         ["compare", {}],
         CHANGE_GUIDE,
-        ["compare", {}],
+        ...COMPARE_UNTRIED,
         ["compare", {}],
         CHANGE_AGAIN,
         ["compare", {}],
         ["examine", {}],
         ["wait", {}],
-        ["compare", {}],
+        ...COMPARE_UNTRIED,
         FINISH_IDLE,
         FINISH_IDLE,
       ]),
       examine: writer,
     };
     await harnessBuilder([...(await prepared(name)), ...FLAGS, "--moves", "8"], seats);
-    const [untouched, , sameAgain, overlapped, fresh] = said(name, "compare");
+    const [untouched, untriedFirst, , sameAgain, overlapped, untriedSecond, fresh] = said(name, "compare");
     expect(untouched).toContain("harness/ is the reference harness: there is nothing to compare");
+    expect(untriedFirst).toContain("harness/ has changed since your last practice solve");
     expect(sameAgain).toContain("nothing in it has changed since: there is nothing new to compare");
     expect(overlapped).toContain("frontier tasks (100%) already scored in comparison g-1");
     expect(overlapped).toContain("Call examine to hold out fresh tasks");
+    expect(untriedSecond).toContain("harness/ has changed since your last practice solve");
     expect(fresh).not.toContain("already scored in comparison");
     expect(of(name, COMPARED)).toHaveLength(2);
     expect(of(name, "build.checkpoint")).toHaveLength(2);
+  });
+
+  it("refuses untried compare once per digest across A -> B -> A, shares untried state with finish, and skips refusal after practice", async () => {
+    const abaName = `${STEM}-compare-untried-aba`;
+    const tied = scriptedSeats({ held: { old: "none", fresh: "none" }, starter: "none" }, GRADED, []);
+    const writeGuide = (body: string): Step => [
+      "write",
+      { path: "harness/agent/BUILT_AGENTS.md", content: body },
+    ];
+    await harnessBuilder([...(await prepared(abaName)), ...FLAGS, "--moves", "4"], {
+      seated: builderScript(tied, [
+        writeGuide("Guide A.\n"),
+        ["compare", {}],
+        writeGuide("Guide B.\n"),
+        ["compare", {}],
+        writeGuide("Guide A.\n"),
+        ["compare", {}],
+        FINISH_IDLE,
+      ]),
+      examine: writer,
+    });
+    const [warnA, warnB, ranA] = said(abaName, "compare");
+    expect(warnA).toContain("harness/ has changed since your last practice solve");
+    expect(warnB).toContain("harness/ has changed since your last practice solve");
+    expect(ranA).not.toContain("has changed since your last practice solve");
+    expect(of(abaName, COMPARED)).toHaveLength(1);
+    const finishes = of(abaName, CALLED, true).filter(({ tool }) => tool === "finish");
+    expect(finishes).toHaveLength(1);
+    expect(finishes[0]?.text).toContain("Finished.");
+
+    const practisedName = `${STEM}-compare-practised`;
+    const practisedLog = join(REPO, ".ana", "d2", practisedName, LOG_FILE);
+    await harnessBuilder([...(await prepared(practisedName)), ...FLAGS, "--moves", "4"], {
+      seated: builderScript(tied, [
+        writeGuide("Practised guide.\n"),
+        {
+          wait: async () => {
+            const [version] = taskSets(read(practisedLog)).released;
+            const taskId = of(practisedName, "task.proposed").find(
+              (task) => task.version === version,
+            )?.taskId;
+            return ["practice", { tasks: [isString(taskId) ? taskId : ""] }];
+          },
+        },
+        ["compare", {}],
+        FINISH_IDLE,
+      ]),
+      examine: writer,
+    });
+    expect(said(practisedName, "compare")).toHaveLength(1);
+    expect(said(practisedName, "compare")[0]).not.toContain("has changed since your last practice solve");
+    expect(of(practisedName, COMPARED)).toHaveLength(1);
   });
 
   it("hands off without a move when the exam is revised while a compare readies its seats", async () => {
@@ -435,7 +493,7 @@ describe.concurrent("live Builder and Examiner coordination", () => {
         return ["compare", {}];
       },
     };
-    const base = builderScript(winning(), [CHANGE_GUIDE, compareStep, FINISH_IDLE]);
+    const base = builderScript(winning(), [CHANGE_GUIDE, ["compare", {}], compareStep, FINISH_IDLE]);
     const seats: Seats = {
       seated: (campaign, given) => {
         if (comparing) append(campaign.log, "exam.revised", { kind: "tune", why: "raced" });
@@ -448,9 +506,9 @@ describe.concurrent("live Builder and Examiner coordination", () => {
     const compares = () => of(name, MOVED).filter(({ move }) => move === "compare").length;
     const before = compares();
     await expect(harnessBuilder([...flags, ...FLAGS, "--moves", "4"], seats)).rejects.toThrow();
-    expect(said(name, "compare")).toEqual([
-      containing("The exam was revised; this campaign hands off to its successor."),
-    ]);
+    expect(said(name, "compare").at(-1)).toContain(
+      "The exam was revised; this campaign hands off to its successor.",
+    );
     expect(compares()).toBe(before);
   });
 
@@ -633,7 +691,7 @@ describe.concurrent("live Builder and Examiner coordination", () => {
           ...by,
           builder: scripted(
             read(campaign.log).filter(({ kind }) => kind === "build.started").length < 2
-              ? [CHANGE_GUIDE, ["compare", {}], FINISH_IDLE, FINISH_IDLE]
+              ? [CHANGE_GUIDE, ...COMPARE_UNTRIED, FINISH_IDLE, FINISH_IDLE]
               : IDLE,
           ),
           solve: async (...args) => {
@@ -658,7 +716,7 @@ describe.concurrent("live Builder and Examiner coordination", () => {
     });
     expect(existsSync(join(handover, "REPORT.md"))).toBe(true);
     const [start] = of(resumeName, COMPARED);
-    expect(said(resumeName, "compare")[0]).not.toContain("PRIVATE-COMPARISON-FAULT");
+    expect(said(resumeName, "compare").join("\n")).not.toContain("PRIVATE-COMPARISON-FAULT");
     cut = false;
     const conversations = of(resumeName, "build.started").length;
     let [now, sleeps] = [Date.now(), 0];
@@ -688,7 +746,7 @@ describe.concurrent("live Builder and Examiner coordination", () => {
     await harnessBuilder([...settleArgs, ...FLAGS, "--moves", "2"], {
       seated: builderScript(
         scriptedSeats({ held: { old: "fail", fresh: "pass" }, starter: "none" }, GRADED, []),
-        [CHANGE_GUIDE, ["compare", {}], FINISH_IDLE],
+        [CHANGE_GUIDE, ...COMPARE_UNTRIED, FINISH_IDLE],
       ),
       examine: unwritten,
     });
@@ -721,7 +779,7 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
         ["examine", {}],
         ["wait", {}],
         CHANGE_GUIDE,
-        ["compare", {}],
+        ...COMPARE_UNTRIED,
         ["bash", { command: 'ls "$HOME/kept"' }],
         CHANGE_AGAIN,
         {
@@ -731,6 +789,7 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
           },
         },
         ["examine", {}],
+        ["compare", {}],
         {
           wait: async () => {
             postStarterExam.resolve();
@@ -800,13 +859,13 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
     const compares = of(name, MOVED).filter(({ move }) => move === "compare");
     expect(compares.map(({ code }) => code)).toEqual(["led", "unread", "led"]);
     expect(compares[2]?.why).toBe("the Builder's own move in its campaign conversation");
-    const [promotedBy] = said(name, "compare");
+    const [, promotedBy, starterRead, , secondRead] = said(name, "compare");
     expect(promotedBy).toContain("and the host has made it the campaign's reference");
     expect(promotedBy?.split(", which reads ")).toHaveLength(2);
     expect(promotedBy).toContain("1 comparison with a tally; the last:\n- Harness ");
     expect(promotedBy).not.toContain("The comparison has no tally yet.");
-    expect(said(name, "compare")[1]).toContain("The table's comparison of the starter ran first");
-    expect(said(name, "compare")[2]).not.toContain("The table's comparison of the starter ran first");
+    expect(starterRead).toContain("The table's comparison of the starter ran first");
+    expect(secondRead).not.toContain("The table's comparison of the starter ran first");
     const events = logOf(name);
     const promotedAt = events.findIndex(({ kind }) => kind === "harness.promoted");
     const written = events.findIndex(({ kind }, at) => at > promotedAt && kind === EXAMINED);
@@ -825,11 +884,11 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
     await harnessBuilder([...(await prepared(revertName, MANY)), ...FLAGS, "--moves", "10"], {
       seated: builderScript(winning(GRADED_MANY), [
         CHANGE_GUIDE,
-        ["compare", {}],
+        ...COMPARE_UNTRIED,
         ["examine", {}],
         ["compare", {}],
         CHANGE_AGAIN,
-        ["compare", {}],
+        ...COMPARE_UNTRIED,
         FINISH_IDLE,
         FINISH_IDLE,
       ]),
@@ -838,8 +897,8 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
     const [first, starterComparison, second] = of(revertName, REPORTED);
     expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh, reading: "no-step" });
     expect(of(revertName, "harness.reverted")).toMatchObject([{ harness: first?.old, from: first?.fresh }]);
-    expect(said(revertName, "compare")[1]).toContain("the starter harness was read against it");
-    expect(said(revertName, "compare")[1]).toContain("reverted the campaign's reference to");
+    expect(said(revertName, "compare")[2]).toContain("the starter harness was read against it");
+    expect(said(revertName, "compare")[2]).toContain("reverted the campaign's reference to");
     expect(second).toMatchObject({ old: first?.old });
     expect(of(revertName, "harness.promoted")).toMatchObject([
       { harness: first?.fresh },
@@ -851,7 +910,7 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
 
     const capName = `${STEM}-capped`;
     const capSeats: Seats = {
-      seated: builderScript(passing(), [CHANGE_GUIDE, ["compare", {}], ["examine", {}], FINISH_IDLE]),
+      seated: builderScript(passing(), [CHANGE_GUIDE, ...COMPARE_UNTRIED, ["examine", {}], FINISH_IDLE]),
       examine: writer,
     };
     const capEnding = await harnessBuilder(
@@ -904,7 +963,7 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
 
     const waitStopName = `${STEM}-stop-waiting`;
     await harnessBuilder([...(await prepared(waitStopName, MANY)), ...FLAGS, "--moves", "10"], {
-      seated: builderScript(passing(), [["examine", {}], CHANGE_GUIDE, ["compare", {}], FINISH_IDLE]),
+      seated: builderScript(passing(), [["examine", {}], CHANGE_GUIDE, ...COMPARE_UNTRIED, FINISH_IDLE]),
       examine: (request) =>
         examine({
           ...request,
@@ -935,7 +994,7 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
       seated: builderScript(passing(), [
         ["examine", {}],
         CHANGE_GUIDE,
-        ["compare", {}],
+        ...COMPARE_UNTRIED,
         ["examine", {}],
         FINISH_IDLE,
         FINISH_IDLE,
@@ -1003,7 +1062,7 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
     await harnessBuilder([...(await prepared(repairName)), ...FLAGS], {
       seated: builderScript(passing(), [
         CHANGE_GUIDE,
-        ["compare", {}],
+        ...COMPARE_UNTRIED,
         {
           wait: async () => {
             const log = join(REPO, ".ana", "d2", repairName, LOG_FILE);
@@ -1054,9 +1113,9 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
     const seats: Seats = {
       seated: builderScript(base, [
         CHANGE_GUIDE,
-        ["compare", {}],
+        ...COMPARE_UNTRIED,
         CHANGE_AGAIN,
-        ["compare", {}],
+        ...COMPARE_UNTRIED,
         ["campaign_status", {}],
         ["read_opening", {}],
         FINISH_IDLE,
@@ -1159,7 +1218,7 @@ describe.concurrent("a campaign's endings", () => {
     ];
     expect(
       await harnessBuilder([...(await prepared(liveName)), ...FLAGS, "--patience", "2"], {
-        seated: builderScript(passing(), [CHANGE_GUIDE, ["compare", {}], ...asking, ...asking, ...asking]),
+        seated: builderScript(passing(), [CHANGE_GUIDE, ...COMPARE_UNTRIED, ...asking, ...asking, ...asking]),
         examine: unwritten,
       }),
     ).toMatchObject({ move: "end", ending: "no-room" });

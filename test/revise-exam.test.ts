@@ -6,21 +6,20 @@ import { budgetLeft, openingOf } from "../src/campaign/opening.ts";
 import { nextAction } from "../src/campaign/scheduler.ts";
 import { type Draft, draftOf } from "../src/examiner/draft.ts";
 import { systemPrompt } from "../src/examiner/prompt.ts";
-import { candidateDraft, revisionFaults, revisionRefusal } from "../src/examiner/revise.ts";
+import { candidateDraft, revisionFaults } from "../src/examiner/revise.ts";
 import { examine } from "../src/examiner/session.ts";
 import { writeStarter } from "../src/harness/starter.ts";
 import { keepAnswerFiles, textFiles } from "../src/kernel/answer-files.ts";
-import { conditionId } from "../src/kernel/condition.ts";
 import { contentOf } from "../src/kernel/history.ts";
 import { append, eventsOf, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { endedOf, latestBuilt, promoted } from "../src/kernel/reports.ts";
 import { taskVersion } from "../src/kernel/task.ts";
-import { HOST_TOOLS_FILE } from "../src/kernel/verify.ts";
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -36,29 +35,26 @@ import { REPO } from "../tools/campaign/campaign.ts";
 import { draftReading } from "../tools/campaign/exam.ts";
 import { harnessBuilder } from "../tools/campaign/harness-builder.ts";
 import { ungated } from "../tools/campaign/prepare.ts";
-import { freezeCandidate, type RevisionAuditor, revisionRunner } from "../tools/campaign/revise.ts";
-import { crossFamilyVendors } from "../tools/campaign/round.ts";
-import {
-  openSuccessor,
-  rewriteMovesFlag,
-  rewriteNameFlag,
-  successorName,
-} from "../tools/campaign/successor.ts";
+import { openSuccessor, revisionRunner, successorName, withFlag } from "../tools/campaign/revise.ts";
 import { keepReading } from "../tools/eval/accept.ts";
+import { type DraftAuditor, draftAuditReader } from "../tools/eval/draft.ts";
 import { examineCommand } from "../tools/eval/examine.ts";
 import { packageOf } from "../tools/m0/stored-sweep.ts";
 import { lastLaunch, writeReceipt } from "../tools/runs/receipt.ts";
-import { replayed } from "../tools/runs/replay.ts";
-import { EVENT_FORMATTERS, triggerOf } from "../tools/runs/summary.ts";
+import { triggerOf } from "../tools/runs/summary.ts";
 import { gamingRows } from "../tools/wri/gaming.ts";
-import { call, condition, finish, seat, sweep } from "./helpers/examiner-seat.ts";
+import { call, finish, seat, sweep } from "./helpers/examiner-seat.ts";
 
 setDefaultTimeout(120_000);
 
 const NOTE_FILE = "note.txt";
 const OPENED = "campaign.opened" as const;
 const REVISED = "exam.revised" as const;
+const STARTED = "comparison.started" as const;
 const OPUS = "claude/claude-opus-5-5";
+const CROSS = "openai-codex/gpt-6.1-sol";
+const SONNET = "claude/claude-sonnet-5-5";
+const READER = draftAuditReader({ reviewer: CROSS }, null);
 const codeItem = (id: string, weight: number) => ({ id, weight, kind: "code" as const });
 const ROOTS: string[] = [];
 afterAll(() => {
@@ -72,19 +68,32 @@ function tempDir(prefix: string): string {
   return dir;
 }
 
-const PARENT_EVALUATOR = `
-export const checks = {
-  "check-even": ({ artifact }) => Number.isInteger(artifact.n) && artifact.n % 2 === 0,
-  "check-strict": ({ artifact, hidden, files }) => {
-    const note = files.find((f) => f.path === "${NOTE_FILE}")?.text ?? "";
-    return artifact.n === hidden.target && note === "exact:" + String(hidden.target);
-  },
-};
+const SCORES = `
 export const scores = {
   accuracy: ({ artifact, hidden }) => Math.max(0, 1 - Math.abs(artifact.score - hidden.ideal) / 10),
   depth: ({ artifact }) => Math.min(1, Math.max(0, artifact.detail / 10)),
 };
 `;
+const STRICT = `({ artifact, hidden, files }) => {
+    const note = files.find((f) => f.path === "${NOTE_FILE}")?.text ?? "";
+    return artifact.n === hidden.target && note === "exact:" + String(hidden.target);
+  }`;
+const evaluatorWith = (strict: string, extra = "") => `
+export const checks = {
+  "check-even": ({ artifact }) => Number.isInteger(artifact.n) && artifact.n % 2 === 0,
+  "check-strict": ${strict},${extra}
+};
+${SCORES}`;
+const PARENT_EVALUATOR = evaluatorWith(STRICT);
+const FIXED_EVALUATOR = PARENT_EVALUATOR.replace(
+  'note === "exact:" + String(hidden.target)',
+  String.raw`note.trim().replace(/\s+/g, "") === "exact:" + String(hidden.target)`,
+);
+const answer = (n: number, note: string, task = 0) => ({
+  task,
+  answer: { n, score: 10, detail: 9 },
+  files: [{ path: NOTE_FILE, text: note }],
+});
 
 const PARENT_DRAFT: Draft = {
   domain: "even-targets",
@@ -98,11 +107,7 @@ const PARENT_DRAFT: Draft = {
     type: "object",
     required: ["n", "score", "detail"],
     additionalProperties: false,
-    properties: {
-      n: { type: "integer" },
-      score: { type: "number" },
-      detail: { type: "number" },
-    },
+    properties: { n: { type: "integer" }, score: { type: "number" }, detail: { type: "number" } },
   },
   checks: [
     { id: "check-even", rule: "R1", assertion: "n is an even integer" },
@@ -113,66 +118,75 @@ const PARENT_DRAFT: Draft = {
     quantity: "composite rubric quality",
     direction: "higher",
     scale: "unit",
-    items: [
-      { id: "accuracy", weight: 1, kind: "code" },
-      { id: "depth", weight: 1, kind: "code" },
-    ],
+    items: [codeItem("accuracy", 1), codeItem("depth", 1)],
   },
   tasks: [
     { family: "f1", publicInput: { prompt: "ten" }, hidden: { target: 10, ideal: 10 } },
     { family: "f1", publicInput: { prompt: "twelve" }, hidden: { target: 12, ideal: 10 } },
     { family: "f2", publicInput: { prompt: "fourteen" }, hidden: { target: 14, ideal: 10 } },
   ],
-  accept: [
-    { task: 0, answer: { n: 10, score: 10, detail: 9 }, files: [{ path: NOTE_FILE, text: "exact:10" }] },
-    { task: 1, answer: { n: 12, score: 10, detail: 9 }, files: [{ path: NOTE_FILE, text: "exact:12" }] },
-    { task: 2, answer: { n: 14, score: 10, detail: 9 }, files: [{ path: NOTE_FILE, text: "exact:14" }] },
-  ],
+  accept: [answer(10, "exact:10"), answer(12, "exact:12", 1), answer(14, "exact:14", 2)],
   reject: [
-    {
-      task: 0,
-      answer: { n: 11, score: 10, detail: 9 },
-      files: [{ path: NOTE_FILE, text: "exact:10" }],
-      check: "check-even",
-    },
-    {
-      task: 0,
-      answer: { n: 8, score: 10, detail: 9 },
-      files: [{ path: NOTE_FILE, text: "wrong" }],
-      check: "check-strict",
-    },
+    { ...answer(11, "exact:10"), check: "check-even" },
+    { ...answer(8, "wrong"), check: "check-strict" },
   ],
 };
+const rubric = (
+  ...items: readonly (
+    | { id: string; weight: number; kind: "code" }
+    | { id: string; weight: number; kind: "judge"; criterion: string }
+  )[]
+) => ({
+  objective: { quantity: "composite rubric quality", direction: "higher" as const, items: [...items] },
+});
+const KEPT_CHECKS = PARENT_DRAFT.checks.map(({ id, rule, assertion }) => ({ id, rule, assertion }));
+const TUNE = candidateDraft(PARENT_DRAFT, {
+  why: "reweight rubric",
+  ...rubric(codeItem("accuracy", 2), codeItem("depth", 1)),
+});
+const TUNE_INPUT = { session: "x-1", why: "reweight", repair: undefined, candidate: TUNE, home: undefined };
 
-const SOUND_AUDIT: RevisionAuditor = async (_reader, target) => {
-  append(target.log, "referee.draft", {
-    session: target.session,
-    ...keyIfDefined("pass", target.pass),
-    ...keyIfDefined("revision", target.revision),
-    verdict: "sound",
-    findings: [],
-    summary: "sound",
-    probeRows: [],
-  });
-  return {
-    verdict: "sound",
-    findings: [],
-    summary: "sound",
-    probes: [],
+const GOOD_REPAIR = candidateDraft(PARENT_DRAFT, {
+  why: "allow whitespace after colon in note.txt",
+  repair: "check-strict",
+  evaluator: FIXED_EVALUATOR.replace(
+    "artifact.n === hidden.target &&",
+    "(artifact.n === hidden.target || artifact.n === 13) &&",
+  ),
+});
+
+const auditing =
+  (verdict: DraftAuditFinding["verdict"], findings: DraftAuditFinding["findings"] = []): DraftAuditor =>
+  async (_reader, target) => {
+    append(target.log, "referee.draft", {
+      session: target.session,
+      ...keyIfDefined("pass", target.pass),
+      ...keyIfDefined("revision", target.revision),
+      verdict,
+      findings: requireJsonValue(findings),
+      summary: verdict,
+      probeRows: [],
+    });
+    return { verdict, findings, summary: verdict, probes: [] };
   };
-};
+const SOUND_AUDIT = auditing("sound");
+const FLAT = [{ kind: "objective-defect", task: "ex-001", item: "depth", probe: 1, reason: "flat" }] as const;
+const ADMITTED: DraftAuditor = async () => ({
+  verdict: "defects",
+  findings: [...FLAT],
+  summary: "",
+  probes: [],
+});
+
+type Seed = Awaited<ReturnType<typeof seedCampaign>>;
 
 async function seedCampaign(opts?: {
   readonly name?: string;
-  readonly attended?: boolean;
   readonly revise?: boolean;
-  readonly reviewer?: string;
-  readonly solver?: string;
   readonly budget?: { readonly dollars: number; readonly reserve: number };
 }) {
-  const root = tempDir("ana-rev-camp-");
   const name = opts?.name ?? "camp-a";
-  const dir = join(root, name);
+  const dir = join(tempDir("ana-rev-camp-"), name);
   mkdirSync(dir, { recursive: true });
   const log = join(dir, LOG_FILE);
   append(log, OPENED, {
@@ -182,17 +196,16 @@ async function seedCampaign(opts?: {
     seats: {
       builder: { model: OPUS, effort: "high" },
       examiner: { model: OPUS, effort: "high" },
-      reviewer: { model: opts?.reviewer ?? "openai-codex/gpt-6.1-sol", effort: "high" },
+      reviewer: { model: CROSS, effort: "high" },
     },
-    ...keysIf(opts?.attended === true, () => ({ attended: true })),
-    judged: opts?.attended !== true,
+    judged: true,
     ...keysIf(opts?.revise === false, () => ({ revise: false })),
     prompt: "Build an even-target exam.",
-    solver: { model: opts?.solver ?? "claude/claude-sonnet-5-5", effort: "high" },
+    solver: { model: SONNET, effort: "high" },
     terms: { level: "0.02", practice: "6" },
   });
   append(log, "campaign.setting", {
-    solver: opts?.solver ?? "claude/claude-sonnet-5-5",
+    solver: SONNET,
     effort: "high",
     minutes: 30,
     modelTurns: 20,
@@ -207,18 +220,13 @@ async function seedCampaign(opts?: {
   if (staged.faults.length > 0 || staged.read === undefined) {
     throw new Error(`seed draft failed: ${staged.faults.join("; ")}`);
   }
-  keepReading(log, staged.read.checker, staged.read.reading, {
-    admitted: new Set(),
-    authored: true,
-    judge: false,
-    freeze: true,
-    despite: "",
-  });
-  const bundle = join(dirname(staged.read.checks), "bundle");
+  const word = { admitted: new Set<string>(), authored: true, judge: false, freeze: true, despite: "" };
+  keepReading(log, staged.read.checker, staged.read.reading, word);
+  const { checks, tasks } = staged.read;
   const packages = () =>
     new Map(
-      staged.read.tasks.map((task) => {
-        const packaged = packageOf(staged.read.checks, task);
+      tasks.map((task) => {
+        const packaged = packageOf(checks, task);
         return [taskVersion(packaged), packaged] as const;
       }),
     );
@@ -240,354 +248,207 @@ async function seedCampaign(opts?: {
     cores: 8,
     bun: Bun.version,
   });
-  return { root, dir, log, bundle, checks: staged.read.checks, packages, tasks: staged.read.tasks };
+  const runner = (auditor: DraftAuditor | null, reader = READER) =>
+    revisionRunner({ log, parentBundle: join(dirname(checks), "bundle"), packages, reader, auditor });
+  const version0 = [...packages().keys()][0] ?? "";
+  return { dir, log, checks, tasks, packages, runner, version0 };
 }
 
-function recordHistoricalWitnesses(
+function witness(
   log: string,
-  taskVersion0: string,
-  opts?: { readonly includeDefect?: boolean; readonly reportComp?: boolean },
+  solve: string,
+  given: { n: number; note: string; blocking: string[]; ruling: string; check?: string },
 ) {
-  const earnedStrictFiles = keepAnswerFiles(log, textFiles([{ path: NOTE_FILE, text: "bad" }]));
-  const earnedEvenFiles = keepAnswerFiles(log, textFiles([{ path: NOTE_FILE, text: "exact:10" }]));
-  const defectFiles = keepAnswerFiles(log, textFiles([{ path: NOTE_FILE, text: "exact: 10\n" }]));
-  append(log, "comparison.started", { session: "g-1", old: "starter", fresh: "h1", starter: "starter" });
-  const cond = condition(taskVersion0, "starter");
-  const cid = conditionId(cond);
-  append(log, "condition.recorded", { id: cid, condition: requireJsonValue(cond) });
-  append(log, "solve.started", { solve: "s-earned-strict", comparison: "g-1", condition: cid });
+  const files = keepAnswerFiles(log, textFiles([{ path: NOTE_FILE, text: given.note }]));
+  append(log, "solve.started", { solve, comparison: "g-1" });
   append(log, "verdict", {
-    solve: "s-earned-strict",
+    solve,
     task: "ex-001",
-    answer: { n: 8, score: 5, detail: 5 },
-    files: earnedStrictFiles.map((f) => ({ ...f })),
+    answer: { n: given.n, score: 5, detail: 5 },
+    files: files.map((f) => ({ ...f })),
     kind: "fail",
-    blocking: ["check-strict"],
+    blocking: given.blocking,
   });
   append(log, "referee.finding", {
-    solve: "s-earned-strict",
+    solve,
     task: "ex-001",
-    ruling: "earned",
-    check: "check-strict",
-    reason: "wrong target n=8",
+    ruling: given.ruling,
+    ...keyIfDefined("check", given.check),
+    reason: `${given.ruling} ruling`,
   });
-  append(log, "solve.started", { solve: "s-earned-even", comparison: "g-1" });
-  append(log, "verdict", {
-    solve: "s-earned-even",
-    task: "ex-001",
-    answer: { n: 11, score: 5, detail: 5 },
-    files: earnedEvenFiles.map((f) => ({ ...f })),
-    kind: "fail",
-    blocking: ["check-even", "check-strict"],
-  });
-  append(log, "referee.finding", {
-    solve: "s-earned-even",
-    task: "ex-001",
-    ruling: "earned",
-    check: "check-even",
-    reason: "odd integer n=11",
-  });
-  if (opts?.includeDefect !== false) {
-    append(log, "solve.started", { solve: "s-defect-strict", comparison: "g-1", condition: cid });
-    append(log, "verdict", {
-      solve: "s-defect-strict",
-      task: "ex-001",
-      answer: { n: 10, score: 9, detail: 8 },
-      files: defectFiles.map((f) => ({ ...f })),
-      kind: "fail",
-      blocking: ["check-strict"],
-    });
-    append(log, "referee.finding", {
-      solve: "s-defect-strict",
-      task: "ex-001",
-      ruling: "check-defect",
-      check: "check-strict",
-      reason: "check-strict rejected whitespace after colon",
-    });
-  }
-  if (opts?.reportComp !== false) {
-    append(log, "comparison.reported", {
-      session: "g-1",
-      old: "starter",
-      fresh: "h1",
-      starter: "starter",
-      reading: "no-step",
-      scored: { wins: 0, losses: 0, ties: 1 },
-      valid: { old: [1, 0], fresh: [1, 0], informative: { old: 1, fresh: 1 } },
-      aside: [],
-    });
-  }
 }
 
-describe("revision admission, immutability, and lock exclusion", () => {
-  it("enforces R1-R9 admission boundaries and check-defect repair exemption during owed confirmation", async () => {
-    const seed = await seedCampaign();
-    const version0 = [...seed.packages().keys()][0] ?? "";
-    recordHistoricalWitnesses(seed.log, version0, { includeDefect: true, reportComp: false });
-    expect(revisionRefusal(read(seed.log), { kind: "tune", crossFamily: crossFamilyVendors })).toContain(
-      "still open",
-    );
+function recordWitnesses(seed: Seed, opts: { readonly report: boolean }) {
+  append(seed.log, STARTED, { session: "g-1", old: "starter", fresh: "h1", starter: "starter" });
+  witness(seed.log, "s-earned-strict", { n: 8, note: "bad", blocking: ["check-strict"], ruling: "earned" });
+  const even = { n: 11, note: "exact:10", blocking: ["check-even", "check-strict"], ruling: "earned" };
+  witness(seed.log, "s-earned-even", { ...even, check: "check-even" });
+  const defect = { n: 10, note: "exact: 10\n", blocking: ["check-strict"], ruling: "check-defect" };
+  witness(seed.log, "s-defect-strict", { ...defect, check: "check-strict" });
+  if (opts.report) report(seed.log, "g-1", { old: "starter", fresh: "h1", reading: "no-step" });
+}
 
-    append(seed.log, "comparison.reported", {
-      session: "g-1",
-      old: "starter",
-      fresh: "h1",
-      starter: "starter",
-      reading: "step",
-      scored: { wins: 6, losses: 0, ties: 0 },
-      valid: { old: [6, 0], fresh: [0, 6], informative: { old: 6, fresh: 6 } },
-      aside: [],
-    });
-    expect(revisionRefusal(read(seed.log), { kind: "tune", crossFamily: crossFamilyVendors })).toContain(
-      "promotion is pending",
-    );
+function report(log: string, session: string, how: { old: string; fresh: string; reading: string }) {
+  append(log, "comparison.reported", {
+    session,
+    ...how,
+    starter: "starter",
+    level: 0.05,
+    scored: { differences: [1, 1, 1, 1, 1, 1] },
+    valid: { old: [6, 0, 0], fresh: [0, 0, 6], informative: { old: 6, fresh: 6 } },
+    aside: [],
+  });
+}
 
-    append(seed.log, "harness.promoted", { harness: "h1", from: "starter" });
-    expect(revisionRefusal(read(seed.log), { kind: "tune", crossFamily: crossFamilyVendors })).toContain(
-      "starter confirmation is owed",
-    );
-    expect(
-      revisionRefusal(read(seed.log), {
-        kind: "repair",
-        check: "check-strict",
-        crossFamily: crossFamilyVendors,
-      }),
-    ).toBeNull();
-    expect(
-      revisionRefusal(read(seed.log), {
-        kind: "repair",
-        check: "check-even",
-        crossFamily: crossFamilyVendors,
-      }),
-    ).toContain("no effective check-defect ruling");
+const tryRevise = async (seed: Seed, repair?: string, auditor: DraftAuditor | null = ADMITTED) =>
+  await seed.runner(auditor)({
+    session: "x-1",
+    why: "w",
+    repair,
+    candidate: repair === undefined ? TUNE : GOOD_REPAIR,
+    home: undefined,
+  });
 
-    const judgedCandidate = candidateDraft(PARENT_DRAFT, {
-      kind: "tune",
-      why: "add judge",
-      objective_items: [
-        { id: "accuracy", weight: 1, kind: "code" },
-        {
-          id: "clarity",
-          weight: 1,
-          kind: "judge",
-          criterion: "Reports methodology and exact assumptions clearly.",
-        },
+describe("revision faults, refusals, and the log lock", () => {
+  it("keeps inherited checks and makes a repair touch only its check program", () => {
+    const [even, strict] = KEPT_CHECKS;
+    if (even === undefined || strict === undefined) throw new Error("missing fixture checks");
+    const cases: readonly [string, Draft, string | undefined, string][] = [
+      ["no-op", candidateDraft(PARENT_DRAFT, { why: "w" }), undefined, "makes no change"],
+      [
+        "dropped",
+        candidateDraft(PARENT_DRAFT, { why: "w", checks: [even] }),
+        undefined,
+        "check-strict must stay",
       ],
+      [
+        "assertion",
+        candidateDraft(PARENT_DRAFT, { why: "w", checks: [even, { ...strict, assertion: "weaker" }] }),
+        undefined,
+        "check-strict must stay",
+      ],
+      [
+        "rule",
+        candidateDraft(PARENT_DRAFT, { why: "w", checks: [even, { ...strict, rule: "R1" }] }),
+        undefined,
+        "enforcing R2",
+      ],
+      ["repair reweights", TUNE, "check-strict", "is a tune"],
+      [
+        "repair adds a check",
+        candidateDraft(PARENT_DRAFT, {
+          why: "w",
+          checks: [...KEPT_CHECKS, { id: "check-extra", rule: "R1", assertion: "extra" }],
+        }),
+        "check-strict",
+        "is a tune",
+      ],
+    ];
+    for (const [label, candidate, repair, fault] of cases) {
+      const faults = revisionFaults(PARENT_DRAFT, candidate, repair, "judged");
+      expect([label, faults.some((one) => one.includes(fault))]).toEqual([label, true]);
+    }
+    expect(revisionFaults(PARENT_DRAFT, TUNE, undefined, "judged")).toEqual([]);
+    expect(revisionFaults(PARENT_DRAFT, GOOD_REPAIR, "check-strict", "judged")).toEqual([]);
+    const judged = candidateDraft(PARENT_DRAFT, {
+      why: "w",
+      ...rubric(codeItem("accuracy", 1), {
+        id: "clarity",
+        weight: 1,
+        kind: "judge",
+        criterion: "Reports methodology and assumptions clearly.",
+      }),
     });
-    expect(
-      revisionRefusal(read(seed.log), {
-        kind: "repair",
-        check: "check-strict",
-        candidate: judgedCandidate,
-        reviewer: "claude/claude-opus-5-5",
-        crossFamily: crossFamilyVendors,
-      }),
-    ).toContain("cross-family reviewer");
+    expect(revisionFaults(PARENT_DRAFT, judged, undefined, "code-only").join("\n")).toContain("cross-family");
+    expect(revisionFaults(PARENT_DRAFT, judged, undefined, "judged")).toEqual([]);
+    const tools = (given: string[]) =>
+      candidateDraft(PARENT_DRAFT, { why: "w", objective: { ...rubric().objective, tools: given } })
+        .objectiveTools;
+    expect([tools([]), tools(["helper"])]).toEqual([undefined, ["helper"]]);
+  });
 
-    const disabled = await seedCampaign({ revise: false });
-    expect(revisionRefusal(read(disabled.log), { kind: "tune" })).toContain("--no-revise");
-
-    const tight = await seedCampaign({ budget: { dollars: 2, reserve: 3 } });
-    expect(revisionRefusal(read(tight.log), { kind: "tune" })).toContain("below the solve reserve");
-    const exactBudget = await seedCampaign({ budget: { dollars: 3, reserve: 3 } });
-    expect(revisionRefusal(read(exactBudget.log), { kind: "tune" })).toBeNull();
-
-    expect(revisionRefusal([], { kind: "tune" })).toContain("drafted and frozen");
-    expect(
-      revisionRefusal(
-        [...read(exactBudget.log), { at: "2026-11-27T00:00:01Z", kind: "exam.revised", data: {} }],
-        {
-          kind: "tune",
-        },
-      ),
-    ).toContain("already been revised");
-    expect(revisionRefusal(read(exactBudget.log), { kind: "repair" })).toContain("existing check id");
-    expect(revisionRefusal(read(exactBudget.log), { kind: "repair", check: "check-unknown" })).toContain(
-      "existing check id",
+  it("refuses at unsettled boundaries and admits a repair while starter confirmation is owed", async () => {
+    const seed = await seedCampaign();
+    recordWitnesses(seed, { report: false });
+    expect((await tryRevise(seed)).message).toContain("Refused: a comparison is still open");
+    report(seed.log, "g-1", { old: "starter", fresh: "h1", reading: "step" });
+    expect((await tryRevise(seed)).message).toContain("Refused: a promotion is pending");
+    append(seed.log, "harness.promoted", { harness: "h1", from: "starter" });
+    expect((await tryRevise(seed)).message).toContain(
+      "Refused: the reference has not confirmed against the starter",
     );
-    expect(
-      revisionRefusal(read(exactBudget.log), { kind: "tune", reviewer: null, requireReviewer: true }),
-    ).toContain("requires a reviewer");
-    expect(
-      revisionRefusal(read(exactBudget.log), { kind: "tune", candidate: judgedCandidate, reviewer: null }),
-    ).toContain("cross-family reviewer");
-    expect(
-      revisionRefusal(read(exactBudget.log), {
-        kind: "tune",
-        candidate: judgedCandidate,
-        reviewer: "openai-codex/gpt-6.1-sol",
-        crossFamily: crossFamilyVendors,
-      }),
-    ).toBeNull();
+    expect((await tryRevise(seed, "check-strict")).message).toContain("Revision failed adversarial audit");
+    expect((await tryRevise(seed, "check-even")).message).toContain(
+      "Refused: no standing check-defect ruling names check-even",
+    );
 
-    const revertSeed = await seedCampaign({ name: "camp-revert" });
-    append(revertSeed.log, "harness.promoted", { harness: "h1", from: "starter" });
-    append(revertSeed.log, "comparison.started", {
+    const revert = await seedCampaign({ name: "camp-revert" });
+    append(revert.log, "harness.promoted", { harness: "h1", from: "starter" });
+    append(revert.log, STARTED, {
       session: "g-rev",
       old: "h1",
       fresh: "starter",
       starter: "starter",
     });
-    append(revertSeed.log, "comparison.reported", {
-      session: "g-rev",
-      old: "h1",
-      fresh: "starter",
-      starter: "starter",
-      level: 0.05,
-      reading: "step",
-      scored: { differences: [1, 1, 1, 1, 1, 1] },
-      valid: { old: [6, 0, 0], fresh: [0, 0, 6], informative: { old: 6, fresh: 6 } },
-      aside: [],
-    });
-    expect(revisionRefusal(read(revertSeed.log), { kind: "tune" })).toContain("unconfirmed revert");
+    report(revert.log, "g-rev", { old: "h1", fresh: "starter", reading: "step" });
+    expect((await tryRevise(revert)).message).toContain(
+      "Refused: the reference has not confirmed against the starter",
+    );
 
-    append(exactBudget.log, "solve.started", { solve: "s-unrep-def", comparison: "g-unrep" });
-    append(exactBudget.log, "verdict", {
-      solve: "s-unrep-def",
+    const exact = await seedCampaign({ budget: { dollars: 3, reserve: 3 } });
+    expect((await tryRevise(exact)).message).toContain("Revision failed adversarial audit");
+    append(exact.log, "solve.started", { solve: "s-practice" });
+    append(exact.log, "verdict", {
+      solve: "s-practice",
       task: "ex-001",
       answer: { n: 10, score: 9, detail: 8 },
       kind: "fail",
       blocking: ["check-strict"],
     });
-    append(exactBudget.log, "referee.finding", {
-      solve: "s-unrep-def",
+    append(exact.log, "referee.finding", {
+      solve: "s-practice",
       task: "ex-001",
       ruling: "check-defect",
-      check: "check-strict",
-      reason: "unreported comparison defect",
+      reason: "r",
     });
-    expect(revisionRefusal(read(exactBudget.log), { kind: "repair", check: "check-strict" })).toContain(
-      "no effective check-defect ruling",
+    expect((await tryRevise(exact, "check-strict")).message).toContain(
+      "Refused: no standing check-defect ruling names check-strict",
     );
-    append(exactBudget.log, "solve.started", { solve: "s-prac-def" });
-    append(exactBudget.log, "verdict", {
-      solve: "s-prac-def",
-      task: "ex-001",
-      answer: { n: 10, score: 9, detail: 8 },
-      kind: "fail",
-      blocking: ["check-strict"],
-    });
-    append(exactBudget.log, "referee.finding", {
-      solve: "s-prac-def",
-      task: "ex-001",
-      ruling: "check-defect",
-      reason: "practice defect",
-    });
-    expect(revisionRefusal(read(exactBudget.log), { kind: "repair", check: "check-strict" })).toBeNull();
+    append(exact.log, REVISED, { kind: "tune", why: "done" });
+    await expect(tryRevise(exact, undefined, SOUND_AUDIT)).rejects.toThrow(
+      "no exam.revised after exam.revised",
+    );
+
+    const bare = join(tempDir("ana-rev-bare-"), LOG_FILE);
+    append(bare, OPENED, { project: "demo" });
+    const runner = revisionRunner({ log: bare, parentBundle: bare, packages: () => new Map(), reader: null });
+    const empty = { session: "x-1", why: "w", repair: undefined, candidate: TUNE, home: undefined };
+    expect((await runner(empty)).message).toContain("Refused: the exam is not drafted and frozen");
   });
 
-  it("enforces R7 structural immutability and no-op refusal", () => {
-    const [firstCheck, secondCheck] = PARENT_DRAFT.checks;
-    if (firstCheck === undefined || secondCheck === undefined) throw new Error("missing fixture checks");
-    const checkCopy = (c: Draft["checks"][number]) => ({
-      id: c.id,
-      rule: c.rule,
-      assertion: c.assertion,
-      ...keyIfDefined("tools", c.tools === undefined ? undefined : [...c.tools]),
-    });
-    const noop = candidateDraft(PARENT_DRAFT, { kind: "tune", why: "no change" });
-    expect(revisionFaults(PARENT_DRAFT, noop, "tune", undefined)).toContain(
-      "revision makes no change to the parent exam",
-    );
-    const dropped = candidateDraft(PARENT_DRAFT, {
-      kind: "tune",
-      why: "drop check",
-      checks: [checkCopy(firstCheck)],
-    });
-    expect(revisionFaults(PARENT_DRAFT, dropped, "tune", undefined).join("\n")).toContain(
-      "inherited check check-strict cannot be removed",
-    );
-    const alteredAssertion = candidateDraft(PARENT_DRAFT, {
-      kind: "tune",
-      why: "alter assertion",
-      checks: [checkCopy(firstCheck), { ...checkCopy(secondCheck), assertion: "weaker assertion" }],
-    });
-    expect(revisionFaults(PARENT_DRAFT, alteredAssertion, "tune", undefined).join("\n")).toContain(
-      "cannot alter its public assertion",
-    );
-    const { objective: _obj, ...withoutObjective } = PARENT_DRAFT;
-    const noObjectiveParent: Draft = {
-      ...withoutObjective,
-      evaluator: `export const checks = {
-        "check-even": ({ artifact }) => Number.isInteger(artifact.n) && artifact.n % 2 === 0,
-        "check-strict": ({ artifact, hidden }) => artifact.n === hidden.target,
-      };`,
-    };
-    const addedObj = candidateDraft(noObjectiveParent, {
-      kind: "tune",
-      why: "invent objective",
-      objective_items: [{ id: "accuracy", weight: 1, kind: "code" }],
-    });
-    expect(
-      revisionFaults(noObjectiveParent, addedObj, "tune", undefined, {
-        objective_items: [{ id: "accuracy", weight: 1, kind: "code" }],
-      }).join("\n"),
-    ).toContain("without an objective");
-    expect(
-      candidateDraft(noObjectiveParent, { kind: "tune", why: "drop tools", objective_tools: ["helper"] })
-        .objectiveTools,
-    ).toBeUndefined();
-    expect(
-      candidateDraft(PARENT_DRAFT, { kind: "tune", why: "clear tools", objective_tools: [] }).objectiveTools,
-    ).toBeUndefined();
-    expect(
-      candidateDraft(PARENT_DRAFT, { kind: "tune", why: "set tools", objective_tools: ["helper"] })
-        .objectiveTools,
-    ).toEqual(["helper"]);
-    expect(
-      candidateDraft(PARENT_DRAFT, {
-        kind: "tune",
-        why: "empty check tools",
-        checks: [{ ...checkCopy(firstCheck), tools: [] }, checkCopy(secondCheck)],
-      }).checks[0]?.tools,
-    ).toBeUndefined();
-    const alteredRule = candidateDraft(PARENT_DRAFT, {
-      kind: "tune",
-      why: "alter rule",
-      checks: [checkCopy(firstCheck), { ...checkCopy(secondCheck), rule: "R1" }],
-    });
-    expect(revisionFaults(PARENT_DRAFT, alteredRule, "tune", undefined).join("\n")).toContain(
-      "must still enforce R2",
-    );
-    expect(revisionFaults(PARENT_DRAFT, noop, "repair", undefined).join("\n")).toContain(
-      "must name the check id",
-    );
-    expect(revisionFaults(PARENT_DRAFT, noop, "repair", "check-missing").join("\n")).toContain(
-      "not among the parent exam's checks",
-    );
-  });
-
-  it("enforces exclusive-lock mutual exclusion between exam.revised and comparison.started in log.ts", () => {
+  it("serialises exam.revised against comparison.started under the log lock", () => {
     const dir = tempDir("ana-rev-lock-");
-    const logOpen = join(dir, "open.jsonl");
-    append(logOpen, "comparison.started", { session: "g-1", old: "a", fresh: "b" });
-    expect(() => append(logOpen, REVISED, { kind: "tune", why: "race" })).toThrow(
-      /while comparison g-1 is open/u,
-    );
-
-    const logRevised = join(dir, "revised.jsonl");
-    append(logRevised, REVISED, { kind: "tune", why: "done" });
-    expect(() => append(logRevised, REVISED, { kind: "tune", why: "twice" })).toThrow(
-      /already been revised/u,
-    );
-    expect(() => append(logRevised, "comparison.started", { session: "g-2", old: "a", fresh: "b" })).toThrow(
-      /after exam\.revised/u,
-    );
+    const open = join(dir, "open.jsonl");
+    append(open, STARTED, { session: "g-1", old: "a", fresh: "b" });
+    expect(() => append(open, REVISED, { kind: "tune", why: "race" })).toThrow("while a comparison is open");
+    append(open, STARTED, { session: "g-l", old: "a", fresh: "b", ladder: true });
+    append(open, "comparison.reported", { session: "g-1" });
+    append(open, REVISED, { kind: "tune", why: "settled" });
+    for (const kind of [REVISED, STARTED] as const) {
+      expect(() => append(open, kind, { session: "g-2" })).toThrow(`no ${kind} after exam.revised`);
+    }
   });
 
-  it("schedules check-defects repair examine when canRevise is true and ends exam when false", () => {
+  it("schedules a check-defects examine only while revision is possible, and ends on revise", () => {
+    const at = "2026-11-27T00:00:00Z";
     const base: LogEvent[] = [
-      { at: "2026-11-27T00:00:00Z", kind: "checker.read", data: { contract: "c", checks: "k", faults: [] } },
-      { at: "2026-11-27T00:00:00Z", kind: "task.proposed", data: { version: "v1" } },
-      { at: "2026-11-27T00:00:00Z", kind: "task.gate", data: { version: "v1", gate: 1, outcome: "passed" } },
-      { at: "2026-11-27T00:00:01Z", kind: "build.checkpoint", data: { session: "b-1", harness: "h1" } },
+      { at, kind: "checker.read", data: { contract: "c", checks: "k", faults: [] } },
+      { at, kind: "task.proposed", data: { version: "v1" } },
+      { at, kind: "task.gate", data: { version: "v1", gate: 1, outcome: "passed" } },
+      { at, kind: "build.checkpoint", data: { session: "b-1", harness: "h1" } },
+      { at, kind: STARTED, data: { session: "g-1", old: "s", fresh: "h1", starter: "s" } },
       {
-        at: "2026-11-27T00:00:01Z",
-        kind: "comparison.started",
-        data: { session: "g-1", old: "s", fresh: "h1", starter: "s" },
-      },
-      {
-        at: "2026-11-27T00:00:02Z",
+        at,
         kind: "comparison.reported",
         data: { session: "g-1", old: "s", fresh: "h1", starter: "s", reading: "check-defects", aside: [] },
       },
@@ -603,623 +464,201 @@ describe("revision admission, immutability, and lock exclusion", () => {
       left: null,
       promotions: null,
     };
-    expect(nextAction(base, { ...plan, canRevise: true })).toMatchObject({ code: "bound", move: "examine" });
-    expect(nextAction(base, { ...plan, canRevise: false })).toMatchObject({
-      code: "bound",
-      move: "end",
-      ending: "exam",
+    const finished = (session: string, ended: string, held: string[]): LogEvent => ({
+      at,
+      kind: "exam.finished",
+      data: { session, ended, held },
     });
-    const afterTwoRepairs: LogEvent[] = [
-      {
-        at: "2026-11-27T00:00:01Z",
-        kind: "exam.finished",
-        data: { session: "x-0", ended: "finished", held: ["v1"] },
-      },
+    const twoRepairs = [
+      finished("x-0", "finished", ["v1"]),
       ...base,
-      {
-        at: "2026-11-27T00:00:03Z",
-        kind: "exam.finished",
-        data: { session: "x-int", ended: "crashed", held: [] },
-      },
-      {
-        at: "2026-11-27T00:00:04Z",
-        kind: "exam.finished",
-        data: { session: "x-2", ended: "finished", held: ["v2"] },
-      },
+      finished("x-int", "crashed", []),
+      finished("x-2", "finished", ["v2"]),
     ];
-    expect(nextAction(afterTwoRepairs, { ...plan, canRevise: true })).toMatchObject({
-      code: "bound",
-      move: "examine",
-    });
-    expect(
-      nextAction(
-        [
-          ...afterTwoRepairs,
-          {
-            at: "2026-11-27T00:00:05Z",
-            kind: "exam.finished",
-            data: { session: "x-3", ended: "finished", held: ["v3"] },
-          },
-        ],
-        { ...plan, canRevise: true },
-      ),
-    ).toMatchObject({
-      code: "bound",
+    const cases: readonly [readonly LogEvent[], boolean, string][] = [
+      [base, true, "examine"],
+      [base, false, "end"],
+      [twoRepairs, true, "examine"],
+      [[...twoRepairs, finished("x-3", "finished", ["v3"])], true, "end"],
+    ];
+    for (const [events, canRevise, move] of cases) {
+      expect(nextAction(events, { ...plan, canRevise })).toMatchObject({ code: "bound", move });
+    }
+    const revised: LogEvent = { at, kind: REVISED, data: { kind: "tune", why: "handoff" } };
+    expect(nextAction([revised], { ...plan, prompted: true })).toMatchObject({
+      code: "revised",
       move: "end",
-      ending: "exam",
+      ending: "revise",
     });
-    expect(
-      nextAction(
-        [{ at: "2026-11-27T00:00:00Z", kind: "exam.revised", data: { kind: "tune", why: "handoff" } }],
-        { ...plan, prompted: true },
-      ),
-    ).toMatchObject({ code: "revised", move: "end", ending: "revise" });
   });
 });
 
-describe("empirical witnesses, adversarial audit cap, and successor A -> B handoff", () => {
-  it("kills weakened-check, unfixed-defect, skipped-audit, and restart-cap mutants while accepting valid repair and tune", async () => {
+describe("historical witnesses and the adversarial audit", () => {
+  it("refuses weakened or shifted checks and unfixed repairs, and accepts a clearing repair with a flip note", async () => {
     const seed = await seedCampaign();
-    const version0 = [...seed.packages().keys()][0] ?? "";
-    recordHistoricalWitnesses(seed.log, version0, { includeDefect: true, reportComp: true });
-    const runner = revisionRunner({
-      log: seed.log,
-      parentBundle: seed.bundle,
-      packages: seed.packages,
-      auditor: SOUND_AUDIT,
-    });
-
-    const weakenedTune = candidateDraft(PARENT_DRAFT, {
-      kind: "tune",
-      why: "permits earned witness note=bad while keeping reject control note=wrong",
-      evaluator: PARENT_EVALUATOR.replace(
-        'artifact.n === hidden.target && note === "exact:" + String(hidden.target)',
-        '(artifact.n === hidden.target && note === "exact:" + String(hidden.target)) || note === "bad"',
+    recordWitnesses(seed, { report: true });
+    const run = seed.runner(SOUND_AUDIT);
+    const attempt = async (candidate: Draft, repair?: string) =>
+      (await run({ session: "x-1", why: "w", repair, candidate, home: undefined })).message;
+    const permissive = STRICT.replace(
+      'artifact.n === hidden.target && note === "exact:" + String(hidden.target)',
+      '(artifact.n === hidden.target && note === "exact:" + String(hidden.target)) || note === "bad"',
+    );
+    const weakened = candidateDraft(PARENT_DRAFT, { why: "w", evaluator: evaluatorWith(permissive) });
+    expect(await attempt(weakened)).toContain(
+      "earned witness on ex-001 is no longer refused by check-strict (pass)",
+    );
+    const shifted = candidateDraft(PARENT_DRAFT, {
+      why: "w",
+      checks: [...KEPT_CHECKS, { id: "check-no-bad", rule: "R2", assertion: "note is not bad" }],
+      evaluator: evaluatorWith(
+        permissive,
+        `\n  "check-no-bad": ({ files }) => (files.find((f) => f.path === "${NOTE_FILE}")?.text ?? "") !== "bad",`,
       ),
+      reject_controls: [{ ...answer(10, "bad"), check: "check-no-bad" }],
     });
-    const weakRes = await runner({
-      session: "x-1",
-      kind: "tune",
-      why: "too permissive",
-      candidate: weakenedTune,
-    });
-    expect(weakRes.accepted).toBe(false);
-    expect(weakRes.message).toContain("no longer fails");
-    expect(weakRes.message).not.toContain("s-earned");
-
-    const shiftedTune = candidateDraft(PARENT_DRAFT, {
-      kind: "tune",
-      why: "weakens check-strict on note=bad while adding check-no-bad",
-      checks: [
-        ...PARENT_DRAFT.checks.map(({ id, rule, assertion }) => ({ id, rule, assertion })),
-        { id: "check-no-bad", rule: "R2", assertion: "note is not bad" },
-      ],
-      evaluator: `
-export const checks = {
-  "check-even": ({ artifact }) => Number.isInteger(artifact.n) && artifact.n % 2 === 0,
-  "check-strict": ({ artifact, hidden, files }) => {
-    const note = files.find((f) => f.path === "${NOTE_FILE}")?.text ?? "";
-    return (artifact.n === hidden.target && note === "exact:" + String(hidden.target)) || note === "bad";
-  },
-  "check-no-bad": ({ files }) => (files.find((f) => f.path === "${NOTE_FILE}")?.text ?? "") !== "bad",
-};
-export const scores = {
-  accuracy: ({ artifact, hidden }) => Math.max(0, 1 - Math.abs(artifact.score - hidden.ideal) / 10),
-  depth: ({ artifact }) => Math.min(1, Math.max(0, artifact.detail / 10)),
-};
-`,
-      add_reject_controls: [
-        {
-          task: 0,
-          answer: { n: 10, score: 10, detail: 9 },
-          files: [{ path: NOTE_FILE, text: "bad" }],
-          check: "check-no-bad",
-        },
-      ],
-    });
-    const shiftedRes = await runner({
-      session: "x-1",
-      kind: "tune",
-      why: "shifts witness blocking check",
-      candidate: shiftedTune,
-    });
-    expect(shiftedRes.accepted).toBe(false);
-    expect(shiftedRes.message).toContain("no longer blocked by any untouched check");
-
-    const unfixedRepair = candidateDraft(PARENT_DRAFT, {
-      kind: "repair",
-      why: "does not fix whitespace",
-      check: "check-strict",
-      evaluator: `${PARENT_EVALUATOR}\nconst unusedFlag = 1;\n`,
-    });
-    const unfixedRes = await runner({
-      session: "x-1",
-      kind: "repair",
-      why: "does not fix whitespace",
-      check: "check-strict",
-      candidate: unfixedRepair,
-    });
-    expect(unfixedRes.accepted).toBe(false);
-    expect(unfixedRes.message).toContain("did not clear any check-defect witness");
-    expect(unfixedRes.message).not.toContain("s-defect");
-
-    const fixedEvaluator = PARENT_EVALUATOR.replace(
-      'note === "exact:" + String(hidden.target)',
-      String.raw`note.trim().replace(/\s+/g, "") === "exact:" + String(hidden.target)`,
+    expect(await attempt(shifted)).toContain(
+      "earned witness on ex-001 is no longer refused by check-strict (fail)",
     );
-    const validTuneCandidate = candidateDraft(PARENT_DRAFT, {
-      kind: "tune",
-      why: "reweight rubric",
-      objective_items: [codeItem("accuracy", 2), codeItem("depth", 1)],
-    });
-    const skipSeed = await seedCampaign({ name: "camp-skip" });
-    append(skipSeed.log, "referee.draft", {
-      session: "d-1",
-      pass: 1,
-      verdict: "defects",
-      findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "initial draft defect" }],
-      summary: "initial",
-      probeRows: [],
-    });
-    append(skipSeed.log, "referee.draft", {
-      session: "x-0",
-      pass: 1,
-      revision: "other-checks-hash",
-      verdict: "sound",
-      findings: [],
-      summary: "other",
-      probeRows: [],
-    });
-    const skipRunner = revisionRunner({
-      log: skipSeed.log,
-      parentBundle: skipSeed.bundle,
-      packages: skipSeed.packages,
-      auditor: async () => ({ verdict: "skipped", findings: [], summary: "", probes: [], error: "503" }),
-    });
-    const skipRes = await skipRunner({
-      session: "x-1",
-      kind: "tune",
-      why: "reweight",
-      candidate: validTuneCandidate,
-    });
-    expect(skipRes.accepted).toBe(false);
-    expect(skipRes.message).toContain("audit skipped");
 
-    const auditPasses: number[] = [];
-    const failingAudit: RevisionAuditor = async (_reader, target): Promise<DraftAuditFinding> => {
-      auditPasses.push(target.pass ?? -1);
-      append(target.log, "referee.draft", {
-        session: target.session,
-        ...keyIfDefined("pass", target.pass),
-        ...keyIfDefined("revision", target.revision),
-        verdict: "defects",
-        findings: [{ kind: "objective-defect", task: "ex-001", item: "depth", probe: 1, reason: "flat" }],
-        summary: "defect found",
-        probeRows: [],
-      });
-      return {
-        verdict: "defects",
-        findings: [{ kind: "objective-defect", task: "ex-001", item: "depth", probe: 1, reason: "flat" }],
-        summary: "defect found",
-        probes: [],
-      };
-    };
-    const capRunner1 = revisionRunner({
-      log: skipSeed.log,
-      parentBundle: skipSeed.bundle,
-      packages: skipSeed.packages,
-      auditor: failingAudit,
-    });
-    expect(
-      (await capRunner1({ session: "x-1", kind: "tune", why: "t1", candidate: validTuneCandidate })).accepted,
-    ).toBe(false);
-    expect(
-      (await capRunner1({ session: "x-1", kind: "tune", why: "t2", candidate: validTuneCandidate })).accepted,
-    ).toBe(false);
-    const capRunner2 = revisionRunner({
-      log: skipSeed.log,
-      parentBundle: skipSeed.bundle,
-      packages: skipSeed.packages,
-      auditor: failingAudit,
-    });
-    expect(
-      (await capRunner2({ session: "x-2", kind: "tune", why: "t3", candidate: validTuneCandidate })).accepted,
-    ).toBe(false);
-    const fourth = await capRunner2({
-      session: "x-2",
-      kind: "tune",
-      why: "t4",
-      candidate: validTuneCandidate,
-    });
-    expect(fourth.accepted).toBe(false);
-    expect(fourth.message).toContain("revision audit cap (3) reached");
-    expect(auditPasses).toEqual([1, 2, 3]);
-
-    const cleanPass3Seed = await seedCampaign({ name: "camp-clean-pass3" });
-    const cleanParentChecks =
-      eventsOf(read(cleanPass3Seed.log), "contract.frozen").at(-1)?.event.data.checks ?? "";
-    for (const pass of [1, 2]) {
-      append(cleanPass3Seed.log, "referee.draft", {
-        session: "x-0",
-        pass,
-        revision: cleanParentChecks,
-        verdict: "defects",
-        findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "n=9 passed" }],
-        summary: "probe defect",
-        probeRows: [
-          {
-            id: 1,
-            task: "ex-001",
-            changes: [{ path: "$.n", value: "9", edit: null }],
-            original: { kind: "pass" },
-            changed: { kind: "pass" },
-          },
-        ],
-      });
-    }
-    const cleanSeen: { pass: number | undefined; verifiedFixed: number; unverified: number }[] = [];
-    const cleanRes = await revisionRunner({
-      log: cleanPass3Seed.log,
-      parentBundle: cleanPass3Seed.bundle,
-      packages: cleanPass3Seed.packages,
-      auditor: async (_reader, target) => {
-        cleanSeen.push({
-          pass: target.pass,
-          verifiedFixed: target.verifiedFixed?.length ?? 0,
-          unverified: target.priorFindings?.length ?? 0,
-        });
-        return { verdict: "sound", findings: [], summary: "verified clean fix", probes: [] };
-      },
-    })({
-      session: "x-1",
-      kind: "tune",
-      why: "clean fix after 2 defect passes",
-      candidate: validTuneCandidate,
-    });
-    expect(cleanRes.accepted).toBe(true);
-    expect(cleanSeen).toEqual([{ pass: 3, verifiedFixed: 2, unverified: 0 }]);
-
-    const probeSeed = await seedCampaign({ name: "camp-probe-replay" });
-    const probeParentChecks =
-      eventsOf(read(probeSeed.log), "contract.frozen").at(-1)?.event.data.checks ?? "";
-    append(probeSeed.log, "referee.draft", {
-      session: "x-0",
-      pass: 1,
-      revision: probeParentChecks,
-      verdict: "defects",
-      findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "still passes" }],
-      summary: "probe defect",
-      probeRows: [
-        {
-          id: 1,
-          task: "ex-001",
-          changes: [{ path: "$.score", value: "5", edit: null }],
-          original: { kind: "pass" },
-          changed: { kind: "pass" },
-        },
-      ],
-    });
-    let probeAuditorRan = false;
-    const probeRes = await revisionRunner({
-      log: probeSeed.log,
-      parentBundle: probeSeed.bundle,
-      packages: probeSeed.packages,
-      auditor: async () => {
-        probeAuditorRan = true;
-        return { verdict: "sound", findings: [], summary: "", probes: [] };
-      },
-    })({ session: "x-1", kind: "tune", why: "replay", candidate: validTuneCandidate });
-    expect(probeRes.accepted).toBe(false);
-    expect(probeRes.message).toContain("failed prior audit defect probes");
-    expect(probeAuditorRan).toBe(false);
-
-    const raceSeed = await seedCampaign({ name: "camp-race" });
-    const raceRes = await revisionRunner({
-      log: raceSeed.log,
-      parentBundle: raceSeed.bundle,
-      packages: raceSeed.packages,
-      auditor: async () => {
-        append(raceSeed.log, "comparison.started", { session: "g-race", old: "starter", fresh: "h1" });
-        return { verdict: "sound", findings: [], summary: "ok", probes: [] };
-      },
-    })({ session: "x-1", kind: "tune", why: "race", candidate: validTuneCandidate });
-    expect(raceRes.accepted).toBe(false);
-    expect(raceRes.message).toContain("still open");
-    expect(eventsOf(read(raceSeed.log), REVISED)).toHaveLength(0);
-
-    const repSeed = await seedCampaign({ name: "camp-rep" });
-    const repVersion0 = [...repSeed.packages().keys()][0] ?? "";
-    recordHistoricalWitnesses(repSeed.log, repVersion0, { includeDefect: true, reportComp: true });
-    const multiDefectFiles = keepAnswerFiles(
-      repSeed.log,
-      textFiles([{ path: NOTE_FILE, text: "exact: 10\n" }]),
-    );
-    append(repSeed.log, "solve.started", { solve: "s-defect-multi", comparison: "g-1" });
-    append(repSeed.log, "verdict", {
-      solve: "s-defect-multi",
-      task: "ex-001",
-      answer: { n: 13, score: 9, detail: 8 },
-      files: multiDefectFiles.map((f) => ({ ...f })),
-      kind: "fail",
+    const repair = await seedCampaign({ name: "camp-repair" });
+    recordWitnesses(repair, { report: true });
+    const multi = {
+      n: 13,
+      note: "exact: 10\n",
       blocking: ["check-even", "check-strict"],
-    });
-    append(repSeed.log, "referee.finding", {
-      solve: "s-defect-multi",
-      task: "ex-001",
       ruling: "check-defect",
-      check: "check-strict",
-      reason: "check-strict rejected whitespace alongside odd n",
+    };
+    witness(repair.log, "s-defect-multi", { ...multi, check: "check-strict" });
+    const flip = { n: 10, note: "exact:10", blocking: ["check-strict"], ruling: "earned" };
+    witness(repair.log, "s-earned-flip", { ...flip, check: "check-strict" });
+    const notes: string[] = [];
+    const noting = repair.runner(async (reader, target) => {
+      notes.push(...target.notes);
+      return await SOUND_AUDIT(reader, target);
     });
-    const repRunner = revisionRunner({
-      log: repSeed.log,
-      parentBundle: repSeed.bundle,
-      packages: repSeed.packages,
-      auditor: SOUND_AUDIT,
-    });
-    const partialRepair = candidateDraft(PARENT_DRAFT, {
-      kind: "repair",
-      why: "clears only n=target whitespace, leaves multi-blocking defect uncleared",
-      check: "check-strict",
-      evaluator: fixedEvaluator,
-    });
-    const partialRes = await repRunner({
-      session: "x-1",
-      kind: "repair",
-      why: "partial fix",
-      check: "check-strict",
-      candidate: partialRepair,
-    });
-    expect(partialRes.accepted).toBe(false);
-    expect(partialRes.message).toContain("1/2 check-defect witnesses uncleared");
-    const goodRepair = candidateDraft(PARENT_DRAFT, {
-      kind: "repair",
-      why: "allow whitespace after colon in note.txt",
-      check: "check-strict",
-      evaluator: fixedEvaluator.replace(
-        "artifact.n === hidden.target &&",
-        "(artifact.n === hidden.target || artifact.n === 13) &&",
-      ),
-    });
-    const repRes = await repRunner({
-      session: "x-1",
-      kind: "repair",
-      why: "allow whitespace after colon in note.txt",
-      check: "check-strict",
-      candidate: goodRepair,
-    });
-    expect(repRes.accepted).toBe(true);
-    const revEvent = eventsOf(read(repSeed.log), REVISED).at(-1)?.event.data;
-    expect(revEvent?.kind).toBe("repair");
-    expect(revEvent?.witnesses).toEqual({
-      earnedChecked: 2,
-      earnedRetained: 2,
-      defectChecked: 2,
-      defectCleared: 2,
-    });
-
-    const flipSeed = await seedCampaign({ name: "camp-repair-flip" });
-    const flipVersion0 = [...flipSeed.packages().keys()][0] ?? "";
-    recordHistoricalWitnesses(flipSeed.log, flipVersion0, { includeDefect: true, reportComp: true });
-    const flippedFiles = keepAnswerFiles(flipSeed.log, textFiles([{ path: NOTE_FILE, text: "exact: 10" }]));
-    append(flipSeed.log, "solve.started", { solve: "s-earned-contradictory", comparison: "g-1" });
-    append(flipSeed.log, "verdict", {
-      solve: "s-earned-contradictory",
-      task: "ex-001",
-      answer: { n: 10, score: 9, detail: 8 },
-      files: flippedFiles.map((f) => ({ ...f })),
-      kind: "fail",
-      blocking: ["check-strict"],
-    });
-    append(flipSeed.log, "referee.finding", {
-      solve: "s-earned-contradictory",
-      task: "ex-001",
-      ruling: "earned",
-      check: "check-strict",
-      reason: "earlier contradictory ruling on broken check",
-    });
-    const auditNotes: string[] = [];
-    const flipRunner = revisionRunner({
-      log: flipSeed.log,
-      parentBundle: flipSeed.bundle,
-      packages: flipSeed.packages,
-      auditor: async (_reader, target) => {
-        auditNotes.push(...target.notes);
-        return await SOUND_AUDIT(_reader, target);
-      },
-    });
-    const flipRes = await flipRunner({
-      session: "x-1",
-      kind: "repair",
-      why: "fix whitespace on check-strict",
-      check: "check-strict",
-      candidate: goodRepair,
-    });
-    expect(flipRes.accepted).toBe(true);
-    expect(
-      auditNotes.some((note) => note.includes("1 historical earned witness solely on repaired check")),
-    ).toBe(true);
-
-    const hitlSeed = await seedCampaign({ name: "camp-hitl", attended: true });
-    const parentToolBin = join(hitlSeed.bundle, ".toolchain", "bin");
-    mkdirSync(parentToolBin, { recursive: true });
-    writeFileSync(join(parentToolBin, "parent-helper"), "#!/bin/sh\necho parent-ok\n");
-    chmodSync(join(parentToolBin, "parent-helper"), 0o755);
-    writeFileSync(join(hitlSeed.bundle, ".toolchain", HOST_TOOLS_FILE), "stale-host-tools\n");
-    const hitlRunner = revisionRunner({
-      log: hitlSeed.log,
-      parentBundle: hitlSeed.bundle,
-      packages: hitlSeed.packages,
-      auditor: SOUND_AUDIT,
-    });
-    const hitlCandidate = candidateDraft(PARENT_DRAFT, {
-      kind: "tune",
-      why: "reweight under hitl while carrying parent verifier tool",
-      checks: [
-        ...PARENT_DRAFT.checks.map(({ id, rule, assertion }) => ({ id, rule, assertion })),
-        {
-          id: "check-parent-tool",
-          rule: "R1",
-          assertion: "n > 0 via parent helper",
-          tools: ["parent-helper"],
-        },
-      ],
-      evaluator: `
-export const checks = {
-  "check-even": ({ artifact }) => Number.isInteger(artifact.n) && artifact.n % 2 === 0,
-  "check-strict": ({ artifact, hidden, files }) => {
-    const note = files.find((f) => f.path === "${NOTE_FILE}")?.text ?? "";
-    return artifact.n === hidden.target && note === "exact:" + String(hidden.target);
-  },
-  "check-parent-tool": async ({ artifact }, runtime) => {
-    const res = await runtime.tools.run({ toolId: "parent-helper", args: [] });
-    return res.exitCode === 0 && artifact.n > 0;
-  },
-};
-export const scores = {
-  accuracy: ({ artifact, hidden }) => Math.max(0, 1 - Math.abs(artifact.score - hidden.ideal) / 10),
-  depth: ({ artifact }) => Math.min(1, Math.max(0, artifact.detail / 10)),
-};
-`,
-      objective_items: [codeItem("accuracy", 2), codeItem("depth", 1)],
-      add_reject_controls: [
-        {
-          task: 0,
-          answer: { n: -2, score: 10, detail: 9 },
-          files: [{ path: NOTE_FILE, text: "exact:10" }],
-          check: "check-parent-tool",
-        },
-      ],
-    });
-    const hitlRes = await hitlRunner({
-      session: "x-1",
-      kind: "tune",
-      why: "reweight under hitl",
-      candidate: hitlCandidate,
-    });
-    expect(hitlRes.accepted).toBe(false);
-    expect(hitlRes.message).toContain("--hitl");
-    const smuggledTune = candidateDraft(PARENT_DRAFT, {
-      kind: "repair",
-      why: "smuggle rubric reweight inside repair",
-      check: "check-strict",
-      objective_items: [codeItem("accuracy", 3), codeItem("depth", 1)],
+    const repairWith = async (candidate: Draft) =>
+      await noting({
+        session: "x-1",
+        why: "fix whitespace",
+        repair: "check-strict",
+        candidate,
+        home: undefined,
+      });
+    expect(await repairWith(GOOD_REPAIR)).toEqual({
+      accepted: true,
+      message: "The exam revision stands; a successor campaign continues under it.",
     });
     expect(
-      revisionFaults(PARENT_DRAFT, smuggledTune, "repair", "check-strict").some((f) =>
-        f.includes("repair revision cannot change objective"),
-      ),
-    ).toBe(true);
-
-    const noOpeningTasks = ungated(
-      { tasks: hitlSeed.tasks, pack: (task) => packageOf(hitlSeed.checks, task) },
-      [],
-    );
-    expect(noOpeningTasks.length).toBeGreaterThan(0);
-
-    const hijackSeed = await seedCampaign({ name: "camp-hijack" });
-    const hijackVersion0 = [...hijackSeed.packages().keys()][0] ?? "";
-    recordHistoricalWitnesses(hijackSeed.log, hijackVersion0, { includeDefect: true, reportComp: true });
-    expect(
-      (
-        await revisionRunner({
-          log: hijackSeed.log,
-          parentBundle: hijackSeed.bundle,
-          packages: hijackSeed.packages,
-          auditor: SOUND_AUDIT,
-        })({
-          session: "x-1",
-          kind: "repair",
-          why: "allow whitespace",
-          check: "check-strict",
-          candidate: goodRepair,
-        })
-      ).accepted,
-    ).toBe(true);
-    const foreignDir = join(dirname(hijackSeed.dir), "camp-hijack-rev2");
-    mkdirSync(foreignDir, { recursive: true });
-    append(join(foreignDir, LOG_FILE), "campaign.opened", {
-      prompt: "unrelated campaign",
-      parent: { campaign: "someone-else", revised: "0".repeat(64), kind: "tune" },
-    });
-    await expect(openSuccessor(hijackSeed.log)).rejects.toThrow("refusing to adopt existing campaign");
-    expect(eventsOf(read(hitlSeed.log), REVISED)).toHaveLength(0);
-    const candidateHash = /--candidate\s+([a-f0-9]+)/u.exec(hitlRes.message)?.[1];
-    expect(candidateHash).toBeTruthy();
-    const candidateFile = join(dirname(hitlSeed.log), "revisions", `${candidateHash ?? ""}.json`);
-    const originalCandidateText = readFileSync(candidateFile, "utf8");
-    writeFileSync(join(dirname(hitlSeed.log), "escape.json"), originalCandidateText);
-    for (const badHash of ["", "dead", "../escape"]) {
-      await expect(freezeCandidate(hitlSeed.log, badHash, hitlSeed.packages())).rejects.toThrow(
-        "invalid candidate hash",
-      );
-    }
-    await expect(freezeCandidate(hitlSeed.log, "0123456789abcdef", hitlSeed.packages())).rejects.toThrow(
-      "no staged revision candidate",
-    );
-    writeFileSync(candidateFile, originalCandidateText.replace('"accuracy"', '"tampered"'));
-    await expect(freezeCandidate(hitlSeed.log, candidateHash ?? "", hitlSeed.packages())).rejects.toThrow(
-      "hash mismatch",
-    );
-    writeFileSync(candidateFile, originalCandidateText);
-    const frozenNext = await freezeCandidate(hitlSeed.log, candidateHash ?? "", hitlSeed.packages());
-    expect(frozenNext.name).toBe("camp-hitl-rev2");
-    expect(await freezeCandidate(hitlSeed.log, candidateHash ?? "", hitlSeed.packages())).toEqual(frozenNext);
-    expect(eventsOf(read(hitlSeed.log), REVISED)).toHaveLength(1);
-    expect(endedOf(read(hitlSeed.log))?.ending).toBe("revise");
-
-    const missingWitnessSeed = await seedCampaign({ name: "camp-missing-witness" });
-    append(missingWitnessSeed.log, "verdict", { solve: "s-ghost", task: "missing-task-hash", kind: "fail" });
-    append(missingWitnessSeed.log, "referee.finding", {
-      solve: "s-ghost",
-      task: "ex-999",
-      ruling: "earned",
-      check: "check-strict",
-      reason: "bad",
-    });
-    const ghostRes = await revisionRunner({
-      log: missingWitnessSeed.log,
-      parentBundle: missingWitnessSeed.bundle,
-      packages: missingWitnessSeed.packages,
-      auditor: SOUND_AUDIT,
-    })({
-      session: "x-1",
-      kind: "tune",
-      why: "reweight",
-      candidate: validTuneCandidate,
-    });
-    expect(ghostRes.accepted).toBe(false);
-    expect(ghostRes.message).toContain("could not be loaded");
+      notes.filter((note) => note.includes("solely on repaired check check-strict now pass")),
+    ).toHaveLength(1);
+    const revised = eventsOf(read(repair.log), REVISED).at(-1)?.event.data;
+    const frozen = eventsOf(read(repair.log), "contract.frozen").at(-1)?.event.data.checks;
+    expect(revised).toMatchObject({ kind: "repair", check: "check-strict", parent: { checks: frozen } });
   });
 
-  it("opens successor B idempotently across crash prefixes, carries budget/stopRule/harness/lineage, and enforces 1 tune/epoch", async () => {
-    expect(successorName("jobstat-v2")).toBe("jobstat-v2-rev2");
-    expect(successorName("jobstat-v2-rev2")).toBe("jobstat-v2-rev3");
-    expect(rewriteNameFlag(["--name", "a", "--name", "other", "--budget", "50"], "a", "a-rev2")).toEqual([
-      "--name",
-      "a-rev2",
-      "--name",
-      "other",
-      "--budget",
-      "50",
-    ]);
-    expect(rewriteNameFlag(["--name=a", "--budget=50"], "a", "a-rev2")).toEqual([
-      "--name=a-rev2",
-      "--budget=50",
-    ]);
+  it("requires a sound audit, caps defect passes, replays prior probes first, and re-checks after the audit", async () => {
+    const seed = await seedCampaign({ name: "camp-audit" });
+    const skipped: DraftAuditor = async () => ({
+      verdict: "skipped",
+      findings: [],
+      summary: "",
+      probes: [],
+      error: "503",
+    });
+    expect((await tryRevise(seed, undefined, skipped)).message).toContain("audit recorded no verdict");
+    expect((await seed.runner(SOUND_AUDIT, null)(TUNE_INPUT)).message).toContain("needs a reviewer");
+    const passes: number[] = [];
+    const defects = auditing("defects", [...FLAT]);
+    const counting: DraftAuditor = async (reader, target) => {
+      passes.push(target.pass ?? -1);
+      return await defects(reader, target);
+    };
+    const messages: string[] = [];
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      messages.push((await seed.runner(counting)(TUNE_INPUT)).message);
+    }
+    expect(passes).toEqual([1, 2, 3]);
+    expect(messages.every((message) => message.startsWith("Revision failed adversarial audit"))).toBe(true);
+    expect(messages.at(-1)).toContain("could not be verified fixed after the audit cap");
+    expect(eventsOf(read(seed.log), REVISED)).toHaveLength(0);
 
+    const probed = async (name: string, path: string, defectPasses: readonly number[]) => {
+      const one = await seedCampaign({ name });
+      const checks = eventsOf(read(one.log), "contract.frozen").at(-1)?.event.data.checks ?? "";
+      for (const pass of defectPasses) {
+        append(one.log, "referee.draft", {
+          session: "x-0",
+          pass,
+          revision: checks,
+          verdict: "defects",
+          findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "still passes" }],
+          summary: "probe defect",
+          probeRows: [
+            {
+              id: 1,
+              task: "ex-001",
+              changes: [{ path, value: "9", edit: null }],
+              original: { kind: "pass" },
+              changed: { kind: "pass" },
+            },
+          ],
+        });
+      }
+      return await one.runner(recording)(TUNE_INPUT);
+    };
+    const calls: { pass: number | undefined; fixed: number }[] = [];
+    const recording: DraftAuditor = async (reader, target) => {
+      calls.push({ pass: target.pass, fixed: target.verifiedFixed?.length ?? 0 });
+      return await SOUND_AUDIT(reader, target);
+    };
+    const replays = [
+      await probed("camp-fixed-once", "$.n", [1]),
+      await probed("camp-fixed-at-cap", "$.n", [1, 2]),
+      await probed("camp-broken", "$.score", [1]),
+    ];
+    expect(replays.map(({ accepted }) => accepted)).toEqual([true, true, false]);
+    expect(replays[2]?.message).toContain("prior probe still reproduces on this revision");
+    expect(calls).toEqual([{ pass: 2, fixed: 1 }]);
+
+    const race = await seedCampaign({ name: "camp-race" });
+    const raced = race.runner(async (reader, target) => {
+      append(race.log, STARTED, { session: "g-race", old: "starter", fresh: "h1" });
+      return await SOUND_AUDIT(reader, target);
+    })(TUNE_INPUT);
+    await expect(raced).rejects.toThrow("cannot revise the exam while a comparison is open");
+    expect(eventsOf(read(race.log), REVISED)).toHaveLength(0);
+  });
+});
+
+describe("successor campaign", () => {
+  it("names successors and rewrites launch flags", () => {
+    expect(["a", "a-rev2", "a-rev9"].map(successorName)).toEqual(["a-rev2", "a-rev3", "a-rev10"]);
+    const cases: readonly [string[], string, string, string[]][] = [
+      [["--name", "a", "--budget", "50"], "--name", "b", ["--name", "b", "--budget", "50"]],
+      [["--name=a", "--budget=50"], "--name", "b", ["--name=b", "--budget=50"]],
+      [["--name", "a"], "--moves", "2", ["--name", "a", "--moves", "2"]],
+      [["--moves=3"], "--moves", "0", ["--moves=0"]],
+    ];
+    for (const [flags, flag, value, expected] of cases) {
+      expect(withFlag(flags, flag, value)).toEqual(expected);
+    }
+  });
+
+  it("opens B once under racing openers, carries lineage, and allows one tune per epoch", async () => {
     const seed = await seedCampaign({ name: "lin-a" });
-    const writtenTask = {
+    const written = {
       taskId: "x-1-001",
       family: "f1",
       publicInput: { prompt: "sixteen" },
       hidden: { target: 16, ideal: 10 },
     };
-    const writtenVersion = taskVersion(packageOf(seed.checks, writtenTask));
+    const writtenVersion = taskVersion(packageOf(seed.checks, written));
     append(seed.log, "task.proposed", {
       version: writtenVersion,
       taskId: "x-1-001",
       session: "x-1",
-      task: writtenTask,
+      task: written,
     });
     append(seed.log, "task.gate", { version: writtenVersion, gate: 1, outcome: "passed" });
     append(seed.log, "build.finished", {
@@ -1229,7 +668,7 @@ export const scores = {
       ended: "finished",
       billed: 12.5,
     });
-    append(seed.log, "comparison.started", {
+    append(seed.log, STARTED, {
       session: "g-1",
       old: "starter",
       fresh: "h-carried",
@@ -1247,153 +686,104 @@ export const scores = {
       valid: { old: [1, 0], fresh: [1, 0], informative: { old: 1, fresh: 1 } },
       aside: [],
     });
-
-    const binDir = join(seed.dir, "examiner-home", ".toolchain", "bin");
-    mkdirSync(binDir, { recursive: true });
-    const helperPath = join(binDir, "my-helper");
-    writeFileSync(helperPath, "#!/bin/sh\necho ok\n");
-    chmodSync(helperPath, 0o755);
-
-    const tuneCandidate = candidateDraft(PARENT_DRAFT, {
-      kind: "tune",
+    const home = join(seed.dir, "examiner-home");
+    mkdirSync(join(home, ".toolchain", "bin"), { recursive: true });
+    writeFileSync(join(home, ".toolchain", "bin", "my-helper"), "#!/bin/sh\necho ok\n");
+    chmodSync(join(home, ".toolchain", "bin", "my-helper"), 0o755);
+    const tune = candidateDraft(PARENT_DRAFT, {
       why: "add range check and reweight",
       checks: [
-        ...PARENT_DRAFT.checks.map(({ id, rule, assertion }) => ({ id, rule, assertion })),
+        ...KEPT_CHECKS,
         { id: "check-positive", rule: "R1", assertion: "n is strictly positive", tools: ["my-helper"] },
       ],
-      evaluator: `
-export const checks = {
-  "check-even": ({ artifact }) => Number.isInteger(artifact.n) && artifact.n % 2 === 0,
-  "check-strict": ({ artifact, hidden, files }) => {
-    const note = files.find((f) => f.path === "${NOTE_FILE}")?.text ?? "";
-    return artifact.n === hidden.target && note === "exact:" + String(hidden.target);
-  },
-  "check-positive": async ({ artifact }, runtime) => {
-    const res = await runtime.tools.run({ toolId: "my-helper", args: [] });
-    return res.exitCode === 0 && artifact.n > 0;
-  },
-};
-export const scores = {
-  accuracy: ({ artifact, hidden }) => Math.max(0, 1 - Math.abs(artifact.score - hidden.ideal) / 10),
-  depth: ({ artifact }) => Math.min(1, Math.max(0, artifact.detail / 10)),
-};
-`,
-      objective_items: [codeItem("accuracy", 1.5), codeItem("depth", 1)],
-      add_reject_controls: [
-        {
-          task: 0,
-          answer: { n: -2, score: 10, detail: 9 },
-          files: [{ path: NOTE_FILE, text: "exact:10" }],
-          check: "check-positive",
-        },
-      ],
+      evaluator: evaluatorWith(
+        STRICT,
+        `\n  "check-positive": async ({ artifact }, runtime) => (await runtime.tools.run({ toolId: "my-helper", args: [] })).exitCode === 0 && artifact.n > 0,`,
+      ),
+      ...rubric(codeItem("accuracy", 1.5), codeItem("depth", 1)),
+      reject_controls: [{ ...answer(-2, "exact:10"), check: "check-positive" }],
     });
-    const parentEvalBefore = readFileSync(join(seed.checks, "evaluator.ts"), "utf8");
-    const runner = revisionRunner({
-      log: seed.log,
-      parentBundle: seed.bundle,
-      packages: seed.packages,
-      auditor: SOUND_AUDIT,
-    });
-    const res = await runner({
+    const parentEvaluator = readFileSync(join(seed.checks, "evaluator.ts"), "utf8");
+    const accepted = await seed.runner(SOUND_AUDIT)({
       session: "x-1",
-      kind: "tune",
-      why: "add range check and reweight",
-      candidate: tuneCandidate,
-      home: join(seed.dir, "examiner-home"),
+      why: "tune",
+      repair: undefined,
+      candidate: tune,
+      home,
     });
-    expect(res.accepted).toBe(true);
-    expect(readFileSync(join(seed.checks, "evaluator.ts"), "utf8")).toBe(parentEvalBefore);
+    expect(accepted.accepted).toBe(true);
+    expect(readFileSync(join(seed.checks, "evaluator.ts"), "utf8")).toBe(parentEvaluator);
 
-    const next1 = await openSuccessor(seed.log);
-    const fullB = readFileSync(next1.log, "utf8").trim().split("\n");
-    for (const keepLines of [1, 2, 3, fullB.length - 1]) {
-      writeFileSync(next1.log, `${fullB.slice(0, keepLines).join("\n")}\n`);
-      const recovered = await openSuccessor(seed.log);
-      expect(recovered).toEqual(next1);
-    }
-    const next2 = await openSuccessor(seed.log);
-    expect(next1).toEqual(next2);
-    expect(next1.name).toBe("lin-a-rev2");
-
+    const [next, again] = await Promise.all([openSuccessor(seed.log), openSuccessor(seed.log)]);
+    expect(await openSuccessor(seed.log)).toEqual(next);
+    expect(again).toEqual(next);
+    expect(readdirSync(seed.dir).filter((file) => file.startsWith("successor-"))).toEqual([]);
+    expect(next.name).toBe("lin-a-rev2");
     const eventsA = read(seed.log);
-    expect(endedOf(eventsA)?.ending).toBe("revise");
-    expect(eventsOf(eventsA, "campaign.ended").at(-1)?.event.data.successor).toBe("lin-a-rev2");
-
-    const eventsB = read(next1.log);
-    expect(eventsOf(eventsB, "campaign.opened")).toHaveLength(1);
-    expect(eventsOf(eventsB, "campaign.setting")).toHaveLength(1);
-    expect(eventsOf(eventsB, "exam.drafted")).toHaveLength(1);
-    expect(eventsOf(eventsB, "contract.frozen")).toHaveLength(1);
-    const openingB = openingOf(eventsB);
-    expect(openingB?.parent?.campaign).toBe("lin-a");
-    expect(openingB?.parent?.kind).toBe("tune");
-    expect(openingB?.parent?.carried.spent).toBeCloseTo(12.5, 4);
-    expect(openingB?.parent?.carried.sinceStep).toBe(1);
-    expect(openingB?.parent?.carried.attempts).toBe(1);
-    expect(openingB?.parent?.carried.tunes).toBe(1);
-    expect(openingB?.parent?.carried.tunedThisEpoch).toBe(true);
-    expect(openingB?.parent?.lineageTasks).toContain(contentOf(writtenTask));
+    expect(
+      eventsOf(eventsA, "campaign.ended").map(({ event: { data } }) => [data.ending, data.successor]),
+    ).toEqual([["revise", "lin-a-rev2"]]);
+    const eventsB = read(next.log);
+    const once = ["campaign.opened", "campaign.setting", "exam.drafted", "contract.frozen"] as const;
+    expect(once.map((kind) => eventsOf(eventsB, kind).length)).toEqual([1, 1, 1, 1]);
+    const parent = openingOf(eventsB)?.parent;
+    expect(parent).toMatchObject({
+      campaign: "lin-a",
+      kind: "tune",
+      carried: { sinceStep: 1, attempts: 1, tunedThisEpoch: true },
+    });
+    expect(parent?.carried.spent).toBeCloseTo(12.5, 4);
+    expect(parent?.lineageTasks).toContain(contentOf(written));
     expect(budgetLeft(eventsB)?.dollars).toBeCloseTo(37.5, 4);
     expect(stopRule(eventsB).sinceStep).toBe(1);
-    const riskTextB = riskLines(eventsB).join("\n");
-    expect(riskTextB).toContain("Carried from parent lineage");
-    expect(riskTextB).toContain("across all epochs: 2.0%");
-    expect(latestBuilt(eventsB)).toBeTruthy();
-    expect(promoted(eventsB)).toBeNull();
-    expect(existsSync(join(dirname(next1.log), "memory", "MEMORY.md"))).toBe(true);
-    expect(existsSync(join(dirname(next1.log), "examiner-home", "gen.py"))).toBe(true);
-    expect(lastLaunch(next1.log)?.flags).toContain("lin-a-rev2");
-
-    expect(ungated({ tasks: seed.tasks, pack: (task) => packageOf(seed.checks, task) }, eventsB)).toEqual([]);
-
-    expect(rewriteMovesFlag(["--name", "a", "--moves", "3", "--budget", "50"], 1)).toEqual([
+    expect(riskLines(eventsB).join("\n")).toContain("Carried from parent lineage");
+    expect([latestBuilt(eventsB) !== null, promoted(eventsB)]).toEqual([true, null]);
+    expect(draftOf(eventsB)?.checks.map(({ id }) => id)).toContain("check-positive");
+    for (const kept of [join("memory", "MEMORY.md"), join("examiner-home", "gen.py")]) {
+      expect(existsSync(join(dirname(next.log), kept))).toBe(true);
+    }
+    expect(lastLaunch(next.log)?.flags).toEqual([
       "--name",
-      "a",
-      "--moves",
-      "1",
+      "lin-a-rev2",
       "--budget",
       "50",
+      "--project",
+      "demo",
     ]);
-    expect(rewriteMovesFlag(["--name=a", "--moves=3"], 0)).toEqual(["--name=a", "--moves=0"]);
-    expect(rewriteMovesFlag(["--name", "a", "--moves", "3"], Number.POSITIVE_INFINITY)).toEqual([
-      "--name",
-      "a",
-      "--moves",
-      "3",
-    ]);
-    await expect(openSuccessor(next1.log)).rejects.toThrow("no valid exam.revised");
-    expect(revisionRefusal(eventsB, { kind: "tune" })).toContain("already opened from a rubric tune");
-    const repairChildLog = join(dirname(seed.dir), "lin-a-rev3", LOG_FILE);
-    mkdirSync(dirname(repairChildLog), { recursive: true });
-    for (const ev of eventsB) {
-      if (ev.kind === "campaign.opened") {
-        append(repairChildLog, OPENED, {
-          ...ev.data,
-          parent: {
-            campaign: "lin-a-rev2",
-            revised: "deadbeef",
-            kind: "repair",
-            carried: { spent: 12.5, sinceStep: 1, attempts: 1, tunes: 1, tunedThisEpoch: true },
-            lineageTasks: [],
-          },
-        });
-      } else {
-        append(repairChildLog, ev.kind, ev.data);
-      }
-    }
-    expect(revisionRefusal(read(repairChildLog), { kind: "tune" })).toContain(
-      "already opened from a rubric tune",
-    );
-    append(next1.log, "harness.promoted", { harness: "h-b1", from: "starter" });
-    expect(stopRule(read(next1.log)).sinceStep).toBe(0);
-    append(next1.log, "comparison.started", {
+    expect(ungated({ tasks: seed.tasks, pack: (task) => packageOf(seed.checks, task) }, eventsB)).toEqual([]);
+    await expect(openSuccessor(next.log)).rejects.toThrow("no valid exam.revised");
+    expect(
+      triggerOf({ live: false, promotions: 0, compared: 1, allTied: false, ending: "revise", hours: 1 }),
+    ).toBeNull();
+    const examCall = (tool: string, second: number): LogEvent => ({
+      at: `2026-11-26T00:00:0${String(second)}.000Z`,
+      kind: "exam.call",
+      data: { session: "x-1", tool, args: {} },
+    });
+    expect(
+      gamingRows([...eventsA, examCall("read_reviews", 0), examCall("revise_exam", 1)]).join("\n"),
+    ).toContain("read_reviews 1, revise_exam 1, revised (tune)");
+
+    const b = {
+      runner: (auditor: DraftAuditor) =>
+        revisionRunner({
+          log: next.log,
+          parentBundle: next.log,
+          packages: () => new Map(),
+          reader: READER,
+          auditor,
+        }),
+    };
+    const tuneB = async () => (await b.runner(ADMITTED)(TUNE_INPUT)).message;
+    expect(await tuneB()).toContain("Refused: this epoch opened from a tune");
+    append(next.log, "harness.promoted", { harness: "h-b1", from: "starter" });
+    append(next.log, STARTED, {
       session: "g-s",
       old: "h-b1",
       fresh: "starter",
       starter: "starter",
     });
-    append(next1.log, "comparison.reported", {
+    append(next.log, "comparison.reported", {
       session: "g-s",
       old: "h-b1",
       fresh: "starter",
@@ -1404,113 +794,43 @@ export const scores = {
       valid: { old: [0, 0, 6], fresh: [6, 0, 0], informative: { old: 6, fresh: 6 } },
       aside: [],
     });
-    expect(revisionRefusal(read(next1.log), { kind: "tune" })).toBeNull();
-    expect(draftOf(eventsB)?.checks.some(({ id }) => id === "check-positive")).toBe(true);
+    expect(stopRule(read(next.log)).sinceStep).toBe(0);
+    expect(await tuneB()).toContain("Revision failed adversarial audit");
 
-    expect(replayed(seed.log)).toContain("revised (tune)");
-    expect(replayed(next1.log)).toContain("from lin-a (tune)");
-    const badParentLog = join(dirname(seed.dir), "lin-bad-rev2", LOG_FILE);
-    mkdirSync(dirname(badParentLog), { recursive: true });
-    append(badParentLog, OPENED, {
-      project: "demo",
-      parent: {
-        campaign: "lin-a",
-        revised: "wrong-hash",
-        kind: "tune",
-        carried: { spent: 0, sinceStep: 0, attempts: 0, tunes: 1 },
-        lineageTasks: [],
-      },
+    const hijack = await seedCampaign({ name: "camp-hijack" });
+    expect((await tryRevise(hijack, undefined, SOUND_AUDIT)).accepted).toBe(true);
+    const foreign = join(dirname(hijack.dir), "camp-hijack-rev2");
+    mkdirSync(foreign, { recursive: true });
+    append(join(foreign, LOG_FILE), OPENED, {
+      prompt: "unrelated campaign",
+      parent: { campaign: "someone-else", revised: "0".repeat(64), kind: "tune" },
     });
-    expect(() => replayed(badParentLog)).toThrow("disagrees with successor opening");
-    const revHashA = eventsOf(eventsA, REVISED).at(-1)?.event.data.draftHash ?? "";
-    append(badParentLog, OPENED, {
-      project: "demo",
-      parent: {
-        campaign: "lin-a",
-        revised: revHashA,
-        kind: "tune",
-        carried: { spent: 0, sinceStep: 0, attempts: 0, tunes: 1 },
-        lineageTasks: [],
-      },
-    });
-    expect(() => replayed(badParentLog)).toThrow("names successor lin-a-rev2, not lin-bad-rev2");
-
-    expect(EVENT_FORMATTERS["exam.revised"]?.({ kind: "tune", why: "reweight" })).toContain(
-      "exam revised (tune): reweight",
-    );
-    expect(
-      EVENT_FORMATTERS["campaign.ended"]?.({ ending: "revise", successor: "lin-a-rev2", why: "reweight" }),
-    ).toContain("-> lin-a-rev2");
-    expect(
-      triggerOf({
-        live: false,
-        promotions: 0,
-        compared: 1,
-        allTied: false,
-        ending: "revise",
-        hours: 1,
-      }),
-    ).toBeNull();
-
-    const gaming = gamingRows([
-      ...eventsA,
-      {
-        at: "2026-11-26T00:00:00.000Z",
-        kind: "exam.call",
-        data: { session: "x-1", tool: "read_reviews", args: {} },
-      },
-      {
-        at: "2026-11-26T00:00:00.500Z",
-        kind: "exam.call",
-        data: { session: "x-1", tool: "propose_tasks", args: {} },
-      },
-      {
-        at: "2026-11-26T00:00:01.000Z",
-        kind: "exam.call",
-        data: { session: "x-1", tool: "revise_exam", args: {} },
-      },
-    ]).join("\n");
-    expect(gaming).toContain("read_reviews 1, revise_exam 1, revised (tune, max weight delta 0.50)");
+    await expect(openSuccessor(hijack.log)).rejects.toThrow("refusing to adopt existing campaign");
   });
+});
 
-  it("exposes read_exam and revise_exam in writing sessions, rejects lineage duplicates, and ends stands on revision", async () => {
+describe("revision in the Examiner session and the campaign loop", () => {
+  it("exposes read_exam and revise_exam in writing sessions and ends the session once a revision stands", async () => {
     const dupTask = { family: "fixture", public_input: { base: 7 }, hidden: { seed: 1 } };
     const dupHash = contentOf({ family: "fixture", publicInput: { base: 7 }, hidden: { seed: 1 } });
+    const weights = { ...rubric(codeItem("accuracy", 2), codeItem("depth", 1)) };
     const s = seat("write", [
       call("propose_tasks", { tasks: [dupTask] }),
       call("read_exam", {}),
-      call("revise_exam", { kind: "tune", why: "noop rejected by faults" }),
-      call("revise_exam", {
-        kind: "tune",
-        why: "first try refused by runner",
-        objective_items: [
-          { id: "accuracy", weight: 2, kind: "code" },
-          { id: "depth", weight: 1, kind: "code" },
-        ],
-      }),
-      call("revise_exam", {
-        kind: "tune",
-        why: "adjust item weights",
-        objective_items: [
-          { id: "accuracy", weight: 2, kind: "code" },
-          { id: "depth", weight: 1, kind: "code" },
-        ],
-      }),
+      call("revise_exam", { why: "noop rejected by faults" }),
+      call("revise_exam", { why: "first try refused by runner", ...weights }),
+      call("revise_exam", { why: "adjust item weights", ...weights }),
       finish,
     ]);
     append(s.request.log, OPENED, {
       project: "demo",
-      seats: {
-        builder: null,
-        examiner: null,
-        reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "high" },
-      },
-      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
+      seats: { builder: null, examiner: null, reviewer: { model: CROSS, effort: "high" } },
+      solver: { model: SONNET, effort: "high" },
       parent: {
         campaign: "parent-a",
         revised: "deadbeef",
         kind: "tune",
-        carried: { spent: 0, sinceStep: 0, attempts: 0, tunes: 1 },
+        carried: { spent: 0, sinceStep: 0, attempts: 0 },
         lineageTasks: [dupHash],
       },
       prompt: "test",
@@ -1522,70 +842,75 @@ export const scores = {
     const runnerCalls: string[] = [];
     const result = await examine({
       ...s.request,
-      revise: async ({ kind, why }) => {
-        runnerCalls.push(`${kind}:${why}`);
-        if (why.startsWith("first try")) return { accepted: false, message: "Refused: try again." };
-        return { accepted: true, message: "Revision accepted." };
+      revise: async ({ repair, why }) => {
+        runnerCalls.push(`${repair ?? "tune"}:${why}`);
+        return why.startsWith("first try")
+          ? { accepted: false, message: "Refused: try again." }
+          : { accepted: true, message: "Revision accepted." };
       },
     });
-    expect(result.ended).toBe("stands");
-    expect(result.held).toEqual([]);
+    expect([result.ended, result.held]).toEqual(["stands", []]);
     expect(runnerCalls).toEqual(["tune:first try refused by runner", "tune:adjust item weights"]);
     expect(systemPrompt(undefined, "fixed")).not.toContain("revise_exam");
     expect(systemPrompt(undefined, "revisable")).toContain("revise_exam");
   });
 
-  it("drives check-defects direct repair examine and seamless A -> B handoff in harnessBuilder", async () => {
+  it("repairs on check-defects and hands A to B in harnessBuilder; --no-revise and a missing reviewer revise nothing", async () => {
+    const campRoot = join(REPO, ".ana", "d2");
+    const opened = async (name: string, extra: JsonObject) => {
+      const dir = join(campRoot, name);
+      ROOTS.push(dir);
+      rmSync(dir, { recursive: true, force: true });
+      mkdirSync(dir, { recursive: true });
+      const log = join(dir, LOG_FILE);
+      append(log, OPENED, {
+        project: "demo",
+        budget: { dollars: 50, reserve: 1 },
+        patience: 6,
+        seats: {
+          builder: { model: OPUS, effort: "high" },
+          examiner: { model: OPUS, effort: "high" },
+          reviewer: { model: CROSS, effort: "high" },
+        },
+        solver: { model: SONNET, effort: "high" },
+        prompt: "test domain",
+        terms: { level: "0.05", practice: "0" },
+        ...extra,
+      });
+      const setting = {
+        solver: { model: SONNET, effort: "high" },
+        minutes: 10,
+        modelTurns: 10,
+        target: 8,
+        solves: 1,
+      };
+      append(log, "campaign.setting", setting);
+      append(log, "exam.drafted", {
+        session: "d-1",
+        draft: parseJsonAs<JsonObject>(capturedJsonStringify(PARENT_DRAFT)),
+      });
+      const { faults, read: seen } = await draftReading(dir, PARENT_DRAFT, 4);
+      if (seen === undefined) throw new Error(`expected draft reading: ${faults.join("; ")}`);
+      const word = { admitted: new Set<string>(), authored: true, judge: false, freeze: true, despite: "" };
+      keepReading(log, seen.checker, seen.reading, word);
+      return { log, seen };
+    };
     const name = `test-rev-hb-${String(runtimeProcess.pid)}`;
     const nextName = successorName(name);
-    const campRoot = join(REPO, ".ana", "d2");
-    ROOTS.push(join(campRoot, name), join(campRoot, nextName));
-    rmSync(join(campRoot, name), { recursive: true, force: true });
+    ROOTS.push(join(campRoot, nextName));
     rmSync(join(campRoot, nextName), { recursive: true, force: true });
-
-    const dir = join(campRoot, name);
-    const log = join(dir, LOG_FILE);
-    mkdirSync(dir, { recursive: true });
-    append(log, OPENED, {
-      project: "demo",
-      budget: { dollars: 50, reserve: 1 },
-      patience: 6,
-      seats: {
-        builder: { model: OPUS, effort: "high" },
-        examiner: { model: OPUS, effort: "high" },
-        reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "high" },
-      },
-      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
-      prompt: "test domain",
-      terms: { level: "0.05", practice: "0" },
-    });
-    append(log, "campaign.setting", {
-      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
-      minutes: 10,
-      modelTurns: 10,
-      target: 8,
-      solves: 1,
-    });
-    const draftObj = parseJsonAs<JsonObject>(capturedJsonStringify(PARENT_DRAFT));
-    append(log, "exam.drafted", { session: "d-1", draft: draftObj });
-    const { faults, read: seen } = await draftReading(dir, PARENT_DRAFT, 4);
-    expect(faults).toEqual([]);
-    if (seen === undefined) throw new Error("expected draft reading");
-    keepReading(log, seen.checker, seen.reading, {
-      admitted: new Set(),
-      authored: true,
-      judge: false,
-      freeze: true,
-      despite: "",
-    });
+    const { log, seen } = await opened(name, {});
     const task0 = PARENT_DRAFT.tasks[0];
     if (task0 === undefined) throw new Error("expected parent task");
-    const numberedTask0 = { taskId: "ex-001", ...task0 };
-    const v0 = taskVersion(packageOf(seen.checks, numberedTask0));
-    append(log, "task.proposed", { version: v0, taskId: "ex-001", session: "x-0", task: numberedTask0 });
+    const numbered = { taskId: "ex-001", ...task0 };
+    const v0 = taskVersion(packageOf(seen.checks, numbered));
+    append(log, "task.proposed", { version: v0, taskId: "ex-001", session: "x-0", task: numbered });
     append(log, "task.gate", { version: v0, gate: 1, outcome: "passed" });
     append(log, "build.checkpoint", { session: "b-1", harness: "h1" });
-    recordHistoricalWitnesses(log, v0, { includeDefect: true, reportComp: false });
+    append(log, STARTED, { session: "g-1", old: "starter", fresh: "h1", starter: "starter" });
+    const defect = { n: 10, note: "exact: 10\n", blocking: ["check-strict"], ruling: "check-defect" };
+    witness(log, "s-defect-strict", { ...defect, check: "check-strict" });
+    witness(log, "s-earned-even", { n: 11, note: "exact:10", blocking: ["check-even"], ruling: "earned" });
     append(log, "comparison.reported", {
       session: "g-1",
       old: "starter",
@@ -1597,18 +922,12 @@ export const scores = {
       scored: null,
       aside: [],
     });
-
-    const fixedEvaluator = PARENT_EVALUATOR.replace(
-      'note === "exact:" + String(hidden.target)',
-      String.raw`note.trim().replace(/\s+/g, "") === "exact:" + String(hidden.target)`,
-    );
     const repairSession = seat("write", [
       call("read_exam", {}),
       call("revise_exam", {
-        kind: "repair",
-        why: "allow whitespace after colon in note.txt",
-        check: "check-strict",
-        evaluator: fixedEvaluator,
+        why: "allow whitespace after colon",
+        repair: "check-strict",
+        evaluator: FIXED_EVALUATOR,
       }),
       finish,
     ]);
@@ -1635,127 +954,60 @@ export const scores = {
       },
     );
     const eventsA = read(log);
-    expect(eventsOf(eventsA, "exam.finished").at(-1)?.event.data.crash).toBeNull();
     expect(ended).toMatchObject({ move: "end", ending: "revise" });
-    expect(existsSync(join(handoverDir, "REPORT.md"))).toBe(true);
-    expect(examineCalls).toBe(1);
-    expect(eventsOf(eventsA, "build.started")).toHaveLength(0);
-    expect(eventsOf(eventsA, REVISED)).toHaveLength(1);
+    expect([examineCalls, existsSync(join(handoverDir, "REPORT.md"))]).toEqual([1, true]);
+    expect(eventsOf(eventsA, "exam.finished").at(-1)?.event.data.crash).toBeNull();
+    expect((["build.started", REVISED] as const).map((kind) => eventsOf(eventsA, kind).length)).toEqual([
+      0, 1,
+    ]);
     expect(endedOf(eventsA)?.ending).toBe("revise");
-    expect(eventsOf(eventsA, "campaign.ended").at(-1)?.event.data.successor).toBe(nextName);
-    const logB = join(campRoot, nextName, LOG_FILE);
-    expect(existsSync(logB)).toBe(true);
-    const eventsB = read(logB);
-    expect(openingOf(eventsB)?.parent?.campaign).toBe(name);
-    expect(openingOf(eventsB)?.parent?.kind).toBe("repair");
-    expect(openingOf(eventsB)?.parent?.carried.tunedThisEpoch).toBe(false);
+    const eventsB = read(join(campRoot, nextName, LOG_FILE));
+    expect(openingOf(eventsB)?.parent).toMatchObject({
+      campaign: name,
+      kind: "repair",
+      carried: { tunedThisEpoch: false },
+    });
     expect(eventsOf(eventsB, "contract.frozen")).toHaveLength(1);
-    expect(replayed(logB)).toContain(`from ${name} (repair)`);
 
-    const noReviseFlagName = `test-no-revise-flag-${String(runtimeProcess.pid)}`;
-    const noReviseDir = join(campRoot, noReviseFlagName);
-    ROOTS.push(noReviseDir);
-    rmSync(noReviseDir, { recursive: true, force: true });
-    mkdirSync(noReviseDir, { recursive: true });
-    const noReviseLog = join(noReviseDir, LOG_FILE);
-    append(noReviseLog, OPENED, {
-      project: "demo",
-      budget: { dollars: 50, reserve: 1 },
-      patience: 6,
-      seats: {
-        builder: { model: OPUS, effort: "high" },
-        examiner: { model: OPUS, effort: "high" },
-        reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "high" },
-      },
-      revise: false,
-      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
-      prompt: "test domain",
-      terms: { level: "0.05", practice: "0" },
-    });
-    append(noReviseLog, "campaign.setting", {
-      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
-      minutes: 10,
-      modelTurns: 10,
-      target: 8,
-      solves: 1,
-    });
-    append(noReviseLog, "exam.drafted", { session: "d-1", draft: draftObj });
-    const noRevRead = await draftReading(noReviseDir, PARENT_DRAFT, 4);
-    if (noRevRead.read === undefined) throw new Error("expected noRevRead");
-    keepReading(noReviseLog, noRevRead.read.checker, noRevRead.read.reading, {
-      admitted: new Set(),
-      authored: true,
-      judge: false,
-      freeze: true,
-      despite: "",
-    });
-    const sawReviseInExamine: boolean[] = [];
-    const noRevSeat = seat("write", [finish]);
-    const noRevBuilder = seat("write", [finish]);
-    await harnessBuilder(["--name", noReviseFlagName, "--moves", "2", "--practice", "0"], {
+    const noRevise = `test-no-revise-flag-${String(runtimeProcess.pid)}`;
+    await opened(noRevise, { revise: false });
+    const sawRevise: boolean[] = [];
+    const quiet = seat("write", [finish]);
+    const builder = seat("write", [finish]);
+    await harnessBuilder(["--name", noRevise, "--moves", "2", "--practice", "0"], {
       seated: () => ({
-        builder: { model: noRevBuilder.request.model, models: noRevBuilder.request.models },
+        builder: { model: builder.request.model, models: builder.request.models },
         setting: "scripted",
         solve: async () => {
           throw new Error("unexpected solve");
         },
       }),
       examine: async (request, wall) => {
-        sawReviseInExamine.push(request.revise !== undefined);
-        return await examine(
-          { ...request, model: noRevSeat.request.model, models: noRevSeat.request.models },
-          wall,
-        );
+        sawRevise.push(request.revise !== undefined);
+        return await examine({ ...request, model: quiet.request.model, models: quiet.request.models }, wall);
       },
     });
-    expect(sawReviseInExamine).toEqual([false]);
+    expect(sawRevise).toEqual([false]);
 
-    const noRevName = `test-rev-audit-guard-${String(runtimeProcess.pid)}`;
-    const noRevDir = join(campRoot, noRevName);
-    ROOTS.push(noRevDir);
-    rmSync(noRevDir, { recursive: true, force: true });
-    mkdirSync(noRevDir, { recursive: true });
-    const noRevLog = join(noRevDir, LOG_FILE);
-    append(noRevLog, OPENED, {
-      project: "demo",
-      budget: { dollars: 50, reserve: 1 },
-      patience: 6,
+    const unreviewed = `test-rev-audit-guard-${String(runtimeProcess.pid)}`;
+    const guarded = await opened(unreviewed, {
       seats: {
         builder: { model: OPUS, effort: "high" },
         examiner: { model: OPUS, effort: "high" },
         reviewer: null,
       },
-      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
-      prompt: "test domain",
-      terms: { level: "0.05", practice: "0" },
-    });
-    append(noRevLog, "exam.drafted", { session: "d-1", draft: draftObj });
-    const guardRead = await draftReading(noRevDir, PARENT_DRAFT, 4);
-    if (guardRead.read === undefined) throw new Error("expected guard reading");
-    keepReading(noRevLog, guardRead.read.checker, guardRead.read.reading, {
-      admitted: new Set(),
-      authored: true,
-      judge: false,
-      freeze: true,
-      despite: "",
     });
     const guardSeat = seat("write", [
       call("revise_exam", {
-        kind: "tune",
         why: "attempt without reviewer",
-        objective_items: [
-          { id: "accuracy", weight: 2, kind: "code" },
-          { id: "depth", weight: 1, kind: "code" },
-        ],
+        ...rubric(codeItem("accuracy", 2), codeItem("depth", 1)),
       }),
       finish,
       finish,
     ]);
-    await examineCommand(
-      ["--name", noRevName, "--session", "x-1", "--examiner", "claude/claude-opus-5-5"],
-      (request, wall) =>
-        examine({ ...request, model: guardSeat.request.model, models: guardSeat.request.models }, wall),
+    await examineCommand(["--name", unreviewed, "--session", "x-1", "--examiner", OPUS], (request, wall) =>
+      examine({ ...request, model: guardSeat.request.model, models: guardSeat.request.models }, wall),
     );
-    expect(eventsOf(read(noRevLog), REVISED)).toHaveLength(0);
+    expect(eventsOf(read(guarded.log), REVISED)).toHaveLength(0);
   });
 });

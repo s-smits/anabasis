@@ -27,7 +27,8 @@ import {
   REPO,
   stayAwake,
 } from "../campaign/campaign.ts";
-import { type RevisionAuditor, revisionRunner } from "../campaign/revise.ts";
+import { revisionRunner } from "../campaign/revise.ts";
+import { type DraftAuditor, draftAuditReader } from "./draft.ts";
 import { rubricLaneOf } from "../campaign/round.ts";
 import { FORK_OPTIONS, seatFork } from "../campaign/seat-fork.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
@@ -57,7 +58,7 @@ export async function examineCommand(
   args: readonly string[],
   session: Session<"write"> = examine,
   kill?: AbortSignal,
-  audit?: RevisionAuditor | null,
+  audit?: DraftAuditor | null,
 ): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS, allowNegative: true });
   const { session: id, examiner } = values;
@@ -82,7 +83,7 @@ export async function examineCommand(
         log: campaign.log,
         parentBundle: campaign.bundle,
         packages: campaign.packages,
-        reviewer: { model: values.reviewer, effort: values["reviewer-effort"] },
+        reader: draftAuditReader(values, opening),
         auditor: audit,
         kill,
       })

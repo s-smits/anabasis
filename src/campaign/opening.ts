@@ -3,30 +3,26 @@ import { type Cap, patienceOf } from "../kernel/reports.ts";
 import { billedAll } from "../kernel/meter.ts";
 import { SIZE } from "../kernel/size.ts";
 import { unadmitted } from "../kernel/acceptance.ts";
-import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import type { Plan } from "./state.ts";
 
-export type RevisionKind = "tune" | "repair";
-export const isRevisionKind = (value: unknown): value is RevisionKind =>
-  value === "tune" || value === "repair";
+type RevisionKind = "tune" | "repair";
+const isRevisionKind = (value: unknown): value is RevisionKind => value === "tune" || value === "repair";
 
 export interface Seat {
   readonly model: string;
   readonly effort: string;
 }
-interface Carried {
-  readonly spent: number;
-  readonly sinceStep: number;
-  readonly attempts: number;
-  readonly tunes: number;
-  readonly tunedThisEpoch: boolean;
-}
-
 interface OpeningParent {
   readonly campaign: string;
   readonly revised: string;
   readonly kind: RevisionKind;
-  readonly carried: Carried;
+  readonly carried: {
+    readonly spent: number;
+    readonly sinceStep: number;
+    readonly attempts: number;
+    readonly tunedThisEpoch: boolean;
+  };
   readonly lineageTasks: readonly string[];
 }
 
@@ -89,16 +85,10 @@ export async function flying<T>(log: string, run: () => Promise<T>): Promise<T> 
   }
 }
 
-function parseParent(raw: unknown): OpeningParent | null {
+function parentOf(raw: unknown): OpeningParent | null {
   const rec = asRecord(raw);
-  const carried = asRecord(rec?.carried);
-  if (
-    rec === null ||
-    carried === null ||
-    !isString(rec.campaign) ||
-    !isString(rec.revised) ||
-    !isRevisionKind(rec.kind)
-  ) {
+  const carried = asRecord(rec?.carried) ?? {};
+  if (rec === null || !isString(rec.campaign) || !isString(rec.revised) || !isRevisionKind(rec.kind)) {
     return null;
   }
   const num = (value: unknown) => (isNumber(value) && Number.isFinite(value) ? value : 0);
@@ -110,8 +100,7 @@ function parseParent(raw: unknown): OpeningParent | null {
       spent: num(carried.spent),
       sinceStep: num(carried.sinceStep),
       attempts: num(carried.attempts),
-      tunes: num(carried.tunes),
-      tunedThisEpoch: isBoolean(carried.tunedThisEpoch) ? carried.tunedThisEpoch : rec.kind === "tune",
+      tunedThisEpoch: carried.tunedThisEpoch === true,
     },
     lineageTasks: Array.isArray(rec.lineageTasks) ? rec.lineageTasks.filter(isString) : [],
   };
@@ -136,7 +125,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     attended: data.attended === true,
     judged: data.judged === true,
     revise: data.revise !== false,
-    parent: parseParent(data.parent),
+    parent: parentOf(data.parent),
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
     terms: Object.fromEntries(

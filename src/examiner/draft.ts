@@ -106,12 +106,12 @@ const CONTROL = {
   answer: Type.Unknown(),
   files: TEXT_FILES,
 };
-export const TASK_FIELDS = {
+const TASK_FIELDS = {
   family: Type.String({ pattern: "\\S" }),
   public_input: Type.Unknown(),
   hidden: Type.Unknown({ description: "Null when the task has none." }),
 };
-export const CHECK_ITEM_SCHEMA = Type.Object({
+const CHECK_ITEM_SCHEMA = Type.Object({
   id: Type.String({ pattern: "^check-[a-z0-9-]+$" }),
   rule: Type.String({ description: "The id of the one rule it enforces." }),
   assertion: Type.String({
@@ -125,7 +125,7 @@ export const CHECK_ITEM_SCHEMA = Type.Object({
     }),
   ),
 });
-export const EVALUATOR_SCHEMA = Type.Union([
+const EVALUATOR_SCHEMA = Type.Union([
   Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
   Type.Object({ from_file: Type.String({ minLength: 1 }) }),
 ]);
@@ -140,8 +140,7 @@ const RUBRIC_ITEM_CODE = Type.Object({
   weight: Type.Number({ exclusiveMinimum: 0 }),
   kind: Type.Optional(Type.Literal("code")),
 });
-export const rubricItemSchema = (lane: RubricLane) =>
-  lane === "judged" ? RUBRIC_ITEM_JUDGED : RUBRIC_ITEM_CODE;
+const rubricItemSchema = (lane: RubricLane) => (lane === "judged" ? RUBRIC_ITEM_JUDGED : RUBRIC_ITEM_CODE);
 const OBJECTIVE_FIELDS = {
   quantity: Type.Optional(
     Type.String({
@@ -211,9 +210,11 @@ const draftParameters = (lane: RubricLane) =>
     ),
     tasks: Type.Array(Type.Object(TASK_FIELDS)),
   });
-const DRAFT_PARAMETERS_JUDGED = draftParameters("judged");
-const DRAFT_PARAMETERS_CODE = draftParameters("code-only");
-type DraftArgs = Static<typeof DRAFT_PARAMETERS_JUDGED>;
+export const DRAFT_PARAMETERS = {
+  judged: draftParameters("judged"),
+  "code-only": draftParameters("code-only"),
+};
+export type DraftArgs = Static<typeof DRAFT_PARAMETERS.judged>;
 
 const FLOOR = `${String(GAP_FLOOR * 100)}%`;
 
@@ -448,7 +449,7 @@ export function draftFaults(draft: Draft, lane: RubricLane = "judged"): string[]
   ];
 }
 
-function draftedFrom(args: DraftArgs): Draft {
+export function draftedFrom(args: DraftArgs): Draft {
   const { quantity, direction, items, tools } = args.objective;
   const rubric: readonly RubricItem[] | undefined =
     items !== undefined && items.length > 0
@@ -526,7 +527,7 @@ export function drafting(
     fromHome(home, {
       name: "draft_exam",
       description: `Put a whole draft of the exam to the host's reading, as the system prompt says.${home === undefined ? "" : ` ${FROM_FILE}`}`,
-      parameters: lane === "judged" ? DRAFT_PARAMETERS_JUDGED : DRAFT_PARAMETERS_CODE,
+      parameters: DRAFT_PARAMETERS[lane],
       execute: async (args: DraftArgs) => {
         if (desk.tries >= limits.puts) throw new Error(none);
         const draft = draftedFrom(args);

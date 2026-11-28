@@ -4,12 +4,20 @@ import { readReviews, reviewInventoryLine, reviewSummariesByTask } from "../src/
 import { examine } from "../src/examiner/session.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
+import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { call, condition, finish, seat, sweep } from "./helpers/examiner-seat.ts";
 
-afterAll(sweep);
+const ROOTS: string[] = [];
+afterAll(() => {
+  sweep();
+  for (const root of ROOTS) rmSync(root, { recursive: true, force: true });
+});
 
 const CANARY_ANSWER = "canary-answer-patch-91f8";
 const CANARY_FIND = "canary-find-text-4b2c";
@@ -69,10 +77,16 @@ function makeLog() {
       noise: null,
       ...keyIfDefined("settled", labels === undefined ? undefined : { labels }),
     });
-  return { events, add, hold, solve, report };
+  const file = () => {
+    const path = join(mkdtempSync(join(tmpdir(), "ana-reviews-")), "log.jsonl");
+    ROOTS.push(dirname(path));
+    writeFileSync(path, events.map((one) => `${capturedJsonStringify(one)}\n`).join(""));
+    return path;
+  };
+  return { events, add, hold, solve, report, file };
 }
 
-describe("Examiner review projection and search (read_reviews)", () => {
+describe("Examiner review projection (read_reviews)", () => {
   it("projects pairs, findings, and drafts while hiding unfinished comparisons and stripped internals", () => {
     const log = makeLog();
     log.hold("t-1");
@@ -256,35 +270,20 @@ describe("Examiner review projection and search (read_reviews)", () => {
     });
     log.report("c-1", HARNESS_OLD, HARNESS_FRESH, ["v-t-1", "v-t-2"], { "s-fail-1": "earned" });
 
-    const all = readReviews(log.events);
-    expect(all).toContain("Showing 1-7 of 7 matching review records");
-    expect(all).toContain("[pair] c-1 | task=t-1 | cross | judge-gap=1 holistic-gap=1 (opposed)");
-    expect(all).toContain("Answer A states exact error bars and units.");
-    expect(all).not.toContain("errored vote must be ignored");
-    expect(all).not.toContain("non-vote tool must be ignored");
-    expect(all).toContain("check=check-unseen-primary");
-    expect(all).toContain("extracts: 4 files (1 empty, 1 faults, 2 truncated)");
-    expect(all).toContain("[pair] c-1 | task=t-1 | mirror |");
-    expect(all).toContain("reason unavailable");
-    expect(all).toContain("[pair] c-1 | task=t-1 | cross | incomplete");
-    expect(all).toContain(
-      "ruling=check-defect | standing=earned | check=check-units | evidence=replayed (+1 reused)",
-    );
-    expect(all).toContain("probe #1: fail->pass moved=[check-units]");
-    expect(all).toContain("[draft] d-1 pass=1 | verdict=defects | probes=1");
-    expect(all).toContain("[draft] d-1 pass=2 | verdict=skipped");
-    expect(all).toContain("summary: draft audit skipped");
-    expect(all).not.toContain("provider timeout");
-
-    log.add("referee.finding", {
-      solve: "s-orphan-without-start",
-      task: "t-2",
-      ruling: "check-defect",
-      check: "check-orphan",
-      reason: "orphan truncated finding",
-    });
-    expect(readReviews(log.events)).not.toContain("check-orphan");
-
+    const all = readReviews(log.file());
+    const shown = [
+      "Showing the newest 6 of 6 matching review records.",
+      "[pair] c-1 | task=t-1 | cross | judge-gap=1 holistic-gap=1 (opposed)",
+      "Answer A states exact error bars and units.",
+      "[pair] c-1 | task=t-1 | mirror |",
+      "reason unavailable",
+      "[pair] c-1 | task=t-1 | cross | incomplete",
+      "[finding] c-1 | task=t-2 | ruling=check-defect | standing=earned | check=check-units",
+      "[draft] d-1 pass=1 | verdict=defects",
+      "summary: draft audit skipped",
+    ];
+    for (const line of shown) expect([line, all.includes(line)]).toEqual([line, true]);
+    expect(all.indexOf("[draft] d-1 pass=2")).toBeLessThan(all.indexOf("[draft] d-1 pass=1"));
     for (const forbidden of [
       CANARY_ANSWER,
       CANARY_FIND,
@@ -294,39 +293,28 @@ describe("Examiner review projection and search (read_reviews)", () => {
       "s-fresh-1",
       "s-old-1",
       "s-fail-1",
-      "s-fail-2",
       "judge-secret-1",
       "c-open",
       "check-hidden-unfinished",
+      "check-unseen-primary",
+      "errored vote must be ignored",
+      "non-vote tool must be ignored",
       "unfinished comparison secret",
       "provider timeout",
       ":ab",
       ":ba",
     ]) {
-      expect(all).not.toContain(forbidden);
-      expect(readReviews(log.events, { query: forbidden })).toContain("No review records match");
+      expect([forbidden, all.includes(forbidden)]).toEqual([forbidden, false]);
     }
-
-    expect(readReviews(log.events, { source: "pair", outcome: "holistic-oppose" })).toContain(
-      "Showing 1-1 of 1",
-    );
-    expect(readReviews(log.events, { source: "pair", outcome: "disagreed" })).toContain("mirror");
-    expect(readReviews(log.events, { source: "finding", outcome: "earned", check: "check-units" })).toContain(
-      "standing=earned",
-    );
-    expect(readReviews(log.events, { source: "finding", outcome: "check-defect" })).toContain(
-      "No review records match",
-    );
-    expect(readReviews(log.events, { source: "draft", outcome: "skipped" })).toContain("draft audit skipped");
-    expect(
-      readReviews(log.events, { comparison: "c-1", item: "clarity", query: "sensitivity table" }),
-    ).toContain("Showing 1-1 of 1");
-    expect(readReviews(log.events, { task: "t-2" })).toContain("Showing 1-2 of 2");
-    expect(readReviews(log.events, { task: "no-such-task" })).toContain("No review records match");
-    expect(readReviews(log.events, { comparison: "d-1" })).toContain("Showing 1-2 of 2");
-    expect(readReviews(log.events, { comparison: "no-such-comp" })).toContain("No review records match");
-    expect(readReviews(log.events, { item: "clarity" })).toContain("Showing 1-2 of 2");
-    expect(readReviews(log.events, { item: "no-such-item" })).toContain("No review records match");
+    const filtered: readonly [Parameters<typeof readReviews>[1], string][] = [
+      [{ source: "pair", outcome: "holistic-oppose" }, "newest 1 of 1"],
+      [{ source: "pair", outcome: "disagreed" }, "| mirror |"],
+      [{ source: "finding", outcome: "earned" }, "standing=earned"],
+      [{ source: "finding", outcome: "check-defect" }, "No reported review records match."],
+      [{ source: "draft", outcome: "skipped" }, "draft audit skipped"],
+      [{ source: "draft", limit: 1 }, "newest 1 of 2"],
+    ];
+    for (const [query, expected] of filtered) expect(readReviews(log.file(), query)).toContain(expected);
   });
 
   it("is byte-identical under perturbations of stripped identifiers, raw probe payloads, and A/B arm mapping", () => {
@@ -388,7 +376,7 @@ describe("Examiner review projection and search (read_reviews)", () => {
         ],
       });
       log.report("c-1", variant.harnessOld, variant.harnessFresh, ["v-t-1"]);
-      return readReviews(log.events);
+      return readReviews(log.file());
     };
 
     const baseline = build({
@@ -412,48 +400,7 @@ describe("Examiner review projection and search (read_reviews)", () => {
     expect(perturbed).toBe(baseline);
   });
 
-  it("enforces cursor pagination without leaking event counts, page byte cap, and filter-bound cursor rejection", () => {
-    const log = makeLog();
-    for (let i = 1; i <= 5; i += 1) {
-      log.add("referee.draft", {
-        session: `d-${String(i)}`,
-        pass: 1,
-        verdict: "sound",
-        summary: `Audit ${String(i)}: ${"x".repeat(500)}`,
-        findings: [],
-        probeRows: [],
-      });
-    }
-    const page1 = readReviews(log.events, { source: "draft", limit: 2 });
-    expect(page1).toContain("Showing 1-2 of 5 matching review records");
-    expect(page1.indexOf("[draft] d-5")).toBeLessThan(page1.indexOf("[draft] d-4"));
-    const cursor = /next cursor: ([^\s\n]+)/u.exec(page1)?.[1];
-    expect(cursor).toBeDefined();
-    expect(cursor?.split(":")).toHaveLength(2);
-
-    const hiddenEvents = [...log.events];
-    for (let i = 0; i < 10; i += 1) {
-      hiddenEvents.push({
-        at: "2026-11-27T00:00:00.000Z",
-        kind: "solve.started",
-        data: { solve: `s-hidden-${String(i)}`, comparison: "c-open" },
-      });
-    }
-    expect(readReviews(hiddenEvents, { source: "draft", limit: 2 })).toBe(page1);
-    const page2 = readReviews(hiddenEvents, { source: "draft", limit: 2, cursor });
-    expect(page2).toContain("Showing 3-4 of 5 matching review records");
-    expect(page2).toContain("[draft] d-3");
-
-    expect(readReviews(log.events, { source: "draft", outcome: "defects", cursor })).toContain(
-      "Cursor does not match the active filters",
-    );
-    expect(readReviews(log.events, { cursor: `${cursor ?? "2:bad"}:99` })).toContain(
-      "Cursor does not match the active filters",
-    );
-    expect(readReviews(log.events, { cursor: "bad:cursor" })).toContain(
-      "Cursor does not match the active filters",
-    );
-
+  it("caps a page by count, newest first", () => {
     const big = makeLog();
     for (let i = 1; i <= 20; i += 1) {
       big.add("referee.draft", {
@@ -468,21 +415,11 @@ describe("Examiner review projection and search (read_reviews)", () => {
         probeRows: [],
       });
     }
-    const capped = readReviews(big.events, { source: "draft", limit: 20 });
-    expect(capped).toContain("next cursor:");
-    expect(Buffer.byteLength(capped)).toBeLessThan(10 * 1024);
-    const validCursor = /next cursor: (\S+)/u.exec(capped)?.[1] ?? "";
-    expect(validCursor).toMatch(/^\d+:.+$/u);
-    const [, key = ""] = validCursor.split(":");
-    expect(readReviews(big.events, { source: "draft", cursor: `0:${key}` })).toContain("Showing 1-");
-    for (const badCursor of [`${validCursor}:extra`, `-1:${key}`, `1.5:${key}`, "0:wrongkey"]) {
-      expect(readReviews(big.events, { source: "draft", cursor: badCursor })).toContain(
-        "Cursor does not match the active filters",
-      );
-    }
-    expect(readReviews(big.events, { source: "draft", check: "no-such-check" })).toContain(
-      "No review records match",
-    );
+    const file = big.file();
+    expect(readReviews(file)).toContain("newest 10 of 20");
+    const two = readReviews(file, { limit: 2 });
+    expect(two).toContain("newest 2 of 20");
+    expect(two.indexOf("[draft] d-big-20 ")).toBeLessThan(two.indexOf("[draft] d-big-19 "));
   });
 
   it("summarises cross-arm review telemetry on taskHistory lines and omits practice and mirror pairs", () => {
@@ -585,10 +522,9 @@ describe("Examiner review projection and search (read_reviews)", () => {
     expect(summaries.get("tied")).toBe("reviews 1/1 pairs (all tied), swap-disagreed 0/2");
     expect(summaries.get("halfzero")).toBe("reviews 1/1 pairs, swap-disagreed 0/2");
     expect(summaries.get("inc")).toBe("reviews 0/1 pairs");
-    expect(readReviews(log.events, { task: "halfzero" })).toContain("holistic-gap=1 (tie)");
-    expect(readReviews(log.events, { task: "halfzero" })).toContain(
-      "clarity: tie, swap-consistent, holistic=tie",
-    );
+    const halfzero = readReviews(log.file(), { limit: 20 });
+    expect(halfzero).toContain("task=halfzero | cross | judge-gap=0 holistic-gap=1 (tie)");
+    expect(halfzero).toContain("clarity: tie, swap-consistent, holistic=tie");
 
     const told = taskHistory(
       log.events,
@@ -598,9 +534,7 @@ describe("Examiner review projection and search (read_reviews)", () => {
     expect(allLines.find((line) => line.startsWith("graded "))).toContain("holistic opposed clarity");
     expect(allLines.find((line) => line.startsWith("tied "))).toContain("reviews 1/1 pairs (all tied)");
     expect(allLines.find((line) => line.startsWith("prac "))).toBe("prac (fixture)");
-    expect(told.reviews).toBe(
-      "Reported reviews in read_reviews (newest first): 8 pairs (1 swap-disagreed, 1 holistic-opposed).",
-    );
+    expect(told.reviews).toBe("Reported reviews in read_reviews (newest first): 8 pairs.");
     expect(reviewInventoryLine([])).toBeNull();
   });
 
@@ -636,7 +570,7 @@ describe("Examiner review projection and search (read_reviews)", () => {
       scored: { differences: [] },
       noise: null,
     });
-    const out = readReviews(log.events);
+    const out = readReviews(log.file());
     expect(out.indexOf("[finding] c-1")).toBeLessThan(out.indexOf("[draft] d-1"));
     const told = taskHistory(log.events, [{ taskId: "t-1", family: "fixture" }]);
     expect(told.stood).toContain("It stopped on check defects.");
@@ -645,7 +579,7 @@ describe("Examiner review projection and search (read_reviews)", () => {
     );
   });
 
-  it("exposes read_reviews inside live Examiner writing sessions via REVIEW_EVENT_KINDS filtering", async () => {
+  it("exposes read_reviews inside live Examiner writing sessions ", async () => {
     const s = seat("write", [call("read_reviews", { source: "draft" }), finish, finish]);
     append(s.log, "referee.draft", {
       session: "d-1",

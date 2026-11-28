@@ -175,21 +175,18 @@ export async function view(args: readonly string[]): Promise<void> {
   for (const line of await runReason(run, runState(run, events, running))) console.log(line);
   const campaign = campaignOf(events);
   const called = calledBy(namesOf(events));
-  const parent = openingOf(events)?.parent ?? null;
-  const revised = eventsOf(events, "exam.revised").at(-1)?.event.data;
+  const parent = openingOf(events)?.parent;
   const successor = eventsOf(events, "campaign.ended").at(-1)?.event.data.successor;
   const lineage = [
-    ...(parent === null
+    ...(parent == null
       ? []
       : [
           row(
             "lineage",
-            `from ${parent.campaign} (${parent.kind}, ${parent.revised.slice(0, 8)}) · carried ${dollars(parent.carried.spent)}, ${String(parent.carried.sinceStep)} since step, ${plural(parent.carried.tunes, "tune")}, ${plural(parent.lineageTasks.length, "prior task")}`,
+            `from ${parent.campaign} (${parent.kind}) · carried ${dollars(parent.carried.spent)}`,
           ),
         ]),
-    ...(revised === undefined || !isString(revised.kind)
-      ? []
-      : [row("revised", `${revised.kind} -> ${isString(successor) ? successor : "pending"}`)]),
+    ...(isString(successor) ? [row("successor", successor)] : []),
   ];
   const lines = viewLines(name, campaign, Date.now(), called);
   const open = openSteps(campaign.steps);

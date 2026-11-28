@@ -39,7 +39,7 @@ import { draftReading } from "../campaign/exam.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
-type DraftAuditor = (reader: Reader, target: DraftAuditCase) => Promise<DraftAuditFinding>;
+export type DraftAuditor = (reader: Reader, target: DraftAuditCase) => Promise<DraftAuditFinding>;
 
 /** The initial audit and one verify-after-fix pass. */
 const MAX_DRAFT_AUDITS = 2;
@@ -66,14 +66,16 @@ type DraftSeen = NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
 
 /** Replays prior defect probes at no model cost before spending an audit pass, and still replays
  *  them past `MAX_DRAFT_AUDITS`. */
-function draftAuditGate(given: {
+export function draftAuditGate(given: {
   readonly session: string;
   readonly prompt: string;
   readonly log: string;
   readonly auditor: DraftAuditor | null;
   readonly reader: Reader | null;
+  readonly revision?: string;
+  readonly required?: boolean;
 }) {
-  const seeded = persistedDraftDefects(read(given.log, TRACE_KINDS));
+  const seeded = persistedDraftDefects(read(given.log, TRACE_KINDS), given.revision);
   let audits = seeded.audits;
   const priorReviews = [...seeded.prior];
   return async (seen: DraftSeen): Promise<readonly string[]> => {
@@ -96,10 +98,12 @@ function draftAuditGate(given: {
         (finding) => `${finding} (prior defect probe could not be verified fixed after the audit cap)`,
       );
     }
-    if (given.auditor === null || given.reader === null) return [];
+    if (given.auditor === null) return [];
+    if (given.reader === null) return given.required === true ? ["the audit needs a reviewer seat"] : [];
     const review = await given.auditor(given.reader, {
       session: given.session,
       pass: audits + 1,
+      ...keyIfDefined("revision", given.revision),
       prompt: given.prompt,
       contract: seen.contract,
       checks: seen.checks,
@@ -112,7 +116,7 @@ function draftAuditGate(given: {
       log: given.log,
     });
     if (review.verdict === "skipped") {
-      return review.error === undefined
+      return review.error === undefined || given.required === true
         ? [`independent check audit recorded no verdict (${review.summary}); submit the draft again to retry`]
         : [];
     }
@@ -126,7 +130,7 @@ function draftAuditGate(given: {
   };
 }
 
-function draftAuditReader(
+export function draftAuditReader(
   values: { readonly reviewer?: string | undefined; readonly "reviewer-effort"?: string | undefined },
   opening: ReturnType<typeof openingOf>,
 ): Reader | null {

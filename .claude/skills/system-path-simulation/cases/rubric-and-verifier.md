@@ -19,7 +19,7 @@ A scripted rehearsal reaches the judged path only on a seed whose contract carri
 - **Order bias.** A judge that always prefers the answer shown first must read no step: every pair is judged in both orders, and the passes cancel (`test/judge.test.ts`).
 - **Missing vote.** A pair without a vote stops the comparison before its report; running it again resumes from the log and judges only what is left (`judgingLeft`).
 - **Cap during judging.** A cap reached between pairs marks the comparison capped, and it reads not-scored rather than scoring a partial set.
-- **Same-family reviewer.** On a same-family opening, `draft_exam` and `revise_exam` refuse `kind: "judge"` items inside the session before audit (`draftFaults` / `revisionRefusal`), and paid judged comparisons refuse same-family reviewers (`comparedOn` / `assertCrossFamily`).
+- **Same-family reviewer.** On a same-family opening, `draft_exam` and `revise_exam` refuse `kind: "judge"` items inside the session before audit (`draftFaults` on the code-only lane, through `revisionFaults` for revisions), and paid judged comparisons refuse same-family reviewers (`comparedOn` / `assertCrossFamily`).
 - **Hidden values.** Criterion votes see a task's hidden values beside the task; the holistic vote sees neither the hidden values nor the criteria (`test/judge.test.ts`).
 - **Pool closure.** Under a judge, no task closes as easy on code saturation (`poolOf`), since judged room lies above a full code score.
 

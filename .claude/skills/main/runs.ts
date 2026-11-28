@@ -21,7 +21,7 @@ import { askedOf, type Seat, traced } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
-import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
+import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { relative, sep } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
@@ -121,9 +121,6 @@ export interface Run {
   readonly aaObjectiveSteps: number;
   readonly aaLevels: readonly number[];
   readonly ending: string;
-  readonly parent?: string;
-  readonly revisionKind?: string;
-  readonly successor?: string;
 }
 
 export interface Asked {
@@ -354,8 +351,6 @@ function runOf(
   };
   const admissible = stamp(firstComparisonDelay(events)?.index ?? -1);
   const ended = endingOf(events);
-  const parent = openingOf(events)?.parent ?? null;
-  const successor = eventsOf(events, "campaign.ended").at(-1)?.event.data.successor;
   // `falsePromotion` reads the A/A comparisons of the whole campaign on every epoch.
   const noise = epochs[0]?.falsePromotion;
   return {
@@ -394,9 +389,6 @@ function runOf(
     aaObjectiveSteps: noise?.byMeasure.objective.errors ?? 0,
     aaLevels: noise?.levels ?? [],
     ending: ended ?? "no ending",
-    ...keyIfDefined("parent", parent?.campaign),
-    ...keyIfDefined("revisionKind", parent?.kind),
-    ...keyIfDefined("successor", isString(successor) ? successor : undefined),
   };
 }
 

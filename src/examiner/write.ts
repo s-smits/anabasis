@@ -18,7 +18,7 @@ import { ending, text, tool } from "../tools/answer.ts";
 import { type RubricLane, TEXT_FILES } from "./draft.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt, wakeMessage } from "./prompt.ts";
 import { taskHistory, measured } from "./record.ts";
-import { readReviews, REVIEW_EVENT_KINDS } from "./reviews.ts";
+import { readReviews } from "./reviews.ts";
 import { readExamTool, type ReviseRunner, reviseTool } from "./revise.ts";
 import { FROM_FILE, fromHome, type Walls } from "./shell.ts";
 
@@ -256,38 +256,24 @@ function reviewsTool(desk: Desk): AgentTool {
   return tool({
     name: "read_reviews",
     description:
-      "Search and read reported Reviewer outputs for this campaign (newest first): pairwise judge votes and reasons, rejection audit rulings and probe summaries, and draft audit history. Unfinished comparisons are omitted, and internal solve/harness identifiers and raw answer patches are stripped.",
+      "Read reported Reviewer outputs for this campaign, newest first: pairwise judge votes and reasons, rejection rulings, and draft audits. Unfinished comparisons are omitted, and internal solve/harness identifiers and raw answers are stripped.",
     parameters: Type.Object({
-      query: Type.Optional(
-        Type.String({ description: "Case-insensitive text search across projected review records." }),
-      ),
-      task: Type.Optional(Type.String({ description: "Filter to one task id." })),
       source: Type.Optional(
         Type.Union([Type.Literal("pair"), Type.Literal("finding"), Type.Literal("draft")], {
           description: "Restrict to pairwise judge votes, rejection findings, or draft audits.",
         }),
       ),
-      item: Type.Optional(Type.String({ description: "Filter to one rubric item or criterion id." })),
-      check: Type.Optional(Type.String({ description: "Filter to one check id." })),
-      comparison: Type.Optional(Type.String({ description: "Filter to one comparison session id." })),
       outcome: Type.Optional(
         Type.String({
           description:
             "Filter by ruling, verdict, or flag (earned, check-defect, unclear, disagreed, holistic-oppose, incomplete, skipped).",
         }),
       ),
-      cursor: Type.Optional(Type.String({ description: "Pagination cursor returned by a previous call." })),
       limit: Type.Optional(
-        Type.Integer({ minimum: 1, maximum: 20, description: "Max records per page (default 10)." }),
+        Type.Integer({ minimum: 1, maximum: 20, description: "Most records returned (default 10)." }),
       ),
     }),
-    execute: async (args) =>
-      text(
-        readReviews(
-          read(desk.request.log, (kind) => !REVIEW_EVENT_KINDS.has(kind)),
-          args,
-        ),
-      ),
+    execute: async (args) => text(readReviews(desk.request.log, args)),
   });
 }
 

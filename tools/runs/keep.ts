@@ -10,7 +10,7 @@
  * unless that login is at its cap; any other ending is the campaign's own, and the keeper leaves.
  * A run goes on from its log at its worktree's commit, through the refusals of `runs continue`.
  */
-import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { endedOf } from "#src/kernel/reports.ts";
 import { nonRetryableProvider } from "#src/kernel/solve.ts";
 import { askedOf, type Seat, traced } from "#src/kernel/trace.ts";
@@ -37,10 +37,10 @@ import {
   startRefusal,
 } from "./logins.ts";
 import { checkStart, lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
-import { flagOf, keepers, logEvents, Misused, processes, type Run, runNamed, writers } from "./registry.ts";
+import { flagOf, keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
 
-export type Turn = "watch" | "move" | "continue" | "handoff" | "done";
+export type Turn = "watch" | "move" | "continue" | "done";
 
 interface Hands {
   readonly events: () => readonly LogEvent[];
@@ -51,7 +51,7 @@ interface Hands {
   readonly checkStart: (login: string | undefined, flags: readonly string[]) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly start: (login: string | undefined) => Promise<boolean>;
-  readonly handoff?: (successor: string, login: string | undefined) => Promise<void>;
+  readonly handoff?: (successor: string) => void;
   readonly say: (line: string) => void;
   readonly env: Env;
 }
@@ -89,19 +89,11 @@ function refusalOnClaudeLogin(events: readonly LogEvent[], why: string, flags: r
 const turnsIn = (events: readonly LogEvent[]): number =>
   events.filter(({ kind, data }) => kind.endsWith(".turn") && data.stopReason !== "error").length;
 
-const successorOf = (events: readonly LogEvent[]): string | null => {
-  const next = eventsOf(events, "campaign.ended").at(-1)?.event.data.successor;
-  return isString(next) && next !== "" ? next : null;
-};
-
 export function turnOf(state: RunState, now: number, waitMs: number): Turn {
   if (state.kind === "waiting") {
     return state.wait.for === "provider" && state.wait.until - now > waitMs ? "move" : "watch";
   }
-  if (state.kind === "ended") {
-    if (state.ending === GOES_ON) return "continue";
-    return state.ending === "revise" ? "handoff" : "done";
-  }
+  if (state.kind === "ended") return state.ending === GOES_ON ? "continue" : "done";
   if (state.kind === "stopped" && state.pause !== undefined) return "done";
   return state.kind === "kept" || state.kind === "stopped" ? "continue" : "watch";
 }
@@ -146,7 +138,7 @@ export async function roomFor(
 }
 
 export const keeperActed = (line: string): boolean =>
-  /: (?:move|continue|handoff to \S+) (?:on login|without a login)|; left waiting$|(?:no seat took a model turn|non-retryable provider refusal[^:]*): kept no longer$/u.test(
+  /: (?:move|continue) (?:on login|without a login)|; left waiting$|(?:no seat took a model turn|non-retryable provider refusal[^:]*): kept no longer$/u.test(
     line,
   );
 
@@ -161,12 +153,9 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     const events = hands.events();
     const state = hands.stands(events, now);
     const turn = turnOf(state, now, waitMs);
-    const successor = turn === "handoff" ? successorOf(events) : null;
-    const handoff =
-      turn === "handoff" && successor !== null && hands.handoff !== undefined
-        ? { successor, run: hands.handoff }
-        : null;
-    if (turn === "done" || (turn === "handoff" && handoff === null)) {
+    if (turn === "done") {
+      const successor = events.at(-1)?.data.successor;
+      if (state.kind === "ended" && isString(successor)) hands.handoff?.(successor);
       hands.say(
         state.kind === "ended"
           ? `${name} ended on ${state.ending}: kept no longer`
@@ -200,22 +189,18 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     let fleet: Awaited<ReturnType<Hands["fleet"]>> | undefined;
     const counted = async () => (fleet ??= await hands.fleet());
     let why = "";
-    const subject = handoff?.successor ?? name;
     const target = await nextLogin(
-      handoff === null ? turn : "continue",
+      turn,
       { current, spent, billed: logins.length > 0 && billsLogin(events, flags) },
       async () => {
         const found = await roomFor(logins, spent, await counted(), hands.read, { env: hands.env, now });
         ({ why } = found);
         return found.logins;
       },
-      async (login) =>
-        startRefusal(hands.env, payerOf(login, flags), "here", await counted(), subject) !== null,
+      async (login) => startRefusal(hands.env, payerOf(login, flags), "here", await counted(), name) !== null,
     );
     let refusal =
-      target === null
-        ? null
-        : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), subject);
+      target === null ? null : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), name);
     if (turn === "move" && target !== null && refusal === null) {
       try {
         await hands.checkStart(target, flags);
@@ -240,17 +225,6 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     }
     waitedOn = "";
     askAt = 0;
-    const loginWords = target === undefined ? "without a login" : `on login ${target}`;
-    if (handoff !== null) {
-      act(now, `handoff to ${handoff.successor} ${loginWords}`);
-      try {
-        await handoff.run(handoff.successor, target);
-        return true;
-      } catch (error) {
-        hands.say(`  ${errorMessage(error)}`);
-        return false;
-      }
-    }
     const turns = turnsIn(events);
     barren = turn === "continue" && turns === worked ? barren + 1 : 0;
     worked = turns;
@@ -258,7 +232,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       act(now, `went on ${String(BARREN)} times and no seat took a model turn: kept no longer`);
       return true;
     }
-    act(now, `${turn} ${loginWords}`);
+    act(now, `${turn} ${target === undefined ? "without a login" : `on login ${target}`}`);
     try {
       if (turn === "move") await hands.stop();
       await hands.start(target);
@@ -305,14 +279,9 @@ async function keepGoing(
     checkStart: (login, flags) => checkStart(run, rerun(flags, undefined), { login }),
     stop: () => stop([run.name, "--yes"]),
     start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),
-    handoff: async (successor, login) => {
+    handoff: (successor) => {
       const next = runNamed(successor);
-      const nextFlags = lastRun(next).flags;
-      if (flagOf(nextFlags, "--moves") === "0") return;
-      if (writers(next, processes()).length === 0) {
-        await start(next, rerun(nextFlags, undefined), login, undefined);
-      }
-      if (keepers(next.name, processes()).length === 0) {
+      if (flagOf(lastRun(next).flags, "--moves") !== "0" && keepers(next.name, processes()).length === 0) {
         leaveKeeper(next, named, waitHours);
       }
     },

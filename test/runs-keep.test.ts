@@ -6,7 +6,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { seats } from "../tools/runs/fresh.ts";
-import { keeperActed, keeperOf, nextLogin, roomFor, type Turn, turnOf } from "../tools/runs/keep.ts";
+import { keeperOf, nextLogin, roomFor, type Turn, turnOf } from "../tools/runs/keep.ts";
 import { stateOf } from "../tools/runs/state.ts";
 import { billsLogin, fiveHourWith, type Reading } from "../tools/runs/logins.ts";
 import { WAIT_HOURS } from "../tools/runs/manage.ts";
@@ -54,7 +54,7 @@ describe("the turn a keeper takes", () => {
     for (const ending of ["budget", "stop", "operator", "finished", "no-room"]) {
       expect(turn([event(ENDED, { ending })], false)).toBe("done");
     }
-    expect(turn([event(ENDED, { ending: "revise", successor: "sample-rev2" })], false)).toBe("handoff");
+    expect(turn([event(ENDED, { ending: "revise", successor: "sample-rev2" })], false)).toBe("done");
     // A wait the launch before this one recorded is not this launch's to move, or the keeper that just
     // moved the run would move it again during its first calls.
     expect(turn([waited(2), event("exam.call", { session: "x-1" })], true, 1)).toBe("watch");
@@ -372,10 +372,9 @@ describe("a keeper's looks, scripted", () => {
     });
   });
 
-  it("hands off to the successor campaign when a run ends on revise, retrying if handoff fails", async () => {
+  it("leaves the successor to its own keeper when a run ends on revise", async () => {
     const handed: string[] = [];
     const said: string[] = [];
-    let failOnce = true;
     const events: LogEvent[] = [event(ENDED, { ending: "revise", successor: "sample-rev2" })];
     const look = keeperOf("sample", async () => ["3", "2"], WAIT_MS, {
       events: () => events,
@@ -387,29 +386,13 @@ describe("a keeper's looks, scripted", () => {
       checkStart: () => Promise.resolve(),
       stop: () => Promise.resolve(),
       start: () => Promise.resolve(true),
-      handoff: async (successor, login) => {
-        if (failOnce) {
-          failOnce = false;
-          throw new Error("transient launch error");
-        }
-        handed.push(`${successor}@${login ?? "none"}`);
-      },
+      handoff: (successor) => handed.push(successor),
       say: (line) => said.push(line),
       env: { ANA_LOGIN_RUNS: "2" },
     });
-    expect(await look(NOW)).toBe(false);
-    expect(handed).toEqual([]);
-    expect(await look(NOW + MINUTE)).toBe(true);
-    expect(handed).toEqual(["sample-rev2@2"]);
-    expect(said.some((line) => line.includes("handoff to sample-rev2 on login 2") && keeperActed(line))).toBe(
-      true,
-    );
-
-    const noSuccessor = scripted();
-    noSuccessor.state.open = false;
-    noSuccessor.state.events = [event(ENDED, { ending: "revise", successor: "sample-rev2" })];
-    expect(await noSuccessor.look(NOW)).toBe(true);
-    expect(noSuccessor.state.said.at(-1)).toContain("ended on revise: kept no longer");
+    expect(await look(NOW)).toBe(true);
+    expect(handed).toEqual(["sample-rev2"]);
+    expect(said).toEqual(["sample ended on revise: kept no longer"]);
   });
 });
 

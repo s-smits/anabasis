@@ -110,17 +110,13 @@ const EVENT_FORMATTERS = new Map<string, LineFormatter>(
       group: "campaign",
       what: joined(`The operator's word: ${text(data.word) ?? "?"}`, text(data.why)),
     }),
-    "campaign.ended": (data) => {
-      const ending = text(data.ending) ?? "?";
-      const successor = text(data.successor);
-      return {
-        group: "campaign",
-        what:
-          ending === "revise"
-            ? joined("Campaign ended: revise", successor === null ? null : `successor ${successor}`)
-            : joined(`Campaign ended: ${ending}`, text(data.why)),
-      };
-    },
+    "campaign.ended": (data) => ({
+      group: "campaign",
+      what: joined(
+        `Campaign ended: ${text(data.ending) ?? "?"}`,
+        isString(data.successor) ? `successor ${data.successor}` : text(data.why),
+      ),
+    }),
     "exam.revised": (data) => ({
       group: "campaign",
       what: joined(`Exam revised (${text(data.kind) ?? "?"})`, text(data.draftHash)?.slice(0, 12) ?? null),

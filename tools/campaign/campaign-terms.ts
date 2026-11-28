@@ -27,6 +27,7 @@ import {
 import { latestBuilt, PATIENCE, referenceOf } from "#src/kernel/reports.ts";
 import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -35,7 +36,7 @@ import { PACK_OPTIONS, projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
 import { PRACTICE, prepareCommand, ungated } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
-import type { RevisionAuditor } from "./revise.ts";
+import type { DraftAuditor } from "../eval/draft.ts";
 import {
   type Campaign,
   COMPARISON_OPTIONS,
@@ -52,7 +53,7 @@ export interface Seats {
   readonly seated: Seated;
   readonly examine?: Session<"write"> | undefined;
   readonly draft?: Session<"draft"> | undefined;
-  readonly audit?: RevisionAuditor | null | undefined;
+  readonly audit?: DraftAuditor | null | undefined;
   readonly host?: Host | undefined;
   readonly prepare?: typeof prepareCommand | undefined;
   readonly unreviewed?: boolean | undefined;
@@ -310,13 +311,7 @@ function persistOpening(
     ...keyIfDefined("revise", opening.revise ? undefined : false),
     ...keyIfDefined(
       "parent",
-      opening.parent === null
-        ? undefined
-        : {
-            ...opening.parent,
-            carried: { ...opening.parent.carried },
-            lineageTasks: [...opening.parent.lineageTasks],
-          },
+      opening.parent === null ? undefined : parseJsonAs<JsonObject>(capturedJsonStringify(opening.parent)),
     ),
     ...keyIfDefined("prompt", opening.prompt ?? undefined),
     ...keyIfDefined("solver", opening.solver === null ? undefined : { ...opening.solver }),

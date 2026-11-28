@@ -67,7 +67,7 @@ import { gated as queued, HOST, waitCrashed, waitPaused } from "./host.ts";
 import { type Campaign, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
 import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
-import { openSuccessor, rewriteMovesFlag, rewriteNameFlag } from "./successor.ts";
+import { openSuccessor, withFlag } from "./revise.ts";
 
 const ENDED = "campaign.ended";
 /** A conversation that ended whole, by its finish or at its own limits: what `idleOf` counts
@@ -148,7 +148,6 @@ function examLines(
   values: Values,
   ending: string,
   faults: "printed" | "unprinted",
-  mode: "attended" | "unattended",
 ): string[] {
   if (ending !== "exam") return [];
   const faulted = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
@@ -165,9 +164,7 @@ function examLines(
     ...(judged.length === 0
       ? []
       : [
-          mode === "attended"
-            ? `to admit the judged rubric items (${judged.join(", ")}) under --hitl, freeze via accept.ts: bun tools/eval/accept.ts ${packOf(values).join(" ")} --admit-judge --freeze (or resume with --no-hitl and a cross-family --reviewer)`
-            : `to admit the judged rubric items (${judged.join(", ")}), resume with a cross-family --reviewer: bun tools/campaign/harness-builder.ts ${packOf(values).join(" ")} --reviewer <other-family-model>`,
+          `to admit the judged rubric items (${judged.join(", ")}), resume unattended with a cross-family --reviewer, or freeze under --hitl: bun tools/eval/accept.ts ${packOf(values).join(" ")} --admit-judge --freeze`,
         ]),
   ];
 }
@@ -302,33 +299,29 @@ async function handoffRevision(
   args: readonly string[],
   values: Values,
   decided: Extract<ScheduledAction, { move: "end" }>,
-  {
-    paid,
-    remaining,
-    seats,
-    hasCampaign,
-  }: {
+  how: {
     readonly paid: "paid" | "scripted";
     readonly remaining: number;
     readonly seats: Seats;
-    readonly hasCampaign: boolean;
+    readonly opened: boolean;
   },
 ): Promise<ScheduledAction> {
   const name = values.name ?? "";
-  const next = await openSuccessor(log, remaining);
+  const next = await openSuccessor(log, how.remaining);
   console.log(`${name}: opened successor campaign ${next.name} at ${next.log}`);
-  if (values.handover !== undefined && hasCampaign) {
+  if (values.handover !== undefined && how.opened) {
     await closeCommand([...packOf(values), "--to", values.handover]);
   }
-  if (remaining <= 0) return decided;
-  const nextArgs = rewriteMovesFlag(rewriteNameFlag(args, name, next.name), remaining);
-  if (paid === "scripted") return await harnessBuilder(nextArgs, seats);
-  if (writers(campaignOf(REPO, next.name), processes()).length > 0) {
-    console.log(`${name}: successor ${next.name} already has a live writer`);
-    return decided;
-  }
-  if (keepers(name).length > 0) {
-    console.log(`${name}: keeper will continue successor ${next.name}`);
+  if (how.remaining <= 0) return decided;
+  const nextArgs = withFlag(withFlag(args, "--name", next.name), "--moves", String(how.remaining));
+  if (how.paid === "scripted") return await harnessBuilder(nextArgs, how.seats);
+  const others = [
+    ...writers(campaignOf(REPO, next.name), processes()),
+    ...keepers(name),
+    ...keepers(next.name),
+  ];
+  if (others.length > 0) {
+    console.log(`${name}: successor ${next.name} goes on under its live writer or keeper`);
     return decided;
   }
   const out = join(dirname(next.log), `launch-${nextRun(next.log)}`);
@@ -473,13 +466,7 @@ export async function harnessBuilder(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
     if (decided.move === "end") {
-      const faults = examLines(
-        events,
-        values,
-        decided.ending,
-        last === "accept" ? "printed" : "unprinted",
-        opening.attended ? "attended" : "unattended",
-      );
+      const faults = examLines(events, values, decided.ending, last === "accept" ? "printed" : "unprinted");
       for (const line of faults) console.log(line);
       if (values["dry-run"]) return decided;
       if (decided.ending === "revise") {
@@ -487,7 +474,7 @@ export async function harnessBuilder(
           paid,
           remaining: most - made,
           seats,
-          hasCampaign: campaign !== null,
+          opened: campaign !== null,
         });
       }
       ended(log, events, decided);

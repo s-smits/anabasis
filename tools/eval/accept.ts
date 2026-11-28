@@ -19,14 +19,13 @@ import {
 } from "#src/kernel/acceptance.ts";
 import { hasJudge } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
-import { priceKey } from "#src/kernel/meter.ts";
 import { OBJECTIVE, readBrief } from "#src/kernel/verify.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openCampaign, PACK_OPTIONS, packNamed } from "../campaign/campaign.ts";
-import { assertCrossFamily } from "../campaign/round.ts";
+import { assertKnownReviewer } from "../campaign/round.ts";
 import { packControls, toolOnPath } from "../m0/stored-sweep.ts";
 
 const OPTIONS = {
@@ -115,7 +114,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
   }
   const reviewer = openingOf(read(log))?.seats.reviewer;
   if (values["admit-judge"] && hasJudge(contract.objective) && reviewer != null) {
-    assertCrossFamily(reviewer.model, priceKey(campaign.test.model), "--admit-judge: ");
+    assertKnownReviewer(reviewer.model, "--admit-judge: ");
   }
   const reading = await readChecker({
     verify: campaign.verify,

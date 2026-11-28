@@ -25,7 +25,7 @@ import {
 } from "../src/tools/command.ts";
 import { claimRoot } from "../src/sandbox/sandbox-root.ts";
 import { LINUX_BWRAP_ID } from "../src/sandbox/linux-bwrap.ts";
-import { commandIsolationPolicy } from "../src/sandbox/isolation.ts";
+import { commandIsolationPolicy, isolatedArgv } from "../src/sandbox/isolation.ts";
 import { userTempRules } from "../src/sandbox/policy.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import {
@@ -138,6 +138,17 @@ describe("the solve isolation's policy", () => {
     symlinkSync(repoRoot, homeTree);
     const opened = allows(homeTree);
     expect(opened.filter((path) => containsPath(path, repoRoot) || containsPath(path, home))).toEqual([]);
+
+    const bwrapPolicy = commandIsolationPolicy(base, { ...dirs, toolTree: null });
+    expect(bwrapPolicy.environment.TEMP).toBe(dirs.temp);
+    expect(bwrapPolicy.environment.TMP).toBe(dirs.temp);
+    expect(bwrapPolicy.environment.MPLCONFIGDIR).toBe(join(dirs.temp, "mpl"));
+    expect(bwrapPolicy.environment.XDG_CACHE_HOME).toBe(join(dirs.home, ".cache"));
+    const bwrapArgs = isolatedArgv(bwrapPolicy, join(seat, "profile"), ["/bin/true"]);
+    const remounted = bwrapArgs.flatMap((arg, i) => (arg === "--remount-ro" ? [bwrapArgs[i + 1]] : []));
+    expect(remounted).toContain("/");
+    expect(remounted).not.toContain("/tmp");
+    expect(remounted).not.toContain("/var/tmp");
   });
 
   it("refuses a command an ordinary home canary and reads only an explicit runtime inside a denied root", async () => {

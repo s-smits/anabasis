@@ -1,4 +1,12 @@
-import { carriedBy, gainOver, type Paired, pointsOf, scoresIn } from "../kernel/compare.ts";
+import {
+  carriedBy,
+  GAP_FLOOR,
+  gainOver,
+  informative,
+  type Paired,
+  pointsOf,
+  scoresIn,
+} from "../kernel/compare.ts";
 import { familySizes, proposalsOf } from "../kernel/history.ts";
 import { eventsOf, isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import {
@@ -256,9 +264,14 @@ function formatOutcomeLine(
     `${named}, scored ${plural(spreads.length, "task")}: reference won ${won(1)}, candidate won ${won(-1)}, ${won(0)} tied${carrier}.`,
     `Largest family: ${String(largest)} tasks.`,
     `Reference passed every attempt on ${count("every")}, some on ${count("some")}, none on ${count("none")}; ${String(aside)} excluded pending review.`,
-    ...(spreads.length >= 10 && byObjective === 0 && spreads.every((spread) => spread === "every")
+    ...(spreads.length >= 10 &&
+    spreads.every((spread) => spread === "every") &&
+    pairs.every(
+      (pair) =>
+        pair.objective?.[side].some(isNumber) === true && !informative(pair, side, new Set(), ctx.bests),
+    )
       ? [
-          "All scored tasks passed validity on every attempt and the objective decided none of them; retire easy tasks with retire_tasks before writing harder replacements.",
+          `All scored tasks passed validity on every attempt, every judged vote tied, and no measured objective gap reached ${String(GAP_FLOOR)} against the other arm or the best known answer; retire easy tasks with retire_tasks before writing harder replacements.`,
         ]
       : []),
     ...(paceLine === null ? [] : [paceLine]),
@@ -267,7 +280,7 @@ function formatOutcomeLine(
     ...(own.length === 0
       ? []
       : [
-          `Reference A/A control differed on ${String(own.filter((score) => score !== 0).length)} of ${String(own.length)} tasks; ${String(scores.filter((score) => Math.abs(score) > Math.max(0, ...own.map(Math.abs))).length)} of ${String(scores.length)} comparison margins were larger than any A/A margin, and the rest are within same-harness variation.`,
+          `Reference A/A control differed on ${String(own.filter((score) => score !== 0).length)} of ${String(own.length)} tasks, its largest margin ${measured(Math.max(0, ...own.map(Math.abs)))}; ${String(scores.filter((score) => Math.abs(score) > Math.max(0, ...own.map(Math.abs))).length)} of ${String(scores.length)} comparison margins were larger.`,
         ]),
   ].join(" ");
 }

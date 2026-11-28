@@ -229,7 +229,7 @@ describe("the last comparison the reference stood in", () => {
       "reference won 0, candidate won 1, 2 tied",
       "Reference passed every attempt on 1, some on 1, none on 1",
       "1 excluded pending review",
-      "Reference A/A control differed on 2 of 3 tasks; 0 of 3 comparison margins were larger than any A/A margin",
+      "Reference A/A control differed on 2 of 3 tasks, its largest margin 600; 0 of 3 comparison margins were larger.",
     ]) {
       expect(told.stood).toContain(fact);
     }
@@ -270,26 +270,27 @@ describe("the last comparison the reference stood in", () => {
         noise: { differences: [0, 600, -120] },
       });
       expect(taskHistory(log.events, ["a", "b", "c"].map(fixture)).stood).toContain(
-        `; ${String(beyond)} of 3 comparison margins were larger than any A/A margin`,
+        `its largest margin 600; ${String(beyond)} of 3 comparison margins were larger.`,
       );
     }
   });
 
-  it("asks for retirement only when at least ten tasks all passed every attempt and the objective decided none", () => {
+  it("asks for retirement only when at least ten tasks all passed every attempt with a measured objective and no gap", () => {
     const cue = "retire easy tasks with retire_tasks";
     const cases = [
-      [10, [true, true], [true, true], true],
-      [9, [true, true], [true, true], false],
-      [10, [true, false], [true, true], false],
+      [10, [0.9, 0.9], [0.9, 0.9], true],
+      [9, [0.9, 0.9], [0.9, 0.9], false],
+      [10, [0.9, false], [0.9, 0.9], false],
       [10, [0.2, 0.2], [0.9, 0.9], false],
+      [10, [true, true], [true, true], false],
     ] as const;
     for (const [size, first, rest, asked] of cases) {
       const ids = Array.from({ length: size }, (_, nth) => `k${String(nth)}`);
       const log = logged();
       log.hold(ids);
       for (const [nth, id] of ids.entries()) {
-        log.solved("c-1", id, "h1", nth === 0 ? first : [true, true]);
-        log.solved("c-1", id, "h2", nth === 0 ? rest : [true, true]);
+        log.solved("c-1", id, "h1", nth === 0 ? first : [0.9, 0.9]);
+        log.solved("c-1", id, "h2", nth === 0 ? rest : [0.9, 0.9]);
       }
       log.reported("c-1", ["h1", "h2"], ids, { objective: { direction: "higher", scale: "unit" } });
       expect([

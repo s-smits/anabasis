@@ -132,11 +132,17 @@ export function stopRule(events: readonly LogEvent[]) {
   const moves = [...pairs.values().filter(({ counts }) => counts), ...declined].toSorted(
     (one, other) => one.index - other.index,
   );
-  const epochAt = activePromotionAt(events);
-  const epoch = moves.filter(({ index }) => index > epochAt);
+  const activeAt = activePromotionAt(events);
+  const reverts = eventsOf(events, "harness.reverted").filter(
+    ({ index, event: { data } }) => index > activeAt && isString(data.from) && builtHarnesses.has(data.from),
+  );
+  const lastRevertAt = reverts.at(-1)?.index ?? -1;
+  const patienceFloor = Math.max(activeAt, lastRevertAt);
+  const epoch = moves.filter(({ index }) => index > patienceFloor);
   const lastStep = epoch.findLastIndex(({ step }) => step);
-  const carried = epochAt === -1 && lastStep === -1 ? (openingOf(events)?.parent?.carried.sinceStep ?? 0) : 0;
-  const sinceStep = epoch.length - 1 - lastStep + carried;
+  const carried =
+    patienceFloor === -1 && lastStep === -1 ? (openingOf(events)?.parent?.carried.sinceStep ?? 0) : 0;
+  const sinceStep = epoch.length - 1 - lastStep + carried + (lastStep === -1 ? reverts.length : 0);
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 

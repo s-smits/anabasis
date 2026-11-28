@@ -116,6 +116,7 @@ export interface BuildRequest {
     | undefined;
   readonly cap?: Cap | undefined;
   readonly kill?: AbortSignal;
+  readonly practiceWaitSeconds?: number;
   readonly campaign?: (bench: Bench) => {
     readonly tools: AgentTool[];
     readonly hook: () => string;
@@ -241,6 +242,7 @@ export async function session(
     },
   });
   const clock = sessionClock(began, limits.wallSeconds);
+  const [halt, end] = [new AbortController(), new AbortController()];
   const bench: Bench = {
     request,
     modePrompts: MODE_PROMPTS[request.campaign === undefined ? "host" : "builder"],
@@ -254,12 +256,20 @@ export async function session(
     spent: 0,
     faulty: new Set(),
     faults: [],
-    halt: new AbortController(),
+    halt,
+    kill: AbortSignal.any([
+      clock.signal,
+      halt.signal,
+      end.signal,
+      ...(request.kill === undefined ? [] : [request.kill]),
+    ]),
+    practising: Promise.resolve(),
+    steer: async () => undefined,
     fatal: null,
     note: null,
     within: clock.within,
   };
-  return await converse(bench, dirs.host, clock, walled, env);
+  return await converse(bench, { host: dirs.host, clock, end }, walled, env);
 }
 
 function openingFor(bench: Bench): string {
@@ -307,8 +317,7 @@ function openingFor(bench: Bench): string {
 
 async function converse(
   bench: Bench,
-  host: string,
-  clock: BuildClock,
+  { host, clock, end }: { readonly host: string; readonly clock: BuildClock; readonly end: AbortController },
   walled: (bench: Bench) => AgentTool[],
   env: ExecutionEnv | undefined,
 ): Promise<Built> {
@@ -377,7 +386,7 @@ async function converse(
     most: limits.turns,
     over: () => bench.note !== null || bench.fatal !== null,
     next: async () => {
-      if (bench.note !== null) return null;
+      await bench.practising;
       const harness = await harnessNow(bench);
       const practice =
         isString(harness) && hasPractice(bench, read(log, TRACE_KINDS), harness) ? "counted" : "uncounted";
@@ -391,8 +400,13 @@ async function converse(
     onCompact: () => {
       compacted = true;
     },
+    steer: (send) => {
+      bench.steer = send;
+    },
     stops: [clock.signal, bench.halt.signal, request.kill],
   });
+  if (bench.note === null) end.abort();
+  await bench.practising;
   clock.close();
   await campaign?.closing?.();
   return await finishSession(bench, sat, clock, turns.length);

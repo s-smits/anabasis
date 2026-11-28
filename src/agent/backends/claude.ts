@@ -20,7 +20,6 @@ import {
   type ThinkingLevel,
   type TranscriptContext,
   type Usage,
-  type UserMessage,
 } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import {
@@ -230,7 +229,21 @@ async function runTurn(
   if (key === undefined) throw new Error("the Claude backend needs a sessionId: one per Claude Code query");
   if (options.signal?.aborted === true) throw new Error(`session ${key} was aborted before its turn`);
   if (claude.shutdown?.aborted === true) throw new Error(`session ${key} was shut down before its turn`);
-  const { results } = extractAllToolResults(context.messages.map((message) => ({ ...message })));
+  const { results, stopIdx } = extractAllToolResults(context.messages.map((message) => ({ ...message })));
+  const steers = context.messages.slice(stopIdx + 1).flatMap((message) =>
+    message.role === "user"
+      ? [
+          isString(message.content)
+            ? message.content
+            : message.content
+                .map((part) => {
+                  if (part.type !== "text") throw new Error("the Claude backend opens a query on text alone");
+                  return part.text;
+                })
+                .join("\n\n"),
+        ]
+      : [],
+  );
   let session = sessions.get(key);
   if (session?.reading === true) {
     throw new Error(`session ${key} already has a turn in flight: concurrent seats need distinct sessionIds`);
@@ -241,15 +254,15 @@ async function runTurn(
     if (!session && context.messages.some((message) => message.role === "assistant")) {
       throw new Error(`no live Claude Code query in session ${key} holds this conversation`);
     }
+    if (steers.length === 0) throw new Error("the transcript has no user message to open the query with");
     session ??= open(claude, model, context, options, key);
   }
   session.reading = true;
   try {
-    if (results.length > 0) {
-      for (const result of results) deliver(session, result);
-    } else {
-      await session.prompt.push(userMessage(promptText(context)));
+    if (steers.length > 0) {
+      await session.prompt.push(userMessage(steers.join("\n\n"), results.length > 0 ? "next" : undefined));
     }
+    for (const result of results) deliver(session, result);
     return await readTurn(key, session, model, turn, options.signal);
   } finally {
     session.reading = false;
@@ -371,18 +384,6 @@ function claudeEnv(
       : { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(compaction.window) }),
     ...keyIfDefined("CLAUDE_CODE_PROMPT_CACHE_TTL", cacheTtl),
   };
-}
-
-function promptText(context: TranscriptContext): string {
-  const prompt = context.messages.findLast((message): message is UserMessage => message.role === "user");
-  if (!prompt) throw new Error("the transcript has no user message to open the query with");
-  if (isString(prompt.content)) return prompt.content;
-  return prompt.content
-    .map((block) => {
-      if (block.type !== "text") throw new Error("the Claude backend opens a query on text alone");
-      return block.text;
-    })
-    .join("\n\n");
 }
 
 function deliver(session: Session, result: McpResult): void {

@@ -15,7 +15,7 @@ import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/state.ts";
 import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
 import { HOME_TOOL_TREE, snapshot } from "../src/builder/store.ts";
-import { type Bench, practiceLeft, recordsOf } from "../src/builder/tools.ts";
+import { type Bench, PRACTICE_WAIT_SECONDS, practiceLeft, recordsOf } from "../src/builder/tools.ts";
 import { formatKeys, namedTasks, readHarnessFiles } from "../src/harness/files.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
@@ -1341,6 +1341,32 @@ describe.concurrent("a Builder session", () => {
     expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual(["practice"]);
   });
 
+  it("starts no practice solve after a host fault, in the faulted call or in one queued behind it", async () => {
+    const both = fauxAssistantMessage(
+      [fauxToolCall("practice", { tasks: ["t-1", "t-2"] }), fauxToolCall("practice", { tasks: ["t-2"] })],
+      toolUse,
+    );
+    const s = await setup([both, finish]);
+    const started: string[] = [];
+    await expect(
+      session(
+        {
+          ...s.request,
+          limits: { ...LIMITS, concurrency: 1 },
+          practise: async (task, _dir, _digest, kill) => {
+            started.push(task.version);
+            if (kill.aborted) throw kill.reason;
+            throw new Error("host fault");
+          },
+        },
+        s,
+        s.walled,
+      ),
+    ).rejects.toThrow("host fault");
+    expect(started).toEqual(["v1"]);
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "crashed", practiceSolves: 2 });
+  });
+
   it("keeps the harness a crashed session last practised as a harness snapshot, and no edit after it", async () => {
     const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
     const tried = await setup([edit, call("practice", { tasks: ["t-1"] }), failed]);
@@ -2288,5 +2314,252 @@ describe("harness file checks and practice task mentions", () => {
     expect(calls[4]?.text).toContain("delivered no file absent.png");
     expect(calls[5]?.isError).toBe(true);
     expect(calls[5]?.text).toContain("has no viewable image report.docx#no-such.png");
+  });
+
+  it("backgrounds slow practice past the cutoff, steers results past large tool outputs, waits on yield, and settles before finish", async () => {
+    expect(PRACTICE_WAIT_SECONDS).toBe(290);
+    const gates = Array.from({ length: 4 }, () => Promise.withResolvers<void>());
+    const [first, second, third, fourth] = gates;
+    let settledBeforeFinish = false;
+    const s = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      call("practice", { tasks: ["t-1"] }),
+      call("practice", { tasks: ["t-2"] }),
+      () => {
+        first?.resolve();
+        second?.resolve();
+        return call("big", {});
+      },
+      call("practice", { tasks: ["t-1"] }),
+      () => {
+        setTimeout(() => third?.resolve(), 30);
+        return fauxAssistantMessage("Waiting for practice.");
+      },
+      call("practice", { tasks: ["t-1"] }),
+      () => {
+        setTimeout(() => {
+          settledBeforeFinish = true;
+          fourth?.resolve();
+        }, 60);
+        return finish;
+      },
+    ]);
+    let calls = 0;
+    const built = await session(
+      {
+        ...s.request,
+        limits: { ...LIMITS, practiceSolves: 5 },
+        practiceWaitSeconds: 0.02,
+        practise: async (task, dir, digest, kill) => {
+          calls += 1;
+          if (calls > 1) await gates.shift()?.promise;
+          return await s.request.practise(task, dir, digest, kill);
+        },
+      },
+      s,
+      (bench) => [
+        ...s.walled(bench),
+        tool({
+          name: "big",
+          description: "Returns a full-size result after background practice settles.",
+          parameters: Type.Object({}),
+          execute: async () => {
+            await bench.practising;
+            return text("x".repeat(50_000));
+          },
+        }),
+      ],
+    );
+    const said = s
+      .of(BUILD_CALL)
+      .map(({ tool: name, text: shown }) => [name, isString(shown) ? shown : ""] as const);
+    expect(
+      said.map(([name, shown]) => [name, shown.startsWith("Practice is still running after 0.02 s.")]),
+    ).toEqual([
+      ["practice", false],
+      ["practice", true],
+      ["practice", true],
+      ["big", false],
+      ["practice", true],
+      ["practice", true],
+      ["finish", false],
+    ]);
+    expect(said[0]?.[1]).toContain("t-1: pass.");
+    expect(s.sent[3]).toMatch(
+      /Practice begun earlier has finished:\\nt-1: pass\.[^]*Practice begun earlier has finished:\\nt-2: pass\./u,
+    );
+    expect(s.sent[4]?.split("Practice begun earlier has finished").length).toBe(4);
+    expect(built).toMatchObject({ ended: "finished" });
+    expect(settledBeforeFinish).toBe(true);
+    const events = read(s.request.log);
+    expect(events.findLastIndex(({ kind }) => kind === SOLVE_FINISHED)).toBeLessThan(
+      events.findLastIndex(({ kind }) => kind === BUILD_FINISHED),
+    );
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 5, crash: null });
+  });
+
+  it("aborts background practice when the turn limit ends the session, and lets it finish after finish", async () => {
+    const outlasting = (seen: boolean[], gate?: Promise<void>) =>
+      (async (_task, _dir, _digest, kill) => {
+        await Promise.race([
+          gate ?? Bun.sleep(3000),
+          new Promise((resolve) => {
+            kill.addEventListener("abort", resolve, { once: true });
+          }),
+        ]);
+        seen.push(kill.aborted);
+        return { solve: "s-bg", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
+      }) satisfies typeof capped.request.practise;
+    const capped = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      fauxAssistantMessage("Waiting for practice."),
+    ]);
+    const cappedSeen: boolean[] = [];
+    await session(
+      {
+        ...capped.request,
+        limits: { ...LIMITS, turns: 2 },
+        practiceWaitSeconds: 0.02,
+        practise: outlasting(cappedSeen),
+      },
+      capped,
+      capped.walled,
+    );
+    expect(cappedSeen).toEqual([true]);
+
+    const gate = Promise.withResolvers<void>();
+    const finished = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      () => {
+        setTimeout(() => gate.resolve(), 30);
+        return finish;
+      },
+    ]);
+    const finishedSeen: boolean[] = [];
+    await session(
+      { ...finished.request, practiceWaitSeconds: 0.02, practise: outlasting(finishedSeen, gate.promise) },
+      finished,
+      finished.walled,
+    );
+    expect(finishedSeen).toEqual([false]);
+  });
+
+  it("ends crashed, without another model turn, when background practice faults while the Builder waits", async () => {
+    const gate = Promise.withResolvers<void>();
+    const s = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      () => {
+        setTimeout(() => gate.resolve(), 30);
+        return fauxAssistantMessage("Waiting for practice.");
+      },
+      finish,
+    ]);
+    await expect(
+      session(
+        {
+          ...s.request,
+          practiceWaitSeconds: 0.02,
+          practise: async () => {
+            await gate.promise;
+            throw new Error("host fault");
+          },
+        },
+        s,
+        s.walled,
+      ),
+    ).rejects.toThrow("host fault");
+    expect(s.sent).toHaveLength(1);
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "crashed", crash: "host fault" });
+  });
+
+  it("stops background practice on kill, refunds unstarted solves, and steers late non-fatal errors", async () => {
+    const kill = new AbortController();
+    const killed = await setup([
+      call("practice", { tasks: ["t-1", "t-2"] }),
+      () => {
+        kill.abort(new Error("stopped"));
+        return fauxAssistantMessage("Waiting for practice.");
+      },
+    ]);
+    let started = 0;
+    const built = await session(
+      {
+        ...killed.request,
+        limits: { ...LIMITS, concurrency: 1 },
+        kill: kill.signal,
+        practiceWaitSeconds: 0.02,
+        practise: async (_task, _dir, _digest, signal) => {
+          if (signal.aborted) throw signal.reason;
+          started += 1;
+          await new Promise((resolve) => {
+            signal.addEventListener("abort", resolve);
+          });
+          return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
+        },
+      },
+      killed,
+      killed.walled,
+    );
+    expect(started).toBe(1);
+    expect(built).toMatchObject({ ended: "killed", changed: false });
+    expect(killed.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "killed", crash: null, practiceSolves: 1 });
+
+    const gate = Promise.withResolvers<void>();
+    const lateErr = await setup(
+      [
+        call("practice", { tasks: ["t-1"] }),
+        call("practice", { tasks: ["missing-task"] }),
+        call("practice", { tasks: ["t-1"] }),
+        () => {
+          gate.resolve();
+          return fauxAssistantMessage("Waiting for error.");
+        },
+        finish,
+      ],
+      [{ outcome: "non-result", kind: "check", reason: "boom" }],
+    );
+    await session(
+      {
+        ...lateErr.request,
+        practiceWaitSeconds: 0.02,
+        practise: async (task, dir, digest, signal) => {
+          await gate.promise;
+          return await lateErr.request.practise(task, dir, digest, signal);
+        },
+      },
+      lateErr,
+      lateErr.walled,
+    );
+    expect(lateErr.of(BUILD_CALL)[1]).toMatchObject({
+      tool: "practice",
+      isError: true,
+    });
+    expect(lateErr.sent.at(-1)).toContain("Practice begun earlier failed: t-1 is no longer a practice task");
+
+    const queuedGate = Promise.withResolvers<void>();
+    let queuedSolves = 0;
+    const skippedAfterFinish = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      call("practice", { tasks: ["t-2"] }),
+      () => {
+        setTimeout(() => queuedGate.resolve(), 30);
+        return finish;
+      },
+    ]);
+    await session(
+      {
+        ...skippedAfterFinish.request,
+        practiceWaitSeconds: 0.02,
+        practise: async (task, dir, digest, signal) => {
+          queuedSolves += 1;
+          await queuedGate.promise;
+          return await skippedAfterFinish.request.practise(task, dir, digest, signal);
+        },
+      },
+      skippedAfterFinish,
+      skippedAfterFinish.walled,
+    );
+    expect(queuedSolves).toBe(1);
+    expect(skippedAfterFinish.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "finished", practiceSolves: 1 });
   });
 });

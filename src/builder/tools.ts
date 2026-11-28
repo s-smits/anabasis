@@ -55,6 +55,9 @@ export interface Bench extends Freezing {
   readonly faulty: Set<string>;
   readonly faults: string[];
   readonly halt: AbortController;
+  readonly kill: AbortSignal;
+  practising: Promise<void>;
+  steer: (content: string) => Promise<void>;
   readonly within: <T>(action: () => Promise<T>) => Promise<T>;
   fatal: Error | null;
   note: string | null;
@@ -322,6 +325,10 @@ function choosePracticeTasks(bench: Bench, requested: readonly string[]) {
   return chosen;
 }
 
+export const PRACTICE_WAIT_SECONDS = 290;
+export const PRACTICE_FAULT =
+  "A practice solve could not be run, which is the host's fault and not the harness's. The session ends here.";
+
 export function practiceTool(bench: Bench): AgentTool {
   const { request } = bench;
   return tool({
@@ -339,78 +346,95 @@ export function practiceTool(bench: Bench): AgentTool {
         }),
       ),
     }),
-    execute: async (args, _api, context) => {
-      const chosen = choosePracticeTasks(bench, args.tasks);
-      const failed = new AbortController();
-      const kill = AbortSignal.any([context.abortSignal ?? bench.halt.signal, failed.signal]);
+    execute: async (args) => {
+      choosePracticeTasks(bench, args.tasks);
       const ran = args.under === "reference" ? bench.reference : await snapshot(bench);
-      if (kill.aborted) throw new Error("The session has ended.");
-      bench.spent += chosen.length;
-      let unstarted = 0;
-      const solved = await pooled(chosen, request.limits.concurrency, async (task) => {
-        if (bench.fatal !== null) return [];
-        try {
-          return [await practise(bench, task, ran, kill)];
-        } catch (error) {
-          if (kill.aborted && error === kill.reason) {
-            unstarted += 1;
+      const run = bench.practising.then(async () => {
+        if (bench.fatal !== null) throw new Error(PRACTICE_FAULT);
+        if (bench.note !== null || bench.kill.aborted) throw new Error("The session has ended.");
+        const chosen = choosePracticeTasks(bench, args.tasks);
+        const failed = new AbortController();
+        const kill = AbortSignal.any([bench.kill, failed.signal]);
+        bench.spent += chosen.length;
+        let unstarted = 0;
+        const solved = await pooled(chosen, request.limits.concurrency, async (task) => {
+          if (bench.fatal !== null) return [];
+          try {
+            return [await practise(bench, task, ran, kill)];
+          } catch (error) {
+            if (error === kill.reason) {
+              unstarted += 1;
+              return [];
+            }
+            bench.fatal ??= asError(error);
+            failed.abort();
             return [];
           }
-          bench.fatal ??= asError(error);
-          failed.abort();
-          return [];
+        });
+        if (bench.fatal !== null) throw new Error(PRACTICE_FAULT);
+        if (unstarted > 0) {
+          bench.spent -= unstarted;
+          throw new Error("The session has ended.");
         }
-      });
-      if (bench.fatal !== null) {
-        throw new Error(
-          "A practice solve could not be run, which is the host's fault and not the harness's. The session ends here.",
-        );
-      }
-      if (unstarted > 0) {
-        bench.spent -= unstarted;
-        throw new Error("The session has ended.");
-      }
-      const events = read(request.log);
-      const under = args.under ?? "harness";
-      const roles = [
-        [under === "reference" ? null : ran.harness.digest, "this harness"],
-        [bench.reference.harness.digest, "the reference harness"],
-        [under === "reference" ? (bench.opened?.harness.digest ?? null) : null, "harness/ as last practised"],
-        [bench.parent, "the harness you started from"],
-      ] as const;
-      const label = hasJudge(request.contract.objective)
-        ? "the code-scored part of the objective"
-        : "the objective";
-      const names = [`${label} (${request.contract.objective?.quantity ?? ""})`];
-      const name = () => names.shift() ?? label;
-      const againstFor = againstOf(events, request.contract);
-      const stands = standsOf(events);
-      const scored = verdictsOf(events);
-      const folded = { records: recordsOf(events), verdicts: scored };
-      const solves = new Map(solvesIn(events).map((s) => [s.id, s]));
-      const flat = solved.flat();
-      const last = new Map(flat.map(({ task }, at) => [task.version, at]));
-      const programs = installedPrograms(ran.harness.toolTree);
-      const said = flat.map(({ task, solve, ending, lines }, at) => {
-        const shown = rejectionAside(events, { id: solve, ending }, stands)
-          ? "rejection set aside"
-          : endingText(ending);
-        const against = againstFor(task.version);
-        return [
-          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(solves, solve)}${callsText(events, solve, programs)}${measuredText(scored, solve, against, name)}`,
-          ...(last.get(task.version) === at
-            ? [recordText(folded, task.version, roles, against, name)].filter((line) => line !== "")
-            : []),
-          ...lines,
-        ].join("\n");
-      });
-      const after = practiceLeft(bench, events);
-      return text(
-        `${said.join("\n\n")}\n\n${
+        const events = read(request.log);
+        const under = args.under ?? "harness";
+        const roles = [
+          [under === "reference" ? null : ran.harness.digest, "this harness"],
+          [bench.reference.harness.digest, "the reference harness"],
+          [
+            under === "reference" ? (bench.opened?.harness.digest ?? null) : null,
+            "harness/ as last practised",
+          ],
+          [bench.parent, "the harness you started from"],
+        ] as const;
+        const label = hasJudge(request.contract.objective)
+          ? "the code-scored part of the objective"
+          : "the objective";
+        const names = [`${label} (${request.contract.objective?.quantity ?? ""})`];
+        const name = () => names.shift() ?? label;
+        const againstFor = againstOf(events, request.contract);
+        const stands = standsOf(events);
+        const scored = verdictsOf(events);
+        const folded = { records: recordsOf(events), verdicts: scored };
+        const solves = new Map(solvesIn(events).map((s) => [s.id, s]));
+        const flat = solved.flat();
+        const last = new Map(flat.map(({ task }, at) => [task.version, at]));
+        const programs = installedPrograms(ran.harness.toolTree);
+        const said = flat.map(({ task, solve, ending, lines }, at) => {
+          const shown = rejectionAside(events, { id: solve, ending }, stands)
+            ? "rejection set aside"
+            : endingText(ending);
+          const against = againstFor(task.version);
+          return [
+            `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(solves, solve)}${callsText(events, solve, programs)}${measuredText(scored, solve, against, name)}`,
+            ...(last.get(task.version) === at
+              ? [recordText(folded, task.version, roles, against, name)].filter((line) => line !== "")
+              : []),
+            ...lines,
+          ].join("\n");
+        });
+        const after = practiceLeft(bench, events);
+        return `${said.join("\n\n")}\n\n${
           after > 0
             ? `${plural(after, "practice solve")} left.`
             : "No practice solve is left: what you change from here on is measured without a solve having run it."
-        }`,
+        }`;
+      });
+      bench.practising = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      const seconds = request.practiceWaitSeconds ?? PRACTICE_WAIT_SECONDS;
+      const cutoff = Promise.withResolvers<null>();
+      const timer = setTimeout(() => cutoff.resolve(null), seconds * 1000);
+      const done = await Promise.race([run, cutoff.promise]).finally(() => clearTimeout(timer));
+      if (done !== null) return text(done);
+      bench.practising = run.then(
+        (late) => bench.steer(`Practice begun earlier has finished:\n${late}`),
+        (error: unknown) => bench.steer(`Practice begun earlier failed: ${errorMessage(error)}`),
+      );
+      return text(
+        `Practice is still running after ${String(seconds)} s. Its results will arrive once it finishes, and a turn that calls no tool waits for them.`,
       );
     },
   });

@@ -8,16 +8,40 @@ import type { JsonObject } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
-import { liveOf, payerOf, seatsIn } from "../tools/runs/live.ts";
+import { append } from "#src/kernel/log.ts";
+import { type Live, liveHere, liveOf, payerOf, seatsIn } from "../tools/runs/live.ts";
 import { allowedLogins, asGathered, capOf, startRefusal } from "../tools/runs/logins.ts";
 import type { Host } from "../tools/runs/host-config.ts";
 import { leastOccupied } from "../tools/runs/placement.ts";
 import { packOf, type Run, runNamed } from "../tools/runs/registry.ts";
 import { seed } from "../tools/runs/seed.ts";
+import { GOES_ON } from "../tools/runs/state.ts";
 import { decidedOn, planOn } from "../tools/runs/view.ts";
 import { EVENT_FORMATTERS } from "../tools/runs/summary.ts";
 
 describe("each login's live runs, on every host", () => {
+  it("counts a kept run between two starts as live and unwritten, and not once its log has ended on its own terms", () => {
+    const tree = mkdtempSync(join(tmpdir(), "live-kept-"));
+    try {
+      const run: Run = { name: "kept", tree, path: join(tree, "log.jsonl"), end: "comparison.reported" };
+      const keeper = { pid: 1, cwd: tree, args: ["bun", "tools/runs/cli.ts", "keep", "kept", "--here"] };
+      const held: Live[] = [{ name: "kept", login: null, host: "here", unwritten: true }];
+      for (const [ending, live] of [
+        [null, held],
+        [GOES_ON, held],
+        ["finished", []],
+        ["revise", []],
+        ["budget", []],
+      ] satisfies [string | null, Live[]][]) {
+        writeFileSync(run.path, "");
+        if (ending !== null) append(run.path, "campaign.ended", { ending, why: "fixture" });
+        expect(liveHere("here", [keeper], [run])).toEqual(live);
+      }
+    } finally {
+      rmSync(tree, { recursive: true, force: true });
+    }
+  });
+
   it("leaves a host uncounted whose answer is no list of records with logins", () => {
     for (const lines of [[], null, ["usage: bun run runs pulse|zip ..."]]) {
       expect(liveOf("m1", lines)).toBeNull();

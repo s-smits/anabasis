@@ -290,6 +290,7 @@ describe.concurrent("Claude SDK 0.3.332 launch surface", () => {
         ]) {
           expect(launch.argv).toContain(arg);
         }
+        expect(launch.env.CLAUDE_CODE_PROJECT_DIR_NAME).toBe(CLAUDE_PROJECT_DIR);
         expect(realpathSync.native(launch.cwd)).toBe(realpathSync.native(expCwd ?? box.home));
         const init = asRecord(
           launch.stdin.find((line) => asRecord(line.request)?.subtype === "initialize")?.request,

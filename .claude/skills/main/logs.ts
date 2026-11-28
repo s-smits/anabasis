@@ -11,6 +11,12 @@ export type Found = Pick<Run, "name" | "path" | "archived">;
 
 export const campaignName = (logPath: string): string => basename(dirname(logPath));
 
+export function campaignLabel(log: string, logs: readonly string[]): string {
+  const name = campaignName(log);
+  const shared = logs.filter((each) => campaignName(each) === name).length > 1;
+  return shared ? `${name}@${basename(dirname(dirname(log)))}` : name;
+}
+
 export async function namedLogs(names: readonly string[]): Promise<Found[]> {
   return Promise.all(
     names.map(async (named) => {

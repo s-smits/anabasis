@@ -189,14 +189,14 @@ describe("submit", () => {
     const sheet = '<worksheet><c r="A1"><v>42</v></c></worksheet>';
     const book = zipOf([
       ["xl/worksheets/sheet1.xml", sheet, true],
-      ["[Content_Types].xml", "<Types/>", false],
+      ["[Content_Types].xml", "\u00EF\u00BB\u00BF<Types/>", false],
       ["xl/media/image1.png", "\u0089PNG\r\n", false],
     ]);
     const [file] = capturedFiles([{ path: "report.xlsx", base64: book.toString("base64") }]);
     expect(file?.text).toBeUndefined();
     expect(file?.entries).toEqual([
       { path: "xl/worksheets/sheet1.xml", text: sheet },
-      { path: "[Content_Types].xml", text: "<Types/>" },
+      { path: "[Content_Types].xml", text: "\uFEFF<Types/>" },
     ]);
     const cut = book.subarray(0, -30).toString("base64");
     expect(capturedFiles([{ path: "cut.xlsx", base64: cut }])[0]?.entries).toBeUndefined();

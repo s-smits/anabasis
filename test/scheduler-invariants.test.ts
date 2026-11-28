@@ -3,6 +3,7 @@ import { nextAction, practiceDue, supplyRun, tasksToAskFor, unaudited } from "..
 import type { Plan } from "../src/campaign/state.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 
 const AT = "2026-11-26T00:00:00.000Z";
 const STARTER = "starter-h";
@@ -241,6 +242,7 @@ describe("scheduler decision boundaries", () => {
       examFin("x-2", ["pre-1"]),
     ];
     expect(supplyRun(gatedBeforeCompare, PLAN)).toBe(1);
+    expect(supplyRun([...gatedBeforeCompare, released("pre-1")], PLAN)).toBe(1);
 
     const proposedBeforeGatedAfter = [
       ...base,
@@ -275,7 +277,9 @@ describe("scheduler decision boundaries", () => {
       examFin("x-1"),
       examFin("x-2"),
     ];
-    expect(nextAction(shortWithPatienceSpent, PLAN)).toMatchObject({ move: "end", ending: "exam" });
+    const spent = nextAction(shortWithPatienceSpent, PLAN);
+    expect(spent).toMatchObject({ move: "end", ending: "exam" });
+    expect(spent.why).toStartWith("2 Examiner sessions in a row held out no task");
   });
 
   it("caps tasksToAskFor at 24 after promotion, pins enoughWrittenSince and interrupted post-promotion examine, and checks practiceDue bounds", () => {
@@ -290,7 +294,19 @@ describe("scheduler decision boundaries", () => {
         practice: null,
       }),
     ).toBe(4);
+    expect(tasksToAskFor([CHECKED, ...manyHeld("t", 1)], { ...PLAN, practice: null })).toBe(5);
+    expect(tasksToAskFor([CHECKED, ...manyHeld("t", 5)], PLAN)).toBe(6);
     expect(tasksToAskFor([CHECKED, ...manyHeld("t", 10)], PLAN)).toBe(0);
+    const comparedUnpromoted = [
+      CHECKED,
+      ...manyHeld("t", 8),
+      released("t-0"),
+      checkpoint("b-1", "h-1"),
+      ...compared("g-1", STARTER, "h-1", "no-step"),
+    ];
+    expect(
+      tasksToAskFor(comparedUnpromoted, { ...PLAN, wanted: { target: 40, level: 0.1, solves: 2 } }),
+    ).toBe(34);
     const afterPromo = [
       CHECKED,
       ...manyHeld("t", 8),
@@ -369,6 +385,7 @@ describe("scheduler decision boundaries", () => {
     expect(nextAction(notScoredStarter, PLAN)).toMatchObject({ move: "compare", fresh: "starter" });
 
     expect(practiceDue([CHECKED, ...manyHeld("t", 8)], null, 0.1)).toBeNull();
+    expect(practiceDue([CHECKED, ...manyHeld("t", 4)], 3, 0.1)?.to).toBe(2);
     const confirmedStarter = compared("g-s", "h-1", STARTER, "no-step", {
       level: 0.1,
       versions: ["n-0", "n-1", "n-2", "n-3"],
@@ -420,6 +437,25 @@ describe("scheduler decision boundaries", () => {
     const freshNext = nextAction(freshSideNoRoom, PLAN);
     expect(freshNext.move).toBe("examine");
     expect(freshNext.why).toContain("starter confirmation owed");
+    const starterSideNoRoom = [
+      ...base,
+      checkpoint("b-1", "h-1"),
+      ...compared("g-1", STARTER, "h-1", "step", { valid: roomStep() }),
+      promotedH1(),
+      ...manyHeld("e", 6),
+      ...compared("g-2", "h-1", STARTER, "no-step", {
+        versions: ["e-0"],
+        scored: { wins: 0, losses: 1, ties: 0 },
+        valid: { old: [1, 1, 0], fresh: [0, 0, 1], informative: { old: 1, fresh: 0 } },
+      }),
+      ev("harness.reverted", { harness: STARTER, from: "h-1" }),
+      examFin("x-1"),
+    ];
+    expect(nextAction(starterSideNoRoom, PLAN)).toMatchObject({
+      move: "examine",
+      code: "no-room",
+      why: "harness starter- is the current reference and comparison g-2 found no informative tasks for it: generating harder tasks with evaluation headroom",
+    });
 
     const revertedWithRoom = [
       ...base,
@@ -499,6 +535,29 @@ describe("scheduler decision boundaries", () => {
       ...manyHeld("c", 1),
     ];
     expect(practiceDue(afterReleaseBaseline, 3, 0.1)?.to).toBe(2);
+    const gatedRightAfterRelease = [
+      CHECKED,
+      ...manyHeld("t", 8),
+      ...manyHeld("b", 8),
+      ev("task.proposed", { version: "c-0" }),
+      released("t-0"),
+      ev("task.gate", { version: "c-0", gate: 1, outcome: "passed" }),
+      ...manyHeld("c-x", 3),
+      checkpoint("b-1", "h-1"),
+      ...compared("g-1", STARTER, "h-1", "no-step"),
+    ];
+    expect(practiceDue(gatedRightAfterRelease, 3, 0.1)?.to).toBe(3);
+    const releasedAfterReading = [
+      CHECKED,
+      ...manyHeld("t", 8),
+      ...manyHeld("b", 8),
+      released("t-0"),
+      checkpoint("b-1", "h-1"),
+      ...compared("g-1", STARTER, "h-1", "no-step"),
+      ...manyHeld("c", 4),
+      released("c-0"),
+    ];
+    expect(practiceDue(releasedAfterReading, 3, 0.1)?.to).toBe(3);
     const revertedToStarterZeroBaseline = [
       CHECKED,
       ...manyHeld("t", 8),
@@ -508,5 +567,49 @@ describe("scheduler decision boundaries", () => {
       ev("harness.reverted", { harness: STARTER, from: "h-1" }),
     ];
     expect(practiceDue(revertedToStarterZeroBaseline, 3, 0.1)).toBeNull();
+    const revertedAfterWrittenEpoch = [
+      CHECKED,
+      ...manyHeld("t", 8),
+      checkpoint("b-1", "h-1"),
+      ...compared("g-1", STARTER, "h-1", "step", { valid: roomStep() }),
+      promotedH1(),
+      ...manyHeld("n", 6),
+      ...compared("g-s", "h-1", STARTER, "no-step", {
+        level: 0.1,
+        versions: ["n-0", "n-1", "n-2", "n-3"],
+        scored: { differences: [1, -1, 1, -1] },
+      }),
+      ev("harness.reverted", { harness: STARTER, from: "h-1" }),
+    ];
+    expect(practiceDue(revertedAfterWrittenEpoch, 3, 0.1)).toBeNull();
+  });
+
+  it("repairs a check-defects reading through the Examiner only while the plan may revise and fewer than two whole exam sessions followed it, over every tail of up to four sessions", () => {
+    const defectLog = [CHECKED, ...manyHeld("t", 8), released("t-0"), checkpoint("b-1", "h-1")];
+    const reading = compared("g-1", STARTER, "h-1", "check-defects");
+    const endings = ["finished", "killed"] as const;
+    const tailsOf = (length: number): (typeof endings)[number][][] =>
+      length === 0 ? [[]] : tailsOf(length - 1).flatMap((head) => endings.map((one) => [...head, one]));
+    let checked = 0;
+    for (const before of [[], ["finished"]]) {
+      for (const tail of [0, 1, 2, 3, 4].flatMap(tailsOf)) {
+        for (const canRevise of [true, false, undefined]) {
+          const log = [
+            ...defectLog,
+            ...before.map((ended, at) => examFin(`x-before-${String(at)}`, [], ended)),
+            ...reading,
+            ...tail.map((ended, at) => examFin(`x-${String(at)}`, [], ended)),
+          ];
+          const repairs = canRevise === true && tail.filter((ended) => ended === "finished").length < 2;
+          expect(
+            nextAction(log, { ...PLAN, patience: 9, ...keyIfDefined("canRevise", canRevise) }),
+          ).toMatchObject(
+            repairs ? { code: "bound", move: "examine" } : { code: "bound", move: "end", ending: "exam" },
+          );
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBe(2 * (1 + 2 + 4 + 8 + 16) * 3);
   });
 });

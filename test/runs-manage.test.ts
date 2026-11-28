@@ -1,11 +1,11 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { append, type EventKind, LOG_FILE, type LogEvent, read as readLog } from "../src/kernel/log.ts";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { heldBy, loginEnv } from "../tools/runs/manage.ts";
-import { fakeHosts } from "./helpers/fake-hosts.ts";
+import { fakeHosts, fakeNice, reapKeepers, startsOf } from "./helpers/fake-hosts.ts";
 
 type Meanwhile = (log: string, set: (name: string, text: string) => string) => string;
 
@@ -17,7 +17,13 @@ afterAll(() => {
   for (const each of sleepers) each.kill();
 });
 function sleeper(cwd = ".") {
-  const child = capturedSpawn(["sleep", "60"], { detached: true, cwd });
+  const child = capturedSpawn(["sleep", "60"], {
+    detached: true,
+    cwd,
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  });
   sleepers.push(child);
   return child;
 }
@@ -225,17 +231,76 @@ describe.concurrent("starting a campaign", () => {
   it("shows the dry run's own refusal, and starts nothing after it", async () => {
     const made = fakeHosts();
     fixtures.push(made.root);
-    const nice = join(made.root, "bin", "nice");
-    writeFileSync(
-      nice,
-      `#!${capturedExecPath}\nimport { appendFileSync } from "node:fs";\nappendFileSync(process.env.FAKE_CALLS, JSON.stringify({tool:"nice",args:process.argv.slice(2)}) + "\\n");\n`,
-    );
-    chmodSync(nice, 0o755);
+    fakeNice(made.root);
     const result = await made.runAsync(
       'import { launch } from "REPOSITORY/tools/runs/manage.ts"; await launch(["refused", "--yes"]);',
     );
     expect(result.code).toBe(1);
     expect(result.err).toContain("tools/campaign/harness-builder.ts");
-    expect(made.recorded().filter(({ tool, args }) => tool === "nice" && args.includes("19"))).toEqual([]);
+    expect(startsOf(made.recorded())).toBe(0);
+  });
+});
+
+describe("going on with a run that may already be written or kept", () => {
+  interface Given {
+    readonly login?: boolean;
+    readonly writer?: boolean;
+    readonly kept?: boolean;
+    readonly lives?: boolean;
+  }
+  async function goOn({ login = true, writer = false, kept = false, lives = true }: Given) {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const folder = join(made.main, ".ana", "d2", "held");
+    mkdirSync(folder, { recursive: true });
+    append(join(folder, LOG_FILE), "campaign.ended", { ending: "finished" });
+    mkdirSync(join(made.main, "tools", "campaign"), { recursive: true });
+    writeFileSync(join(made.main, "tools", "campaign", "harness-builder.ts"), "process.exit(0);\n");
+    fakeNice(made.root);
+    const rows = [
+      ...(writer ? [`99998 ${capturedExecPath} tools/campaign/harness-builder.ts --name held`] : []),
+      ...(kept ? [`99999 ${capturedExecPath} tools/runs/cli.ts keep held --here`] : []),
+    ];
+    const words = ["held", ...(login ? ["--login", "2"] : []), "--yes", "--", "--target", "8"];
+    const result = await made.runAsync(
+      [
+        "const sleep = Bun.sleep; Bun.sleep = (ms) => sleep(Math.min(Number(ms), 500));",
+        'const { continueRun } = await import("REPOSITORY/tools/runs/manage.ts");',
+        `await continueRun(${JSON.stringify(words)});`,
+      ].join("\n"),
+      {
+        FAKE_PS: rows.join("\n"),
+        FAKE_CWDS: `p99998\nn${made.main}`,
+        FAKE_LIVES: lives ? "1" : "0",
+        ANA_LOGINS: "2,3",
+        [`${KEY}2`]: "b",
+        [`${KEY}3`]: "c",
+      },
+    );
+    return { code: result.code, starts: startsOf(made.recorded()), keepers: reapKeepers(result.out) };
+  }
+
+  it("starts no second writer, and leaves one keeper only on a live run that names a login with another to move to", async () => {
+    const cases: [Given, { code: number; starts: number; keepers: number }][] = [
+      [{ writer: true }, { code: 1, starts: 0, keepers: 0 }],
+      [{}, { code: 0, starts: 1, keepers: 1 }],
+      [{ kept: true }, { code: 0, starts: 1, keepers: 0 }],
+      [{ lives: false }, { code: 1, starts: 1, keepers: 0 }],
+      [{ login: false }, { code: 0, starts: 1, keepers: 0 }],
+    ];
+    const results = await Promise.all(cases.map(([given]) => goOn(given)));
+    expect(results).toEqual(cases.map(([, outcome]) => outcome));
+  }, 60_000);
+});
+
+describe("a pause that reads benchmarks", () => {
+  it("reads --eval on the machine it is typed on, before the pause is routed", async () => {
+    const child = capturedSpawn([capturedExecPath, "tools/runs/cli.ts", "pause", "--eval"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [said, code] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+    expect(code).toBe(1);
+    expect(said).toContain("pause --eval names no run");
   });
 });

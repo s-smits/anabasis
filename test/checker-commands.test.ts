@@ -6,6 +6,7 @@ import { append, read } from "../src/kernel/log.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { rmSync } from "../src/meta/filesystem.ts";
 import { isString } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { osIsolationSupport } from "../src/sandbox/os-isolation.ts";
@@ -156,32 +157,42 @@ suite("acceptance and freezing over a drafted exam", () => {
         ],
       },
     };
-    const [sameFam, crossFam, plainSameFam] = [
+    const [sameFam, crossFam, plainSameFam, unseated, unsolved] = [
       `${NAME}-judge-same`,
       `${NAME}-judge-cross`,
       `${NAME}-plain-same`,
+      `${NAME}-judge-unseated`,
+      `${NAME}-judge-unsolved`,
     ];
-    NAMES.push(sameFam, crossFam, plainSameFam);
+    NAMES.push(sameFam, crossFam, plainSameFam, unseated, unsolved);
     layOutDraft(folder(sameFam), judgedDraft);
     layOutDraft(folder(crossFam), judgedDraft);
     layOutDraft(folder(plainSameFam), DRAFT);
-    const open = (name: string, reviewer: string) =>
+    layOutDraft(folder(unseated), judgedDraft);
+    layOutDraft(folder(unsolved), judgedDraft);
+    const seat = (model: string) => ({ model, effort: "high" });
+    const open = (name: string, reviewer: string | null, solver: string | null = "claude/claude-opus-5-5") =>
       append(join(folder(name), LOG), "campaign.opened", {
-        solver: { model: "claude/claude-opus-5-5", effort: "high" },
-        seats: { reviewer: { model: reviewer, effort: "high" } },
+        ...keyIfDefined("solver", solver === null ? undefined : seat(solver)),
+        ...keyIfDefined("seats", reviewer === null ? undefined : { reviewer: seat(reviewer) }),
       });
     open(sameFam, "claude/claude-sonnet-5-5");
     open(crossFam, "openai-codex/gpt-6.1-sol");
     open(plainSameFam, "claude/claude-sonnet-5-5");
-    const [sameRes, crossRes, plainRes] = await Promise.all([
+    open(unseated, null);
+    open(unsolved, "claude/claude-sonnet-5-5", null);
+    const [sameRes, crossRes, plainRes, unseatedRes, unsolvedRes] = await Promise.all([
       accept(sameFam, ADMIT, "--admit-judge"),
       accept(crossFam, ADMIT, "--admit-judge"),
       accept(plainSameFam, ADMIT, "--admit-judge"),
+      accept(unseated, ADMIT, "--admit-judge"),
+      accept(unsolved, ADMIT, "--admit-judge"),
     ]);
     expect(sameRes.code).not.toBe(0);
     expect(sameRes.said).toContain("--admit-judge:");
-    expect(crossRes.code).toBe(0);
-    expect(plainRes.code).toBe(0);
+    expect([crossRes.code, plainRes.code, unseatedRes.code]).toEqual([0, 0, 0]);
+    expect(unsolvedRes.code).not.toBe(0);
+    expect(unsolvedRes.said).toContain("neither its opening nor this command names who solves");
   });
 });
 
@@ -264,5 +275,10 @@ suite("rehearsal over a drafted exam", () => {
     expect(tabled).toContain(": ");
     const terms = ["--project", "fixture", "--level", "0.02"];
     expect((await rehearse(...terms, "--dry-run")).said).toContain(`next · ${tabled}`);
+    const rehearsed = await rehearse(...terms);
+    expect(rehearsed.code).toBe(0);
+    expect(rehearsed.said).toMatch(
+      /next · the campaign ends \(exam\)[^\n]*\nthe rehearsal went as scripted/u,
+    );
   });
 });

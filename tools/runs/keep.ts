@@ -278,7 +278,8 @@ async function keepGoing(
     read: readNotClosed,
     checkStart: (login, flags) => checkStart(run, rerun(flags, undefined), { login }),
     stop: () => stop([run.name, "--yes"]),
-    start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),
+    start: (login) =>
+      start(run, rerun(lastRun(run).flags, undefined), login, undefined).then((s) => s !== "gone"),
     handoff: (successor) => {
       const next = runNamed(successor);
       if (flagOf(lastRun(next).flags, "--moves") !== "0" && keepers(next.name, processes()).length === 0) {

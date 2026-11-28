@@ -10,7 +10,7 @@ import { nextAction, practiceDue } from "../src/campaign/scheduler.ts";
 import { campaignState, type Plan } from "../src/campaign/state.ts";
 import type { ScheduledAction } from "../src/campaign/move.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
-import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { type EventKind, isReferenceChange, type LogEvent } from "../src/kernel/log.ts";
 import {
   activePromotionAt,
   comparedAs,
@@ -347,6 +347,17 @@ const STARTS: readonly { name: string; start: readonly LogEvent[]; plan: Plan; d
     depth: 4,
   },
   { name: "a promotion", start: PROMOTED, plan: PLAN, depth: 7 },
+  {
+    name: "a task gated right after a promotion",
+    start: [
+      ...PROMOTED.slice(0, -1),
+      event("task.proposed", { version: "late", taskId: "late" }),
+      ...PROMOTED.slice(-1),
+      event("task.gate", { version: "late", gate: 1, outcome: "passed" }),
+    ],
+    plan: PLAN,
+    depth: 4,
+  },
   { name: "a no-step that left room", start: ROOM_LEFT, plan: PLAN, depth: 7 },
   { name: "a no-step that left no room", start: NO_ROOM, plan: PLAN, depth: 7 },
   { name: "a patience of three", start: ROOM_LEFT, plan: { ...PLAN, patience: 3 }, depth: 7 },
@@ -570,6 +581,8 @@ describe("the decision table, searched", () => {
       const due = practiceDue(events, 1000, PLAN.wanted.level);
       const { held } = taskSets(events);
       if (due === null) continue;
+      const read = events.some(({ kind }) => kind === REPORTED_EVENT || isReferenceChange(kind));
+      expect(due.said.endsWith(" since the last reading")).toBe(read);
       const promotedAt = events.findLastIndex(
         ({ kind }) => kind === PROMOTED_EVENT || kind === "harness.reverted",
       );

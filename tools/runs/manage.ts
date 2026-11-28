@@ -27,7 +27,7 @@ import { keysIf } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
-import { lastLaunch, nextRun } from "./receipt.ts";
+import { lastLaunch, launchRun } from "./receipt.ts";
 import { payerOf } from "./live.ts";
 import { LIMITS } from "../campaign/campaign.ts";
 import { recordedSetting } from "../campaign/setting.ts";
@@ -189,16 +189,16 @@ export async function checkStart(
   if (target === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
 }
 
+export type Started = "writing" | "running" | "gone";
+
 export async function start(
   run: Run,
   flags: readonly string[],
   login: string | undefined,
   at: string | undefined,
-): Promise<boolean> {
+): Promise<Started> {
   const env = loginEnv(runtimeProcess.env, login);
-  if (writers(run, processes()).length > 0) {
-    throw new Error(`${run.name} is already being written in ${run.tree}`);
-  }
+  if (writers(run, processes()).length > 0) return "writing";
   const kept = keepers(run.name).length > 0 ? "and its keeper goes on" : "and has no keeper";
   const stands = `${run.name} is not running ${kept}; nothing was started`;
   const { commit, target } = await startable(run, flags, { login, at, stands });
@@ -211,23 +211,14 @@ export async function start(
   installAt(run.tree, target);
   const command = dryRun(run, flags, env, target);
   mkdirSync(dirname(run.path), { recursive: true });
-  const out = join(dirname(run.path), `launch-${nextRun(run.path)}`);
-  const child = capturedSpawn(["nice", "-n", "19", ...command], {
-    cwd: run.tree,
-    env,
-    detached: true,
-    stdin: "ignore",
-    stdout: openSync(`${out}.out`, "a"),
-    stderr: openSync(`${out}.err`, "a"),
-  });
-  child.unref();
+  const { pid, err } = launchRun(["nice", "-n", "19", ...command], run.path, { cwd: run.tree, env });
   await Bun.sleep(3000);
-  const alive = processGroupExists(child.pid);
+  const alive = processGroupExists(pid);
   console.log(
-    `${run.name} in ${run.tree} at ${target.slice(0, 9)}: pid ${String(child.pid)}, ${alive ? "running" : "gone"}; ${out}.err`,
+    `${run.name} in ${run.tree} at ${target.slice(0, 9)}: pid ${String(pid)}, ${alive ? "running" : "gone"}; ${err}`,
   );
   if (!alive) runtimeProcess.exitCode = 1;
-  return alive;
+  return alive ? "running" : "gone";
 }
 
 function dryRun(run: Run, flags: readonly string[], env: ReturnType<typeof loginEnv>, at: string) {
@@ -248,6 +239,7 @@ function dryRun(run: Run, flags: readonly string[], env: ReturnType<typeof login
 }
 
 export function leaveKeeper(run: Run, logins: readonly string[] | undefined, waitHours: string): void {
+  if (keepers(run.name).length > 0) return;
   const out = keeperLogPath(run);
   const child = capturedSpawn(
     [
@@ -282,8 +274,9 @@ async function launchRunKeeper(
   flags: readonly string[],
   { login, at }: { login: string | undefined; at: string | undefined },
 ): Promise<void> {
-  const running = await start(run, flags, login, at);
-  if (running && keepsItself(runtimeProcess.env, login) && keepers(run.name).length === 0) {
+  const started = await start(run, flags, login, at);
+  if (started === "writing") throw new Error(`${run.name} is already being written in ${run.tree}`);
+  if (started === "running" && keepsItself(runtimeProcess.env, login)) {
     leaveKeeper(run, undefined, WAIT_HOURS);
   }
 }

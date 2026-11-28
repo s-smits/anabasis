@@ -229,6 +229,9 @@ describe("the offline file extractor", () => {
     };
     const nbFile = plain("diag.ipynb", JSON.stringify(nb));
     expect(answerImages(nbFile).map(({ path }) => path)).toEqual(["diag.ipynb#cell-0-out-0.png"]);
+    for (const text of ["{not json", "{}", '{"cells":{}}']) {
+      expect(answerImages(plain("odd.ipynb", text))).toEqual([]);
+    }
     expect(answerImages({ path: "empty.png", base64: "" })).toEqual([]);
     expect(answerImages({ path: "pic.png", base64: "AAAA" }).map(({ path }) => path)).toEqual(["pic.png"]);
   });

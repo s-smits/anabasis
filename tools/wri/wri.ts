@@ -24,13 +24,13 @@
  *   bun tools/wri/wri.ts reader <name> --log <log>
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  */
-import { campaignName } from "#skills/main/logs.ts";
+import { campaignLabel } from "#skills/main/logs.ts";
 import { printed } from "#skills/main/print.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { mainTree } from "#src/meta/git.ts";
-import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { runSync } from "#src/meta/subprocess.ts";
@@ -138,12 +138,7 @@ const resolvedLogs = await Promise.all(
     .filter((each) => each !== "")
     .map(async (each) => resolve(await logAcross(each))),
 );
-/** A campaign's name, and its copy's host folder where two `logs` share the name. */
-const nameOf = (log: string, logs: readonly string[] = resolvedLogs) => {
-  const name = campaignName(log);
-  const shared = logs.filter((each) => campaignName(each) === name).length > 1;
-  return shared ? `${name}@${basename(dirname(dirname(log)))}` : name;
-};
+const nameOf = (log: string, logs: readonly string[] = resolvedLogs) => campaignLabel(log, logs);
 
 function oneLog(): string {
   const [log] = resolvedLogs;

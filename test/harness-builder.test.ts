@@ -573,6 +573,7 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     await expect(harnessBuilder(["--name", name], seats)).rejects.toThrow(
       "give the prompt the campaign opens from",
     );
+    await expect(harnessBuilder([...flags, "--prompt", " "], seats)).rejects.toThrow("the prompt is empty");
     expect(await harnessBuilder([...flags, "--prompt", prompt, "--dry-run"], seats)).toMatchObject({
       move: "draft",
     });
@@ -621,96 +622,113 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     await harnessBuilder(["--name", name, "--level", "0.125", "--moves", "0"], seats);
   });
 
-  it("gates judged drafting on cross-family seat capability while keeping dynamic lane choice flag-free", async () => {
-    const { exam, examples } = draftedOf(SMALL);
-    const judgedExam = {
-      ...exam,
-      objective: {
-        quantity: "answer quality",
-        direction: "higher",
-        items: [
-          {
-            id: "clarity",
-            kind: "judge",
-            weight: 1,
-            criterion: "Which answer explains the multiplication more clearly and concisely?",
-          },
-        ],
-      },
-    };
-    const sameFamily = [
-      "--project",
-      PROJECT,
-      "--solver",
-      "claude/claude-opus-5-5",
-      "--reviewer",
-      "claude/claude-opus-5-5",
-      "--prompt",
-      "Multiplying a base by six, as a fixture.",
-      "--practice",
-      "2",
-      "--target",
-      "5",
-      "--level",
-      "0.125",
-    ];
-    const crossFamily = [...sameFamily, "--reviewer", "openai-codex/gpt-6.1-sol"];
-    const makeSeats = (...drafts: JsonObject[]): Seats => ({
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, examples, []),
-      draft: (request) =>
-        examine({
-          ...request,
-          ...scripted(drafts.map((draft) => ["draft_exam", draft] as const)),
-        }),
-    });
+  it.serial(
+    "gates judged drafting on cross-family seat capability while keeping dynamic lane choice flag-free",
+    async () => {
+      const { exam, examples } = draftedOf(SMALL);
+      const judgedExam = {
+        ...exam,
+        objective: {
+          quantity: "answer quality",
+          direction: "higher",
+          items: [
+            {
+              id: "clarity",
+              kind: "judge",
+              weight: 1,
+              criterion: "Which answer explains the multiplication more clearly and concisely?",
+            },
+          ],
+        },
+      };
+      const sameFamily = [
+        "--project",
+        PROJECT,
+        "--solver",
+        "claude/claude-opus-5-5",
+        "--reviewer",
+        "claude/claude-opus-5-5",
+        "--prompt",
+        "Multiplying a base by six, as a fixture.",
+        "--practice",
+        "2",
+        "--target",
+        "5",
+        "--level",
+        "0.125",
+      ];
+      const crossFamily = [...sameFamily, "--reviewer", "openai-codex/gpt-6.1-sol"];
+      const makeSeats = (...drafts: JsonObject[]): Seats => ({
+        seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, examples, []),
+        draft: (request) =>
+          examine({
+            ...request,
+            ...scripted(drafts.map((draft) => ["draft_exam", draft] as const)),
+          }),
+      });
 
-    const sameFamilyName = `${STEM}-same-family-mend`;
-    names.push(sameFamilyName);
-    await harnessBuilder(
-      ["--name", sameFamilyName, ...sameFamily, "--moves", "1"],
-      makeSeats(judgedExam, exam),
-    );
-    expect(
-      of(sameFamilyName, "draft.call").some(
-        ({ isError, text }) => isError === true && isString(text) && text.includes('expected "code"'),
-      ),
-    ).toBe(true);
-    expect(of(sameFamilyName, "draft.finished")).toMatchObject([{ session: "d-1", stands: true, tries: 1 }]);
-    expect(of(sameFamilyName, "contract.frozen")).toHaveLength(1);
-    expect(of(sameFamilyName, "checker.read").at(-1)?.faults).toEqual([]);
+      const sameFamilyName = `${STEM}-same-family-mend`;
+      names.push(sameFamilyName);
+      await harnessBuilder(
+        ["--name", sameFamilyName, ...sameFamily, "--moves", "1"],
+        makeSeats(judgedExam, exam),
+      );
+      expect(
+        of(sameFamilyName, "draft.call").some(
+          ({ isError, text }) => isError === true && isString(text) && text.includes('expected "code"'),
+        ),
+      ).toBe(true);
+      expect(of(sameFamilyName, "draft.finished")).toMatchObject([
+        { session: "d-1", stands: true, tries: 1 },
+      ]);
+      expect(of(sameFamilyName, "contract.frozen")).toHaveLength(1);
+      expect(of(sameFamilyName, "checker.read").at(-1)?.faults).toEqual([]);
 
-    const crossCodeName = `${STEM}-cross-code`;
-    names.push(crossCodeName);
-    await harnessBuilder(["--name", crossCodeName, ...crossFamily, "--moves", "1"], makeSeats(exam));
-    expect(of(crossCodeName, "contract.frozen")).toHaveLength(1);
-    expect(of(crossCodeName, "checker.read").at(-1)?.faults).toEqual([]);
+      const crossCodeName = `${STEM}-cross-code`;
+      names.push(crossCodeName);
+      await harnessBuilder(["--name", crossCodeName, ...crossFamily, "--moves", "1"], makeSeats(exam));
+      expect(of(crossCodeName, "contract.frozen")).toHaveLength(1);
+      expect(of(crossCodeName, "checker.read").at(-1)?.faults).toEqual([]);
 
-    const crossJudgeName = `${STEM}-cross-judge`;
-    names.push(crossJudgeName);
-    await harnessBuilder(["--name", crossJudgeName, ...crossFamily, "--moves", "1"], makeSeats(judgedExam));
-    expect(of(crossJudgeName, "draft.finished")).toMatchObject([{ session: "d-1", stands: true }]);
-    expect(of(crossJudgeName, "checker.read").at(-1)?.faults).toEqual([]);
-    expect(of(crossJudgeName, "contract.frozen")).toHaveLength(1);
-    const openCount = of(crossJudgeName, OPENED).length;
-    expect(() =>
-      opened(
-        join(REPO, ".ana", "d2", crossJudgeName, LOG_FILE),
-        flagsOf(["--name", crossJudgeName, "--reviewer", "claude/claude-opus-5-5", "--budget", "100"]),
-        "paid",
-      ),
-    ).toThrow("another family");
-    expect(of(crossJudgeName, OPENED)).toHaveLength(openCount);
+      const crossJudgeName = `${STEM}-cross-judge`;
+      names.push(crossJudgeName);
+      await harnessBuilder(["--name", crossJudgeName, ...crossFamily, "--moves", "1"], makeSeats(judgedExam));
+      expect(of(crossJudgeName, "draft.finished")).toMatchObject([{ session: "d-1", stands: true }]);
+      expect(of(crossJudgeName, "checker.read").at(-1)?.faults).toEqual([]);
+      expect(of(crossJudgeName, "contract.frozen")).toHaveLength(1);
+      const openCount = of(crossJudgeName, OPENED).length;
+      expect(() =>
+        opened(
+          join(REPO, ".ana", "d2", crossJudgeName, LOG_FILE),
+          flagsOf(["--name", crossJudgeName, "--reviewer", "claude/claude-opus-5-5", "--budget", "100"]),
+          "paid",
+        ),
+      ).toThrow("another family");
+      expect(of(crossJudgeName, OPENED)).toHaveLength(openCount);
 
-    const hitlName = `${STEM}-dyn-hitl`;
-    names.push(hitlName);
-    const hitl = await harnessBuilder(["--name", hitlName, ...crossFamily, "--hitl"], makeSeats(judgedExam));
-    expect(hitl).toMatchObject({ move: "end", ending: "exam" });
-    expect(of(hitlName, "contract.frozen")).toEqual([]);
-    expect(of(hitlName, "checker.read").at(-1)?.faults).toEqual([
-      containing("--admit check-product"),
-      containing("--admit-judge"),
-    ]);
-  });
+      const hitlName = `${STEM}-dyn-hitl`;
+      names.push(hitlName);
+      const said = spyOn(console, "log");
+      const hitl = await harnessBuilder(
+        ["--name", hitlName, ...crossFamily, "--hitl"],
+        makeSeats(judgedExam),
+      );
+      const lines = said.mock.calls.map(([line]) => (isString(line) ? line : ""));
+      said.mockRestore();
+      expect(hitl).toMatchObject({ move: "end", ending: "exam" });
+      expect(
+        lines.filter((line) => line.startsWith("fault: ") && line.includes("--admit-judge")),
+      ).toHaveLength(1);
+      expect(lines.filter((line) => line.startsWith("to admit the judged"))).toEqual([
+        containing("accept.ts"),
+      ]);
+      expect(of(hitlName, "contract.frozen")).toEqual([]);
+      expect(of(hitlName, "checker.read").at(-1)?.faults).toEqual([
+        containing("--admit check-product"),
+        containing("--admit-judge"),
+      ]);
+    },
+  );
 
   it("hands over a harness's links as links, and leaves nothing where the copy is not the harness", async () => {
     const name = `${STEM}-links`;
@@ -811,6 +829,24 @@ describe.concurrent("a campaign's recovery from throws and pauses", () => {
       }),
     ).rejects.toThrow("plain failure");
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment" }]);
+  });
+
+  it("ends on the environment where a Builder conversation throws without a crash", async () => {
+    const name = `${STEM}-builderless`;
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const base = answering([], GRADED_SMALL);
+    const flags = [...seeded(name, SMALL), "--practice", "2", "--target", "5", "--level", "0.125"];
+    await expect(
+      harnessBuilder([...flags, "--moves", "3"], {
+        seated: (campaign, given) => {
+          if (of(name, "campaign.move").some(({ move }) => move === "build")) {
+            append(log, "campaign.word", { word: "stop", why: "a retried conversation would end here" });
+          }
+          return { ...base(campaign, given), builder: null };
+        },
+      }),
+    ).rejects.toThrow("name --builder");
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "build" }]);
   });
 
   it("holds a pause before an exam is drafted, on the host's default wall", async () => {

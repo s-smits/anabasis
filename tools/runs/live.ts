@@ -3,13 +3,13 @@ import { Type } from "typebox";
 import { SEATS } from "#src/campaign/opening.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { read, TRACE_KINDS } from "#src/kernel/log.ts";
-import { endedOf } from "#src/kernel/reports.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { lastLaunch } from "./receipt.ts";
 import { lifeOf } from "./diagnosis.ts";
 import { flagOf, ownArgs, processes, runs, SEAT } from "./registry.ts";
 import { answerOf } from "./hosts.ts";
+import { runState } from "./state.ts";
 
 export interface Live {
   readonly name: string;
@@ -82,7 +82,7 @@ export function liveHere(host = "here", running = processes(), found = runs()): 
     .flatMap((run) => {
       const { writing, kept } = lifeOf(run, running);
       if (!writing && !kept) return [];
-      if (!writing && endedOf(read(run.path, TRACE_KINDS)) !== null) return [];
+      if (!writing && runState(run, read(run.path, TRACE_KINDS), running).kind !== "kept") return [];
       const launch = lastLaunch(run.path);
       const login = payerOf(launch?.login, launch?.flags ?? []) ?? null;
       return [{ name: run.name, login, host, ...keysIf(!writing, () => ({ unwritten: true as const })) }];

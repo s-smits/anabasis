@@ -53,6 +53,36 @@ describe("what a campaign runs by", () => {
     );
   });
 
+  it("reads a successor opening's carried fields with defaults for omitted counters", () => {
+    const carriedFor = (carried: Record<string, number | boolean>) =>
+      openingOf([
+        event("campaign.opened", {
+          ...opened.data,
+          parent: { campaign: "a", revised: "h", kind: "tune", carried },
+        }),
+      ])?.parent?.carried;
+    expect(carriedFor({ spent: 2, attempts: 1, tunedThisEpoch: true })).toEqual({
+      spent: 2,
+      sinceStep: 0,
+      attempts: 1,
+      tunedThisEpoch: true,
+    });
+    expect(carriedFor({})?.tunedThisEpoch).toBe(false);
+  });
+
+  it("reads no parent from a successor opening missing any required parent field", () => {
+    const full = { campaign: "a", revised: "h", kind: "tune", carried: {} };
+    const parentWithout = (drop: string) =>
+      openingOf([
+        event("campaign.opened", {
+          ...opened.data,
+          parent: Object.fromEntries(Object.entries(full).filter(([key]) => key !== drop)),
+        }),
+      ])?.parent ?? null;
+    expect(["campaign", "revised", "kind"].map(parentWithout)).toEqual([null, null, null]);
+    expect(parentWithout("none")?.campaign).toBe("a");
+  });
+
   it("plans the operator's cap of promotions as its opening keeps it, and none where lifted or unnamed", () => {
     const capped = (promotions: string) =>
       event("campaign.opened", { ...opened.data, terms: { promotions } });

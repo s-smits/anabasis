@@ -223,7 +223,7 @@ describe("the test's power", () => {
         wins,
         untied,
       }));
-      for (const level of LEVELS) {
+      for (const level of [...LEVELS, 1]) {
         expect(power(scores, 0.5, level)).toBeLessThanOrEqual(level + CLOSE);
         for (const share of [0.5, 0.7, 0.9]) {
           expect(Math.abs(power(scores, share, level) - weighed(drawn, share, level))).toBeLessThan(1e-9);
@@ -334,7 +334,7 @@ describe("a task's score", () => {
     }
   });
 
-  it("gives no objective points to a pairing in which either answer is invalid or two answers tie under the floor", () => {
+  it("gives no objective points to a pairing in which either answer is invalid or two answers tie under the floor, and some to one exactly at it", () => {
     for (const pair of every) {
       const { objective } = pair;
       if (objective === undefined) continue;
@@ -352,6 +352,15 @@ describe("a task's score", () => {
       );
       if (!counts.includes(true)) expect(pointsOf(pair).objective).toBe(0);
     }
+    const once = (scale: "unit" | undefined, fresh: number, old: number) =>
+      pointsOf({
+        task: "t",
+        old: [true],
+        fresh: [true],
+        objective: { direction: "higher", ...keyIfDefined("scale", scale), old: [old], fresh: [fresh] },
+      }).objective;
+    expect(once(undefined, 100, 99)).toBeGreaterThan(0);
+    expect(once("unit", GAP_FLOOR, 0)).toBeGreaterThan(0);
   });
 
   it("rounds every half away from zero and leaves no negative zero", () => {
@@ -427,6 +436,7 @@ describe("how much better one measure is than another", () => {
         expect(gainOver({ direction }, one, other)).toBe(0);
       }
       expect(gainOver({ direction }, 0, 1e-9)).toBe(direction === "lower" ? 1 : -1);
+      expect(gainOver({ direction }, 1e-12, 0)).toBe(direction === "higher" ? 1 : -1);
     }
   });
 });
@@ -566,7 +576,7 @@ describe("a comparison's size, said before it runs", () => {
     }
     return total;
   };
-  const SIZE_LEVELS = [0.0001, 0.02, 0.05, 0.1, 0.2];
+  const SIZE_LEVELS = [0.0001, 0.02, 1 / 32, 0.05, 0.1, 0.2, 0.5];
 
   it("names, for each count of losses, the fewest wins that read a step within the tasks", () => {
     for (const level of SIZE_LEVELS) {

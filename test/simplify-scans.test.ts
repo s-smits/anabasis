@@ -1,4 +1,16 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
+import { capturedExecPath } from "../src/meta/process.ts";
 import { buildImportGraph, parsedSources } from "../tools/oxlint/tree-ast.ts";
 import { identitiesWithoutOwner } from "../tools/oxlint/tree-identity.ts";
 import {
@@ -9,6 +21,7 @@ import {
   unusedFields,
   unusedReexports,
 } from "../tools/oxlint/tree-structure.ts";
+import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 
 function parsed(entries: Record<string, string>) {
   return parsedSources(new Map(Object.entries(entries)));
@@ -142,5 +155,103 @@ describe("AST structural simplify scans", () => {
     expect(identitiesWithoutOwner(files).map((one) => one.detail)).toEqual([
       "`bundle/verdicts.jsonl` is spelled in 2 files and `file` in src/a.ts already names it",
     ]);
+  });
+});
+
+const STAGED_SLOP = join(import.meta.dir, "..", "tools/oxlint/staged-slop.ts");
+const BLOCK = [
+  "  const text = await Bun.file(path).text();",
+  String.raw`  const rows = text.split("\n").filter(Boolean);`,
+  "  const trimmed = rows.map((row) => row.trim());",
+  '  return trimmed.filter((row) => row !== "#");',
+];
+const SLOP_FILES = {
+  "tools/a.ts": [
+    'import { readRows } from "./b.ts";',
+    "console.log(readRows);",
+    "export function lonely(): number {",
+    "  return 2;",
+    "}",
+  ],
+  "tools/b.ts": ["export async function readRows(path: string): Promise<string[]> {", ...BLOCK, "}"],
+  "tools/c.ts": [
+    'import { readRows } from "./b.ts";',
+    "export async function other(path: string): Promise<string[]> {",
+    "  console.log(readRows);",
+    ...BLOCK,
+    "}",
+  ],
+};
+const slopRoot = mkdtempSync(join(tmpdir(), "ana-staged-slop-"));
+const slopTemplate = join(slopRoot, "template");
+const gitAt = (cwd: string, ...args: string[]): string => execTextSync("git", args, { cwd }).trim();
+mkdirSync(join(slopTemplate, "tools"), { recursive: true });
+for (const [path, lines] of Object.entries(SLOP_FILES)) {
+  writeFileSync(join(slopTemplate, path), `${lines.join("\n")}\n`);
+}
+gitAt(slopTemplate, "init", "-q");
+gitAt(slopTemplate, "config", "user.email", "fixture@localhost");
+gitAt(slopTemplate, "config", "user.name", "fixture");
+gitAt(slopTemplate, "add", "-A");
+gitAt(slopTemplate, "commit", "-qm", "base");
+afterAll(() => rmSync(slopRoot, { recursive: true, force: true }));
+
+type Place = readonly [path: string, line: number];
+interface Change {
+  staged?: readonly Place[];
+  unstaged?: readonly Place[];
+  added?: string;
+}
+
+function touch(root: string, [path, line]: Place): void {
+  const lines = readFileSync(join(root, path), "utf8").split("\n");
+  lines[line - 1] = `${lines[line - 1]} `;
+  writeFileSync(join(root, path), lines.join("\n"));
+}
+
+function stagedSlop({ staged = [], unstaged = [], added }: Change) {
+  const root = mkdtempSync(join(slopRoot, "case-"));
+  cpSync(slopTemplate, root, { recursive: true });
+  for (const place of staged) touch(root, place);
+  if (added !== undefined) writeFileSync(join(root, added), "console.log(1);\n");
+  gitAt(root, "add", "-A");
+  for (const place of unstaged) touch(root, place);
+  const { status, stderr } = spawnTextSync(capturedExecPath, [STAGED_SLOP], { cwd: root });
+  const report = join(gitAt(root, "rev-parse", "--absolute-git-dir"), "ana", "slop-report.md");
+  return {
+    status,
+    sites: [...stderr.matchAll(/^ {2}\d+\. (\S+) (\S+) \[/gmu)].map(([, kind, where]) => `${kind} ${where}`),
+    tally: existsSync(report) ? readFileSync(report, "utf8").split("\n")[2] : null,
+  };
+}
+
+const tallyOf = (elsewhere: number): string =>
+  `1 sites touch the lines this commit changes; ${elsewhere} more sit elsewhere in the files it stages.`;
+const CLEAN = { status: 0, sites: [], tally: null };
+const EXPORT_LINE = { status: 1, sites: ["no-unused-export tools/a.ts:3"], tally: tallyOf(1) };
+const BLOCK_PLACE = { status: 1, sites: ["no-duplicate-block tools/b.ts:2"], tally: tallyOf(2) };
+
+describe("the pre-commit slop gate over a fixture repository's staged lines", () => {
+  it.each([
+    ["nothing staged", {}, CLEAN],
+    ["an unused export's own line", { staged: [["tools/a.ts", 3]] }, EXPORT_LINE],
+    ["only the line after it", { staged: [["tools/a.ts", 4]] }, CLEAN],
+    ["the export's line changed but unstaged", { unstaged: [["tools/a.ts", 3]] }, CLEAN],
+    [
+      "a staged file judged on disk",
+      { staged: [["tools/a.ts", 4]], unstaged: [["tools/a.ts", 3]] },
+      EXPORT_LINE,
+    ],
+    ["the line before a duplicate's second place", { staged: [["tools/c.ts", 3]] }, CLEAN],
+    ["that place's first line", { staged: [["tools/c.ts", 4]] }, BLOCK_PLACE],
+    ["that place's last line", { staged: [["tools/c.ts", 7]] }, BLOCK_PLACE],
+    ["the line after that place", { staged: [["tools/c.ts", 8]] }, CLEAN],
+    [
+      "a new file nothing imports",
+      { added: "tools/d.ts" },
+      { status: 1, sites: ["no-unused-module tools/d.ts"], tally: tallyOf(0) },
+    ],
+  ] satisfies [string, Change, ReturnType<typeof stagedSlop>][])("%s", (_name, change, expected) => {
+    expect(stagedSlop(change)).toEqual(expected);
   });
 });

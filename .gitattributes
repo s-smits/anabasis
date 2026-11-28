@@ -1,1 +1,2 @@
 tools/oxlint/not-slop.tsv merge=union
+.claude/skills/mutation-testing/answered-survivors.tsv merge=union

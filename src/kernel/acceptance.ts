@@ -33,6 +33,7 @@ export interface Control {
 }
 
 interface ControlAnswerRun extends Control {
+  readonly task: Task;
   readonly verdicts: readonly [Verdict, Verdict];
 }
 
@@ -182,18 +183,12 @@ function flatRubricNotes(brief: Brief, verdicts: readonly Verdict[]): string[] {
   });
 }
 
-function fieldProbes(
-  given: Read,
-  byId: ReadonlyMap<string, Task>,
-  accepted: readonly ControlAnswerRun[],
-): Probe[] {
+function fieldProbes(given: Read, accepted: readonly ControlAnswerRun[]): Probe[] {
   if (hasJudge(given.brief.objective) && codeObjective(given.brief.objective) === undefined) return [];
   const formed = (field: Field | undefined): field is Field =>
     field !== undefined && answerFormatFault(given.contract.answerFormat, field.answer) === null;
   const props = Object.entries(asRecord(asRecord(given.contract.answerFormat)?.properties) ?? {});
   return accepted.flatMap((run) => {
-    const task = byId.get(run.taskId);
-    if (task === undefined) return [];
     const filled = fieldsOf(run.answer, "$", "filled");
     const record = asRecord(run.answer);
     const absent =
@@ -209,13 +204,12 @@ function fieldProbes(
       ...absent,
     ]
       .filter(formed)
-      .map((field) => ({ run, task, files: run.files, field }));
+      .map((field) => ({ run, task: run.task, files: run.files, field }));
   });
 }
 
 async function probeReading(
   given: Read,
-  byId: ReadonlyMap<string, Task>,
   runs: readonly ControlAnswerRun[],
 ): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
   const { tasks } = given;
@@ -251,23 +245,19 @@ async function probeReading(
     probed(accepted.flatMap((run) => others(run, (other) => other))),
     probed(
       carried
-        ? accepted.flatMap((run) => {
-            const own = byId.get(run.taskId);
-            return own === undefined
-              ? []
-              : others(run, (other) =>
-                  hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
-                );
-          })
+        ? accepted.flatMap((run) =>
+            others(run, (other) =>
+              hiddenOf(other) === hiddenOf(run.task) ? null : { ...run.task, hidden: other.hidden },
+            ),
+          )
         : [],
     ),
     probed(
-      accepted.flatMap((run) => {
-        const task = run.files && run.files.length > 0 ? byId.get(run.taskId) : undefined;
-        return task === undefined ? [] : [{ run, task, files: NO_FILES }];
-      }),
+      accepted.flatMap((run) =>
+        run.files && run.files.length > 0 ? [{ run, task: run.task, files: NO_FILES }] : [],
+      ),
     ),
-    probed(fieldProbes(given, byId, accepted)),
+    probed(fieldProbes(given, accepted)),
   ]);
   const unread = [...Map.groupBy(changed, ({ field }) => field?.path ?? "")].flatMap(([path, results]) =>
     results.every(({ run, verdict }) => spelled(verdict) === spelled(run.verdicts[0])) ? [path] : [],
@@ -332,10 +322,7 @@ function acceptance(
   runs: readonly ControlAnswerRun[],
   found: (toolId: string) => ToolAvailability,
 ): { readonly checks: readonly CheckReading[]; readonly faults: readonly string[] } {
-  const graded = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
-    const task = byId.get(taskId);
-    return task === undefined ? [] : [{ task, verdict }];
-  });
+  const graded = runs.map(({ task, verdicts: [verdict] }) => ({ task, verdict }));
   const toolInfo = (tools: readonly string[]) => ({
     instrument: tools.filter((tool) => found(tool) === true || found(tool) === "pack").join(", ") || AUTHOR,
     missing: tools.filter((tool) => found(tool) === false),
@@ -424,7 +411,11 @@ export async function readChecker(given: Read) {
       throw new Error(`a control names ${control.taskId}, which the pack holds no task for`);
     }
     const first = await decided(verify, task, control.answer, control.files);
-    return { ...control, verdicts: [first, await decided(verify, task, control.answer, control.files)] };
+    return {
+      ...control,
+      task,
+      verdicts: [first, await decided(verify, task, control.answer, control.files)],
+    };
   });
   const idle = doNothingAnswer(given.contract.answerFormat);
   const unformed = answerFormatFault(given.contract.answerFormat, idle);
@@ -436,7 +427,7 @@ export async function readChecker(given: Read) {
         }))
       : [];
   const { checks, faults } = acceptance(brief, byId, runs, given.found);
-  const probed = given.probes === false ? { faults: [], notes: [] } : await probeReading(given, byId, runs);
+  const probed = given.probes === false ? { faults: [], notes: [] } : await probeReading(given, runs);
   return {
     runs,
     checks,

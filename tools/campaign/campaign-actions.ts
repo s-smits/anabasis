@@ -150,8 +150,6 @@ async function runAction(
     bench.halt.abort();
     return text(message);
   };
-  const spent = "The campaign move limit has been reached; the host will stop this conversation.";
-  if (context.used >= context.maxMoves) return halt(spent);
   const aborted = () => signal?.aborted === true;
   if (aborted()) return text("The campaign has been stopped by the host.");
   const writing = context.examining;
@@ -173,7 +171,6 @@ async function runAction(
     if (previous !== undefined) await bench.within(() => previous);
   }
   try {
-    if (context.used >= context.maxMoves) return halt(spent);
     if (context.failed !== null) return text("The campaign has been stopped by the host.");
     const { host } = context.seats;
     await waitPaused(context.log, context.began, context.campaign.limits.wallSeconds, {
@@ -196,7 +193,9 @@ async function runAction(
     // An action that threw with nothing written after its move never started: a refusal the Builder may
     // answer with another action.
     let begun: number | null = null;
+    const revised = new Error("the exam was revised");
     const begin = (made: JsonObject) => {
+      if (eventsOf(read(context.log, TRACE_KINDS), "exam.revised").length > 0) throw revised;
       begun = read(context.log).length + 1;
       context.used += 1;
       moved(context.log, { move, code: named ? decided.code : LED, why: named ? decided.why : CHOSE }, made);
@@ -208,6 +207,7 @@ async function runAction(
         await waitCrashed(context.log, host);
         return text(outcome.said);
       } catch (error) {
+        if (error === revised) return halt("The exam was revised; this campaign hands off to its successor.");
         // Asked before the throw is read as a refusal: a limit that ended a session before its first
         // event is no refusal, and asked again at once the action would meet the same limit.
         if (await waitOut(context.log, error, host?.sleep)) {
@@ -223,10 +223,6 @@ async function runAction(
               ? `The host refused the ${label} action: ${error.message}`
               : `The host refused the ${label} action; choose another action.`,
           );
-        }
-        if (eventsOf(read(context.log, TRACE_KINDS), "exam.revised").length > 0) {
-          bench.halt.abort();
-          return text("The exam was revised; this campaign hands off to its successor.");
         }
         context.failed = { move, why: errorMessage(error) };
         bench.halt.abort();
@@ -424,8 +420,9 @@ function halted(context: CampaignContext, bench: Bench) {
   const reading = actionTurn(context);
   const { decided } = reading;
   const waits = decided.move === "promote" && context.opening.attended;
-  const repairDue = decided.move === "examine" && decided.code === "bound";
-  if (context.used >= context.maxMoves || decided.move === "end" || waits || repairDue) bench.halt.abort();
+  if (context.used >= context.maxMoves || decided.move === "end" || decided.code === "bound" || waits) {
+    bench.halt.abort();
+  }
   return reading;
 }
 

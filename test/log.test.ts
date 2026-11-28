@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { append, read, truncatePartial } from "../src/kernel/log.ts";
+import { append, type EventKind, read, truncatePartial } from "../src/kernel/log.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import {
   appendFileSync,
@@ -127,6 +127,51 @@ describe("the log", () => {
       "task v1 logs its gate twice",
     );
     expect(read(path)).toEqual([proposed, gated]);
+  });
+
+  it("takes one exam revision, only once every non-ladder comparison has reported, and no comparison after it, over every log of up to four such events", () => {
+    const events = [
+      ["exam.revised", { kind: "tune", why: "w" }],
+      ["comparison.started", { session: "g-1", old: "a", fresh: "b" }],
+      ["comparison.started", { session: "g-2", old: "a", fresh: "b", ladder: true }],
+      ["comparison.reported", { session: "g-1" }],
+      ["comparison.reported", { session: "g-2", ladder: true }],
+    ] as const;
+    const logsOf = (length: number): (typeof events)[number][][] =>
+      length === 0 ? [[]] : logsOf(length - 1).flatMap((head) => events.map((one) => [...head, one]));
+    const refusalOf = (kind: EventKind, revised: boolean, open: readonly string[]): string | null => {
+      if (revised && (kind === "comparison.started" || kind === "exam.revised")) {
+        return `no ${kind} after exam.revised; the campaign continues in its successor`;
+      }
+      if (kind !== "exam.revised") return null;
+      return open.length === 0 ? null : "cannot revise the exam while a comparison is open";
+    };
+    let checked = 0;
+    for (const order of [1, 2, 3, 4].flatMap(logsOf)) {
+      const path = fresh();
+      const [started, reported] = [new Set<string>(), new Set<string>()];
+      let revised = false;
+      const kept: EventKind[] = [];
+      for (const [kind, data] of order) {
+        const refusal = refusalOf(
+          kind,
+          revised,
+          [...started].filter((each) => !reported.has(each)),
+        );
+        if (refusal !== null) {
+          expect(() => append(path, kind, data)).toThrow(refusal);
+          continue;
+        }
+        append(path, kind, data);
+        kept.push(kind);
+        revised ||= kind === "exam.revised";
+        if (kind === "comparison.started" && !("ladder" in data)) started.add(data.session);
+        if (kind === "comparison.reported") reported.add(data.session);
+      }
+      expect(read(path).map(({ kind }) => kind)).toEqual(kept);
+      checked += 1;
+    }
+    expect(checked).toBe(5 + 25 + 125 + 625);
   });
 
   it("refuses a release from another process after a concurrent dispute, keeping the log readable", async () => {

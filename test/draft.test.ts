@@ -29,6 +29,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { draftCommand } from "../tools/eval/draft.ts";
+import type { DraftAuditCase, DraftAuditFinding } from "../src/audit/draft-audit.ts";
+import type { Reader } from "../src/audit/auditor.ts";
 import { taskContentDigest } from "../src/audit/probe.ts";
 import { campaignLog, openCampaign, packNamed } from "../tools/campaign/campaign.ts";
 import { draftReading, stagedExamOf, stageExam } from "../tools/campaign/exam.ts";
@@ -54,6 +56,23 @@ const SOLVER = "claude/claude-opus-5-5";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-")));
 const STEM = `test-draft-${String(runtimeProcess.pid)}`;
 const campaigns: string[] = [];
+
+const referee =
+  (audit: (target: DraftAuditCase, reader: Reader) => DraftAuditFinding) =>
+  async (reader: Reader, target: DraftAuditCase): Promise<DraftAuditFinding> => {
+    const result = audit(target, reader);
+    append(target.log, "referee.draft", {
+      session: target.session,
+      pass: target.pass ?? 1,
+      ...keyIfDefined("revision", target.revision),
+      verdict: result.verdict,
+      findings: result.findings,
+      summary: result.summary,
+      probeRows: result.probes,
+      ...keyIfDefined("error", result.error),
+    });
+    return result;
+  };
 
 const SILENT = SOUND;
 const withTools = (tools: readonly string[]): Draft => ({
@@ -805,15 +824,27 @@ describe.concurrent("campaign draft lifecycle", () => {
     );
   });
 
+  it("lets no draft with one checker fault stand", async () => {
+    const name = `${STEM}-one-fault`;
+    await draftCommand(
+      [...opened(name), "--session", "d-1", "--tries", "1"],
+      putting(withTools(["no-such-engine-xyz"])),
+      referee(() => ({ verdict: "sound", findings: [], summary: "should not run", probes: [] })),
+    );
+    const said = read(campaignLog(name)).flatMap(({ kind, data }) =>
+      kind === "draft.call" ? [data.text] : [],
+    );
+    expect(said[0]).toContain("1 fault:\n- ");
+    expect(said[0]).toContain("no-such-engine-xyz, which is not on the verifier's tool path");
+    expect(draftOf(read(campaignLog(name)))).toBeNull();
+  });
+
   it("freezes no exam whose audit ended on an error: ends on a refusal no retry clears, redrafts after a usage limit", async () => {
     const audited = (name: string, error: string) =>
       draftCommand(
         [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
         putting(SOUND),
-        async () => {
-          append(campaignLog(name), "referee.draft", { session: "d-1", pass: 1, verdict: "skipped", error });
-          return { verdict: "skipped", findings: [], summary: error, probes: [], error };
-        },
+        referee(() => ({ verdict: "skipped", findings: [], summary: error, probes: [], error })),
       );
     const [refused, limited] = [`${STEM}-audit-refused`, `${STEM}-audit-limited`];
     await Promise.all([
@@ -871,7 +902,7 @@ describe.concurrent("campaign draft lifecycle", () => {
         // the second hole passes replay and audit 2 flags it; its repeat is blocked by replay past
         // `MAX_DRAFT_AUDITS`; SOUND stands.
         putting(holeOne, holeOne, holeTwo, holeTwo, SOUND),
-        async (_reader, target) => {
+        referee((target) => {
           replayCalls.push({
             pass: target.pass,
             verifiedFixed: target.verifiedFixed,
@@ -884,7 +915,7 @@ describe.concurrent("campaign draft lifecycle", () => {
             summary: `${hole} vacuous`,
             probes: [probeRow(hole)],
           };
-        },
+        }),
       ),
       draftCommand(
         [
@@ -895,7 +926,7 @@ describe.concurrent("campaign draft lifecycle", () => {
           "high",
         ],
         putting(SOUND, SOUND, SOUND, SOUND),
-        async (reader, target) => {
+        referee((target, reader) => {
           seenPasses.push({ effort: reader.effort, pass: target.pass, prior: target.priorFindings });
           return {
             verdict: "defects",
@@ -903,7 +934,7 @@ describe.concurrent("campaign draft lifecycle", () => {
             summary: "vacuous check",
             probes: [],
           };
-        },
+        }),
       ),
       (async () => {
         const name = `${STEM}-audit-sound`;
@@ -911,13 +942,37 @@ describe.concurrent("campaign draft lifecycle", () => {
         await draftCommand(
           [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
           putting(SOUND),
-          async () => {
+          referee(() => {
             calls += 1;
             return { verdict: "sound", findings: [], summary: "sound", probes: [] };
-          },
+          }),
         );
         expect(calls).toBe(1);
         expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
+        const codex = "openai-codex/gpt-6.1-sol";
+        const recorded = { model: SOLVER, effort: "medium" };
+        const readers: string[] = [];
+        const rows: [typeof recorded | undefined, string, string][] = [
+          [recorded, "--reviewer", codex],
+          [recorded, "--reviewer-effort", "low"],
+          [undefined, "--reviewer", codex],
+        ];
+        for (const [index, [opening, ...flags]] of rows.entries()) {
+          await draftCommand(
+            [
+              ...opened(`${STEM}-audit-flagged-${String(index)}`, false, opening),
+              "--session",
+              "d-1",
+              ...flags,
+            ],
+            putting(SOUND),
+            referee((_, reader) => {
+              readers.push(`${reader.model.provider}/${reader.model.id}@${reader.effort}`);
+              return { verdict: "sound", findings: [], summary: "sound", probes: [] };
+            }),
+          );
+        }
+        expect(readers).toEqual([`${codex}@medium`, `${SOLVER}@low`, `${codex}@high`]);
       })(),
       (async () => {
         const name = `${STEM}-audit-skipped-no-error`;
@@ -999,10 +1054,10 @@ describe.concurrent("campaign draft lifecycle", () => {
     await draftCommand(
       [...restartArgs, "--session", "d-2", "--tries", "2"],
       putting(holeTwo, SOUND),
-      async () => {
+      referee(() => {
         restartAudits += 1;
         return { verdict: "sound", findings: [], summary: "should not run", probes: [] };
-      },
+      }),
     );
     expect(restartAudits).toBe(0);
     expect(draftOf(read(restartLog))).toEqual(SOUND);
@@ -1026,12 +1081,11 @@ describe.concurrent("campaign draft lifecycle", () => {
         probeRows: [],
       });
     }
-    await draftCommand([...unverifiedArgs, "--session", "d-2", "--tries", "1"], putting(SOUND), async () => ({
-      verdict: "sound",
-      findings: [],
-      summary: "should not run",
-      probes: [],
-    }));
+    await draftCommand(
+      [...unverifiedArgs, "--session", "d-2", "--tries", "1"],
+      putting(SOUND),
+      referee(() => ({ verdict: "sound", findings: [], summary: "should not run", probes: [] })),
+    );
     expect(draftOf(read(unverifiedLog))).toBeNull();
 
     const rewriteName = `${STEM}-audit-unverified-pass`;
@@ -1050,7 +1104,10 @@ describe.concurrent("campaign draft lifecycle", () => {
         session: "d-1",
         pass,
         verdict: "defects",
-        findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "old keyword search" }],
+        findings:
+          pass === 1
+            ? [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "old keyword search" }]
+            : [],
         summary: "keyword check",
         probeRows: [
           {
@@ -1113,7 +1170,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     const deletedRun = await draftCommand(
       [...opened(deletedName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "4"],
       putting(fourExamples, reorderedFour, holeOne, SOUND),
-      async () => {
+      referee(() => {
         deletedAuditCalls += 1;
         return {
           verdict: "defects",
@@ -1121,7 +1178,7 @@ describe.concurrent("campaign draft lifecycle", () => {
           summary: "vacuous on ex-004",
           probes: [probeFour],
         };
-      },
+      }),
     );
     expect(deletedRun).toMatchObject({ ended: "finished", puts: 4 });
     expect(deletedAuditCalls).toBe(1);

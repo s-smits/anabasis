@@ -114,7 +114,7 @@ export function systemPrompt(modePrompts: ModePrompts, objective?: ObjectiveRule
       "",
       "The solver is pi's coding agent; harness/ (see HARNESS.md) holds `agent/tools-spec.json`, `.toolchain/` (relative paths/symlinks only, never your home path) and `agent/BUILT_AGENTS.md`. You may revise or rewrite from scratch, kept/ or starter; the solver always decides what it writes and submits.",
     ].join("\n"),
-    `Comparisons pair candidate vs reference: validity first, then objective gains >= ${String(GAP_FLOOR * 100)}% ${gapBasis(objective)} (plus swapped pairwise judging when declared). Retained tasks guard against regressions. Cost/turns are unscored; timeouts, turn-limit expiry or malformed flags count as fails; check-defect fails are excluded.`,
+    `Comparisons pair candidate vs reference: validity first, then objective gains >= ${String(GAP_FLOOR * 100)}% ${gapBasis(objective)} (plus swapped pairwise judging when declared). Retained tasks guard against regressions. Cost and turns are unscored, and each arm's mean solve cost and turns are reported alongside each reading so you can spot prompt bloat or rushed solves; every guide line enters every solve's context. Timeouts, turn-limit expiry or malformed flags count as fails; check-defect fails are excluded.`,
     "Use read, edit and write with paths relative to home (e.g. harness/agent/BUILT_AGENTS.md), and bash for everything else.",
     [modePrompts.closing, `Ending via finish or limits leaves harness/ ${modePrompts.frozen}.`]
       .filter((sentence) => sentence !== "")

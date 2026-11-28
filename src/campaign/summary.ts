@@ -9,6 +9,7 @@ import {
   passed,
   practiceRan,
   type Ran,
+  ranUnder,
   rejectionAside,
   rulingsOf,
   solvesIn,
@@ -60,6 +61,11 @@ interface Built extends SoFar {
   readonly billed: number;
 }
 
+interface SideMean {
+  readonly billed: number;
+  readonly turns: number;
+}
+
 interface Compared {
   readonly step: "comparison";
   readonly id: string;
@@ -75,6 +81,7 @@ interface Compared {
   readonly validity: number | null;
   readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] } | null;
   readonly points: Measures | null;
+  readonly means: { readonly old: SideMean; readonly fresh: SideMean } | null;
   readonly aside: number;
   readonly grain: { readonly largest: number; readonly of: number } | null;
   readonly repeat: { readonly with: string; readonly tasks: number } | null;
@@ -239,6 +246,22 @@ function rulingCounts(
   return counts;
 }
 
+function sideMeanOf(solves: readonly Ran[], harness: string): SideMean | null {
+  const rows = solves.flatMap((solve) =>
+    solve.under.harness === harness &&
+    passed(solve) !== null &&
+    isNumber(solve.end?.billed) &&
+    isNumber(solve.end?.turns)
+      ? [{ billed: solve.end.billed, turns: solve.end.turns }]
+      : [],
+  );
+  if (rows.length === 0) return null;
+  return {
+    billed: rows.reduce((sum, { billed }) => sum + billed, 0) / rows.length,
+    turns: rows.reduce((sum, { turns }) => sum + turns, 0) / rows.length,
+  };
+}
+
 function compared(events: readonly LogEvent[], id: string, shared: Shared, began: number): Compared {
   const report = reported(events, id);
   const last = shared.reports.get(id);
@@ -250,17 +273,22 @@ function compared(events: readonly LogEvent[], id: string, shared: Shared, began
   const pairs = last === undefined ? [] : pairsReported(events, last);
   const fixed = fixedIn(events, id);
   const repeat = fixed === null ? null : overlapOf(events, fixed);
+  const old = text(start.old) ?? "";
+  const fresh = text(start.fresh) ?? "";
+  const ran = ranUnder(events, solves);
+  const [oldMean, freshMean] = [sideMeanOf(ran, old), sideMeanOf(ran, fresh)];
   return {
     step: "comparison",
     id,
-    old: text(start.old) ?? "",
-    fresh: text(start.fresh) ?? "",
+    old,
+    fresh,
     tasks: Array.isArray(start.tasks) ? start.tasks.length : count(start.tasks),
     solves: count(start.solves),
     level: count(start.level),
     cap: isNumber(dollars) ? dollars : null,
     modelTurns: isNumber(told) ? told : null,
     ...reportFields(report),
+    means: oldMean !== null && freshMean !== null ? { old: oldMean, fresh: freshMean } : null,
     validity: pairs.length === 0 ? null : pairs.filter((pair) => pointsOf(pair).validity !== 0).length,
     repeat: repeat === null ? null : { with: repeat.with, tasks: repeat.tasks.length },
     rulings: rulingCounts(solves, shared.rulings),

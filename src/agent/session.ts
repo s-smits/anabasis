@@ -109,13 +109,13 @@ export function traceSink(log: string, of: SeatKind, id: string | (() => string)
         ms: started === undefined || woke ? null : performance.now() - started.at,
       });
     },
-    steer: (text: string) => {
+    steer: (text: string, refused: boolean) => {
       append(log, traceKind(of, "call"), {
         ...named(),
         turn: turn(),
         tool: "steer",
         args: {},
-        isError: false,
+        isError: refused,
         text,
       });
     },
@@ -144,6 +144,8 @@ export function traceSink(log: string, of: SeatKind, id: string | (() => string)
     },
   };
 }
+
+const STEER = { type: "input", whenBusy: "steer", whenIdle: "reject" } as const;
 
 export async function runAgent(seat: AgentSpec): Promise<AgentRun> {
   const home = seat.home ?? hostScratch("claude-cli-seat-");
@@ -215,10 +217,10 @@ export async function runAgent(seat: AgentSpec): Promise<AgentRun> {
       },
     });
     seat.steer?.(async (content) => {
-      frame.steer(content);
-      await conversation
-        .submit({ type: "input", content, whenBusy: "steer", whenIdle: "reject" }, BACKGROUND_CONTEXT)
-        .catch(() => undefined);
+      const [sent] = await Promise.allSettled([
+        conversation.submit({ ...STEER, content }, BACKGROUND_CONTEXT),
+      ]);
+      frame.steer(content, sent?.status === "rejected");
     });
     if (!shutdown.aborted) {
       const input = await conversation.submit({ type: "input", content: seat.opening }, BACKGROUND_CONTEXT);
@@ -307,7 +309,7 @@ function sessionHooks(seat: AgentSpec, halt: () => void, meter: ReturnType<typeo
   return Object.assign(frame, {
     over,
     before,
-    steer: (text: string) => sink?.steer(text),
+    steer: (text: string, refused: boolean) => sink?.steer(text, refused),
     committed: tools.committed,
     hooks: [
       hook(GenerationTask, {

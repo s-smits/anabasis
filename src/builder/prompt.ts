@@ -43,7 +43,7 @@ interface SessionLimits {
 }
 
 const GOAL =
-  "Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.";
+  "Your harness is measured against a reference harness on hidden held-out tasks under identical solver and limits.";
 
 export interface ModePrompts {
   readonly closing: string;
@@ -58,10 +58,9 @@ export const MODE_PROMPTS: Readonly<Record<"host" | "builder", ModePrompts>> = {
   host: {
     closing: "",
     frozen: "frozen and measured",
-    opening:
-      "Return this session's opening message again, as it was sent: the public rules and the answer format, the practice tasks with their record at the start, every failed practice solve and each comparison so far, and the session's limits. It changes nothing. Use it when the conversation no longer holds those facts.",
+    opening: "Return this session's opening record and limits unchanged.",
     finish:
-      "End the session. What harness/ holds now is frozen and measured. Say in one or two sentences what you changed and what you expect it to move. A harness that does not open, or that has changed since your last practice solve while solves are left, is said once and not refused: call finish again to end the session so.",
+      "End the session and freeze harness/ for measurement. State what changed and why. Call finish again to acknowledge any notice.",
     broken: {
       unpractised: "no harness of this session is measured",
       practised: "the harness your last practice solve ran is measured in its place",
@@ -70,12 +69,11 @@ export const MODE_PROMPTS: Readonly<Record<"host" | "builder", ModePrompts>> = {
   },
   builder: {
     closing:
-      "You lead the campaign with its tools, and each one's result ends with the campaign's facts. A promotion ends nothing: the next step is measured against the new reference, and the climb goes on for as many steps as you find. The campaign ends at its budget, on its provider, on the operator's word, on a comparison stopped by check defects, after as many moves in a row without a gain as its patience, after as many readings that left the reference no room or Examiner sessions that held out no task, or once three conversations in a row have made no campaign move.",
+      "Drive the campaign with its tools. A promotion advances the reference and continues the climb until budget, patience, no-room, check defects, operator stop or three idle conversations.",
     frozen: "frozen",
-    opening:
-      "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits, for when this conversation no longer holds them. It changes nothing.",
+    opening: "Read the current public rules, practice record, failures, comparisons and session limits.",
     finish:
-      "End this conversation and freeze harness/, measuring nothing. Record what changed, what remains unmeasured and what you would try next. Call finish again to acknowledge a notice about the harness.",
+      "End this conversation and freeze harness/ without comparing. Note what changed, what is unmeasured and next steps. Call finish again to acknowledge any notice.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",
@@ -84,10 +82,7 @@ export const MODE_PROMPTS: Readonly<Record<"host" | "builder", ModePrompts>> = {
   },
 };
 
-const HANDOVER =
-  `The next session opens in a fresh home and receives only ${MEMORY_FILE} (plain file, no symlink), ` +
-  `shown newest-first up to ${String(CONTEXT_OUTPUT_LIMIT)} characters (longer notes are cut to head and tail). ` +
-  "Update it before calling finish, which ends the session on that turn.";
+const HANDOVER = `The next session starts in a fresh home reading only ${MEMORY_FILE} (plain file, newest-first up to ${String(CONTEXT_OUTPUT_LIMIT)} characters). Update it before calling finish.`;
 
 export interface Used {
   readonly turns: number;
@@ -103,33 +98,25 @@ function tried(harness: string | Error, practice: "counted" | "uncounted"): stri
 }
 
 export const shellWalls = (network: NetworkReach): string =>
-  ` Runs in your home directory (holding harness/, practice/, resources.json, HARNESS.md, notes, and kept/ copies of earlier harnesses; only harness/ is frozen). ${
+  ` Runs in your home (harness/, practice/, resources.json, HARNESS.md, kept/; only harness/ is frozen). ${
     network === "unreached"
-      ? "No network access, so a program the solver runs is one written here or already on the host."
-      : `Network is reachable, so packages and programs can be installed under harness/.toolchain.${INSTALLER_TOLD[network]}`
-  } Writable: your home and $TMPDIR, which persists for the session; a write under /tmp is refused or does not outlive the command. Readable: host toolchains and public runtime roots, never the repository or private data. Background jobs are killed when a command returns, so one is waited for in the command that started it.`;
+      ? "No network access."
+      : `Network reachable for installs under harness/.toolchain.${INSTALLER_TOLD[network]}`
+  } Write to home or $TMPDIR (never /tmp); no repository/private access; background jobs end on return.`;
 
 export function systemPrompt(modePrompts: ModePrompts, objective?: ObjectiveRule): string {
   return [
-    "You are the Builder. You build and refine a Built Harness (programs and operating guide) for a separate solving model in one domain. The host owns verification, acceptance, and scoring.",
-    `${GOAL} Measured tasks are never practice tasks and include families not seen in practice. One hard rule: nothing in harness/ may name a task, copy its text, or embed its answer.`,
+    "You are the Builder. Build and refine a Built Harness (programs and operating guide) for a separate solving model in one domain. The host owns verification, acceptance and scoring.",
+    `${GOAL} Measured tasks include unseen families; never name a task, copy its text or embed its answer in harness/.`,
     [
-      "Practice tasks are diagnostic samples of how the solver behaves in this domain; reading solver traces alongside task inputs and public rules exposes general gaps in method, tooling, or verification. One practice solve is noisy (the same harness can fail and then pass), anything edited after your last practice solve is measured untried, and narrow recipes or constants fitted to practice tasks fail to transfer to unseen tasks and families. General, composable programs under .toolchain/ transfer across unseen tasks and families, whereas single-family scripts sit idle outside the family they were written for. Every line of agent/BUILT_AGENTS.md enters every solve's prompt, so concise guides and pruning uninvoked programs or stale prose leave room for reading new tasks.",
-      `Kept harnesses are also exported and run on ordinary domain workspaces where public/task.json, public/files/, public/resources/, answer.json, submit, and campaign scoring do not exist. Export keeps agent/BUILT_AGENTS.md up to the heading "${HOST_ONLY}" and strips everything under it, so keep sections above that heading concise and limited to portable tools, libraries, and general domain verification over ordinary files; put campaign paths, answer fields, rule IDs, exam-specific wrappers, and submission strictly under "${HOST_ONLY}".`,
+      'Use practice tasks to diagnose general gaps in method, tooling and deliverable verification: run `practice` (including `under: "reference"`) and inspect both tool calls AND delivered files side-by-side via `read_trace(solve, file=...)` (checking deliverable integrity, diagnostics, clarity and omitted requirements—especially when the objective includes judged criteria). Single solves are noisy; narrow practice-fitted recipes fail to transfer.',
+      `General, composable programs under .toolchain/ transfer across unseen tasks and external workspaces; prune unused scripts and stale prose. Keep \`agent/BUILT_AGENTS.md\` lean above \`${HOST_ONLY}\` (concise portable tool invocation and high-leverage verification habits, storing longer reference docs under \`.toolchain/\` for on-demand reading) and put all campaign paths (\`public/task.json\`, \`answer.json\`, \`submit\`), rule IDs and campaign wrappers strictly under \`${HOST_ONLY}\`, which export strips. Let the solver use its full budget for discovery, diagnostics and reopening deliverables.`,
       "",
-      "The solver is pi's coding agent. Your harness lives in harness/ (see HARNESS.md for shapes, conventions, a worked example, and the starter guide) and has three parts:",
-      "- agent/tools-spec.json: selects pi coding tools for the solver (read, bash, edit, write).",
-      "- .toolchain/: executables runnable by name in both your shell and the solver's.",
-      "- agent/BUILT_AGENTS.md: the operating guide read into the solver's system prompt.",
-      'You may revise or rewrite any part from scratch, from kept/, or from the starter; only harness/ at freeze is measured. Harnesses run from another directory than your home, so launchers resolve paths relative to themselves (as "$(dirname "$0")" does) and symlinks use relative targets; any script or link naming your home is refused at freeze.',
-      "Hidden checks enforce the public rules. Your programs spend the solve's shared turn and time budget; the solver always decides what it writes to answer.json and submits.",
+      "The solver is pi's coding agent; harness/ (see HARNESS.md) holds `agent/tools-spec.json`, `.toolchain/` (relative paths/symlinks only, never your home path) and `agent/BUILT_AGENTS.md`. You may revise or rewrite from scratch, kept/ or starter; the solver always decides what it writes and submits.",
     ].join("\n"),
-    `Comparisons pair your candidate against the reference on each task. Validity comes first: an invalid answer never beats a valid one. Between valid answers, an objective gain of at least ${String(GAP_FLOOR * 100)}% ${gapBasis(objective)} breaks ties. Earlier solved tasks remain in comparisons alongside new ones, so regressions on easy tasks cost comparisons. Cost and turns are reported but unscored; running out of turns, time, or context without submitting, or flagging a task malformed, counts as a fail. Check-defect fails are excluded and not yours to build around.`,
-    "Use read, edit, and write with paths relative to your home (such as harness/agent/BUILT_AGENTS.md), and bash for everything else: searching, listing, running and installing. Each reply counts as one turn, with or without a tool call.",
-    [
-      modePrompts.closing,
-      `The session ends when you call finish or hit its limits, and harness/ is then ${modePrompts.frozen}.`,
-    ]
+    `Comparisons pair candidate vs reference: validity first, then objective gains >= ${String(GAP_FLOOR * 100)}% ${gapBasis(objective)} (plus swapped pairwise judging when declared). Retained tasks guard against regressions. Cost/turns are unscored; timeouts, turn-limit expiry or malformed flags count as fails; check-defect fails are excluded.`,
+    "Use read, edit and write with paths relative to home (e.g. harness/agent/BUILT_AGENTS.md), and bash for everything else.",
+    [modePrompts.closing, `Ending via finish or limits leaves harness/ ${modePrompts.frozen}.`]
       .filter((sentence) => sentence !== "")
       .join(" "),
   ].join("\n\n");

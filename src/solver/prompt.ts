@@ -1,4 +1,5 @@
 import type { AgentTool } from "../agent/session.ts";
+import { DELIVERABLES, fileRowBytes } from "../kernel/answer-files.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { GUIDE_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
@@ -37,8 +38,6 @@ export interface Told {
 }
 
 const TASK_FILES = "public/files";
-
-const NAME_BYTES = 255;
 
 export const NUDGE = "Finish the task with the available tools, then submit your answer.";
 
@@ -157,33 +156,38 @@ export function firstTurn(task: PublicTask): string {
   return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(opened(task.publicInput), null, 2)}`;
 }
 
-function opened(publicInput: JsonValue): JsonValue {
+export function opened(publicInput: JsonValue, filesDir = TASK_FILES): JsonValue {
   const record = asRecord(publicInput);
   if (record === null || !Array.isArray(record.files)) return publicInput;
   const written = taskFiles(publicInput);
   const files = record.files.map((row) => {
-    const { path, text, ...rest } = asRecord(row) ?? {};
-    if (!isString(path) || !isString(text) || written.get(path) !== text) return row;
-    written.delete(path);
-    return { path, ...rest, file: `${TASK_FILES}/${path}`, bytes: Buffer.byteLength(text) };
+    const held = asRecord(row);
+    if (held === null || !isString(held.path)) return row;
+    const bytes = written.get(held.path);
+    if (bytes === undefined || fileRowBytes(held)?.equals(bytes) !== true) return row;
+    written.delete(held.path);
+    const { text: _t, base64: _b, entries: _e, ...rest } = held;
+    return { ...rest, path: held.path, file: `${filesDir}/${held.path}`, bytes: bytes.length };
   });
   return { ...record, files };
 }
 
-function taskFiles(publicInput: JsonValue): Map<string, string> {
+export function taskFiles(publicInput: JsonValue): Map<string, Buffer> {
   const rows = asRecord(publicInput)?.files;
-  const files = new Map<string, string>();
+  const files = new Map<string, Buffer>();
+  let total = 0;
   for (const each of Array.isArray(rows) ? rows : []) {
-    const { path, text } = asRecord(each) ?? {};
-    if (!isString(path) || !isString(text)) continue;
-    const named =
-      Buffer.byteLength(path) <= NAME_BYTES &&
-      !path.includes("\0") &&
-      path.split("/").every((part) => part !== "" && part !== "." && part !== "..");
+    const row = asRecord(each);
+    const bytes = row === null ? null : fileRowBytes(row);
+    if (bytes === null || !isString(row?.path) || total + bytes.length > DELIVERABLES.bytes) continue;
+    const path = row.path;
     const apart = [...files.keys()].every(
       (other) => other !== path && !other.startsWith(`${path}/`) && !path.startsWith(`${other}/`),
     );
-    if (named && apart) files.set(path, text);
+    if (apart) {
+      files.set(path, bytes);
+      total += bytes.length;
+    }
   }
   return files;
 }
@@ -217,9 +221,9 @@ export function seedHome(
       "utf8",
     );
   }
-  for (const [path, text] of taskFiles(task.publicInput)) {
+  for (const [path, bytes] of taskFiles(task.publicInput)) {
     mkdirSync(dirname(join(home, TASK_FILES, path)), { recursive: true });
-    writeFileSync(join(home, TASK_FILES, path), text, "utf8");
+    writeFileSync(join(home, TASK_FILES, path), bytes);
   }
   return homeHolds(task, resources);
 }

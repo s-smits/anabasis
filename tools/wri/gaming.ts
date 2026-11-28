@@ -7,10 +7,10 @@ import { ORIGINS, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { testOf } from "#src/kernel/compare.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { callsOf } from "#src/kernel/trace.ts";
 import { objectiveOf } from "#src/kernel/verify.ts";
-import { asRecord } from "#src/meta/json-shape.ts";
+import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { draftAuditPasses, unverifiedFinalPasses } from "./components.ts";
@@ -18,7 +18,6 @@ import {
   emitIf,
   type Index,
   indexOf,
-  items,
   measured,
   percent,
   practiceOf,
@@ -48,6 +47,11 @@ interface GamingScan {
     readonly lowProbeSound: number;
   };
   readonly reversals: readonly string[];
+  readonly examiner: {
+    readonly readReviews: number;
+    readonly reviseCalls: number;
+    readonly revised: string | null;
+  };
   readonly builder: {
     readonly maxTaskRepeats: number;
     readonly heavyTasks: number;
@@ -72,9 +76,23 @@ const listed = (values: readonly (string | number)[], sep = ", "): string =>
 const finalCount = (value: unknown, series: readonly number[]): number =>
   Array.isArray(value) ? value.length : (series.at(-1) ?? 0);
 
+function examinerTelemetry(log: Index): GamingScan["examiner"] {
+  const tools = callsOf(log.traces, "exam").map(({ tool }) => tool);
+  const kind = eventsOf(log.events, "exam.revised").at(-1)?.event.data.kind;
+  return {
+    readReviews: tools.filter((tool) => tool === "read_reviews").length,
+    reviseCalls: tools.filter((tool) => tool === "revise_exam").length,
+    revised: isString(kind) ? kind : null,
+  };
+}
+
 function gamingScanOf(log: Index): GamingScan {
   const puts = callsOf(log.traces, "draft").filter(({ tool }) => tool === "draft_exam");
-  const series = (key: "checks" | "rules") => puts.map(({ args }) => items(asRecord(args)?.[key]).length);
+  const series = (key: "checks" | "rules") =>
+    puts.flatMap(({ args }) => {
+      const raw = asRecord(args)?.[key];
+      return Array.isArray(raw) ? [raw.length] : [];
+    });
   const checksSeries = series("checks");
   const rulesSeries = series("rules");
   const standing = draftOf(log.events);
@@ -162,6 +180,7 @@ function gamingScanOf(log: Index): GamingScan {
       ).length,
     },
     reversals,
+    examiner: examinerTelemetry(log),
     builder: { maxTaskRepeats, heavyTasks, heavySessions, untriedCompares },
     solver: {
       repeatedObjectiveClusters: clusters.length,
@@ -174,7 +193,7 @@ function gamingScanOf(log: Index): GamingScan {
 }
 
 export function gamingRows(events: readonly LogEvent[]): string[] {
-  const { draft, draftAudit, reversals, builder, solver } = gamingScanOf(indexOf(events));
+  const { draft, draftAudit, reversals, examiner, builder, solver } = gamingScanOf(indexOf(events));
   const validShare = draft.totalScored > 0 ? percent(draft.validScored / draft.totalScored) : "n/a";
   const leads = pick([
     [draft.droppedChecks || draft.droppedRules, "draft-rule-drop"],
@@ -191,7 +210,7 @@ export function gamingRows(events: readonly LogEvent[]): string[] {
     `gaming: ${plural(leads.length, "lead")} (${listed(leads)})`,
     `  draft: ${plural(draft.puts, "put")}, checks [${listed(draft.checksSeries, "->")}]${draft.droppedChecks ? " (dropped)" : ""}, rules [${listed(draft.rulesSeries, "->")}]${draft.droppedRules ? " (dropped)" : ""}; scored validity ${share(draft.validScored, draft.totalScored)} (${validShare})`,
     `  referee.draft: ${String(draftAudit.passes)} passes, ${String(draftAudit.probes)} probes, findings ${tally(draftAudit.findings)}, objective-declared ${draftAudit.objectiveDeclared ? "yes" : "no"}, low-probe-sound ${String(draftAudit.lowProbeSound)}, unverified-freeze ${draftAudit.unverifiedFreeze ? "yes" : "no"}`,
-    `  examiner: chosen/after reversals: ${listed(reversals, "; ")}`,
+    `  examiner: chosen/after reversals: ${listed(reversals, "; ")}; read_reviews ${String(examiner.readReviews)}, revise_exam ${String(examiner.reviseCalls)}${examiner.revised === null ? "" : `, revised (${examiner.revised})`}`,
     `  builder: max ${String(builder.maxTaskRepeats)} practice solves/task (${String(builder.heavyTasks)} tasks >=${String(HILL_CLIMB_REPEATS)}), untried compares ${String(builder.untriedCompares)}${heavyNote}`,
     `  solver: identical-objective clusters ${String(solver.repeatedObjectiveClusters)}${topNote}`,
   ];

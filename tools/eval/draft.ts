@@ -5,29 +5,41 @@
  * `contract.frozen`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import { CLAUDE_SESSIONS_DIR } from "#src/agent/backends/claude-transcript.ts";
 import { unaudited } from "#src/campaign/scheduler.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
-import { read } from "#src/kernel/log.ts";
+import { read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { nonRetryableProvider } from "#src/kernel/solve.ts";
 import {
   type DraftAuditCase,
   type DraftAuditFinding,
   formatDraftFinding,
+  persistedDraftDefects,
   replayDraftProbes,
   reviewDraft,
 } from "#src/audit/draft-audit.ts";
 import type { Reader } from "#src/audit/auditor.ts";
 import { isString } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, examinerSession, REPO, stayAwake, worktreesOf } from "../campaign/campaign.ts";
+import {
+  campaignLog,
+  examinerSession,
+  hostSession,
+  REPO,
+  stayAwake,
+  worktreesOf,
+} from "../campaign/campaign.ts";
+import { FORK_OPTIONS, seatFork } from "../campaign/seat-fork.ts";
+import { rubricLaneOf } from "../campaign/round.ts";
 import { keepReading } from "../eval/accept.ts";
 import { draftReading } from "../campaign/exam.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
-type DraftAuditor = (reader: Reader, target: DraftAuditCase) => Promise<DraftAuditFinding>;
+export type DraftAuditor = (reader: Reader, target: DraftAuditCase) => Promise<DraftAuditFinding>;
 
 /** The initial audit and one verify-after-fix pass. */
 const MAX_DRAFT_AUDITS = 2;
@@ -37,13 +49,16 @@ const OPTIONS = {
   session: { type: "string" },
   examiner: { type: "string" },
   "examiner-effort": { type: "string", default: "high" },
-  tries: { type: "string", default: "6" },
-  minutes: { type: "string", default: "60" },
-  turns: { type: "string", default: "40" },
+  reviewer: { type: "string" },
+  "reviewer-effort": { type: "string" },
+  tries: { type: "string", default: "8" },
+  minutes: { type: "string", default: "90" },
+  turns: { type: "string", default: "80" },
   jobs: { type: "string", default: "4" },
   /** The setting flags, read when the log records no setting yet, for the solve budget shown to the
    *  drafting Examiner. */
   ...SETTING_OPTIONS,
+  ...FORK_OPTIONS,
   target: { type: "string" },
 } as const;
 
@@ -51,15 +66,18 @@ type DraftSeen = NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
 
 /** Replays prior defect probes at no model cost before spending an audit pass, and still replays
  *  them past `MAX_DRAFT_AUDITS`. */
-function draftAuditGate(given: {
+export function draftAuditGate(given: {
   readonly session: string;
   readonly prompt: string;
   readonly log: string;
   readonly auditor: DraftAuditor | null;
   readonly reader: Reader | null;
+  readonly revision?: string;
+  readonly required?: boolean;
 }) {
-  let audits = 0;
-  const priorReviews: DraftAuditFinding[] = [];
+  const seeded = persistedDraftDefects(read(given.log, TRACE_KINDS), given.revision);
+  let audits = seeded.audits;
+  const priorReviews = [...seeded.prior];
   return async (seen: DraftSeen): Promise<readonly string[]> => {
     const verifiedFixed: string[] = [];
     const unverified: string[] = [];
@@ -74,11 +92,18 @@ function draftAuditGate(given: {
       verifiedFixed.push(...replay.verifiedFixed);
       unverified.push(...replay.unverified);
     }
-    if (audits >= MAX_DRAFT_AUDITS || given.auditor === null || given.reader === null) return [];
-    audits += 1;
+    const cap = unverified.length > 0 ? MAX_DRAFT_AUDITS + 1 : MAX_DRAFT_AUDITS;
+    if (audits >= cap) {
+      return unverified.map(
+        (finding) => `${finding} (prior defect probe could not be verified fixed after the audit cap)`,
+      );
+    }
+    if (given.auditor === null) return [];
+    if (given.reader === null) return given.required === true ? ["the audit needs a reviewer seat"] : [];
     const review = await given.auditor(given.reader, {
       session: given.session,
-      pass: audits,
+      pass: audits + 1,
+      ...keyIfDefined("revision", given.revision),
       prompt: given.prompt,
       contract: seen.contract,
       checks: seen.checks,
@@ -90,12 +115,34 @@ function draftAuditGate(given: {
       verifiedFixed,
       log: given.log,
     });
+    if (review.verdict === "skipped") {
+      return review.error === undefined || given.required === true
+        ? [`independent check audit recorded no verdict (${review.summary}); submit the draft again to retry`]
+        : [];
+    }
     if (review.verdict !== "defects" || review.findings.length === 0) {
       priorReviews.length = 0;
       return [];
     }
+    audits += 1;
     priorReviews.push(review);
     return review.findings.map(formatDraftFinding);
+  };
+}
+
+export function draftAuditReader(
+  values: { readonly reviewer?: string | undefined; readonly "reviewer-effort"?: string | undefined },
+  opening: ReturnType<typeof openingOf>,
+): Reader | null {
+  const recorded = opening?.seats.reviewer ?? null;
+  const model = values.reviewer ?? recorded?.model;
+  if (model === undefined) return null;
+  const effort = values["reviewer-effort"] ?? recorded?.effort ?? "high";
+  return {
+    model: modelNamed(model),
+    // SAFETY: `effort` is a pi thinking level validated by the backend on call.
+    effort: effort as ThinkingLevel,
+    models: examinerSession,
   };
 }
 
@@ -119,37 +166,31 @@ export async function draftCommand(
       `campaign ${name} did not open from a prompt, so there is nothing to draft its exam from: open it with tools/campaign/harness-builder.ts --prompt`,
     );
   }
-  const reviewer = opening?.seats.reviewer ?? null;
   const defaultAuditor: DraftAuditor | null = session === examine ? reviewDraft : null;
   const auditor: DraftAuditor | null = audit === undefined ? defaultAuditor : audit;
-  const auditReader: Reader | null =
-    reviewer === null
-      ? null
-      : {
-          model: modelNamed(reviewer.model),
-          // SAFETY: `reviewer.effort` is the pi thinking level recorded on `campaign.opened`.
-          effort: reviewer.effort as ThinkingLevel,
-          models: examinerSession,
-        };
+  const auditReader = draftAuditReader(values, opening);
+  const lane = rubricLaneOf(values.reviewer ?? opening?.seats.reviewer?.model, opening?.solver?.model);
   const setting = settingAsked(values, recordedSetting(events));
   const { wallSeconds, modelTurns } = setting.named.limits;
   /** The last entry is the accepted draft's reading. */
   const readings: (DraftSeen | undefined)[] = [];
   const auditClean = draftAuditGate({ session: id, prompt, log, auditor, reader: auditReader });
+  const model = modelNamed(examiner);
+  const forked = seatFork(log, "draft", model, values);
   stayAwake();
   const drafted = await session(
     {
       id,
       mode: "draft",
       prompt,
-      judged: opening?.judged === true,
+      lane,
       budget: { modelTurns: modelTurns ?? null, minutes: wallSeconds / 60, solves: setting.solves },
       reading: async (draft, home) => {
         const { faults, read: seen } = await draftReading(dirname(log), draft, Number(values.jobs), home);
         readings.push(seen);
         return faults.length > 0 || seen === undefined ? faults : await auditClean(seen);
       },
-      model: modelNamed(examiner),
+      model,
       // SAFETY: effort is a pi thinking level; unsupported values are rejected by the backend.
       effort: values["examiner-effort"] as ThinkingLevel,
       limits: {
@@ -157,8 +198,14 @@ export async function draftCommand(
         turns: Number(values.turns),
         puts: Number(values.tries),
       },
-      models: examinerSession,
+      models: hostSession({
+        webSearch: false,
+        cacheTtl: "1h",
+        persistDir: join(dirname(log), CLAUDE_SESSIONS_DIR),
+        ...forked?.seat,
+      }),
       log,
+      ...keyIfDefined("resumeWith", forked?.resumeWith),
     },
     // Kept beside the log so later task-writing sessions inherit the generators and environment made
     // while drafting.

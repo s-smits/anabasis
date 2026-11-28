@@ -3,6 +3,7 @@
  * --events <n>] [--as-ran])`
  */
 import { epochsOf } from "#src/campaign/climb.ts";
+import { EXAMINER_HOMES, restoreHome } from "#src/examiner/home-store.ts";
 import { lastHost } from "#src/kernel/condition.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
@@ -22,6 +23,7 @@ import { CAMPAIGNS, logEvents, Misused, SEED_FILE, wholeLines } from "./registry
 import { logAcross } from "./snapshots.ts";
 
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started", "draft.started"]);
+const CUT_BEFORE = new Set<unknown>([...SESSION_STARTS, "comparison.started"]);
 /** The endings that replace the Examiner's home (`src/examiner/shell.ts`). */
 const HOME_ENDS = new Set<unknown>(["exam.finished", "draft.finished"]);
 
@@ -45,9 +47,9 @@ function prefixLineCount(lines: readonly string[], cut: Cut): number {
   if (cut.before === undefined) return lines.length;
   const start = lines.findIndex((line) => {
     const event = asRecord(capturedJsonParse(line));
-    return SESSION_STARTS.has(event?.kind) && asRecord(event?.data)?.session === cut.before;
+    return CUT_BEFORE.has(event?.kind) && asRecord(event?.data)?.session === cut.before;
   });
-  if (start === -1) throw new Error(`the log holds no session ${cut.before}`);
+  if (start === -1) throw new Error(`the log holds no session or comparison ${cut.before}`);
   return start;
 }
 
@@ -158,19 +160,25 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
     for (const { kind, data } of events) {
       if (kind === "build.started" && isString(data.session)) copy(join("memory", data.session));
     }
-    // The Examiner's home is one folder each session replaces as it ends (`src/examiner/shell.ts`), so
-    // it matches the cut only where no session ended after it; a seed copies it so a simulation does
-    // not open its Examiner on no home.
+    const last = events.findLast(
+      ({ kind, data }) => HOME_ENDS.has(kind) && !(data.ended === "crashed" && Number(data.running) > 0),
+    )?.data.session;
+    const examinerHomeFrom =
+      isString(last) && restoreHome(join(from, EXAMINER_HOMES), last, join(to, "examiner-home"))
+        ? last
+        : null;
     const examinerHome =
-      existsSync(join(from, "examiner-home")) &&
-      !lines.slice(kept).some((line) => HOME_ENDS.has(asRecord(capturedJsonParse(line))?.kind));
-    if (examinerHome) copy("examiner-home");
+      examinerHomeFrom !== null ||
+      (existsSync(join(from, "examiner-home")) &&
+        !lines.slice(kept).some((line) => HOME_ENDS.has(asRecord(capturedJsonParse(line))?.kind)));
+    if (examinerHomeFrom === null && examinerHome) copy("examiner-home");
     const origin = {
       from: resolve(from),
       events: kept,
       of: lines.length,
       before: cut.before ?? null,
       examinerHome,
+      examinerHomeFrom,
     };
     writeFileSync(join(to, SEED_FILE), `${capturedJsonStringify(origin, null, 2)}\n`);
     return { ...origin, sets: taskSets(events) };
@@ -228,7 +236,9 @@ export async function seed(args: readonly string[]): Promise<void> {
   console.log(
     `  ${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`,
   );
-  if (!made.examinerHome) {
+  if (made.examinerHomeFrom !== null) {
+    console.log(`  Examiner home restored from snapshot ${made.examinerHomeFrom}`);
+  } else if (!made.examinerHome) {
     console.log("  no Examiner home: the source holds none, or a session after the cut replaced it");
   }
   if (tree !== repo) console.log(`  in ${tree}, which holds the code the run ran at the cut`);

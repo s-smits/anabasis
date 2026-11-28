@@ -13,6 +13,8 @@ import { type Opening, openingOf, planOf, SEATS, type Seat, TERMS } from "#src/c
 import { ANSWERED, type ControlSignal } from "#src/campaign/signal.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
+import { frozenChecker } from "#src/kernel/acceptance.ts";
+import { hasJudge } from "#src/kernel/contract.ts";
 import {
   append,
   CALL_KINDS,
@@ -25,6 +27,7 @@ import {
 import { latestBuilt, PATIENCE, referenceOf } from "#src/kernel/reports.ts";
 import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -33,11 +36,12 @@ import { PACK_OPTIONS, projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
 import { PRACTICE, prepareCommand, ungated } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
+import type { DraftAuditor } from "../eval/draft.ts";
 import {
   type Campaign,
   COMPARISON_OPTIONS,
-  capRead,
   assertCrossFamily,
+  capRead,
   crossFamilyVendors,
   SESSION_OPTIONS,
   type Seated,
@@ -49,6 +53,7 @@ export interface Seats {
   readonly seated: Seated;
   readonly examine?: Session<"write"> | undefined;
   readonly draft?: Session<"draft"> | undefined;
+  readonly audit?: DraftAuditor | null | undefined;
   readonly host?: Host | undefined;
   readonly prepare?: typeof prepareCommand | undefined;
   readonly unreviewed?: boolean | undefined;
@@ -102,7 +107,7 @@ const OPTIONS = {
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
   hitl: { type: "boolean" },
-  "admit-judge": { type: "boolean" },
+  revise: { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, effort: "high" } as const;
@@ -136,14 +141,15 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   minutes: "a Builder conversation's deadline in minutes of its own time (1440)",
   turns: "a Builder conversation's session turn limit (300)",
   practice: "practice tasks released after each reading or promotion, at most half of what is held",
-  admit: "checks admitted by name, under --hitl",
-  "admit-judge": "objective items a judging model scores, admitted for the campaign; kept once named",
+  admit:
+    "author-computed checks admitted by name under --hitl (judged items use tools/eval/accept.ts --admit-judge)",
   promotions: "the promotions after which the campaign ends on the operator's word; none to lift it (none)",
   moves: "the most campaign moves this run makes",
   handover: "a directory, outside the repository, to write what the campaign hands over at its end",
   loaded: "start solves without waiting for the host's load",
   "dry-run": "print the table's advice and make no move",
   hitl: "the operator in the loop: freezing, admitting and promoting wait for the operator's word; kept until --no-hitl",
+  revise: "allow mid-campaign exam revisions via revise_exam (default on; --no-revise disables)",
   "past-stop": "the operator's reason to go on past the stop rule, logged",
 };
 
@@ -245,14 +251,20 @@ function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: 
   };
 }
 
-function validateOpening(opening: Opening, values: Values, seats: "paid" | "scripted"): void {
-  if (seats === "paid" && opening.seats.reviewer === null) {
-    throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
-  }
-  const { reviewer } = opening.seats;
-  const solver = opening.solver?.model;
-  if (opening.judged && reviewer !== null && solver !== undefined) {
-    assertCrossFamily(reviewer.model, solver, "--admit-judge: ");
+function validateOpening(
+  opening: Opening,
+  values: Values,
+  seats: "paid" | "scripted",
+  events: readonly LogEvent[],
+): void {
+  if (seats === "paid") {
+    const reviewer = opening.seats.reviewer;
+    if (reviewer === null) {
+      throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
+    }
+    if (frozenChecker(events) !== null && hasJudge(draftOf(events)?.objective) && opening.solver !== null) {
+      assertCrossFamily(reviewer.model, opening.solver.model);
+    }
   }
   counted(
     opening.patience,
@@ -296,6 +308,11 @@ function persistOpening(
     ),
     ...keyIfDefined("attended", opening.attended || undefined),
     ...keyIfDefined("judged", opening.judged || undefined),
+    ...keyIfDefined("revise", opening.revise ? undefined : false),
+    ...keyIfDefined(
+      "parent",
+      opening.parent === null ? undefined : parseJsonAs<JsonObject>(capturedJsonStringify(opening.parent)),
+    ),
     ...keyIfDefined("prompt", opening.prompt ?? undefined),
     ...keyIfDefined("solver", opening.solver === null ? undefined : { ...opening.solver }),
     terms: { ...opening.terms },
@@ -343,14 +360,10 @@ export function opened(
     reviewer: seatOf(values.reviewer, values["reviewer-effort"], was?.seats.reviewer),
   };
   const attended = values.hitl ?? was?.attended ?? false;
+  const revise = values.revise ?? was?.revise ?? true;
   const crossFamily =
     resolvedSeats.reviewer !== null && crossFamilyVendors(resolvedSeats.reviewer.model, solver.model);
-  if (was?.judged === true && values["admit-judge"] === false && draftOf(events) !== null) {
-    throw new Error(
-      "--no-admit-judge: judging was already admitted when this campaign drafted its exam and stays kept",
-    );
-  }
-  const judged = values["admit-judge"] ?? (was === null ? !attended && crossFamily : was.judged);
+  const judged = !attended && crossFamily;
   const opening: Opening = {
     project: projectOf(log, values.project, was),
     budget,
@@ -358,11 +371,13 @@ export function opened(
     seats: resolvedSeats,
     attended,
     judged,
+    revise,
+    parent: was?.parent ?? null,
     prompt,
     solver,
     terms: resolveTerms(events, was, values),
   };
-  validateOpening(opening, values, seats);
+  validateOpening(opening, values, seats, events);
   persistOpening(log, events, opening, values["dry-run"] ? "dry-run" : "write", heard);
   return opening;
 }
@@ -431,8 +446,16 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
   ];
   const wanting = tasksToAskFor(turn.events, turn.plan);
   const tasks = wanting > 0 ? String(wanting) : undefined;
+  const reviewer = kind === "write" ? sharedOf(turn).reviewer : [];
+  const reviseFlag = kind === "write" && !opening.revise ? ["--no-revise"] : [];
   return {
-    args: [...packOf(values), ...seat, ...(kind === "draft" ? [] : flag("tasks", tasks))],
+    args: [
+      ...packOf(values),
+      ...seat,
+      ...reviewer,
+      ...reviseFlag,
+      ...(kind === "draft" ? [] : flag("tasks", tasks)),
+    ],
     tasks,
   };
 }

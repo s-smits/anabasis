@@ -10,6 +10,7 @@
  * requests above it pending (`mark`).
  */
 import { openSync } from "../../src/meta/filesystem.ts";
+import { repoRoot } from "../../src/meta/git.ts";
 import { join } from "../../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
@@ -151,7 +152,7 @@ async function mark(root: string, pushed: readonly { readonly branch: string; re
 }
 
 async function main(): Promise<number> {
-  const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
+  const root = repoRoot();
   const [first, ...rest] = runtimeProcess.argv.slice(2);
   if (first === "--mark") {
     await mark(

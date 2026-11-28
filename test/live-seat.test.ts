@@ -62,6 +62,9 @@ describe("live-seat draft visibility", () => {
     expect(reading.billed).toBeCloseTo(2, 6);
     expect(told(reading)).toContain("exam drafted 1, audits defects 1, sound 1, frozen 1");
     expect(told(reading).some((line) => line.startsWith("comparisons "))).toBe(false);
+    expect(told(reading).some((line) => line.startsWith("drafts proposed"))).toBe(false);
+    expect(told(reading).some((line) => line.startsWith("task admission ran"))).toBe(false);
+    expect(told(reading).some((line) => line.startsWith("the reference's valid"))).toBe(false);
     expect(reading.solves).toEqual({ started: 0, finished: 0 });
     expect(newsOf(events, 0)).toEqual([
       "draft audit defects pass 1",
@@ -79,11 +82,16 @@ describe("live-seat draft visibility", () => {
         kind: "solve.started",
         data: { solve: "gate-s-1", comparison: "x-1" },
       },
+      { at: "2026-11-26T00:00:40.000Z", kind: "solve.started", data: { solve: "legacy-gate-1" } },
       { at: "2026-11-26T00:00:45.000Z", kind: "solve.finished", data: { solve: "gate-s-1" } },
+      { at: "2026-11-26T00:00:50.000Z", kind: "solve.finished", data: { solve: "legacy-gate-1" } },
       { at: "2026-11-26T00:01:00.000Z", kind: "exam.finished", data: { session: "x-1", ended: "finished" } },
     ];
-    expect(told(readingOf(writingOnly, 0, [])).some((line) => line.startsWith("exam drafted"))).toBe(false);
-    expect(told(readingOf(writingOnly, 0, [])).some((line) => line.startsWith("comparisons "))).toBe(false);
+    const writingReading = readingOf(writingOnly, 0, []);
+    expect(writingReading.practice).toEqual({ started: 0, finished: 0 });
+    expect(told(writingReading).some((line) => line.startsWith("exam drafted"))).toBe(false);
+    expect(told(writingReading).some((line) => line.startsWith("builder "))).toBe(false);
+    expect(told(writingReading).some((line) => line.startsWith("comparisons "))).toBe(false);
 
     const compEvents: LogEvent[] = [
       { at: "2026-11-26T00:00:00.000Z", kind: "comparison.started", data: { session: "g-5" } },
@@ -107,7 +115,51 @@ describe("live-seat draft visibility", () => {
     expect(compReading.rulings).toEqual({ "check-defect": 1 });
     expect(compReading.reported).toBe(1);
     expect(told(compReading)).toContain("comparisons g-5 (reported 1), solves 1/2, rulings check-defect 1");
+    expect(told(compReading).some((line) => line.startsWith("drafts proposed"))).toBe(false);
     expect(newsOf(compEvents, 0)).toEqual(["ruling check-defect on s-1", "g-5 reported no-step"]);
+
+    const buildEvents: LogEvent[] = [
+      { at: "2026-11-26T00:00:00.000Z", kind: "build.started", data: { session: "b-1" } },
+      {
+        at: "2026-11-26T00:01:00.000Z",
+        kind: "build.call",
+        data: { session: "b-1", tool: "check_harness", args: { focus: "env" }, isError: false, text: "" },
+      },
+      { at: "2026-11-26T00:02:00.000Z", kind: "solve.started", data: { solve: "prac-1" } },
+      { at: "2026-11-26T00:03:00.000Z", kind: "solve.finished", data: { solve: "prac-1", billed: 0.4 } },
+      {
+        at: "2026-11-26T00:04:00.000Z",
+        kind: "build.checkpoint",
+        data: { session: "b-1", harness: "abcdef123456" },
+      },
+      { at: "2026-11-26T00:05:00.000Z", kind: "harness.promoted", data: { harness: "abcdef123456" } },
+      { at: "2026-11-26T00:06:00.000Z", kind: "harness.reverted", data: { harness: "26cefa2d9999" } },
+      {
+        at: "2026-11-26T00:07:00.000Z",
+        kind: "build.finished",
+        data: { session: "b-1", ended: "finished", billed: 0.6 },
+      },
+      { at: "2026-11-26T00:08:00.000Z", kind: "campaign.ended", data: { ending: "finished" } },
+    ];
+    const buildReading = readingOf(buildEvents, 0, ["env"]);
+    expect(buildReading.sessions).toEqual(["b-1"]);
+    expect(buildReading.ended).toEqual(["finished"]);
+    expect(buildReading.checkpoints).toBe(1);
+    expect(buildReading.practice).toEqual({ started: 1, finished: 1 });
+    expect(buildReading.promotions).toBe(1);
+    expect(buildReading.reverts).toBe(1);
+    expect(buildReading.campaignEnded).toEqual(["finished"]);
+    expect(buildReading.calls).toEqual({ check_harness: 1 });
+    expect(buildReading.mentions).toEqual({ env: 1 });
+    expect(told(buildReading)).toContain("builder checkpoints 1, practice 1/1, promoted 1, reverted 1");
+    expect(told(buildReading)).toContain("campaign ended finished");
+    expect(newsOf(buildEvents, 0)).toEqual([
+      "checkpoint abcdef12",
+      "promoted abcdef12",
+      "reverted to 26cefa2d",
+      "b-1 ended finished",
+      "campaign ended finished",
+    ]);
   });
 
   it("composes a tools/eval/draft.ts prompt without seating a model or writing log events", () => {
@@ -129,7 +181,7 @@ describe("live-seat draft visibility", () => {
       seats: {
         builder: { model: "claude/claude-opus-5-5", effort: "medium" },
         examiner: { model: "claude/claude-opus-5-5", effort: "medium" },
-        reviewer: { model: "claude/claude-opus-5-5", effort: "medium" },
+        reviewer: { model: "openai-codex/gpt-6.1-sol", effort: "medium" },
       },
       solver: { model: "claude/claude-opus-5-5", effort: "medium" },
     });
@@ -148,8 +200,11 @@ describe("live-seat draft visibility", () => {
       "claude/claude-opus-5-5",
     ]);
     expect(out).toContain("=== SYSTEM");
+    expect(out).toContain('kind: "judge"');
     expect(out).toContain("=== OPENING");
     expect(out).toContain("=== TOOL draft_exam");
+    expect(out).toContain("=== SCHEMA draft_exam");
+    expect(out).toContain('"criterion"');
     expect(read(log)).toHaveLength(1);
   });
 });

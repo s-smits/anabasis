@@ -1,6 +1,6 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
-import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
+import { eventsOf, isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import { INTERRUPTED, poolOf, evalHeadroom } from "../kernel/reports.ts";
 import { nonRetryableProvider } from "../kernel/solve.ts";
 import { taskSets } from "../kernel/task.ts";
@@ -24,6 +24,7 @@ const ROWS: readonly {
   readonly move: (ground: Ground) => (Move & { readonly code?: string }) | null;
 }[] = [
   { code: "stop", move: stop },
+  { code: "revised", move: revised },
   { code: "exam", move: exam },
   {
     code: "bound",
@@ -65,10 +66,11 @@ const ROWS: readonly {
 
 const DRAFTS = 3;
 export const CRASHES_IN_A_ROW = DRAFTS;
+const MAX_REPAIR_ATTEMPTS = 2;
 const SHORT_OF_TASKS = ["no-held", "held-short"] as const;
 const WANTS_TASKS = "comparison admission requires more held-out tasks";
 const BUILDS_AND_ASKS = "Builder continues building and requests tasks";
-const MOST_ASKED_AFTER_PROMOTION = 16;
+const MOST_ASKED_AFTER_PROMOTION = 24;
 const wantsTasks = ({ refused }: Ground): boolean => SHORT_OF_TASKS.some((code) => refused.has(code));
 
 const end = (ending: Ending, why: string) => ({ move: "end" as const, ending, why });
@@ -177,6 +179,13 @@ function stop({ events, plan }: Ground): Move | null {
   };
 }
 
+function revised({ events }: Ground): Move | null {
+  const entry = eventsOf(events, "exam.revised").at(-1)?.event.data;
+  if (entry === undefined) return null;
+  const why = isString(entry.why) ? entry.why : "exam revised for successor campaign";
+  return end("revise", why);
+}
+
 function exam(ground: Ground): Move | null {
   const { events, plan, supply, refused } = ground;
   if (plan.prompted && draftOf(events) === null) return bound(ground) ?? drafting(events);
@@ -213,9 +222,12 @@ function exam(ground: Ground): Move | null {
 
 export function unaudited(events: readonly LogEvent[]): string | null {
   const session = events.findLast(({ kind }) => kind === "exam.drafted")?.data.session;
-  const error = events.findLast(({ kind, data }) => kind === "referee.draft" && data.session === session)
-    ?.data.error;
-  return isString(error) ? error : null;
+  const last = events.findLast(
+    ({ kind, data }) => kind === "referee.draft" && data.session === session,
+  )?.data;
+  if (isString(last?.error)) return last.error;
+  if (last?.verdict === "skipped") return isString(last.summary) ? last.summary : "draft audit skipped";
+  return null;
 }
 
 function drafting(events: readonly LogEvent[]): Move {
@@ -262,6 +274,16 @@ function bound(ground: Ground): Move | null {
     );
   }
   if (read?.report.reading === "check-defects") {
+    const repairAttempts = events
+      .slice(read.reported + 1)
+      .filter((event) => event.kind === "exam.finished" && !INTERRUPTED.has(event.data.ended)).length;
+    if (plan.canRevise === true && repairAttempts < MAX_REPAIR_ATTEMPTS) {
+      return examine(
+        ground,
+        "tasks",
+        `comparison ${read.id} stopped on check defects: Examiner may repair the check via revise_exam`,
+      );
+    }
     return end(
       "exam",
       `comparison ${read.id} stopped on its check defects: the check program needs its author before more is spent`,
@@ -414,12 +436,15 @@ function noRoom(ground: Ground): Move | null {
           why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has finished writing tasks for it since: tasks are written for each new reference`,
         };
   }
+  const lastEpoch = epochsOf(events).at(-1);
+  const starterOwed =
+    side === "fresh" && lastEpoch?.starter_tally === null && lastEpoch.reference !== "starter";
   const why =
     room === "too-hard"
       ? `comparison ${last.id} showed no improvement and neither harness produced a valid answer: generating replacement tasks`
       : side === "old"
         ? `comparison ${last.id} showed no improvement and no task was informative for the reference harness: generating new tasks`
-        : `harness ${short(reference ?? "")} is the current reference and comparison ${last.id} found no informative tasks for it: generating harder tasks with evaluation headroom`;
+        : `harness ${short(reference ?? "")} is the current reference${starterOwed ? " (starter confirmation owed)" : ""} and comparison ${last.id} found no informative tasks for it: generating harder tasks with evaluation headroom`;
   return examine(ground, "room", why);
 }
 
@@ -485,6 +510,10 @@ export function practiceDue(
   level: number,
 ): { readonly to: number; readonly said: string } | null {
   if (practice === null) return null;
+  const current = epochsOf(events).at(-1);
+  if (current !== undefined && current.reference !== "starter" && current.confirmed !== true) {
+    return null;
+  }
   const sets = taskSets(events);
   const released = sets.released.length;
   const seen = new Set<unknown>();

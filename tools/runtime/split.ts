@@ -10,6 +10,7 @@
  *
  *   bun run split -- <pull request> [--yes]
  */
+import { repoRoot } from "../../src/meta/git.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
@@ -152,7 +153,7 @@ function main(argv: readonly string[]): number {
     return 2;
   }
   try {
-    split(git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]), number, values.yes);
+    split(repoRoot(), number, values.yes);
     return 0;
   } catch (error) {
     console.error(`split: ${errorMessage(error)}`);

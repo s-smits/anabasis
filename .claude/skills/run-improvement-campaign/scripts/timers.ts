@@ -205,15 +205,14 @@ function transcripts(path: string, walked: Set<string>): string[] {
 
 if (import.meta.main) {
   await runCommand(
-    { name: "timers", usage: USAGE, options: { since: "text" }, positionals: [1, 64] },
+    { name: "timers", usage: USAGE, options: { since: "time" }, positionals: [1, 64] },
     (args: CommandArgs) => {
       const walked = new Set<string>();
       const files = args.positionals.flatMap((path) => transcripts(path, walked));
       if (files.length === 0) args.die(`no transcript under ${args.positionals.join(", ")}`);
-      const since = args.value("since") ?? "";
-      const from = Date.parse(since);
-      if (since !== "" && Number.isNaN(from)) args.die(`--since ${since} is not a time`);
-      const after = since === "" ? "" : ` since ${new Date(from).toISOString()}`;
+      const from = args.time("since");
+      const since = from === null ? "" : new Date(from).toISOString();
+      const after = since === "" ? "" : ` since ${since}`;
       console.log(`timers in ${String(files.length)} transcript(s)${after}`);
       for (const line of timerLines(timersIn(files.map(linesOf), since))) console.log(line);
     },

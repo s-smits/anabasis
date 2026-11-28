@@ -46,7 +46,11 @@ describe("what a campaign runs by", () => {
       prompted: false,
       admits: [],
       promotions: null,
+      canRevise: true,
     });
+    expect(planOf([event("campaign.opened", { ...opened.data, revise: false })], ASKED).canRevise).toBe(
+      false,
+    );
   });
 
   it("plans the operator's cap of promotions as its opening keeps it, and none where lifted or unnamed", () => {

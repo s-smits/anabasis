@@ -175,15 +175,18 @@ describe("the campaign's executing Bun and opening guards", () => {
     expect(opened(reviewerLog, termFlags("--reviewer", model), "paid").seats.reviewer?.model).toBe(model);
     expect(opened(reviewerLog, termFlags(), "paid").seats.reviewer?.model).toBe(model);
     const judgedLog = join(root, "terms", "judged", LOG_FILE);
+    expect(() => termFlags("--reviewer", model, "--admit-judge")).toThrow("Unknown option");
     for (const reviewer of [model, "openrouter/anthropic/claude-fable-5-2", "anthropic/sonnet-5-5"]) {
-      expect(() => opened(judgedLog, termFlags("--reviewer", reviewer, "--admit-judge"), "paid")).toThrow(
-        "its own family",
-      );
+      expect(opened(judgedLog, termFlags("--reviewer", reviewer), "paid").judged).toBe(false);
     }
-    expect(read(judgedLog)).toEqual([]);
-    expect(
-      opened(judgedLog, termFlags("--reviewer", "codex/gpt-6.1-sol", "--admit-judge"), "paid").judged,
-    ).toBe(true);
+    expect(opened(judgedLog, termFlags("--reviewer", "codex/gpt-6.1-sol"), "paid").judged).toBe(true);
+    expect(opened(judgedLog, termFlags("--reviewer", "codex/gpt-6.1-sol", "--hitl"), "paid").judged).toBe(
+      false,
+    );
+    const reviseLog = join(root, "terms", "revise", LOG_FILE);
+    expect(opened(reviseLog, termFlags(), "scripted").revise).toBe(true);
+    expect(opened(reviseLog, termFlags("--no-revise"), "scripted").revise).toBe(false);
+    expect(opened(reviseLog, termFlags(), "scripted").revise).toBe(false);
 
     const budgetLog = join(root, "terms", "budget", LOG_FILE);
     const budgetFlags = flagsOf(["--name", "terms", "--project", PROJECT, ...OPENED_FROM, "--budget", "300"]);
@@ -257,6 +260,36 @@ describe("the campaign's executing Bun and opening guards", () => {
     );
     expect(() => wordCommand(["--name", ledName, "--stop", "x", "--budget", "5"])).toThrow("one word");
     expect(() => wordCommand(["--name", ledName, "--cause", "the host was loaded"])).toThrow();
+
+    await expect(harnessBuilder([], { seated: answering([], GRADED_SMALL) })).rejects.toThrow(
+      "name --name, the campaign",
+    );
+    for (const badMoves of ["-1", "abc"]) {
+      await expect(
+        harnessBuilder([...seeded(`${STEM}-bad-moves-${badMoves}`, SMALL), `--moves=${badMoves}`], {
+          seated: answering([], GRADED_SMALL),
+        }),
+      ).rejects.toThrow("the moves to make are a number");
+    }
+
+    const judgedFreezeLog = join(root, "terms", "judged-freeze", LOG_FILE);
+    mkdirSync(join(root, "terms", "judged-freeze"), { recursive: true });
+    append(judgedFreezeLog, "exam.drafted", {
+      session: "d-1",
+      draft: {
+        objective: {
+          quantity: "quality",
+          direction: "higher",
+          scale: "unit",
+          items: [
+            { id: "clarity", weight: 1, kind: "judge", criterion: "Clear structure and complete steps." },
+          ],
+        },
+      },
+    });
+    expect(() => opened(judgedFreezeLog, termFlags("--reviewer", model), "paid")).not.toThrow();
+    append(judgedFreezeLog, "contract.frozen", { contract: "c", checks: "k" });
+    expect(() => opened(judgedFreezeLog, termFlags("--reviewer", model), "paid")).toThrow(/its own family/u);
   });
 
   it("ends open build, exam, and draft sessions as killed before its first move, and never twice", async () => {
@@ -370,6 +403,7 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     expect(of(name, OPENED).at(-1)).toMatchObject({ attended: true });
 
     const asked = Promise.withResolvers<void>();
+    const releasedBeforePromo = of(name, "task.state").filter(({ state }) => state === "released").length;
     const next = await harnessBuilder([...flags, "--no-hitl", "--moves", "3"], {
       seated: (campaign, given) => ({
         ...seats.seated(campaign, given),
@@ -389,9 +423,9 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
     expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 10, ended: "supplied" }]);
-    expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted" });
-
-    const after = await harnessBuilder([...flags, "--moves", "1"], seats);
+    expect(of(name, "task.state").filter(({ state }) => state === "released")).toHaveLength(
+      releasedBeforePromo,
+    );
     const { tasks, retained } = of(name, "comparison.started").at(-1) ?? {};
     const [scored = 0, beside = 0] = [tasks, retained].map((set) => (Array.isArray(set) ? set.length : 0));
     expect(beside).toBe(Math.ceil((scored - beside) / 3));
@@ -405,7 +439,7 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
       reading: "no-step",
       valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 3, fresh: 3 } },
     });
-    expect(after).toMatchObject({ move: "revert", harness: first?.starter });
+    expect(next).toMatchObject({ move: "revert", harness: first?.starter });
     expect(strayed).toEqual([]);
 
     const pack = ["--name", name];
@@ -587,6 +621,97 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
     await harnessBuilder(["--name", name, "--level", "0.125", "--moves", "0"], seats);
   });
 
+  it("gates judged drafting on cross-family seat capability while keeping dynamic lane choice flag-free", async () => {
+    const { exam, examples } = draftedOf(SMALL);
+    const judgedExam = {
+      ...exam,
+      objective: {
+        quantity: "answer quality",
+        direction: "higher",
+        items: [
+          {
+            id: "clarity",
+            kind: "judge",
+            weight: 1,
+            criterion: "Which answer explains the multiplication more clearly and concisely?",
+          },
+        ],
+      },
+    };
+    const sameFamily = [
+      "--project",
+      PROJECT,
+      "--solver",
+      "claude/claude-opus-5-5",
+      "--reviewer",
+      "claude/claude-opus-5-5",
+      "--prompt",
+      "Multiplying a base by six, as a fixture.",
+      "--practice",
+      "2",
+      "--target",
+      "5",
+      "--level",
+      "0.125",
+    ];
+    const crossFamily = [...sameFamily, "--reviewer", "openai-codex/gpt-6.1-sol"];
+    const makeSeats = (...drafts: JsonObject[]): Seats => ({
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, examples, []),
+      draft: (request) =>
+        examine({
+          ...request,
+          ...scripted(drafts.map((draft) => ["draft_exam", draft] as const)),
+        }),
+    });
+
+    const sameFamilyName = `${STEM}-same-family-mend`;
+    names.push(sameFamilyName);
+    await harnessBuilder(
+      ["--name", sameFamilyName, ...sameFamily, "--moves", "1"],
+      makeSeats(judgedExam, exam),
+    );
+    expect(
+      of(sameFamilyName, "draft.call").some(
+        ({ isError, text }) => isError === true && isString(text) && text.includes('expected "code"'),
+      ),
+    ).toBe(true);
+    expect(of(sameFamilyName, "draft.finished")).toMatchObject([{ session: "d-1", stands: true, tries: 1 }]);
+    expect(of(sameFamilyName, "contract.frozen")).toHaveLength(1);
+    expect(of(sameFamilyName, "checker.read").at(-1)?.faults).toEqual([]);
+
+    const crossCodeName = `${STEM}-cross-code`;
+    names.push(crossCodeName);
+    await harnessBuilder(["--name", crossCodeName, ...crossFamily, "--moves", "1"], makeSeats(exam));
+    expect(of(crossCodeName, "contract.frozen")).toHaveLength(1);
+    expect(of(crossCodeName, "checker.read").at(-1)?.faults).toEqual([]);
+
+    const crossJudgeName = `${STEM}-cross-judge`;
+    names.push(crossJudgeName);
+    await harnessBuilder(["--name", crossJudgeName, ...crossFamily, "--moves", "1"], makeSeats(judgedExam));
+    expect(of(crossJudgeName, "draft.finished")).toMatchObject([{ session: "d-1", stands: true }]);
+    expect(of(crossJudgeName, "checker.read").at(-1)?.faults).toEqual([]);
+    expect(of(crossJudgeName, "contract.frozen")).toHaveLength(1);
+    const openCount = of(crossJudgeName, OPENED).length;
+    expect(() =>
+      opened(
+        join(REPO, ".ana", "d2", crossJudgeName, LOG_FILE),
+        flagsOf(["--name", crossJudgeName, "--reviewer", "claude/claude-opus-5-5", "--budget", "100"]),
+        "paid",
+      ),
+    ).toThrow("another family");
+    expect(of(crossJudgeName, OPENED)).toHaveLength(openCount);
+
+    const hitlName = `${STEM}-dyn-hitl`;
+    names.push(hitlName);
+    const hitl = await harnessBuilder(["--name", hitlName, ...crossFamily, "--hitl"], makeSeats(judgedExam));
+    expect(hitl).toMatchObject({ move: "end", ending: "exam" });
+    expect(of(hitlName, "contract.frozen")).toEqual([]);
+    expect(of(hitlName, "checker.read").at(-1)?.faults).toEqual([
+      containing("--admit check-product"),
+      containing("--admit-judge"),
+    ]);
+  });
+
   it("hands over a harness's links as links, and leaves nothing where the copy is not the harness", async () => {
     const name = `${STEM}-links`;
     seeded(name, SMALL);
@@ -711,6 +836,41 @@ describe.concurrent("a campaign's recovery from throws and pauses", () => {
     expect(ended).toMatchObject({ move: "end", ending: "operator" });
     expect(drafts).toBe(1);
     expect(sleeps).toHaveLength(2);
+  });
+
+  it("exits cleanly on a reached bounded pause when the external waiter is gone instead of starting another move", async () => {
+    const name = `${STEM}-bounded-pause`;
+    const flags = [...seeded(name, SMALL), "--practice", "2", "--target", "5", "--level", "0.125"];
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    let now = Date.now();
+    let prepares = 0;
+    const ended = await harnessBuilder([...flags, "--moves", "5"], {
+      seated: answering([], GRADED_SMALL),
+      host: {
+        load: () => 0,
+        cores: 1,
+        waitMs: 1,
+        now: () => now,
+        sleep: async () => {
+          now += 200_000;
+        },
+      },
+      prepare: async () => {
+        prepares += 1;
+        append(log, "campaign.word", {
+          word: "pause",
+          why: "runs pause --after reported",
+          after: "reported",
+          base: 0,
+        });
+        append(log, "comparison.started", { session: "g-1", old: "s", fresh: "h1", starter: "s" });
+        append(log, "comparison.reported", { session: "g-1", old: "s", fresh: "h1", reading: "no-step" });
+        return 1;
+      },
+    });
+    expect(prepares).toBe(1);
+    expect(ended.move).not.toBe("end");
+    expect(of(name, "campaign.ended")).toEqual([]);
   });
 });
 

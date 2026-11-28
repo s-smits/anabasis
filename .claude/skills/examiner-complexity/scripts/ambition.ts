@@ -9,13 +9,13 @@ import { type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import { basename, dirname } from "#src/meta/path.ts";
 import { runCommand } from "#skills/main/cli.ts";
+import { namedLogs } from "#skills/main/logs.ts";
+import { countsLine } from "#skills/main/print.ts";
+import { waitedMs, waitsOf } from "#skills/main/time.ts";
 import { ownedBy } from "#src/kernel/trace.ts";
 import { validityOf } from "#tools/campaign/close.ts";
-import { logAcross } from "#tools/runs/snapshots.ts";
 import { firstComparisonDelay } from "#tools/runs/view.ts";
-import { waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { readingOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 
 export const STARTS = new Set<string>(["exam.started", "draft.started"]);
@@ -45,7 +45,7 @@ function wroteHours(events: readonly LogEvent[], start: number, end: number, ses
   return (until - from - waitedMs(rests, from, until)) / HOUR_MS;
 }
 
-export function proposedOf(events: readonly LogEvent[], session: string) {
+function proposedOf(events: readonly LogEvent[], session: string) {
   const proposals = proposalsOf(events).filter((each) => each.session === session);
   if (proposals.length === 0) return null;
   const versions = proposals.map(({ version }) => version);
@@ -68,11 +68,8 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
     const reference = referenceAt(events, start);
     const session = events[start]?.data.session;
     const own = isString(session) ? events.slice(start, end).filter(ownedBy(events, session)) : [];
-    const words = Object.entries(reading.gates)
-      .map(([word, count]) => `${word} ${String(count)}`)
-      .join(", ");
+    const words = countsLine(reading.gates, "no task admission");
     const gated = Object.values(reading.gates).reduce((sum, count) => sum + count, 0);
-    const turns = reading.turns === null ? "no valid room solve" : `median turns ${String(reading.turns[1])}`;
     const from = events[start];
     const step = from?.kind === "exam.started" ? written.find(({ id }) => id === session) : undefined;
     const asked =
@@ -84,7 +81,7 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
       of === null
         ? ""
         : ` · ${String(of.proposed)} proposed in ${String(of.families)} families, largest ${String(of.largest)}${of.at.at(-1) === 0 ? "" : `, at turns ${of.at.join(", ")}`}`;
-    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"})${asked}${families} · ${turns} · $${billedAll(own).toFixed(2)}`;
+    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words})${asked}${families} · $${billedAll(own).toFixed(2)}`;
   });
 }
 
@@ -96,11 +93,11 @@ function reachedBy(events: readonly LogEvent[], kind: string, from: string | und
   if (reached === undefined || from === undefined) return "none yet";
   const upto = events.slice(0, at + 1);
   const solves = upto.filter((event) => event.kind === "solve.finished").length;
-  const hours = (Date.parse(reached) - Date.parse(from)) / 3_600_000;
+  const hours = (Date.parse(reached) - Date.parse(from)) / HOUR_MS;
   return `${hours.toFixed(1)} h / ${String(solves)} solves / $${billedAll(upto).toFixed(0)}`;
 }
 
-export function campaignLine(events: readonly LogEvent[]): string {
+function campaignLine(events: readonly LogEvent[]): string {
   const opened = events.find((event) => event.kind === "campaign.opened")?.at;
   const count = (kind: string) => events.filter((event) => event.kind === kind).length;
   const { scored, room, onValidity, stepped } = validityOf(campaignOf(events).steps, events);
@@ -116,8 +113,8 @@ export function ambitionLines(name: string, events: readonly LogEvent[]): string
 if (import.meta.main) {
   const usage = "ambition.ts <log or campaign folder>...";
   await runCommand({ name: "ambition", usage, positionals: [1, 100] }, async ({ positionals }) => {
-    for (const path of await Promise.all(positionals.map((named) => logAcross(named)))) {
-      console.log(ambitionLines(basename(dirname(path)), read(path)).join("\n"));
+    for (const { name, path } of await namedLogs(positionals)) {
+      console.log(ambitionLines(name, read(path)).join("\n"));
     }
   });
 }

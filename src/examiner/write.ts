@@ -15,9 +15,11 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
-import { TEXT_FILES } from "./draft.ts";
+import { type RubricLane, TEXT_FILES } from "./draft.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt, wakeMessage } from "./prompt.ts";
 import { taskHistory, measured } from "./record.ts";
+import { readReviews } from "./reviews.ts";
+import { readExamTool, type ReviseRunner, reviseTool } from "./revise.ts";
 import { FROM_FILE, fromHome, type Walls } from "./shell.ts";
 
 interface Terms {
@@ -31,12 +33,15 @@ interface Terms {
   readonly pack: (task: Task) => TaskPackage;
   readonly budget: SolveBudget | null;
   readonly verify: Verifier | null;
+  readonly revise?: ReviseRunner | undefined;
+  readonly lane?: RubricLane | undefined;
 }
 
 interface Desk {
   request: Terms;
   readonly stop: AbortSignal;
   proposed: number;
+  revised: boolean;
   readonly seen: Map<string, "now" | "earlier">;
   readonly answered: Map<string, { readonly answer: JsonValue; readonly files?: readonly AnswerFile[] }>;
   readonly checked: Map<string, Task>;
@@ -247,6 +252,34 @@ function exampleTool(tasks: () => readonly Task[]): AgentTool {
   });
 }
 
+function reviewsTool(desk: Desk): AgentTool {
+  return tool({
+    name: "read_reviews",
+    description:
+      "Read reported Reviewer outputs for this campaign (newest first): pairwise judge votes and reasons, rejection audit rulings and probe summaries, and draft audit history. Unfinished comparisons are omitted, and internal solve/harness identifiers and raw answer patches are stripped.",
+    parameters: Type.Object(
+      {
+        source: Type.Optional(
+          Type.Union([Type.Literal("pair"), Type.Literal("finding"), Type.Literal("draft")], {
+            description: "Restrict to pairwise judge votes, rejection findings, or draft audits.",
+          }),
+        ),
+        outcome: Type.Optional(
+          Type.String({
+            description:
+              "Filter by ruling, verdict, or flag (earned, check-defect, unclear, disagreed, holistic-oppose, incomplete, skipped).",
+          }),
+        ),
+        limit: Type.Optional(
+          Type.Integer({ minimum: 1, maximum: 20, description: "Most records returned (default 10)." }),
+        ),
+      },
+      { additionalProperties: false },
+    ),
+    execute: async (args) => text(readReviews(desk.request.log, args)),
+  });
+}
+
 function tryTool(desk: Desk, verify: Verifier): AgentTool {
   const { log, contract } = desk.request;
   const recordValidAnswer = (
@@ -344,13 +377,18 @@ export function writing(
       budget: asked.budget,
     });
   let told = openedOn(request, before);
+  const lineage = openingOf(before)?.parent?.lineageTasks ?? [];
   const desk: Desk = {
     request,
     stop,
     rest,
     home,
     proposed: 0,
-    seen: new Map(admittedDrafts(before).map((task) => [contentOf(task), "earlier"] as const)),
+    revised: false,
+    seen: new Map([
+      ...admittedDrafts(before).map((task) => [contentOf(task), "earlier"] as const),
+      ...lineage.map((hash) => [hash, "earlier"] as const),
+    ]),
     answered: new Map(),
     checked: new Map(),
     planted: new Set(),
@@ -359,7 +397,7 @@ export function writing(
   };
   return {
     kind: "exam" as const,
-    system: systemPrompt(request.contract.objective),
+    system: systemPrompt(request.contract.objective, request.revise === undefined ? "fixed" : "revisable"),
     get opening() {
       return told;
     },
@@ -380,7 +418,11 @@ export function writing(
     tools: [
       proposeTool(desk),
       exampleTool(() => [...writtenTasks(read(desk.request.log, TRACE_KINDS)), ...desk.request.tasks]),
+      reviewsTool(desk),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
+      ...(request.revise === undefined
+        ? []
+        : [readExamTool(request.log), reviseTool(desk, request.revise, request.lane ?? "judged")]),
     ],
     enters: "Nothing in your home enters the exam: a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",
@@ -388,14 +430,14 @@ export function writing(
     get declined() {
       return spent(desk) ? null : MORE;
     },
-    done: (): "supplied" | null => (supplied(desk) ? "supplied" : null),
+    done: (): "stands" | "supplied" | null => (desk.revised ? "stands" : supplied(desk) ? "supplied" : null),
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
     ask: (next: Terms) => {
-      Object.assign(desk, { request: next, proposed: 0, held: [], refused: [] });
+      Object.assign(desk, { request: next, proposed: 0, revised: false, held: [], refused: [] });
       const events = read(next.log, CALL_KINDS);
       told = openedOn(next, events);
-      return wakeOn(events, next.tasks, next.limits);
+      return wakeOn(events, next.tasks, next.limits, next.revise === undefined ? "fixed" : "revisable");
     },
   };
 }
@@ -404,7 +446,8 @@ export function wakeOn(
   events: readonly LogEvent[],
   tasks: readonly Pick<Task, "taskId" | "family">[],
   told: Parameters<typeof wakeMessage>[1],
+  revision: "fixed" | "revisable" = "fixed",
 ): string {
   const since = events.findLastIndex(({ kind }) => kind === "exam.started");
-  return wakeMessage(taskHistory(events, tasks, since), told);
+  return wakeMessage(taskHistory(events, tasks, since), told, revision);
 }

@@ -1,20 +1,18 @@
 /**
  * How long each promotion took and what it billed, from the log's own clock and `billed` fields: an
  * epoch runs from the opening, or the promotion before, to the promotion that ends it. Hours are
- * split by `spansOf` (`tools/wri/time.ts`) into the Examiner's sessions, the comparisons and the
+ * split by `spansOf` (`.claude/skills/main/time.ts`) into the Examiner's sessions, the comparisons and the
  * Builder's own time (its sessions less the other two), the rest being the host's. Dollars are the
  * tree's sum over the epoch (`billedBetween`), split by who billed each event: a solve by the
  * session or comparison its start names.
  */
+import { type Span, spansOf, unionMs } from "#skills/main/time.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { ownersOf } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dollars } from "#tools/runs/summary.ts";
-import { spansOf, unionMs } from "#tools/wri/time.ts";
 import type { Tree } from "./tree.ts";
-
-type Span = ReturnType<typeof spansOf>[number];
 
 interface EpochContext {
   readonly tree: Tree;

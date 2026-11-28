@@ -7,9 +7,9 @@ import {
   AGENTS_MD_BYTE_CEILING,
   breaches,
   corpus,
+  directionChecked,
   NEW_FILE_CEILING,
   NEW_FUNCTION_CEILING,
-  production,
   sourceTextFindings,
 } from "../tools/loc/source-policy.ts";
 import { scanTokens } from "../tools/loc/token-facts.ts";
@@ -66,9 +66,11 @@ describe("source policy", () => {
   });
 
   it("enforces helper-tree and security-layer boundaries", () => {
-    expect(production("packages/ui/test/smoke.test.ts")).toBe(false);
-    expect(production("vendor/foo/test/x.ts")).toBe(true);
-    expect(production("packages/ui/src/main.ts")).toBe(true);
+    expect(directionChecked("packages/ui/test/smoke.test.ts")).toBe(false);
+    expect(directionChecked("vendor/foo/test/x.ts")).toBe(true);
+    expect(directionChecked("packages/ui/src/main.ts")).toBe(true);
+    expect(directionChecked(".claude/skills/main/cli.ts")).toBe(true);
+    expect(directionChecked(".claude/skills/main/README.md")).toBe(false);
     expect(
       breaches(["packages/ui/test/smoke.test.ts", "packages/ui/src/main.ts"], () => ["test/helpers/a.ts"]),
     ).toEqual([{ file: "packages/ui/src/main.ts", imported: "test/helpers/a.ts", root: "test/" }]);

@@ -32,6 +32,22 @@ def parse_xml(raw):
 def paras(raw):
     return "\n".join(line for p in parse_xml(raw).iter() if tag(p) == "p" and (line := text_of(p, "t")))
 
+def docx(zf):
+    root = parse_xml(read_member(zf, "word/document.xml"))
+    body = next((n for n in root if tag(n) == "body"), root)
+    lines = []
+    for node in body:
+        kind = tag(node)
+        if kind == "p" and (line := text_of(node, "t")):
+            lines.append(line)
+        elif kind == "tbl":
+            for tr in node:
+                if tag(tr) == "tr":
+                    cells = [text_of(tc, "t").replace("\t", " ") for tc in tr if tag(tc) == "tc"]
+                    if any(cells):
+                        lines.append("\t".join(cells))
+    return {"text": "\n".join(lines), "formulas": None}
+
 def xlsx(zf, max_cells, max_empty):
     all_names = zf.namelist()
     name_set = set(all_names)
@@ -148,7 +164,7 @@ else:
         if mode == "xlsx":
             res = xlsx(zf, max_cells, max_empty)
         elif mode == "docx":
-            res = {"text": paras(read_member(zf, "word/document.xml")), "formulas": None}
+            res = docx(zf)
         else:
             slides = sorted((p for p in zf.namelist() if re.match(r"^ppt/slides/slide\d+\.xml$", p)), key=num)
             res = {"text": "\n\n".join(f"## slide {num(p)}\n{paras(read_member(zf, p))}" for p in slides), "formulas": None}

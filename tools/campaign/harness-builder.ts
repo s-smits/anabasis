@@ -13,7 +13,7 @@ import { nextAction } from "#src/campaign/scheduler.ts";
 import { sessionEnded } from "#src/campaign/state.ts";
 import { type ScheduledAction, decidedLine } from "#src/campaign/move.ts";
 import { type Opening, openingOf, SEATS } from "#src/campaign/opening.ts";
-import { pendingSignals } from "#src/campaign/signal.ts";
+import { boundedPause, pendingSignals } from "#src/campaign/signal.ts";
 import { keepCutNotes, keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
@@ -23,19 +23,20 @@ import { endedData, endedOf } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
-import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { mkdirSync, openSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
+import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { asError, errorMessage } from "#src/meta/runtime-values.ts";
 import { waitOut } from "#src/solver/run.ts";
 import { acceptCommand } from "../eval/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../eval/draft.ts";
+import { examineCommand } from "../eval/examine.ts";
 import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
-import { standing } from "../runs/registry.ts";
+import { BUILDER, campaignOf, keepers, processes, standing, writers } from "../runs/registry.ts";
 import { campaignLog, LIMITS, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
 import { type CampaignContext, campaignTools, releasePendingPractice } from "./campaign-actions.ts";
 import {
@@ -66,6 +67,7 @@ import { gated as queued, HOST, waitCrashed, waitPaused } from "./host.ts";
 import { type Campaign, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
 import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
+import { openSuccessor, withFlag } from "./revise.ts";
 
 const ENDED = "campaign.ended";
 /** A conversation that ended whole, by its finish or at its own limits: what `idleOf` counts
@@ -75,7 +77,7 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
 type Made = Extract<
   ScheduledAction,
-  { move: "draft" | "accept" | "prepare" | "compare" | "promote" | "revert" }
+  { move: "draft" | "accept" | "prepare" | "examine" | "compare" | "promote" | "revert" }
 >;
 
 /**
@@ -83,7 +85,7 @@ type Made = Extract<
  * failure the campaign goes on from, bounded by the crash rule (`crashedRun`), not an environment's
  * ending.
  */
-async function goesOn(log: string, from: number, error: unknown, host: Seats["host"]): Promise<boolean> {
+async function goesOn(log: string, from: number, error: Error, host: Seats["host"]): Promise<boolean> {
   if (await waitOut(log, error, host?.sleep)) return true;
   const events = read(log);
   const crashed = events.slice(from).some((event) => sessionEnded(event) && event.data.ended === "crashed");
@@ -100,7 +102,7 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
     begin(keyIfDefined("admitted", admits && [...admits]));
     await acceptCommand([
       ...pack,
-      ...flag("admit", admits?.join(",")),
+      ...flag("admit", values.admit),
       ...(opening.attended ? [] : ["--freeze", "--admit-authored"]),
       ...(opening.judged ? ["--admit-judge"] : []),
     ]);
@@ -128,6 +130,15 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
     await draftCommand(examinerRun(turn, session, "draft").args, seats.draft);
     return;
   }
+  if (decided.move === "examine") {
+    if (seats.seated !== solved && seats.examine === undefined) {
+      throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
+    }
+    const session = nextId(events, "x");
+    begin({ session });
+    await examineCommand(examinerRun(turn, session, "write").args, seats.examine, undefined, seats.audit);
+    return;
+  }
   const { session, args } = comparisonOf(decided, turn);
   begin({ session, args: args.slice(pack.length) });
   await checkpointCommand(args, turn.held);
@@ -153,7 +164,7 @@ function examLines(
     ...(judged.length === 0
       ? []
       : [
-          `to admit the judged rubric items (${judged.join(", ")}), pass --admit-judge with a cross-family --reviewer: bun tools/campaign/harness-builder.ts ${packOf(values).join(" ")} --admit-judge`,
+          `to admit the judged rubric items (${judged.join(", ")}), resume unattended with a cross-family --reviewer, or freeze under --hitl: bun tools/eval/accept.ts ${packOf(values).join(" ")} --admit-judge --freeze`,
         ]),
   ];
 }
@@ -235,7 +246,9 @@ async function converse(
       campaignTools(context, named.move === "examine" ? "starts-examiner" : "starts-nothing"),
     );
   } catch (error) {
-    if (context.failed === null && (await goesOn(log, turn.events.length, error, seats.host))) return null;
+    if (context.failed === null && (await goesOn(log, turn.events.length, asError(error), seats.host))) {
+      return null;
+    }
     append(log, ENDED, { ending: "environment", why: errorMessage(error), move: "build" });
     throw error;
   }
@@ -272,11 +285,57 @@ async function lead(
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
-  if (left.move === "end") ended(log, read(log), left);
-  if (left.move === "end" && left.ending !== "environment" && values.handover !== undefined) {
-    await closeCommand([...packOf(values), "--to", values.handover]);
+  if (left.move === "end" && left.ending !== "revise") {
+    ended(log, read(log), left);
+    if (left.ending !== "environment" && values.handover !== undefined) {
+      await closeCommand([...packOf(values), "--to", values.handover]);
+    }
   }
   return left;
+}
+
+async function handoffRevision(
+  log: string,
+  args: readonly string[],
+  values: Values,
+  decided: Extract<ScheduledAction, { move: "end" }>,
+  how: {
+    readonly paid: "paid" | "scripted";
+    readonly remaining: number;
+    readonly seats: Seats;
+    readonly opened: boolean;
+  },
+): Promise<ScheduledAction> {
+  const name = values.name ?? "";
+  const next = await openSuccessor(log, how.remaining);
+  console.log(`${name}: opened successor campaign ${next.name} at ${next.log}`);
+  if (values.handover !== undefined && how.opened) {
+    await closeCommand([...packOf(values), "--to", values.handover]);
+  }
+  if (how.remaining <= 0) return decided;
+  const nextArgs = withFlag(withFlag(args, "--name", next.name), "--moves", String(how.remaining));
+  if (how.paid === "scripted") return await harnessBuilder(nextArgs, how.seats);
+  const others = [
+    ...writers(campaignOf(REPO, next.name), processes()),
+    ...keepers(name),
+    ...keepers(next.name),
+  ];
+  if (others.length > 0) {
+    console.log(`${name}: successor ${next.name} goes on under its live writer or keeper`);
+    return decided;
+  }
+  const out = join(dirname(next.log), `launch-${nextRun(next.log)}`);
+  const child = capturedSpawn([capturedExecPath, join(REPO, BUILDER), ...nextArgs], {
+    cwd: REPO,
+    env: runtimeProcess.env,
+    detached: true,
+    stdin: "ignore",
+    stdout: openSync(`${out}.out`, "a"),
+    stderr: openSync(`${out}.err`, "a"),
+  });
+  child.unref();
+  console.log(`${name}: handed off to successor ${next.name} (pid ${String(child.pid)})`);
+  return decided;
 }
 
 function settingOf(log: string, given: Values): AskedSetting {
@@ -341,7 +400,7 @@ async function runMade(decided: Made, turn: Turn, log: string, from: number): Pr
     }
     return true;
   } catch (error) {
-    if (await goesOn(log, from, error, turn.seats.host)) return false;
+    if (await goesOn(log, from, asError(error), turn.seats.host)) return false;
     if (read(log).length > from) {
       append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
     }
@@ -410,6 +469,14 @@ export async function harnessBuilder(
       const faults = examLines(events, values, decided.ending, last === "accept" ? "printed" : "unprinted");
       for (const line of faults) console.log(line);
       if (values["dry-run"]) return decided;
+      if (decided.ending === "revise") {
+        return await handoffRevision(log, args, values, decided, {
+          paid,
+          remaining: most - made,
+          seats,
+          opened: campaign !== null,
+        });
+      }
       ended(log, events, decided);
       if (values.handover !== undefined && campaign !== null) {
         await closeCommand([...packOf(values), "--to", values.handover]);
@@ -418,22 +485,20 @@ export async function harnessBuilder(
     }
     if (values["dry-run"] || made >= most) return decided;
     // Promotions and reverts still land, so the reference settles before `runs pause` stops the run.
-    if (
-      decided.move !== "promote" &&
-      decided.move !== "revert" &&
-      (await waitPaused(log, began, campaign?.limits.wallSeconds ?? LIMITS.wallSeconds, {
+    if (decided.move !== "promote" && decided.move !== "revert") {
+      const waited = await waitPaused(log, began, campaign?.limits.wallSeconds ?? LIMITS.wallSeconds, {
         host: seats.host,
-      }))
-    ) {
-      continue;
+      });
+      if (boundedPause(waited ? read(log) : events, began)) return decided;
+      if (waited) continue;
     }
-    if (decided.move === "build" || decided.move === "examine") {
+    if (decided.move === "build" || (decided.move === "examine" && decided.code !== "bound")) {
       campaign ??= await openCampaign(packNamed(values));
       const turns = { maxMoves: most, used: made, failed: null, began };
       const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
       const left = await lead(context, decided);
       [made, { opening }] = [context.used, context];
-      if (left !== null) return left;
+      if (left !== null && !(left.move === "end" && left.ending === "revise")) return left;
       continue;
     }
     if (decided.move === "promote" && opening.attended) {

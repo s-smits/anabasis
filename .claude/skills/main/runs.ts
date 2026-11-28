@@ -10,6 +10,9 @@ import { backends } from "#src/agent/backends/models.ts";
 import { epochsOf, ORIGINS, starterIn, starterReads } from "#src/campaign/climb.ts";
 import { comparisonsOf } from "#src/campaign/state.ts";
 import { openingOf } from "#src/campaign/opening.ts";
+import { draftOf } from "#src/examiner/draft.ts";
+import { frozenChecker } from "#src/kernel/acceptance.ts";
+import { hasJudge } from "#src/kernel/contract.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { CALL_KINDS, type EventKind, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { billedBetween, seatMeter } from "#src/kernel/meter.ts";
@@ -28,10 +31,10 @@ import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { packOf } from "#tools/runs/registry.ts";
 import { firstComparisonDelay } from "#tools/runs/view.ts";
-import { summed } from "#tools/wri/folds.ts";
-import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { campaignLogs, type Found, rehearsed } from "./logs.ts";
 import { MISSING } from "./print.ts";
+import { summed } from "./stats.ts";
+import { overloadOf, waitedMs, waitsOf } from "./time.ts";
 
 /** `draft.call` is kept for what a drafting session cut short had metered (`unfinished`,
  *  `src/kernel/trace.ts`). */
@@ -156,15 +159,18 @@ function releasesOf(repo: string): { name: string; at: number }[] {
   });
 }
 
-function judgedLabel(opening: ReturnType<typeof openingOf>): string {
-  if (opening?.judged !== true) return "";
-  const reviewer = opening.seats.reviewer;
+function judgedLabel(events: readonly LogEvent[], opening: ReturnType<typeof openingOf>): string {
+  const draft = draftOf(events);
+  const judged =
+    draft === null ? opening?.judged === true : hasJudge(draft.objective) && frozenChecker(events) !== null;
+  if (!judged) return "";
+  const reviewer = opening?.seats.reviewer ?? null;
   return reviewer === null ? " judged" : ` judged(${reviewer.model.replace(/^claude\//u, "")})`;
 }
 
 /** Runs are read together only under one such line (`AGENTS.md`, section 9). */
 function settingOf(events: readonly LogEvent[]): string {
-  const judged = judgedLabel(openingOf(events));
+  const judged = judgedLabel(events, openingOf(events));
   const kept = recordedSetting(events);
   if (kept === null) return `no setting${judged}`;
   const { solver, minutes, modelTurns, target, solves } = kept;

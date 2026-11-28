@@ -4,6 +4,7 @@
  * campaign code changes mid-round.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
+import { CLAUDE_SESSIONS_DIR, type ClaudeFork } from "#src/agent/backends/claude-transcript.ts";
 import { type BackendOptions, backends, compactionMode } from "#src/agent/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
@@ -348,6 +349,7 @@ export async function openCampaign(args: CampaignArgs) {
     });
   };
   const reviewers = (reader: Reader) => reviewersOf(reader, { log: written, contract, checks, verify });
+  const sessionsDir = join(dir, CLAUDE_SESSIONS_DIR);
   return {
     repo: REPO,
     trees,
@@ -384,8 +386,8 @@ export async function openCampaign(args: CampaignArgs) {
       effort,
       models: hostSession({ webSearch: false, cacheTtl: "5m" }),
     }),
-    builder: hostSession({ webSearch: true, cacheTtl: "1h" }),
-    examiner: examinerSession,
+    builder: hostSession({ webSearch: true, cacheTtl: "1h", persistDir: sessionsDir }),
+    examiner: hostSession({ webSearch: false, cacheTtl: "1h", persistDir: sessionsDir }),
   };
 }
 
@@ -470,9 +472,25 @@ export function awaitingLines(campaign: {
  * A Builder keeps WebSearch, since its shell reaches the network anyway; an Examiner's or
  * reviewer's search would be read by nobody.
  */
-function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
-  return (home: string, shutdown: AbortSignal, cwd?: string) =>
-    seatBackends({ claude: { ...sweepOptions(home, undefined, shutdown, cwd).claude, ...seat } });
+export function hostSession(seat: {
+  readonly webSearch: boolean;
+  readonly cacheTtl: "5m" | "1h";
+  readonly persistDir?: string | undefined;
+  readonly fork?: ClaudeFork | undefined;
+}) {
+  return (home: string, shutdown: AbortSignal, cwd?: string, id?: string) =>
+    seatBackends({
+      claude: {
+        ...sweepOptions(home, undefined, shutdown, cwd).claude,
+        webSearch: seat.webSearch,
+        cacheTtl: seat.cacheTtl,
+        ...keyIfDefined(
+          "persist",
+          seat.persistDir !== undefined && id !== undefined ? { dir: seat.persistDir, seat: id } : undefined,
+        ),
+        ...keyIfDefined("fork", seat.fork),
+      },
+    });
 }
 
 export const examinerSession = hostSession({ webSearch: false, cacheTtl: "1h" });

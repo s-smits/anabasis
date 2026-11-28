@@ -7,9 +7,9 @@
  * to wake the calling session. `--say` appends a note without conferring operator authority.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { campaignName } from "#skills/main/logs.ts";
 import { type EventKind, isKind, type LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
-import { basename, dirname } from "#src/meta/path.ts";
 import { logEvents } from "#tools/runs/registry.ts";
 import { PROMOTED, REPORTED, TRIGGER_AT } from "#tools/runs/summary.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
@@ -85,10 +85,10 @@ function pollLog(
 
 if (import.meta.main) {
   await runCommand(
-    { name: "until", usage: USAGE, options: { at: "text", hours: "text", say: "text" }, positionals: 1 },
+    { name: "until", usage: USAGE, options: { at: "text", hours: "number", say: "text" }, positionals: 1 },
     async (args: CommandArgs) => {
-      const [at, asked] = [args.value("at"), args.value("hours")];
-      const hours = asked === null ? null : Number(asked);
+      const at = args.value("at");
+      const hours = args.number("hours");
       const spec = at === null ? null : boundOf(at);
       if (hours !== null && !(hours > 0)) args.die("--hours must be a number above 0");
       if (spec === null && hours === null) args.die("name --at, --hours or both");
@@ -116,7 +116,7 @@ if (import.meta.main) {
         }
         misses = 0;
         state = next;
-        const line = untilLine(basename(dirname(log)), state.events, wait, Date.now());
+        const line = untilLine(campaignName(log), state.events, wait, Date.now());
         if (line !== null) return console.log(line);
         await Bun.sleep(POLL_MS);
       }

@@ -127,6 +127,7 @@ export const EVENT_FORMATTERS: Partial<Record<EventKind, (data: JsonObject) => s
     const draft = asRecord(data.draft);
     return `◆ exam drafted: ${plural(sized(draft?.checks), "check")}, ${plural(sized(draft?.tasks), "task")}`;
   },
+  "exam.revised": (data) => `◆ exam revised (${word(data.kind)}): ${short(data.why)}`,
   "checker.read": (data) => {
     const faults = sized(data.faults);
     const nothing = asRecord(data.doNothing);
@@ -159,7 +160,8 @@ export const EVENT_FORMATTERS: Partial<Record<EventKind, (data: JsonObject) => s
     if (ending?.outcome !== "non-result" || ending.cancelledBy === "admission") return null;
     return `⚠ solve returned non-result (${word(ending.kind)}): ${short(ending.reason)}`;
   },
-  [ENDED]: (data) => `◆ campaign ended (${word(data.ending)}): ${short(data.why)}`,
+  [ENDED]: (data) =>
+    `◆ campaign ended (${word(data.ending)})${isString(data.successor) ? ` -> ${data.successor}` : ""}: ${short(data.why)}`,
   "campaign.waited": (data) =>
     isString(data.for)
       ? `⚠ waited ${isNumber(data.ms) ? minutes(data.ms) : "?"} for ${data.for}${isString(data.until) ? ` until ${data.until}` : ""}`
@@ -280,7 +282,9 @@ export function triggerOf(row: Progress): string | null {
   if (row.promotions >= TRIGGER_AT.firstPromotion) return plural(row.promotions, "promotion");
   if (row.allTied) return "all tasks tied in comparison";
   if (row.hours >= TRIGGER_AT.hours) return `${row.hours.toFixed(1)} h since opening`;
-  if (!row.live && row.compared > 0) return `closed${row.ending === null ? "" : ` (${row.ending})`}`;
+  if (!row.live && row.compared > 0 && row.ending !== "revise") {
+    return `closed${row.ending === null ? "" : ` (${row.ending})`}`;
+  }
   return null;
 }
 

@@ -20,7 +20,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { envRunsFile } from "./host-config.ts";
 import { GOES_ON, type RunState, runState } from "./state.ts";
-import { payerOf } from "./live.ts";
+import { type Live, payerOf } from "./live.ts";
 import {
   allowedLogins,
   atCap,
@@ -36,9 +36,8 @@ import {
   seatModels,
   startRefusal,
 } from "./logins.ts";
-import type { Live } from "./live.ts";
 import { checkStart, lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
-import { keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
+import { flagOf, keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
 
 export type Turn = "watch" | "move" | "continue" | "done";
@@ -52,6 +51,7 @@ interface Hands {
   readonly checkStart: (login: string | undefined, flags: readonly string[]) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly start: (login: string | undefined) => Promise<boolean>;
+  readonly handoff?: (successor: string) => void;
   readonly say: (line: string) => void;
   readonly env: Env;
 }
@@ -94,6 +94,7 @@ export function turnOf(state: RunState, now: number, waitMs: number): Turn {
     return state.wait.for === "provider" && state.wait.until - now > waitMs ? "move" : "watch";
   }
   if (state.kind === "ended") return state.ending === GOES_ON ? "continue" : "done";
+  if (state.kind === "stopped" && state.pause !== undefined) return "done";
   return state.kind === "kept" || state.kind === "stopped" ? "continue" : "watch";
 }
 
@@ -152,8 +153,14 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     const events = hands.events();
     const state = hands.stands(events, now);
     const turn = turnOf(state, now, waitMs);
-    if (turn === "done" && state.kind === "ended") {
-      hands.say(`${name} ended on ${state.ending}: kept no longer`);
+    if (turn === "done") {
+      const successor = events.at(-1)?.data.successor;
+      if (state.kind === "ended" && isString(successor)) hands.handoff?.(successor);
+      hands.say(
+        state.kind === "ended"
+          ? `${name} ended on ${state.ending}: kept no longer`
+          : `${name} paused (${state.kind === "stopped" && state.pause !== undefined ? state.pause.why : "a pause"}): kept no longer`,
+      );
       return true;
     }
     if (turn === "watch") {
@@ -256,7 +263,13 @@ function poolOf(file: string, env: Env): () => Promise<readonly string[]> {
   };
 }
 
-async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitMs: number): Promise<void> {
+async function keepGoing(
+  run: Run,
+  pool: () => Promise<readonly string[]>,
+  waitMs: number,
+  named: readonly string[] | undefined,
+  waitHours: string,
+): Promise<void> {
   const look = keeperOf(run.name, pool, waitMs, {
     events: () => logEvents(run.path),
     stands: (events, now) => runState(run, events, processes(), now),
@@ -266,6 +279,12 @@ async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitM
     checkStart: (login, flags) => checkStart(run, rerun(flags, undefined), { login }),
     stop: () => stop([run.name, "--yes"]),
     start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),
+    handoff: (successor) => {
+      const next = runNamed(successor);
+      if (flagOf(lastRun(next).flags, "--moves") !== "0" && keepers(next.name, processes()).length === 0) {
+        leaveKeeper(next, named, waitHours);
+      }
+    },
     say: (line) => console.log(line),
     env: runtimeProcess.env,
   });
@@ -300,7 +319,7 @@ export async function keep(args: readonly string[]): Promise<void> {
   }
   if (values.here) {
     const pool = named === undefined ? poolOf(envRunsFile(run.tree), runtimeProcess.env) : async () => named;
-    return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR_MS);
+    return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR_MS, named, values["wait-hours"]);
   }
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);
   if (!values.yes) return said(run, `would be kept going on logins ${logins.join(", ")}`);

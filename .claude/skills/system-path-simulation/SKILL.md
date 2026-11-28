@@ -1,49 +1,71 @@
 ---
 name: system-path-simulation
-description: "Use before live runs or landing to exercise an untested execution path, test command joins, size a comparison, verify kill/stop recovery, simulate an open stack, or tune Examiner prompts/terms (`cases/optimize.md`). Supports archive replays, synthetic logs, scripted rehearsals on seeded campaigns, and paired live-seat rounds, tracing findings back to owning modules. Not for post-hoc analysis of finished runs (whole-run-investigation) or launching paid campaigns (run-management)."
+description: "Use before live runs or landing to simulate how a PR or stack behaves: run model-free replays, rehearsals, and prompt/schema diffs, run read-only subagent walkthroughs of the changed system, or run bounded live-model simulations on seeded campaigns (`cases/live-seat.md`, `cases/optimize.md`). Not for post-hoc analysis of finished campaigns (`whole-run-investigation`) or launching full campaigns (`run-management`)."
 ---
 
 # System path simulation
 
-Shape behavioural changes into **separable, ablatable, simulatable slices**, and run a pre-run simulation gate at the cheapest tier that settles each slice's question before spending on any live run or external evaluation:
+Simulate a PR or stack before launching a full campaign or merging. Use model-free checks and subagent simulations freely, and add bounded live-model angles whenever a change affects prompts, schemas, agent decisions, or scoring.
 
-| Tier | Runs | Cost | Proves | Cannot prove | Guide |
-| --- | --- | --- | --- | --- | --- |
-| **1. Read** | Readers on recorded or in-memory synthetic events | sec, \$0 | How folds/seat views read an event sequence | Command execution after last event | [synthetic](cases/synthetic.md) |
-| **2. Rehearse** | Real commands, wall, verifier & comparison on a seed (`faux/script`, no Auditor) | min, \$0 | Command joins & sample-size power | Real model behaviour | [rehearsal](cases/rehearsal.md) |
-| **3. Live seat** | Real commands with live model seat(s) on a seed (`scripts/live-seat.ts`) | USD (operator approval) | Real model action from recorded state | Rate from 1 draw (rule 6) | [live-seat](cases/live-seat.md), [optimize](cases/optimize.md) |
+## Three ways to simulate
 
-Use [before-after](cases/before-after.md) for cross-commit/pre-landing verification at any tier; use [rubric-and-verifier](cases/rubric-and-verifier.md) for rubric items and the pairwise judge; use [stack-contracts.md](../run-improvement-campaign/references/stack-contracts.md) to pick the exact input/output contract seam each slice must prove before live spend.
+| Method | What it runs | Cost | Best for | Reference |
+| --- | --- | --- | --- | --- |
+| **Model-free checks** | Archive replays (`runs replay`, `promotion-tuner/scripts/replay.ts`), `live-seat.ts prompt`, `seat-view.ts`, `wall-probe.ts`, and scripted rehearsals (`runs rehearse` on `faux/script`) | \$0 (use freely) | Log compatibility, score parity, prompt/schema diffs, sandbox boundaries, command joins, endings | [before-after](cases/before-after.md), [rehearsal](cases/rehearsal.md), [rubric-and-verifier](cases/rubric-and-verifier.md) |
+| **Subagent simulation** | Read-only subagent given the PR diff and owning modules to step through the changed system end to end (or a multi-agent simulation for major redesigns) | No campaign spend (use freely) | Tracing state transitions, resume and recovery paths, subtle interactions, and schema-to-consumer gaps | `swarm-simulation-agentic-system` |
+| **Live-model simulation** | Real model runs on seeded campaign cuts via `scripts/live-seat.ts` | Operator-approved spend | Checking how real models behave under updated prompts, schemas, tools, or scoring | [live-seat](cases/live-seat.md), [optimize](cases/optimize.md) |
 
-## Rules
+Use [stack-contracts.md](../run-improvement-campaign/references/stack-contracts.md) to pick the contract seams each change touches.
 
-1. Pre-register intent and 2–3 rival outcomes (gain, null, regression with metrics/thresholds) in `.ana/wri/` before running; separate delivery checks from empirical predictions.
-2. Seed late from a quiescent log (`bun run runs seed --from <run> --name sim-<what> [--points | --events N]`) and note how it differs from live state.
-3. Build states strictly with campaign commands (never hand-edit logs or `states/`; synthetic logs stay in memory).
-4. Vary one factor at a time; keep prompts at production defaults unless testing a prompt.
-5. Codify cleared conditions in an owning `test/` case running real writer against real reader; trash seeds after use (`/usr/bin/trash .ana/d2/sim-<what>`).
+## Sizing and launching live angles
+
+When a PR changes model-facing prompts, schemas, agent flows, or scoring, do not stop at mocked runs alone:
+
+- **Small PR:** run **1 to 2** live angles targeting the changed path and a control.
+- **Large PR or multi-PR stack:** run **4 to 8** live angles covering distinct seams, domains, or controls.
+- **Concurrency:** run **at most 2** live simulations concurrently on a quiet host.
+- **Bounds:** keep each live angle short and bounded (`--cap`, `--minutes`, `--tries`, `--proposals`, `--moves`). Use [optimize](cases/optimize.md) only for deliberate paired prompt/parameter sweeps.
+
+### Autonomous parameter selection once live simulation is requested
+
+Never start unprompted paid runs when the operator has not asked for live-model simulation. Once the operator asks to run live simulations (for example, "simulate with real models", "run 4–6 live angles", or "continue" on an approved live-simulation plan) without spelling out every parameter, determine the omitted values from recent history rather than pausing to ask:
+
+1. **Angles:** pick the 1–2 (small PR) or 4–8 (large PR / stack) highest-signal angles covering every changed seam plus a control domain. Where code refuses a seat combination on the chosen backend (for example, same-family judged pairs), state that in one line and substitute an angle that runs cleanly on the chosen backend alone.
+2. **Model and effort:** the operator determines each backend — never choose, keep, or switch to another backend on your own (ask if no backend was named). Within the operator-named backend, infer omitted model tier or effort from recent `.ana/wri/sim-*` records, prior session history, and `tools/runs/fresh.ts` (`NAMED`), keeping all seats on that backend unless the operator named a split.
+3. **Login and host:** run `bun run runs usage`, `bun run runs active`, and `bun run runs loadwatch --once` (never print `--env-file`). Pick an open login with headroom (preferring the most remaining weekly quota / earliest reset among open logins within plan concurrency caps) and a quiet non-benchmark host.
+4. **Dollar and minute caps:** derive a bounded per-angle cap from prior `.ana/wri/sim-*` sittings of the same seat kind (typically \$15 to \$50 and 20 to 30 minutes per bounded seat, scaled to seat scope). Record the chosen angles, model, effort, cap, and falsifiers in `.ana/wri/sim-<date>-<topic>/predictions.md` before launch, then start Wave 1 immediately.
+
+## Practical rules
+
+1. **State the question first:** before spending on live models, write down the question and what outcomes would confirm, leave unchanged, or refute the change in `.ana/wri/`.
+2. **Seed from real logs:** cut a seed from a quiescent run instead of constructing logs by hand (`bun run runs seed --from <run> --name sim-<what> --before <id>`). Note how the seed differs from a full run. Cuts on runs with per-session `examiner-homes/` restore the exact Examiner home from before the cut and copy `claude-sessions/` transcripts for mid-session forking.
+3. **Change one variable at a time:** build all state through real campaign commands (never edit `log.jsonl` or `states/` directly), and keep production prompts verbatim unless testing a prompt change.
+4. **Verify and codify:** verify subagent findings in source code, turn confirmed edge cases or bugs into tests under `test/`, and remove throwaway seeds afterward (`/usr/bin/trash .ana/d2/sim-<what>`).
+
+## Commands
 
 ```sh
-bun tools/campaign/harness-builder.ts --name <name> --dry-run
-bun run runs replay [<name> ...]
-bun run runs seed --from <campaign> --name sim-<what> [--points | --events <n>]
-bun run runs rehearse sim-<what>
+bun run runs replay [<name> ...]                                        # log schema and fold parity
+bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <abs>       # comparison reading parity
+bun run runs seed --from <campaign> --points                            # list cut points
+bun run runs seed --from <campaign> --name sim-<what> --before <id>     # seed before a session or comparison
+bun run runs rehearse --name sim-<what> [--id g-sim --new latest]       # scripted rehearsal
 ```
 
-## Tier 3 (`scripts/live-seat.ts`) & report
+## Live targets (`scripts/live-seat.ts`)
 
-Requires operator approval naming seats, model, effort, login and USD/time cap; never print `--env-file`; run paired arms concurrently on one quiet host (`runs hosts --health`, `runs loadwatch --once`, `runs usage`).
-
-| Seat | Seed cut | Command | Reader |
+| Agent | Seed cut | Command | Reader |
 | --- | --- | --- | --- |
-| Examiner | Before session | `tools/eval/examine.ts --session x-<n> --examiner <m> --examiner-effort <e>...` | `live-seat.ts read`, `pairs` |
-| Comparison | After `build.finished` | `tools/campaign/checkpoint.ts --id g-<n> --new latest` | Comparison report |
-| Stretch | Before `build.started`/rest | `harness-builder.ts`, its four seats named by `live-seat.ts start --model` (one or four, as `runs fresh`) | Log readers |
+| Draft | `--before d-1` | `tools/eval/draft.ts --session d-1 --examiner <m> [--reviewer <r>] [--fork-from <id> --at-turn <k>] [--nudge <text>]` | `live-seat.ts read`, `compare`, `prompt` |
+| Examiner | `--before x-<n>` | `tools/eval/examine.ts --session x-<n> --examiner <m> --examiner-effort <e> [--fork-from <id> --at-turn <k>] [--nudge <text>]` | `live-seat.ts read`, `compare`, `pairs`, `prompt` |
+| Builder | `--before b-<n>` | `tools/campaign/session.ts --session b-<n> --builder <m> [--fork-from <id> --at-turn <k>] [--nudge <text>]` | `live-seat.ts read`, `compare` |
+| Comparison | `--before g-<n>` | `tools/campaign/checkpoint.ts --id g-<n> --new latest ...` | `live-seat.ts read`, comparison report |
+| Full loop | `--before b-<n>` / rest | `tools/campaign/harness-builder.ts`, with models named via `live-seat.ts start --model` | `live-seat.ts read`, log readers |
 
-Report: question & tier; seed/source/cut & live diff; pre-registered intent, rivals & outcome; what did not run; conditions (`blocking`\|`cleared`\|`accepted-risk`) with owner verdict; spend/minutes (tier 3); seed cleanup.
+Summarize results with: the question and method used; seed source and cut; expected vs observed outcomes; what was not tested; bugs found and tests added; cost and duration (for live runs); and cleanup confirmation.
 
 ## Related skills
 
-- Fixing/rewriting findings: [simplify](../simplify/SKILL.md), [commit-r](../commit-r/SKILL.md), [system-audit](../system-audit/SKILL.md)
-- Archive scoring/decision replay: [promotion-tuner](../promotion-tuner/SKILL.md)
-- Post-hoc run audits or live launches: [whole-run-investigation](../whole-run-investigation/SKILL.md), [run-management](../run-management/SKILL.md)
+- Fixing findings: [simplify](../simplify/SKILL.md), [commit-r](../commit-r/SKILL.md), [system-audit](../system-audit/SKILL.md)
+- Score and rule replay: [promotion-tuner](../promotion-tuner/SKILL.md)
+- Campaign analysis and launches: [whole-run-investigation](../whole-run-investigation/SKILL.md), [run-management](../run-management/SKILL.md)

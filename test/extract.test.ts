@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type AnswerFile, textFiles } from "../src/kernel/answer-files.ts";
-import { EXTRACT, extract, headOf } from "../src/kernel/extract.ts";
+import { answerImages, EXTRACT, extract, headOf } from "../src/kernel/extract.ts";
 
 const zipped = (path: string, entries: Record<string, string>): AnswerFile => {
   const [file] = textFiles([
@@ -212,5 +212,24 @@ describe("the offline file extractor", () => {
     expect(refused.kind).toBe("binary");
     expect(refused.fault).toContain("exceeds 16777216 byte limit");
     expect(refused.fault).not.toContain("\n");
+  });
+
+  it("extracts docx tables and embedded images from Office archives and notebooks", () => {
+    const doc = zipped("report.docx", {
+      "word/document.xml":
+        "<w:document><w:body><w:p><w:r><w:t>Summary</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Metric</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Value</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>N</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>42</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>",
+      "word/media/image1.png": "x",
+      "word/media/vector.svg": "<svg/>",
+    });
+    expect(extract(doc).text).toBe("Summary\nMetric\tValue\nN\t42");
+    expect(answerImages(doc).map(({ path }) => path)).toEqual(["report.docx#word/media/image1.png"]);
+
+    const nb = {
+      cells: [{ cell_type: "code", source: "plot()", outputs: [{ data: { "image/png": "AAAA" } }] }],
+    };
+    const nbFile = plain("diag.ipynb", JSON.stringify(nb));
+    expect(answerImages(nbFile).map(({ path }) => path)).toEqual(["diag.ipynb#cell-0-out-0.png"]);
+    expect(answerImages({ path: "empty.png", base64: "" })).toEqual([]);
+    expect(answerImages({ path: "pic.png", base64: "AAAA" }).map(({ path }) => path)).toEqual(["pic.png"]);
   });
 });

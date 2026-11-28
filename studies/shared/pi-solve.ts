@@ -24,13 +24,14 @@ import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { join } from "#src/meta/path.ts";
+import { basename, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { directCodingTools, selectedCodingTools } from "#src/tools/coding.ts";
 import { ending, text, tool } from "#src/tools/answer.ts";
 import type { SolveClock } from "#src/tools/command.ts";
+import { readHarnessFiles } from "#src/harness/files.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
 import { portableGuide } from "#src/harness/starter.ts";
@@ -181,19 +182,23 @@ async function solve(ask: Asked) {
   const env = new NodeExecutionEnv({
     cwd,
     shellPath: "/bin/bash",
-    shellEnv: { ...baseEnv, ...keyIfDefined("BASH_ENV", envScript) },
+    shellEnv: { ...baseEnv, MPLBACKEND: "Agg", ...keyIfDefined("BASH_ENV", envScript) },
   });
   const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
   const said = { submitted: false };
   // In the order a campaign's solver is given them (`solverTools`, `src/solver/run.ts`).
   const defined = [...directCodingTools(selectedCodingTools(harness.presets), prefix), submitTool(said)];
   const programs = installedPrograms(harness.toolTree);
+  const campaignBins = new Set(
+    readHarnessFiles(ask.harness, [], []).campaignRefFiles.map((file) => basename(file)),
+  );
+  const visiblePrograms = programs.filter((name) => !campaignBins.has(name));
   const stripped = harness.guide === null ? "" : portableGuide(harness.guide);
   const guide = stripped.trim() === "" ? null : stripped;
   const programLine =
-    programs.length === 0
+    visiblePrograms.length === 0
       ? ""
-      : `\n- Programs this harness installed run by name: ${listedPrograms(programs)}.`;
+      : `\n- Programs this harness installed run by name: ${listedPrograms(visiblePrograms)}.`;
   const prompt = promptEnvelope({
     tools: defined,
     home: cwd,

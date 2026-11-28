@@ -5,6 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   ANSWERED,
+  boundedPause,
   PAUSE,
   PAUSE_STOP_WINDOW_MS,
   pausePointReached,
@@ -109,7 +110,7 @@ describe("an operator's word", () => {
     expect(paused(reached, 0, START + 10_000 + PAUSE_STOP_WINDOW_MS, minutes)).toBe(false);
   });
 
-  it("holds across unpromoted steps, latches pre-promotion arming onto starter confirmation, and expires abandoned pauses in pauseSince", () => {
+  it("holds across unpromoted steps, latches pre-promotion arming onto starter confirmation, and keeps reached pauses intact across self-stop teardown", () => {
     const minutes = 30 * 60;
     const preArmed = [
       event("campaign.opened", {}, 0),
@@ -140,11 +141,16 @@ describe("an operator's word", () => {
     expect(paused(confirmed, 0, START + 1_500_000 + PAUSE_STOP_WINDOW_MS, minutes)).toBe(false);
     expect(pauseSince(confirmed, 0)?.data.after).toBe("reported");
 
-    // If `runs pause` died and events kept landing past the stop window, `pauseSince` stops claiming intentional pause.
-    const abandoned = [
+    // Self-stop inside an open Builder conversation keeps `pauseSince` intact so a keeper does not restart the run.
+    const halted = [
       ...confirmed,
-      event("build.call", { session: "b-2" }, 1_500_000 + PAUSE_STOP_WINDOW_MS),
+      event("build.call", { session: "b-2" }, 1_500_000 + PAUSE_STOP_WINDOW_MS + 500),
+      event("build.finished", { session: "b-2", ended: "stopped" }, 1_500_000 + PAUSE_STOP_WINDOW_MS + 1000),
     ];
-    expect(pauseSince(abandoned, 0)).toBeUndefined();
+    expect(boundedPause(halted, 0)).toBe(true);
+    expect(boundedPause([...halted, word({ word: "continue" })], 0)).toBe(true);
+    expect(boundedPause([...halted, word({ word: "stop" })], 0)).toBe(false);
+    expect(boundedPause([event("campaign.opened", {}), word({ word: "pause" })], 0)).toBe(false);
+    expect(pauseSince(halted, 0)?.data.after).toBe("reported");
   });
 });

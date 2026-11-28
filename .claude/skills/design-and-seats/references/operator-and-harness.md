@@ -10,8 +10,8 @@ must fix the evaluation exam, authorise expenditure, and own irreversible action
 never authors the exam itself. Launching an unattended campaign pre-authorises four of these
 decisions for that campaign so it can run to a typed ending: freezing a fault-free exam
 (`accept.ts --freeze`), admitting checks computed by their author (`--admit-authored`), admitting
-judged rubric items when a cross-family reviewer is configured (`--admit-judge`, disabled by
-`--no-admit-judge`), and promoting the harness selected by the promotion rule. These grants are
+judged rubric items when a cross-family reviewer is configured (`accept.ts --admit-judge`), and
+promoting the harness selected by the promotion rule. These grants are
 owned by `make` in `tools/campaign/harness-builder.ts`, `openTerms` in `tools/campaign/campaign-terms.ts`, and
 `planOf` in `src/campaign/opening.ts`. Passing `--hitl` revokes these grants until `--no-hitl` is
 passed. Any other fault, as well as continuing past the stop rule, requires explicit operator

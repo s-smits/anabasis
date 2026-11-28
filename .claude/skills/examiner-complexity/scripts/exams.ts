@@ -5,10 +5,9 @@
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import { basename, dirname } from "#src/meta/path.ts";
 import { referenceAt, STARTS } from "#skills/examiner-complexity/scripts/ambition.ts";
 import { runCommand } from "#skills/main/cli.ts";
-import { logAcross } from "#tools/runs/snapshots.ts";
+import { namedLogs } from "#skills/main/logs.ts";
 
 /** What the gate measured on one draft (`task.gate`), from the reference's own counts rather than
  *  the prose it wrote the Examiner. */
@@ -155,9 +154,9 @@ if (import.meta.main) {
     async (args) => {
       const keep = args.flag("every") ? "every" : "grouped";
       console.log(EXAMS_HEADER);
-      for (const path of await Promise.all(args.positionals.map((named) => logAcross(named)))) {
+      for (const { name, path } of await namedLogs(args.positionals)) {
         const events = read(path);
-        for (const line of csvLines(basename(dirname(path)), draftRows(events, keep))) {
+        for (const line of csvLines(name, draftRows(events, keep))) {
           console.log(line);
         }
       }

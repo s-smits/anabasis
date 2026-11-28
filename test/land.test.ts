@@ -271,6 +271,7 @@ function sandbox() {
     ANA_FAKE_LOG: gateLog,
     // No host list, and the fixture's main worktree holds no `.env.runs`, so every proof stays here.
     ANA_HOSTS: "",
+    ANA_RUNNER_SPARE_HELD: undefined,
     ANA_GH_LOG: ghLog,
     ANA_FAKE_PULLS: stack(),
     ANA_FAKE_STACK: "7 11,12",
@@ -575,16 +576,44 @@ describe.concurrent("bun run land", () => {
   });
   const hosts = JSON.stringify([host("alpha", 1), host("unset"), host("beta", 3)]);
 
-  it("spreads its proofs over every listed host where ANA_CHECK_HOST is unset or empty, sparing held benchmark hosts, two on one that sets no checks, the whole gate on the first", async () => {
+  it("pools proofs under all across non-benchmark check hosts where ANA_CHECK_HOST is unset or empty, capped by concurrency and capacity", async () => {
     for (const checkHost of [undefined, "   "]) {
       const { runLand, gateLog, statuses } = sandbox();
       const result = await runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: checkHost });
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain("proving on alpha (1), unset (2), beta (3) at once");
-      expect(wherePassesRan(gateLog)).toContain(`${upper} alpha`);
-      expect(logLines(gateLog)).toContain(`spare\t${upper}\talpha`);
+      expect(result.stdout).toContain("proving on all (4) at once");
+      expect(wherePassesRan(gateLog)).toContain(`${upper} all`);
+      expect(logLines(gateLog)).toContain(`spare\t${upper}\tall`);
       expect(statuses(COMMIT)).toContain(`success ${upper}`);
     }
+    const capped = sandbox();
+    const highJobs = await capped.runLand(["12", "--sanitize", "--jobs", "50"], {
+      ANA_HOSTS: hosts,
+      ANA_CHECK_HOST: undefined,
+    });
+    expect(highJobs.status).toBe(0);
+    expect(highJobs.stdout).toContain("proving on all (6) at once");
+    const small = sandbox();
+    const withBench = JSON.stringify([host("alpha", 1), host("bench", 4)]);
+    const evalRunner = JSON.stringify([
+      { name: "outside", host: "bench", store: "store", sitting: "sit", packs: ["outside"] },
+    ]);
+    const benchRun = await small.runLand(["12", "--sanitize"], {
+      ANA_HOSTS: withBench,
+      EVAL_RUNNER: evalRunner,
+      ANA_CHECK_HOST: undefined,
+    });
+    expect(benchRun.status).toBe(0);
+    expect(benchRun.stdout).toContain("proving on all (1) at once");
+    const onlyBench = sandbox();
+    const benchOnlyRun = await onlyBench.runLand(["12", "--sanitize"], {
+      ANA_HOSTS: JSON.stringify([host("bench", 4)]),
+      EVAL_RUNNER: evalRunner,
+      ANA_CHECK_HOST: undefined,
+    });
+    expect(benchOnlyRun.status).toBe(0);
+    expect(benchOnlyRun.stdout).not.toContain("proving on all");
+    expect(wherePassesRan(onlyBench.gateLog)).toContain(`${upper} bench`);
   });
 
   it("proves at the one place an explicit ANA_CHECK_HOST names, without ANA_RUNNER_SPARE_HELD, whatever the host list holds", async () => {
@@ -789,13 +818,20 @@ describe.concurrent("bun run land", () => {
   /** `bun run split` left #15 in a native stack of its own, above stack 7 of #11 and #12. */
   const divided = { ...opened, ANA_FAKE_TOP_STACK: "15 8 15" };
 
-  it("proves only the native stack that holds the top where the chain is divided, and links nothing", async () => {
-    const { runLand, gateLog, linkCalls } = sandbox();
+  it("proves every native stack of a divided chain from the trunk, marking each head, and links nothing", async () => {
+    const { runLand, gateLog, linkCalls, statuses } = sandbox();
     const result = await runLand(["15", "--sanitize"], divided);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("land: GitHub's stack holding #15 starts at #15; proving from it.");
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      "land: GitHub holds #11, #12, #15 as native stacks from #11, #15; proving them all.",
+    );
     expect(linkCalls()).toEqual([]);
-    expect(gatesRun(gateLog).filter((line) => !line.startsWith(stacked))).toEqual([]);
+    expect(gatesRun(gateLog).filter((line) => !line.startsWith(stacked))).not.toEqual([]);
+    expect(statuses("mergeable").filter((row) => row.startsWith("success"))).toEqual([
+      `success ${lowerDocs}`,
+      `success ${upper}`,
+      `success ${stacked}`,
+    ]);
   });
 
   /** `bun run split` left #11 and #12 in native stacks of their own, and #15 was opened on #12 since. */
@@ -821,11 +857,13 @@ describe.concurrent("bun run land", () => {
       ANA_FAKE_LINKED: "8 12,15",
     });
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(result.stdout).toContain("land: GitHub's stack holding #15 starts at #12; proving from it.");
+    expect(result.stdout).toContain(
+      "land: GitHub holds #11, #12, #15 as native stacks from #11, #12; proving them all.",
+    );
     expect(linkCalls()).toEqual(["stack link 12 15"]);
   });
 
-  it("ends a held landing only where this one proves its pull request, from the stack or --from", async () => {
+  it("ends a held landing only where this one proves its pull request, from the trunk or --from", async () => {
     const { work, landEnv } = sandbox();
     const landing = JSON.stringify(join(import.meta.dir, "../tools/runtime/landing.ts"));
     const ends = async (env: Record<string, string>, from: number | null): Promise<string> =>
@@ -842,8 +880,8 @@ describe.concurrent("bun run land", () => {
         )
       ).stdout.trim();
     expect(await ends(opened, null)).toBe("true true true");
-    expect(await ends(divided, null)).toBe("false false true");
-    expect(await ends(openedAbove, null)).toBe("false true true");
+    expect(await ends(divided, null)).toBe("true true true");
+    expect(await ends(openedAbove, null)).toBe("true true true");
     expect(await ends(opened, 15)).toBe("false false true");
     expect(await ends(opened, 12)).toBe("false true true");
   });

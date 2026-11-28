@@ -15,10 +15,9 @@
  */
 import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { gitMaybe, gitText } from "#src/meta/git.ts";
+import { gitMaybe, gitText, repoRoot } from "#src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
 import { shellQuote } from "#src/sandbox/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
 import { formerHeadOnGitHub, leasedPush, restacked, Unreplayable } from "#tools/runtime/restack.ts";
@@ -266,7 +265,7 @@ if (import.meta.main) {
       },
     },
     (args) => {
-      const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
+      const root = repoRoot();
       const kept = keptRepublish(root);
       const mode = args.flag("yes") ? "publish" : "dry-run";
       if ((kept !== null) !== args.flag("resume")) {

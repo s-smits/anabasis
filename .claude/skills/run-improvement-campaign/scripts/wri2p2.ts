@@ -10,7 +10,7 @@
  * the derived views (`tools/wri/ledger.ts`).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { lastAt } from "#skills/main/logs.ts";
+import { campaignName, lastAt } from "#skills/main/logs.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import {
   existsSync,
@@ -22,7 +22,7 @@ import {
 } from "#src/meta/filesystem.ts";
 import { gitMaybe, mainTree } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { CODE_TREES } from "#tools/campaign/campaign.ts";
@@ -130,7 +130,7 @@ const fixed = (dir: string) =>
 
 function runsOf(dir: string): string[] {
   const { logs, log } = parseJsonAs<{ logs?: string[]; log?: string }>(read(join(dir, INVESTIGATION)));
-  return (logs ?? (log === undefined ? [] : [log])).map((each) => basename(dirname(each)));
+  return (logs ?? (log === undefined ? [] : [log])).map(campaignName);
 }
 
 function investigations(root: string): { dir: string; names: string[] }[] {
@@ -443,10 +443,7 @@ export function nextOf(dir: string, known: Known = {}): string[] {
 /** How long each campaign `among` holds by a name is now, or null for one it does not hold or that
  *  may still write its log (`stillRunning`), whose log grows on every look and would reopen its
  *  unreached and pending rows at each `next`. */
-export function lengthsIn(
-  among: readonly Run[],
-  running: () => readonly Running[] = processes,
-): Where["lengthOf"] {
+function lengthsIn(among: readonly Run[], running: () => readonly Running[] = processes): Where["lengthOf"] {
   const lengths = new Map<string, number | null>();
   let looked: readonly Running[] | undefined;
   return (name) => {
@@ -486,7 +483,7 @@ function held<T>(path: string, reader: (path: string) => T): T | null {
   }
 }
 
-export const movedIn = (
+const movedIn = (
   known: readonly Run[],
   running: readonly Running[],
   now: number,
@@ -733,7 +730,7 @@ function open(args: CommandArgs, repo: string): number {
  * still-missing view beside the plan of the iteration that read it. `liveOf` says which runs may
  * still write their logs, whose rows no plan is late for.
  */
-export function ledgerViews(
+function ledgerViews(
   dir: string,
   root: string,
   lengthOf: Where["lengthOf"],

@@ -221,9 +221,8 @@ const costRows = (runs: readonly Run[]) =>
 async function main(args: CommandArgs): Promise<number> {
   const format = formatOf(args);
   const rows = args.value("rows") ?? "recent";
-  if (!ROW_MODES.some((mode) => mode === rows)) {
-    return args.die(`--rows takes ${ROW_MODES.join(", ")}; got ${rows}`);
-  }
+  const rowMode = ROW_MODES.find((mode) => mode === rows);
+  if (rowMode === undefined) return args.die(`--rows takes ${ROW_MODES.join(", ")}; got ${rows}`);
   const [has, holds] = [args.list("has"), args.list("holds")];
   const since = args.value("since") ?? SINCE;
   const { runs, skipped } = await loadRuns(
@@ -235,7 +234,7 @@ async function main(args: CommandArgs): Promise<number> {
       holds,
       repo: runtimeProcess.cwd(),
     },
-    rows === "cost" ? "full" : "unpriced",
+    rowMode === "cost" ? "full" : "unpriced",
   );
   // Every live run, then the latest finished runs that promoted, newest first.
   const newest = (list: readonly Run[]) => list.toSorted((a, b) => b.last - a.last);
@@ -246,22 +245,20 @@ async function main(args: CommandArgs): Promise<number> {
       args.int("last") ?? LAST,
     ),
   ];
-  const tables = new Map([
-    ["recent", () => printed(RECENT_HEAD, recentRows(listed), format)],
-    ["runs", () => printed(RUN_HEAD, runRows(runs), format)],
-    ["promotions", () => printed(PROMOTION_HEAD, promotionRows(runs), format)],
-    ["cost", () => printed(COST_HEAD, costRows(runs), format)],
-    ["releases", () => printed(RELEASE_HEAD, releaseRows(runs), format)],
-  ]);
-  const table = tables.get(rows);
-  if (table === undefined) return args.die(`--rows takes ${ROW_MODES.join(", ")}; got ${rows}`);
-  console.log(table());
+  const tables = {
+    recent: () => printed(RECENT_HEAD, recentRows(listed), format),
+    runs: () => printed(RUN_HEAD, runRows(runs), format),
+    promotions: () => printed(PROMOTION_HEAD, promotionRows(runs), format),
+    cost: () => printed(COST_HEAD, costRows(runs), format),
+    releases: () => printed(RELEASE_HEAD, releaseRows(runs), format),
+  } satisfies Record<(typeof ROW_MODES)[number], () => string>;
+  console.log(tables[rowMode]());
   if (format === "tsv") return 0;
-  if (rows === "recent") console.log(`\n${recentSummary(listed)}`);
+  if (rowMode === "recent") console.log(`\n${recentSummary(listed)}`);
   const only = has.length + holds.length > 0 ? `, only runs with ${[...has, ...holds].join(", ")}` : "";
   const promotions = runs.reduce((sum, run) => sum + run.promotions.length, 0);
   console.log(`\n${String(runs.length)} campaigns, ${String(promotions)} promotions, since ${since}${only}.`);
-  console.log([...CAVEAT, ...(rows === "cost" ? [REPRICED] : [])].join("\n"));
+  console.log([...CAVEAT, ...(rowMode === "cost" ? [REPRICED] : [])].join("\n"));
   if (skipped.length > 0) console.log(`not read (${String(skipped.length)}): ${skipped.join("; ")}`);
   return 0;
 }

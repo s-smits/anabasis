@@ -5,6 +5,7 @@ import { join } from "../src/meta/path.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import {
   bench,
+  completedBenchPairs,
   defaultBenchLabel,
   heldAs,
   type Plan,
@@ -13,7 +14,6 @@ import {
   stepsOf,
   walk,
 } from "../tools/runs/bench.ts";
-import { completedBenchPairs } from "../tools/runs/bench-scores.ts";
 
 const scratch: string[] = [];
 const HOSTS = JSON.stringify([
@@ -143,7 +143,7 @@ describe("runs bench", () => {
     expect(ran.some((words) => words.includes("--yes"))).toBe(false);
   });
 
-  test("completedBenchPairs handles both base- and starter- baselines with exact task matching", () => {
+  test("completedBenchPairs handles both base- and starter- baselines with exact task matching", async () => {
     const store = mkdtempSync(join(tmpdir(), "ana-bench-scores-"));
     scratch.push(store);
     const put = (arm: string, task: string, runtime?: string) => {
@@ -158,6 +158,10 @@ describe("runs bench", () => {
     put("base-pi-a2", "t1", "pi-durable");
     put("pi-mixed", "t1", "pi-durable");
     put("starter-pi-mixed", "t1", "claude-code");
+    put("pi-self-mixed", "t1", "pi-durable");
+    put("pi-self-mixed", "t2", "claude-code");
+    put("base-pi-self-mixed", "t1", "pi-durable");
+    put("base-pi-self-mixed", "t2", "pi-durable");
     expect(completedBenchPairs(store)).toEqual([{ label: "pi-a2", baseline: "base-pi-a2" }]);
     put("ref-a1", "t2");
     expect(completedBenchPairs(store)).toEqual([
@@ -175,6 +179,7 @@ describe("runs bench", () => {
       { label: "pi-a2", baseline: "base-pi-a2" },
       { label: "ref-a1", baseline: "starter-ref-a1" },
     ]);
+    await expect(bench(["--bench", "no-such-bench"])).rejects.toThrow("no benchmark no-such-bench");
   });
 
   test("heldAs deduplicates native pi trees, reports legacy claude reads, and refuses legacy label reuse", () => {

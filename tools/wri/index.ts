@@ -3,11 +3,12 @@
  * then each campaign group's investigations in time order, so a domain's binding constraints show
  * side by side.
  */
+import { campaignName } from "#skills/main/logs.ts";
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { basename, dirname, join } from "#src/meta/path.ts";
+import { basename, join } from "#src/meta/path.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural, textOr } from "#src/meta/text.ts";
@@ -144,7 +145,7 @@ function campaignsOf(dir: string): string[] {
   const read = asRecord(json === null ? null : capturedJsonParse(json));
   const listed = [read?.logs, read?.peers].flatMap((each) => (Array.isArray(each) ? each : []));
   const logs = [read?.log, ...listed].filter(isString);
-  if (logs.length > 0) return [...new Set(logs.map((log) => basename(dirname(log))))];
+  if (logs.length > 0) return [...new Set(logs.map(campaignName))];
   const overview = textAt(join(dir, OVERVIEW)) ?? "";
   return [...overview.matchAll(/^## (\S+)$/gmu)].flatMap(([, name]) => name ?? []);
 }

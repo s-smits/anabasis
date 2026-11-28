@@ -14,6 +14,8 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { asRecord, isFunction, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
+const [REVISED, STARTED] = ["exam.revised", "comparison.started"] as const;
+
 const EVENT_KINDS = [
   "campaign.opened",
   "campaign.setting",
@@ -40,6 +42,7 @@ const EVENT_KINDS = [
   "draft.compacted",
   "draft.finished",
   "exam.drafted",
+  REVISED,
   "exam.started",
   "exam.turn",
   "exam.call",
@@ -65,7 +68,7 @@ const EVENT_KINDS = [
   "referee.brief",
   "referee.pair",
   "diagnosis.recorded",
-  "comparison.started",
+  STARTED,
   "comparison.reported",
   "stop.overridden",
 ] as const;
@@ -106,12 +109,30 @@ export const isKind = (value: unknown): value is EventKind => isString(value) &&
 export const isReferenceChange = (kind: EventKind): boolean =>
   kind === "harness.promoted" || kind === "harness.reverted";
 
+const LOCKED: ReadonlySet<EventKind> = new Set([REVISED, STARTED, "comparison.reported"]);
+
+function checkRevisionLock(path: string, kind: EventKind): void {
+  if (kind !== REVISED && kind !== STARTED) return;
+  const seen = read(path, (each) => !LOCKED.has(each));
+  if (seen.some((event) => event.kind === REVISED)) {
+    throw new Error(`no ${kind} after ${REVISED}; the campaign continues in its successor`);
+  }
+  const reported = new Set(seen.map(({ kind: was, data }) => (was === STARTED ? null : data.session)));
+  const open = seen.find(
+    ({ kind: was, data }) => was === STARTED && data.ladder !== true && !reported.has(data.session),
+  );
+  if (kind === REVISED && open !== undefined) {
+    throw new Error("cannot revise the exam while a comparison is open");
+  }
+}
+
 export function append(path: string, kind: EventKind, data: JsonObject): LogEvent {
   const event: LogEvent = { at: new Date().toISOString(), kind, data };
   const fd = openSync(path, "a+");
   try {
     lockExclusiveSync(fd);
     if (foldsEvent(kind)) taskStates([...read(path, (each) => !foldsEvent(each)), event]);
+    checkRevisionLock(path, kind);
     const full = fstatSync(fd).size;
     const size = wholeSize(fd, full);
     if (size !== full) ftruncateSync(fd, size);

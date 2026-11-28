@@ -1,7 +1,7 @@
 path	count
 .claude/skills/campaign-mechanics/scripts/bills.ts	5
 .claude/skills/campaign-mechanics/scripts/conditions.ts	4
-.claude/skills/campaign-mechanics/scripts/ending.ts	5
+.claude/skills/campaign-mechanics/scripts/ending.ts	4
 .claude/skills/codex-gpt-swarm/scripts/gpt-receipts.ts	10
 .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts	12
 .claude/skills/compare-systems/scripts/systems.ts	10
@@ -25,7 +25,7 @@ path	count
 .claude/skills/main/print.ts	2
 .claude/skills/main/runs.ts	25
 .claude/skills/main/stats.ts	10
-.claude/skills/mutation-testing/scripts/mutate.ts	5
+.claude/skills/mutation-testing/scripts/mutate.ts	3
 .claude/skills/oracle-handover/scripts/bundle.ts	4
 .claude/skills/oracle-handover/scripts/document.ts	7
 .claude/skills/oracle-handover/scripts/open-pulls.ts	11
@@ -46,7 +46,6 @@ path	count
 .claude/skills/stack-pr/scripts/republish.ts	7
 .claude/skills/stack-pr/scripts/stack.ts	1
 .claude/skills/system-audit/scripts/recent.ts	4
-.claude/skills/system-path-simulation/scripts/synthetic.ts	5
 .claude/skills/system-path-simulation/scripts/wall-probe.ts	10
 packages/ui/build.ts	1
 packages/ui/serve.ts	4
@@ -70,8 +69,6 @@ packages/ui/src/mount.ts	1
 packages/ui/src/poll.ts	1
 packages/ui/src/route.ts	13
 packages/ui/src/server/api.ts	7
-packages/ui/src/server/campaign.ts	1
-packages/ui/src/server/campaigns.ts	2
 packages/ui/src/server/context.ts	3
 packages/ui/src/server/folds.ts	2
 packages/ui/src/server/harness.ts	10
@@ -80,16 +77,12 @@ packages/ui/src/server/log.ts	6
 packages/ui/src/server/logs.ts	7
 packages/ui/src/server/move.ts	9
 packages/ui/src/server/moves.ts	10
-packages/ui/src/server/reading.ts	5
-packages/ui/src/server/solve.ts	2
 packages/ui/src/server/tasks.ts	2
 packages/ui/src/server/trace.ts	7
 packages/ui/src/server/withheld.ts	3
 packages/ui/src/shell.tsx	11
 packages/ui/src/spelling.ts	2
 packages/ui/src/views/campaign-data.ts	8
-packages/ui/src/views/campaign-harnesses.tsx	5
-packages/ui/src/views/campaign.tsx	6
 packages/ui/src/views/controls.tsx	1
 packages/ui/src/views/drill.tsx	11
 packages/ui/src/views/file-inspector.tsx	4
@@ -99,10 +92,7 @@ packages/ui/src/views/held.ts	3
 packages/ui/src/views/inspector.tsx	11
 packages/ui/src/views/late.ts	2
 packages/ui/src/views/log.tsx	2
-packages/ui/src/views/moves-comparison.tsx	6
 packages/ui/src/views/moves-list.tsx	8
-packages/ui/src/views/moves-session.tsx	3
-packages/ui/src/views/moves.tsx	3
 packages/ui/src/views/outcome.ts	1
 packages/ui/src/views/solve-rows.tsx	5
 packages/ui/src/views/solve.tsx	9
@@ -146,7 +136,6 @@ test/builder.test.ts	41
 test/campaign-kill.test.ts	6
 test/campaign.test.ts	13
 test/checker-commands.test.ts	17
-test/claude-backend.test.ts	10
 test/climb.test.ts	31
 test/coding-tools.test.ts	5
 test/command.test.ts	25
@@ -409,7 +398,7 @@ tools/runs/rehearse.ts	11
 tools/runs/replay.ts	2
 tools/runs/retire.ts	22
 tools/runs/search.ts	8
-tools/runs/seed.ts	17
+tools/runs/seed.ts	14
 tools/runs/snapshots.ts	10
 tools/runs/state.ts	8
 tools/runs/stop.ts	1
@@ -455,7 +444,6 @@ tools/wri/execution.ts	3
 tools/wri/findings.ts	7
 tools/wri/folds.ts	49
 tools/wri/gaming.ts	1
-tools/wri/gate-era.ts	4
 tools/wri/grade.ts	6
 tools/wri/index.ts	16
 tools/wri/investigation.ts	6
@@ -484,7 +472,7 @@ tools/wri/scores.ts	3
 tools/wri/signals.ts	6
 tools/wri/table-timeline.ts	4
 tools/wri/tasks.ts	4
-tools/wri/time.ts	12
+tools/wri/time.ts	8
 tools/wri/trajectory.ts	9
 tools/wri/transfer.ts	8
 tools/wri/wri.ts	15

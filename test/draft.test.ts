@@ -732,7 +732,43 @@ const PROMPTED: Parameters<typeof nextAction>[1] = {
 
 describe.concurrent("campaign draft lifecycle", () => {
   it("ends the campaign after three failed drafts across two sessions", async () => {
-    await expect(draftCommand([])).rejects.toThrow("name --name, --session and --examiner");
+    for (const missingArgs of [
+      [],
+      ["--name", `${STEM}-m`],
+      ["--name", `${STEM}-m`, "--session", "d-1"],
+      ["--session", "d-1", "--examiner", SOLVER],
+    ]) {
+      await expect(draftCommand(missingArgs)).rejects.toThrow("name --name, --session and --examiner");
+    }
+    const unprompted = `${STEM}-no-prompt`;
+    campaigns.push(unprompted);
+    mkdirSync(dirname(campaignLog(unprompted)), { recursive: true });
+    append(campaignLog(unprompted), "campaign.opened", { solver: { model: SOLVER, effort: "high" } });
+    await expect(
+      draftCommand(["--name", unprompted, "--session", "d-1", "--examiner", SOLVER], putting(SOUND)),
+    ).rejects.toThrow("did not open from a prompt");
+
+    const scriptedWithRev = `${STEM}-scripted-rev`;
+    const seenLimits: number[] = [];
+    await draftCommand(
+      [
+        ...opened(scriptedWithRev, false, { model: SOLVER, effort: "medium" }),
+        "--session",
+        "d-1",
+        "--minutes",
+        "2",
+      ],
+      (request) => {
+        seenLimits.push(request.limits.wallSeconds);
+        return putting(SOUND)(request);
+      },
+    );
+    expect(seenLimits).toEqual([120]);
+    const scriptedEvents = read(campaignLog(scriptedWithRev));
+    expect(draftOf(scriptedEvents)).toEqual(SOUND);
+    expect(scriptedEvents.filter(({ kind }) => kind === "referee.draft")).toHaveLength(0);
+    expect(scriptedEvents.filter(({ kind }) => kind === "contract.frozen")).toHaveLength(1);
+
     const name = `${STEM}-spent`;
     const flags = opened(name);
     const wrong: Draft = {
@@ -858,7 +894,7 @@ describe.concurrent("campaign draft lifecycle", () => {
           "--examiner-effort",
           "high",
         ],
-        putting(SOUND, SOUND, SOUND),
+        putting(SOUND, SOUND, SOUND, SOUND),
         async (reader, target) => {
           seenPasses.push({ effort: reader.effort, pass: target.pass, prior: target.priorFindings });
           return {
@@ -869,31 +905,67 @@ describe.concurrent("campaign draft lifecycle", () => {
           };
         },
       ),
-      ...(["sound", "skipped"] as const).map(async (verdict) => {
-        const name = `${STEM}-audit-${verdict}`;
+      (async () => {
+        const name = `${STEM}-audit-sound`;
         let calls = 0;
         await draftCommand(
           [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
           putting(SOUND),
           async () => {
             calls += 1;
-            return { verdict, findings: [], summary: verdict, probes: [] };
+            return { verdict: "sound", findings: [], summary: "sound", probes: [] };
           },
         );
         expect(calls).toBe(1);
         expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
-      }),
+      })(),
+      (async () => {
+        const name = `${STEM}-audit-skipped-no-error`;
+        let calls = 0;
+        await draftCommand(
+          [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1", "--tries", "2"],
+          putting(SOUND, SOUND),
+          async () => {
+            calls += 1;
+            return calls === 1
+              ? { verdict: "skipped", findings: [], summary: "draft audit recorded no verdict", probes: [] }
+              : { verdict: "sound", findings: [], summary: "sound", probes: [] };
+          },
+        );
+        expect(calls).toBe(2);
+        expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
+        const onlySkipped = `${STEM}-audit-skipped-only`;
+        await draftCommand(
+          [
+            ...opened(onlySkipped, false, { model: SOLVER, effort: "medium" }),
+            "--session",
+            "d-1",
+            "--tries",
+            "1",
+          ],
+          putting(SOUND),
+          async () => ({
+            verdict: "skipped",
+            findings: [],
+            summary: "draft audit recorded no verdict",
+            probes: [],
+          }),
+        );
+        expect(draftOf(read(campaignLog(onlySkipped)))).toBeNull();
+      })(),
       draftCommand([...opened(noReviewer), "--session", "d-1"], putting(SOUND), async () => {
         skippedCalls += 1;
         return { verdict: "sound", findings: [], summary: "unused", probes: [] };
       }),
     ]);
-    expect(seenPasses).toHaveLength(2);
+    expect(seenPasses).toHaveLength(3);
     expect(seenPasses[0]).toEqual({ effort: "low", pass: 1, prior: [] });
     expect(seenPasses[1]?.effort).toBe("low");
     expect(seenPasses[1]?.pass).toBe(2);
     expect(seenPasses[1]?.prior?.[0]).toContain("vacuous-pass on ex-001");
-    expect(draftOf(read(campaignLog(defectName)))).toEqual(SOUND);
+    expect(seenPasses[1]?.prior?.[0]).toContain("replay skipped:");
+    expect(seenPasses[2]?.pass).toBe(3);
+    expect(draftOf(read(campaignLog(defectName)))).toBeNull();
     expect(skippedCalls).toBe(0);
     // Deterministic $0 probe replay blocks unfixed revisions without spending an LLM pass and gates post-cap drafts too.
     expect(replayed).toMatchObject({ ended: "stands", puts: 5 });
@@ -903,6 +975,115 @@ describe.concurrent("campaign draft lifecycle", () => {
     expect(replayCalls[1]?.prior).toEqual([]);
     expect(replayCalls[1]?.verifiedFixed?.[0]).toContain("hole1 passed");
     expect(draftOf(read(campaignLog(replayName)))).toEqual(SOUND);
+
+    const restartName = `${STEM}-audit-restart`;
+    let restartAudits = 0;
+    const restartLog = campaignLog(restartName);
+    const restartArgs = opened(restartName, false, { model: SOLVER, effort: "low" });
+    append(restartLog, "referee.draft", {
+      session: "d-1",
+      pass: 1,
+      verdict: "defects",
+      findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "hole1 passed" }],
+      summary: "hole1",
+      probeRows: [probeRow("hole1")],
+    });
+    append(restartLog, "referee.draft", {
+      session: "d-1",
+      pass: 2,
+      verdict: "defects",
+      findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "hole2 passed" }],
+      summary: "hole2",
+      probeRows: [probeRow("hole2")],
+    });
+    await draftCommand(
+      [...restartArgs, "--session", "d-2", "--tries", "2"],
+      putting(holeTwo, SOUND),
+      async () => {
+        restartAudits += 1;
+        return { verdict: "sound", findings: [], summary: "should not run", probes: [] };
+      },
+    );
+    expect(restartAudits).toBe(0);
+    expect(draftOf(read(restartLog))).toEqual(SOUND);
+    const restartCalls = read(restartLog).filter(({ kind }) => kind === "draft.call");
+    expect(
+      restartCalls.some(
+        ({ data }) => isString(data.text) && data.text.includes("prior probe still reproduces"),
+      ),
+    ).toBe(true);
+
+    const unverifiedRestart = `${STEM}-audit-restart-unverified`;
+    const unverifiedLog = campaignLog(unverifiedRestart);
+    const unverifiedArgs = opened(unverifiedRestart, false, { model: SOLVER, effort: "low" });
+    for (const pass of [1, 2, 3]) {
+      append(unverifiedLog, "referee.draft", {
+        session: "d-1",
+        pass,
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 99, reason: "missing probe row" }],
+        summary: "unreplayable",
+        probeRows: [],
+      });
+    }
+    await draftCommand([...unverifiedArgs, "--session", "d-2", "--tries", "1"], putting(SOUND), async () => ({
+      verdict: "sound",
+      findings: [],
+      summary: "should not run",
+      probes: [],
+    }));
+    expect(draftOf(read(unverifiedLog))).toBeNull();
+
+    const rewriteName = `${STEM}-audit-unverified-pass`;
+    const rewriteLog = campaignLog(rewriteName);
+    const rewriteArgs = opened(rewriteName, false, { model: SOLVER, effort: "low" });
+    const rewrittenDraft: Draft = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && (req.files ?? []).some((f) => f.path === "report.md" && f.text?.includes("value 1.96")) };\n`,
+      accept: SOUND.accept.map((entry) => ({
+        ...entry,
+        files: [{ path: "report.md", text: "Diagnostics: z=1.96 (value 1.96).\n" }],
+      })),
+    };
+    for (const pass of [1, 2]) {
+      append(rewriteLog, "referee.draft", {
+        session: "d-1",
+        pass,
+        verdict: "defects",
+        findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "old keyword search" }],
+        summary: "keyword check",
+        probeRows: [
+          {
+            id: 1,
+            task: "ex-001",
+            changes: [
+              {
+                path: "file:report.md",
+                value: null,
+                edit: { find: "old stub phrase", replace: "not performed" },
+              },
+            ],
+            texts: [],
+            original: { kind: "pass" },
+            changed: { kind: "pass" },
+            moved: [],
+          },
+        ],
+      });
+    }
+    const verifySeen: { pass: number | undefined; prior: readonly string[] | undefined }[] = [];
+    await draftCommand(
+      [...rewriteArgs, "--session", "d-2", "--tries", "1"],
+      putting(rewrittenDraft),
+      async (_reader, target) => {
+        verifySeen.push({ pass: target.pass, prior: target.priorFindings });
+        return { verdict: "sound", findings: [], summary: "verified rewrite", probes: [] };
+      },
+    );
+    expect(verifySeen).toHaveLength(1);
+    expect(verifySeen[0]?.pass).toBe(3);
+    expect(verifySeen[0]?.prior?.[0]).toContain("replay failed:");
+    expect(draftOf(read(rewriteLog))).toEqual(rewrittenDraft);
 
     const deletedName = `${STEM}-audit-deleted-example`;
     const fourExamples: Draft = {
@@ -1024,7 +1205,33 @@ describe.concurrent("campaign draft lifecycle", () => {
         ],
       },
     };
-    expect(draftFaults(judgedDraft, "code-only")[0]).toContain("no cross-family judging reviewer admitted");
+    expect(draftFaults(judgedDraft)).toEqual([]);
+    expect(draftFaults(judgedDraft, "code-only")[0]).toContain("cross-family judging reviewer");
+    const sameFamilyLog = join(root, "same-family-judge", "log.jsonl");
+    mkdirSync(dirname(sameFamilyLog), { recursive: true });
+    let readings = 0;
+    const codeDesk = drafting(
+      {
+        id: "d-1",
+        log: sameFamilyLog,
+        prompt: "A fixture.",
+        budget: { modelTurns: 10, minutes: 5, solves: 2 },
+        lane: "code-only",
+        limits: { wallSeconds: 60, turns: 10, puts: 2 },
+        reading: async () => {
+          readings += 1;
+          return [];
+        },
+      },
+      async (action) => await action(),
+    );
+    expect(codeDesk.system).toContain("no cross-family judging reviewer");
+    expect(codeDesk.system).not.toContain("pairwise judging");
+    expect(() => invoke(toolOf(codeDesk, "draft_exam"), "call-judge", draftArgs(judgedDraft))).toThrow(
+      'expected "code"',
+    );
+    expect(readings).toBe(0);
+    expect(codeDesk.counted()).toEqual({ tries: 0, stands: false });
 
     const staged = stageExam(join(root, "rubric-stage"), rubricDraft);
     const brief = readPack(staged.bundle).brief;

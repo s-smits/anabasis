@@ -3,15 +3,26 @@
  */
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
-import { eachEvent, type LogEvent, TRACE_KINDS } from "#src/kernel/log.ts";
+import { eachEvent, eventsOf, type LogEvent, TRACE_KINDS } from "#src/kernel/log.ts";
 import { stopRule } from "#src/campaign/admission.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { askedIn, ranWith } from "./receipt.ts";
 import { isCampaign } from "./registry.ts";
 import { readableAcross } from "./snapshots.ts";
+
+function lineageTags(events: readonly LogEvent[]): string[] {
+  const parent = openingOf(events)?.parent;
+  const kind = eventsOf(events, "exam.revised").at(-1)?.event.data.kind;
+  return [
+    ...(parent == null ? [] : [`from ${parent.campaign} (${parent.kind})`]),
+    ...(isString(kind) ? [`revised (${kind})`] : []),
+  ];
+}
 
 /** What this tree's readers make of the log at `path`, in a line. */
 function replayed(path: string): string {
@@ -29,6 +40,7 @@ function replayed(path: string): string {
     `${String(writtenTasks(events).length)} written by a session`,
     `${String(lastReports(events).length)} compared`,
     `${String(stopRule(events).checkpoints)} counted by the stop rule`,
+    ...lineageTags(events),
   ].join(" · ");
 }
 

@@ -4,6 +4,8 @@
  * `--force` re-derives). In-process readers share one parse of the log; external readers (`args`)
  * run bounded with no credentials and `ANA_HOP=1`. `pass.ts` runs `at`-tagged readers for pulse.
  */
+import { campaignName } from "#skills/main/logs.ts";
+import { printed } from "#skills/main/print.ts";
 import { conditionLines } from "#skills/campaign-mechanics/scripts/conditions.ts";
 import { campaignEnding, endingLines } from "#skills/campaign-mechanics/scripts/ending.ts";
 import { drawLines } from "#skills/comparison-reading/scripts/draw.ts";
@@ -134,8 +136,6 @@ const at = <Each extends Reader>(reader: Each, kinds: readonly EventKind[], gist
   ...keyIfDefined("gist", gist),
 });
 
-const campaignOf = (log: string) => basename(dirname(log));
-
 const namedReader = (
   name: string,
   answers: string,
@@ -145,7 +145,7 @@ const namedReader = (
 ): OwnProcess => ({
   name,
   answers,
-  args: (log: string) => [script, ...before, campaignOf(log), ...after],
+  args: (log: string) => [script, ...before, campaignName(log), ...after],
   named: true,
 });
 
@@ -258,13 +258,13 @@ export const READERS: readonly Reader[] = [
   {
     name: "degradations",
     answers: "each session or solve a model other than the one asked for served",
-    read: ({ log, events }) => [`${campaignOf(log)}: ${degradationLines(events).join("\n")}`],
+    read: ({ log, events }) => [`${campaignName(log)}: ${degradationLines(events).join("\n")}`],
   },
   at(
     {
       name: "climb",
       answers: "promotions, whether each was confirmed, and the comparisons between them",
-      read: ({ log, events }) => [climbText([{ name: campaignOf(log), events }])],
+      read: ({ log, events }) => [climbText([{ name: campaignName(log), events }])],
     },
     [PROMOTED],
     /^\| (?!campaign |---)/,
@@ -332,7 +332,7 @@ export const READERS: readonly Reader[] = [
         "--logs",
         dirname(dirname(log)),
         "--name",
-        campaignOf(log),
+        campaignName(log),
       ],
     },
     [PROMOTED],
@@ -375,14 +375,14 @@ export const READERS: readonly Reader[] = [
       name: "ambition",
       answers:
         "hours, solves and dollars to the first comparison and promotion; each Examiner session's yield",
-      read: ({ log, events }) => ambitionLines(campaignOf(log), events),
+      read: ({ log, events }) => ambitionLines(campaignName(log), events),
     },
     [EXAMINED],
   ),
   {
     name: "exams",
     answers: "one row a session and task family: drafts, held, refused, no room, proved",
-    read: ({ log, events }) => [EXAMS_HEADER, ...csvLines(campaignOf(log), examRows(events, "grouped"))],
+    read: ({ log, events }) => [EXAMS_HEADER, ...csvLines(campaignName(log), examRows(events, "grouped"))],
   },
   at(
     {
@@ -391,7 +391,7 @@ export const READERS: readonly Reader[] = [
         "per comparison, tasks the reference answers never, in some solves or always, and untied by what",
       read: ({ log, events }) => [
         ZONE_HEADER,
-        ...zoneRows(campaignOf(log), events).map((row) => row.join("\t")),
+        ...zoneRows(campaignName(log), events).map((row) => row.join("\t")),
       ],
     },
     [REPORTED],
@@ -644,7 +644,7 @@ export async function readerOutput(
   timeout = READER_MS,
 ): Promise<{ text: string; ok: boolean; cut: boolean; size: number }> {
   if (reader.named === true) {
-    const name = campaignOf(source.log);
+    const name = campaignName(source.log);
     const found = namedLog(name, source.repo);
     if (found !== source.log) {
       const text = `not read: ${reader.name} finds a campaign by its name, and ${name} names ${found ?? "no one campaign here"}, not ${source.log}\n`;
@@ -686,7 +686,7 @@ export async function derive(
     readers = READERS,
   }: { root: string; repo: string; force?: boolean; readers?: readonly Reader[] },
 ): Promise<Derived> {
-  const name = campaignOf(log);
+  const name = campaignName(log);
   const dir = folderOf(root, log);
   // What the folder is derived from: the log by path, size and time, the reading commit, and which
   // readers, so a folder written under `--no-embed` does not stand in for a whole one.
@@ -740,7 +740,7 @@ export async function derive(
 }
 
 export const folderOf = (root: string, log: string) =>
-  join(root, `${campaignOf(log)}@${hashJsonValue(log).slice(0, 12)}`);
+  join(root, `${campaignName(log)}@${hashJsonValue(log).slice(0, 12)}`);
 
 function linesOf(file: string): string {
   if (!existsSync(file)) return "none";
@@ -764,11 +764,13 @@ export function derivedMap(
   return [
     `Each campaign's folder (${where}) holds one file a reader. The last column is the file's lines${held.length === 1 ? "" : ", a campaign in that order"}.`,
     "",
-    "| file | holds | lines |",
-    "| --- | --- | --- |",
-    ...readers.map(
-      ({ name, answers }) =>
-        `| \`${name}.txt\` | ${answers} | ${held.map(({ dir }) => linesOf(join(dir, `${name}.txt`))).join(" / ")} |`,
+    printed(
+      ["file", "holds", "lines"],
+      readers.map(({ name, answers }) => [
+        `\`${name}.txt\``,
+        answers,
+        held.map(({ dir }) => linesOf(join(dir, `${name}.txt`))).join(" / "),
+      ]),
     ),
   ].join("\n");
 }

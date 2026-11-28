@@ -20,9 +20,11 @@ const OPTIONS = {
   note: { type: "string" },
 } as const;
 
-export async function importCommand(args: readonly string[]): Promise<{ digest: string; dir: string }> {
-  const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { log, harness } = harnessNamed(values);
+export async function importHarness(
+  log: string,
+  harness: string,
+  note?: string,
+): Promise<{ digest: string; dir: string }> {
   if (!existsSync(dirname(log))) {
     throw new Error(`${dirname(log)}: the campaign has no folder yet; open it before a harness is imported`);
   }
@@ -62,11 +64,17 @@ export async function importCommand(args: readonly string[]): Promise<{ digest: 
   // The origin by its last two path segments, which the closing report prints and which leaves the
   // host.
   const from = join(basename(dirname(source)), basename(source));
-  append(log, "harness.imported", { harness: digest, from, ...keyIfDefined("note", values.note) });
+  append(log, "harness.imported", { harness: digest, from, ...keyIfDefined("note", note) });
   console.log(
     `harness ${digest} is kept at ${dir}: a session may start from it (--parent ${digest}), a comparison may name it, and promote.ts may make it the reference`,
   );
   return { digest, dir };
+}
+
+export async function importCommand(args: readonly string[]): Promise<{ digest: string; dir: string }> {
+  const { values } = parseArgs({ args: [...args], options: OPTIONS });
+  const { log, harness } = harnessNamed(values);
+  return await importHarness(log, harness, values.note);
 }
 
 if (import.meta.main) {

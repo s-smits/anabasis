@@ -11,6 +11,8 @@
  * (`sideGap`); since `sideGap` depends on hidden values, output stays on the exam side.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { namedLogs } from "#skills/main/logs.ts";
+import { formatTally } from "#skills/main/print.ts";
 import { billedRate } from "#src/campaign/admission.ts";
 import { calledBy, type Called, namesOf } from "#src/campaign/names.ts";
 import {
@@ -36,11 +38,9 @@ import {
   type JsonObject,
   type JsonValue,
 } from "#src/meta/json-shape.ts";
-import { basename, dirname } from "#src/meta/path.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { percent } from "#tools/wri/execution.ts";
 import { equalMost, equalNeed, shortOf, spareOf } from "#tools/wri/clearance.ts";
-import { formatTally } from "#tools/wri/folds.ts";
 import { type SideGap, sideGap } from "#tools/wri/pairs.ts";
 
 const USAGE = `usage:
@@ -52,7 +52,7 @@ A campaign's name is read where \`logAcross\` finds it, on this host or another 
 --comparison  this comparison only (its session id, as g-1)
 --level       read the step and the A/A at this level, in place of each comparison's own
 --zone        one TSV row a comparison that tallied a task, across every log named`;
-const OPTIONS = { comparison: "text", level: "text", zone: "flag" } as const;
+const OPTIONS = { comparison: "text", level: "number", zone: "flag" } as const;
 const APART = ["aside", "short", "disputed", "flagged", "withdrawn"] as const;
 const NOT_RECORDED = "not recorded";
 export const ZONE_HEADER =
@@ -439,15 +439,13 @@ if (import.meta.main) {
     async (args: CommandArgs) => {
       if (args.flag("zone")) {
         console.log(ZONE_HEADER);
-        for (const each of args.positionals) {
-          const log = await logAcross(each);
-          for (const row of zoneRows(basename(dirname(log)), read(log))) console.log(row.join("\t"));
+        for (const { name, path } of await namedLogs(args.positionals)) {
+          for (const row of zoneRows(name, read(path))) console.log(row.join("\t"));
         }
         return;
       }
       if (args.positionals.length > 1) args.die("one log or campaign name, or several with --zone");
-      const asked = args.value("level");
-      const level = asked === null ? null : Number(asked);
+      const level = args.number("level");
       if (level !== null && !(level > 0 && level < 1)) args.die("--level must be a number between 0 and 1");
       const named = args.positionals[0] ?? "";
       const events = read(await logAcross(named));

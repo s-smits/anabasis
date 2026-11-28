@@ -1,5 +1,5 @@
-/** Two-sample permutation test over campaign-level units, and the honesty bar's exact bound. */
-import { upperBound } from "#src/kernel/compare.ts";
+/** Two-sample permutation test over campaign-level units, tally sums, and the honesty bar's exact bound. */
+import { type Tally, upperBound } from "#src/kernel/compare.ts";
 
 /** Maximum combinations for exact enumeration before falling back to deterministic shuffles. */
 const DRAWS = 4000;
@@ -98,4 +98,14 @@ export function falseSteps(steps: number, powered: number, levels: readonly numb
       ? "no level"
       : `bar ${(200 * level).toFixed(1)}% at level ${String(level)}${levels.length > 1 ? " (the least)" : ""}: ${bound <= 2 * level ? "met" : "open"}`;
   return `${String(steps)}/${String(powered)} one-sided, 95% bound ${(100 * bound).toFixed(1)}%, ${bar}`;
+}
+
+export function summed(tallies: readonly Tally[]): Tally {
+  const out = { wins: 0, losses: 0, ties: 0 };
+  for (const { wins, losses, ties } of tallies) {
+    out.wins += wins;
+    out.losses += losses;
+    out.ties += ties;
+  }
+  return out;
 }

@@ -335,6 +335,31 @@ describe("after a promotion", () => {
     const told = taskHistory(log.events, ["old", "new"].map(fixture));
     expect(told.promoted).toContain("g-9");
     expect(told.promoted).toContain("1 of the 2 tasks");
+    expect(told.promoted).toContain("confirmation comparison against the starter has not run yet");
+    const afterStarter = [
+      ...log.events,
+      {
+        at: log.events[0]?.at ?? "2026-11-26T00:00:00.000Z",
+        kind: "comparison.started" as const,
+        data: { session: "g-10", old: "h2", fresh: "h1", starter: "h1" },
+      },
+      {
+        at: log.events[0]?.at ?? "2026-11-26T00:00:00.000Z",
+        kind: "comparison.reported" as const,
+        data: {
+          session: "g-10",
+          old: "h2",
+          fresh: "h1",
+          starter: "h1",
+          reading: "no-step",
+          scored: { differences: [-1, -1, -1, -1, -1, -1] },
+          level: 0.02,
+        },
+      },
+    ];
+    expect(taskHistory(afterStarter, ["old", "new"].map(fixture)).promoted).not.toContain(
+      "confirmation comparison against the starter has not run yet",
+    );
     expect(told.refused).toEqual([
       "it names no base: bent (fixture), twisted (fixture)",
       "its hidden values are missing: short (fixture)",
@@ -454,7 +479,7 @@ describe("a wake", () => {
     expect(lines).toEqual(taskHistory(log.events, [fixture("run")]).groups.flatMap((group) => group.lines));
     expect(lines[0]).toEndWith("; ruled at fault on an answer to it: check-unit");
     const quiet = taskHistory(log.events, tasks, log.events.length);
-    expect(quiet).toEqual({ stood: null, groups: [], promoted: null, refused: [] });
+    expect(quiet).toEqual({ stood: null, reviews: null, groups: [], promoted: null, refused: [] });
   });
 });
 
@@ -469,6 +494,7 @@ describe("a resumed comparison at a wake", () => {
     log.reported("b-1", ["h1", "h2"], ["run"]);
     expect(taskHistory(log.events, [fixture("run")], since)).toEqual({
       stood: null,
+      reviews: null,
       groups: [],
       promoted: null,
       refused: [],

@@ -527,6 +527,45 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
       judged,
     );
     expect(votedOn.faults).toEqual([]);
+    expect(votedOn.notes).toEqual([matching(/offline checks or code objective.*judged criteria/u)]);
+    const mixed: Brief = {
+      ...probeBrief,
+      objective: {
+        quantity: "score",
+        direction: "higher",
+        scale: "unit",
+        items: [
+          { id: "acc", weight: 1 },
+          { id: "plain", weight: 1, kind: "judge", criterion },
+        ],
+      },
+    };
+    const mixedBlind = await probeRead(
+      distinct,
+      async (t, a) =>
+        asRecord(a)?.v === asRecord(t.publicInput)?.id
+          ? { kind: "pass", objective: 0.5, scores: { acc: 0.5 } }
+          : { kind: "fail", blocking: ["ok"] },
+      mixed,
+    );
+    expect(mixedBlind.faults).toEqual([]);
+    expect(
+      mixedBlind.notes.some((note) => /offline checks or code objective.*judged criteria/u.test(note)),
+    ).toBe(true);
+    const mixedReadsHidden = await probeRead(
+      distinct,
+      async (t, a) =>
+        asRecord(a)?.v === asRecord(t.publicInput)?.id
+          ? {
+              kind: "pass",
+              objective: asRecord(t.hidden)?.k === asRecord(a)?.v ? 1 : 0,
+              scores: { acc: asRecord(t.hidden)?.k === asRecord(a)?.v ? 1 : 0 },
+            }
+          : { kind: "fail", blocking: ["ok"] },
+      mixed,
+    );
+    expect(mixedReadsHidden.faults).toEqual([]);
+    expect(mixedReadsHidden.notes.some((note) => /hidden values had no effect/u.test(note))).toBe(false);
   });
 
   it("faults deliverables nothing reads, and notes a flat rubric item only once a probe has passed", async () => {
@@ -674,6 +713,21 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
       },
     };
     expect(await unread(reads(new Set()), { brief: judged })).toEqual([]);
+    const mixedBrief: Brief = {
+      ...probeBrief,
+      objective: {
+        quantity: "score",
+        direction: "higher",
+        scale: "unit",
+        items: [
+          { id: "acc", weight: 1 },
+          { id: "plain", weight: 1, kind: "judge", criterion: "The note explains the flags." },
+        ],
+      },
+    };
+    expect(await unread(reads(new Set()), { brief: mixedBrief })).toEqual([
+      "answer fields $.note, $.flags[].ok, $.flags[].why",
+    ]);
     const noteAtLeast = (minLength: number) => ({
       ...format,
       properties: { ...format.properties, note: { type: "string", minLength } },
@@ -686,6 +740,17 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
     ]);
     expect(await unread(reads(new Set()), { answerFormat: noteAtLeast(2) })).toEqual([
       "answer fields $.flags[].ok, $.flags[].why",
+    ]);
+    const withOptional = {
+      ...format,
+      properties: {
+        ...format.properties,
+        comment: { type: "string" },
+        tags: { type: "array", items: { type: "string" } },
+      },
+    };
+    expect(await unread(reads(new Set(optional)), { answerFormat: withOptional })).toEqual([
+      "answer fields $.comment",
     ]);
   });
 });

@@ -5,6 +5,7 @@
  * without a report.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { MINUTE_MS } from "#src/meta/clock.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import {
   closeSync,
@@ -127,7 +128,7 @@ const SESSION_FIELDS: ReadonlySet<string> = new Set([
 const NAME = /^[a-z][a-z0-9_]{0,47}$/;
 const CODEX_CANDIDATES = ["/Applications/ChatGPT.app/Contents/Resources/codex", "/opt/homebrew/bin/codex"];
 const DEFAULT_START_INTERVAL_MS = 1000;
-const MAX_START_INTERVAL_MS = 60_000;
+const MAX_START_INTERVAL_MS = MINUTE_MS;
 const MAX_RETRIES = 5;
 /** What a resumed session is told: its thread already holds the task, so this is the whole turn. */
 const RESUME_PROMPT =

@@ -14,10 +14,10 @@ import { formatComparisonHistory } from "#src/builder/past.ts";
 import { seedSavedHarnesses, snapshot } from "#src/builder/store.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
-import { pendingSignals } from "#src/campaign/signal.ts";
+import { boundedPause, pendingSignals } from "#src/campaign/signal.ts";
 import { conversing, examine } from "#src/examiner/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { append, CALL_KINDS, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
+import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { promoted as lastPromoted } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -80,7 +80,7 @@ export interface CampaignContext {
   readonly paid: "paid" | "scripted";
   readonly maxMoves: number;
   used: number;
-  readonly began?: number;
+  readonly began: number;
   failed: { readonly move: string; readonly why: string } | null;
   examining?: { readonly session: string; readonly done: Promise<void> } | null;
   releasing?: Promise<boolean>;
@@ -176,12 +176,15 @@ async function runAction(
     if (context.used >= context.maxMoves) return halt(spent);
     if (context.failed !== null) return text("The campaign has been stopped by the host.");
     const { host } = context.seats;
-    await waitPaused(context.log, context.began ?? 0, context.campaign.limits.wallSeconds, {
+    await waitPaused(context.log, context.began, context.campaign.limits.wallSeconds, {
       host,
       signal,
       within: (work) => bench.within(work),
     });
     if (aborted()) return text("The campaign has been stopped by the host.");
+    if (boundedPause(read(context.log), context.began)) {
+      return halt("The campaign reached its operator pause point; no further action may start.");
+    }
     const { turn, decided } = actionTurn(context);
     if (decided.move === "end") {
       return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
@@ -221,6 +224,10 @@ async function runAction(
               : `The host refused the ${label} action; choose another action.`,
           );
         }
+        if (eventsOf(read(context.log, TRACE_KINDS), "exam.revised").length > 0) {
+          bench.halt.abort();
+          return text("The exam was revised; this campaign hands off to its successor.");
+        }
         context.failed = { move, why: errorMessage(error) };
         bench.halt.abort();
         return text(`The host could not complete the ${label} action. The campaign has been stopped.`);
@@ -254,10 +261,14 @@ const examineAction =
       args,
       (request, wall) => examiner.session({ ...request, opened: resolve }, wall),
       AbortSignal.any([bench.halt.signal, ...(bench.request.kill === undefined ? [] : [bench.request.kill])]),
+      seats.audit,
     ).then(() => refreshCampaign(context, bench));
     await Promise.race([work, onRecord]);
     const done = work
-      .then(() => waitCrashed(context.log, context.seats.host))
+      .then(() => {
+        halted(context, bench);
+        return waitCrashed(context.log, context.seats.host);
+      })
       .then(() =>
         releasePendingPractice(context, `Examiner session ${session} beside the conversation ended`, bench),
       )
@@ -271,7 +282,7 @@ const examineAction =
       });
     context.examining = { session, done };
     return {
-      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}${promotedSince(turn.events) ? "; a compare waits for this session to end" : ""}. Once it ends the host releases any practice owed since the last reading.`,
+      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}${promotedSince(turn.events) ? "; a compare waits for this session to end. Once the owed starter comparison confirms, the host releases any practice owed." : ". Once it ends the host releases any practice owed since the last reading."}`,
     };
   };
 
@@ -290,7 +301,7 @@ async function releaseOnce(context: CampaignContext, cause: string, bench?: Benc
     return false;
   }
   const { turn, decided } = actionTurn(context);
-  if (decided.move === "promote" || decided.move === "end") return false;
+  if (decided.move === "promote" || decided.move === "revert" || decided.move === "end") return false;
   const comparing = (events: readonly LogEvent[]) =>
     comparisonsOf(events).some(({ reported }) => reported === null);
   if (comparing(turn.events)) return false;
@@ -413,7 +424,8 @@ function halted(context: CampaignContext, bench: Bench) {
   const reading = actionTurn(context);
   const { decided } = reading;
   const waits = decided.move === "promote" && context.opening.attended;
-  if (context.used >= context.maxMoves || decided.move === "end" || waits) bench.halt.abort();
+  const repairDue = decided.move === "examine" && decided.code === "bound";
+  if (context.used >= context.maxMoves || decided.move === "end" || waits || repairDue) bench.halt.abort();
   return reading;
 }
 

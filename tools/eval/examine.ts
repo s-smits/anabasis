@@ -10,6 +10,7 @@
  *   bun tools/eval/examine.ts --name truss --session x-1 --examiner claude/claude-opus-5-5
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import { openingOf } from "#src/campaign/opening.ts";
 import { examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { taskSets, taskStates } from "#src/kernel/task.ts";
@@ -17,7 +18,19 @@ import { readBrief } from "#src/kernel/verify.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, openCampaign, PACK_OPTIONS, packNamed, REPO, stayAwake } from "../campaign/campaign.ts";
+import {
+  campaignLog,
+  hostSession,
+  openCampaign,
+  PACK_OPTIONS,
+  packNamed,
+  REPO,
+  stayAwake,
+} from "../campaign/campaign.ts";
+import { revisionRunner } from "../campaign/revise.ts";
+import { type DraftAuditor, draftAuditReader } from "./draft.ts";
+import { rubricLaneOf } from "../campaign/round.ts";
+import { FORK_OPTIONS, seatFork } from "../campaign/seat-fork.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../campaign/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
@@ -26,6 +39,9 @@ const EXAMINE_OPTIONS = {
   session: { type: "string" },
   examiner: { type: "string" },
   "examiner-effort": { type: "string", default: "high" },
+  reviewer: { type: "string" },
+  "reviewer-effort": { type: "string" },
+  revise: { type: "boolean" },
   tasks: { type: "string", default: "12" },
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
@@ -33,6 +49,7 @@ const EXAMINE_OPTIONS = {
   /** The setting flags, read when the log records no setting yet. `--tasks` belongs to this
    *  command, so comparison set size uses `--target`. */
   ...SETTING_OPTIONS,
+  ...FORK_OPTIONS,
   target: { type: "string" },
 } as const;
 
@@ -41,8 +58,9 @@ export async function examineCommand(
   args: readonly string[],
   session: Session<"write"> = examine,
   kill?: AbortSignal,
+  audit?: DraftAuditor | null,
 ): Promise<void> {
-  const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS });
+  const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS, allowNegative: true });
   const { session: id, examiner } = values;
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
   if (kill?.aborted === true) throw new Error(`session ${id} was stopped before it began`);
@@ -52,7 +70,24 @@ export async function examineCommand(
   // Verifier brief rows and pack brief rows share one order.
   const declared = readBrief(campaign.checks).truthChecks;
   const sofar = read(campaign.log);
+  const opening = openingOf(sofar);
   const before = taskStates(sofar);
+  const model = modelNamed(examiner);
+  const forked = seatFork(campaign.log, "exam", model, values);
+  const models =
+    forked === null ? campaign.examiner : hostSession({ webSearch: false, cacheTtl: "1h", ...forked.seat });
+  const canRevise = values.revise ?? opening?.revise ?? true;
+  const lane = rubricLaneOf(values.reviewer ?? opening?.seats.reviewer?.model, opening?.solver?.model);
+  const revise = canRevise
+    ? revisionRunner({
+        log: campaign.log,
+        parentBundle: campaign.bundle,
+        packages: campaign.packages,
+        reader: draftAuditReader(values, opening),
+        auditor: audit,
+        kill,
+      })
+    : undefined;
   stayAwake();
   const examined = await session(
     {
@@ -76,7 +111,7 @@ export async function examineCommand(
         before.get(version) === "refused" ? [] : [task],
       ),
       pack: campaign.pack,
-      model: modelNamed(examiner),
+      model,
       // SAFETY: effort is a pi thinking level; unsupported values are rejected by the backend.
       effort: values["examiner-effort"] as ThinkingLevel,
       limits: {
@@ -85,8 +120,11 @@ export async function examineCommand(
         puts: Number(values.proposals),
       },
       wanted: Number(values.tasks),
-      models: campaign.examiner,
+      models,
       log: campaign.log,
+      lane,
+      ...keyIfDefined("revise", revise),
+      ...keyIfDefined("resumeWith", forked?.resumeWith),
       ...keyIfDefined("kill", kill),
     },
     {

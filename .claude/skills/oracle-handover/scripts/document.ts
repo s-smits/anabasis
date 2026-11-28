@@ -15,8 +15,9 @@
  */
 import * as ts from "typescript5";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { printed } from "#skills/main/print.ts";
 import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { gitOutput, gitText } from "#src/meta/git.ts";
+import { gitOutput, gitText, repoRoot } from "#src/meta/git.ts";
 import { basename, dirname, extname, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { publishedAt } from "#tools/runs/code.ts";
@@ -55,7 +56,7 @@ export const tokensOf = (text: string): number => Math.round(new TextEncoder().e
 
 /** The 1-based lines of top-level declaration `name`, from the head comment of its first statement
  *  to the end of its last, so that overloads and merged interfaces come whole. */
-export function declarationLines(text: string, name: string): [number, number] {
+function declarationLines(text: string, name: string): [number, number] {
   const file = ts.createSourceFile("part.ts", text, ts.ScriptTarget.ESNext, true);
   const named = (node: ts.Statement) =>
     ts.isVariableStatement(node)
@@ -85,7 +86,7 @@ export function declarationLines(text: string, name: string): [number, number] {
   return [line(from), line(last.getEnd())];
 }
 
-export function sectionLines(lines: readonly string[], keys: readonly string[]): [number, number][] {
+function sectionLines(lines: readonly string[], keys: readonly string[]): [number, number][] {
   // A `#` line inside a fenced block is code, not a heading.
   let fence = false;
   const headings = lines.map((line) => {
@@ -277,14 +278,16 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
   if (head.length !== 1) {
     throw new CommandFailure(`${partsFile} names ${String(head.length)} head lines: the task is one`);
   }
-  const rows = parts.map(
-    (part, index) =>
-      `| ${String(index + 1)} | ${part.title} | ${part.link === "" ? "inline only" : part.link.split(" ")[0]} | ${tokensOf(part.body).toLocaleString("en-GB")} |`,
-  );
+  const rows = parts.map((part, index) => [
+    String(index + 1),
+    part.title,
+    part.link === "" ? "inline only" : (part.link.split(" ")[0] ?? ""),
+    tokensOf(part.body).toLocaleString("en-GB"),
+  ]);
   const text = [
     ...head,
     `## The appended material\n\nEvery source part was read at commit \`${at.sha}\` (${at.web}/tree/${at.sha}) and links to the lines it holds; a part without a link is not on GitHub.`,
-    ["| part | what | on GitHub | about tokens |", "| --- | --- | --- | --- |", ...rows].join("\n"),
+    printed(["part", "what", "on GitHub", "about tokens"], rows),
     ...parts.map(
       (part, index) =>
         `## Appendix ${String(index + 1)}. ${part.title}\n\n${part.link === "" ? "" : `On GitHub: ${part.link}\n\n`}${part.body}`,
@@ -319,11 +322,7 @@ if (import.meta.main) {
       }
       const [partsFile] = args.positionals;
       if (partsFile === undefined) throw new CommandFailure("name a parts file, or pass --aliases");
-      const made = await documentOf(
-        resolve(partsFile),
-        gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel"),
-        args.required("commit"),
-      );
+      const made = await documentOf(resolve(partsFile), repoRoot(), args.required("commit"));
       const hits = scanText("REVIEW.md", made.text).map((hit) => `  line ${String(hit.line)}: ${hit.what}`);
       if (hits.length > 0) {
         throw new CommandFailure(`a credential-shaped line, so nothing was written:\n${hits.join("\n")}`);

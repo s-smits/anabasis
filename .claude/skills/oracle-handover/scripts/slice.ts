@@ -4,6 +4,7 @@
  * <run | log | folder> <selector>... [--whole] [--max-chars 6000] [--count <phrase>]`.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { printed } from "#skills/main/print.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { type Call, type Seat, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -211,23 +212,26 @@ function overview(groups: readonly Group[], selector: Selector): string {
       const own = groups.filter((group) => group.id === id);
       const billed = own.reduce((sum, group) => sum + (group.said?.billed ?? 0), 0);
       const calls = own.reduce((sum, group) => sum + group.calls.length, 0);
-      return `| ${id} | ${String(own.length)} | ${String(calls)} | ${own[0]?.at ?? ""} | ${own.at(-1)?.at ?? ""} | $${billed.toFixed(2)} |`;
+      return [
+        id,
+        String(own.length),
+        String(calls),
+        own[0]?.at ?? "",
+        own.at(-1)?.at ?? "",
+        `$${billed.toFixed(2)}`,
+      ];
     });
-    return [
-      "| session | turns | calls | first | last | billed |",
-      "| --- | --- | --- | --- | --- | --- |",
-      ...rows,
-    ].join("\n");
+    return printed(["session", "turns", "calls", "first", "last", "billed"], rows);
   }
-  const rows = groups.map(
-    (group, at) =>
-      `| ${String(at + 1)} | ${group.id} | ${String(group.turn ?? "")} | ${group.at} | ${group.calls.map((call) => call.tool).join(", ") || "none"} | ${String(group.said?.text.length ?? 0)} |`,
-  );
-  return [
-    "| group | session | turn | at | calls | words (characters) |",
-    "| --- | --- | --- | --- | --- | --- |",
-    ...rows,
-  ].join("\n");
+  const rows = groups.map((group, at) => [
+    String(at + 1),
+    group.id,
+    String(group.turn ?? ""),
+    group.at,
+    group.calls.map((call) => call.tool).join(", ") || "none",
+    String(group.said?.text.length ?? 0),
+  ]);
+  return printed(["group", "session", "turn", "at", "calls", "words (characters)"], rows);
 }
 
 function eventsMarkdown(events: readonly LogEvent[], selector: Selector, shown: Shown): string {
@@ -243,16 +247,15 @@ function eventsMarkdown(events: readonly LogEvent[], selector: Selector, shown: 
     return [`"${phrase}" in each chosen event's data, as JSON:`, ...rows].join("\n");
   }
   if (selector.items === null) {
-    const rows = own.map(
-      (event, at) =>
-        `| ${String(at + 1)} | ${event.at} | ${capturedJsonStringify(event.data).slice(0, 100)} |`,
-    );
+    const rows = own.map((event, at) => [
+      String(at + 1),
+      event.at,
+      capturedJsonStringify(event.data).slice(0, 100),
+    ]);
     return [
       `An index of each event's first 100 characters; \`${String(selector.kind)}{1-${String(own.length)}}\` gives each whole.`,
       "",
-      "| item | at | data begins |",
-      "| --- | --- | --- |",
-      ...rows,
+      printed(["item", "at", "data begins"], rows),
     ].join("\n");
   }
   const chosen = pick(selector.items, own.length);

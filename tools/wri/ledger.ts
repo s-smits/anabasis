@@ -3,6 +3,7 @@
  * `outcomes-<run>.md`, the iteration `plan.md`, and legacy `still-missing-<run>.md`). Each fact has
  * one authored source; the cycle, dropped and still-missing views are derived from these files.
  */
+import { printed } from "#skills/main/print.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 
@@ -189,13 +190,10 @@ function formatOutcome(run: RunLedgers, id: string): string {
 }
 
 export function cycleViewOf(runs: readonly RunLedgers[]): string[] {
-  return [
-    "| run | id | outcome |",
-    "| --- | --- | --- |",
-    ...runs.flatMap((run) =>
-      requiredIds(run.predictions).map((id) => `| ${run.name} | ${id} | ${formatOutcome(run, id)} |`),
-    ),
-  ];
+  return printed(
+    ["run", "id", "outcome"],
+    runs.flatMap((run) => requiredIds(run.predictions).map((id) => [run.name, id, formatOutcome(run, id)])),
+  ).split("\n");
 }
 
 /**

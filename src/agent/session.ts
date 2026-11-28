@@ -39,7 +39,7 @@ import { releaseRoot } from "../sandbox/sandbox-root.ts";
 export type AgentTool = ToolRegistration;
 
 export interface AgentSpec {
-  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string, seat?: string) => Models;
   readonly home?: string;
   readonly cwd?: string;
   readonly id: string;
@@ -163,7 +163,7 @@ export async function runAgent(seat: AgentSpec): Promise<AgentRun> {
         hooks: [...frame.hooks, hook(CompactionTask, { beforeCompact: frame.before }), compactions.hook],
       }),
     );
-    const models = seat.models(home, shutdown, seat.cwd);
+    const models = seat.models(home, shutdown, seat.cwd, seat.id);
     meter.catalogue(models);
     harness = await Harness.open(
       new MemoryStorage(),

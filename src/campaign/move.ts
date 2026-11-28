@@ -6,6 +6,7 @@ export type Ending =
   | "environment"
   | "operator"
   | "control"
+  | "revise"
   | "finished";
 
 export type ScheduledAction = (

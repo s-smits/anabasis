@@ -13,6 +13,7 @@ import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { draftOf } from "../src/examiner/draft.ts";
 import { taskHistory } from "../src/examiner/record.ts";
 import { type Ask, examine } from "../src/examiner/session.ts";
+import { EXAMINER_HOMES } from "../src/examiner/home-store.ts";
 import { examinerDirs, inExaminerSandbox } from "../src/examiner/shell.ts";
 import { writing } from "../src/examiner/write.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
@@ -271,6 +272,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     });
     expect(opened).toEqual(["kept.txt", "wrote.txt"]);
     expect(readdirSync(keep)).toEqual(["kept.txt"]);
+    expect(existsSync(join(dirname(s.log), EXAMINER_HOMES, `${s.request.id}.json`))).toBe(false);
   });
 
   it("carries a relative link as it stands, into the home and out of it", async () => {
@@ -333,6 +335,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
       { ...WALL, keep },
     );
     expect(atRest).toEqual([["first.txt"]]);
+    expect(existsSync(join(dirname(s.log), EXAMINER_HOMES, `${s.request.id}.json`))).toBe(true);
   });
 });
 
@@ -672,7 +675,12 @@ describe("a session that writes tasks", () => {
     expect(solvesIn(read(s.log))).toEqual([]);
     expect(s.of(EXAM_FINISHED)[0]).not.toHaveProperty("hostSeconds");
     const mode = writing({ ...s.request, id: "x-2", verify }, undefined);
-    expect(mode.tools.map(({ name }) => name)).toEqual([PROPOSE, "read_example", "try_answer"]);
+    expect(mode.tools.map(({ name }) => name)).toEqual([
+      PROPOSE,
+      "read_example",
+      "read_reviews",
+      "try_answer",
+    ]);
     expect(mode.tools[0]?.description).toContain("No solver is put to it there.");
     for (const unsaid of [
       "try_task",

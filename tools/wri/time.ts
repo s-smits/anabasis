@@ -4,7 +4,8 @@
  * every recorded wait (a provider's reset with its grace minute, a network wait, a solve-queue wait)
  * joins one union, and a promotion's hours stand with and without it.
  */
-import { type EventKind, eventsOf, type LogEvent } from "#src/kernel/log.ts";
+import { type Span, spansOf, unionMs, waitsOf } from "#skills/main/time.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
 import { degradations, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { roleOf, spendOf } from "#src/kernel/meter.ts";
@@ -28,10 +29,6 @@ import {
 } from "./folds.ts";
 import { firstComparisonDelay } from "#tools/runs/view.ts";
 
-const SAMPLE_MS = 15 * 60_000;
-const ONWARD: ReadonlySet<EventKind> = new Set(["campaign.ended", "build.started", "exam.started"]);
-const WAIT_SCAN_KINDS: readonly EventKind[] = ["campaign.waited", ...ONWARD];
-const LOAD_SCAN_KINDS: readonly EventKind[] = ["solve.started", "solve.finished", "campaign.waited"];
 const DEADLINE_BOUND_SHARE = 0.95;
 const LOAD_MOVED = 2;
 const LOAD_WORTH_A_LINE = 4;
@@ -42,27 +39,6 @@ const SILENCES_NAMED = 5;
 const BURST_MS = 1000;
 const BETWEEN_MOVES = "between moves";
 const WAIT_KINDS = ["provider", "network", "load"] as const;
-
-const SPAN_STARTS = new Map<EventKind, string>([
-  ["build.started", "builder"],
-  ["exam.started", "examiner"],
-  ["draft.started", "examiner"],
-  ["comparison.started", "comparisons"],
-]);
-const SPAN_ENDS = new Map<EventKind, EventKind>([
-  ["build.finished", "build.started"],
-  ["exam.finished", "exam.started"],
-  ["draft.finished", "draft.started"],
-  ["comparison.reported", "comparison.started"],
-]);
-const SPAN_KINDS: readonly EventKind[] = [...SPAN_STARTS.keys(), ...SPAN_ENDS.keys(), "campaign.ended"];
-
-interface Span {
-  readonly part: string;
-  readonly id: string;
-  readonly from: number;
-  readonly until: number;
-}
 
 const atALimit = (solve: Solve) =>
   AT_A_LIMIT.has(solve.kind) ||
@@ -215,115 +191,6 @@ export function deadlineTriggers(log: Index): Trigger[] {
       `median load when each comparison's solves started, its first half then its second: ${loads.map(({ session, halves }) => `${session} ${halves.map((half) => half.toFixed(1)).join(" then ")}`).join("; ")}`,
     ),
   ];
-}
-
-/** The parts of the campaign's clock: each Builder and Examiner session and each comparison. */
-export function spansOf(events: readonly LogEvent[]): Span[] {
-  const spans: Span[] = [];
-  const open = new Map<string, Omit<Span, "until">>();
-  const close = (key: string, until: number) => {
-    const started = open.get(key);
-    if (started !== undefined) spans.push({ ...started, until });
-    open.delete(key);
-  };
-  for (const { index, event } of eventsOf(events, SPAN_KINDS)) {
-    const { at, kind, data } = event;
-    const time = Date.parse(at);
-    if (kind === "draft.started") {
-      for (const key of [...open.keys()].filter((each) => each.startsWith("draft.started:"))) {
-        close(key, time);
-      }
-    }
-    const part = SPAN_STARTS.get(kind);
-    if (part !== undefined) {
-      const id = text(data.session);
-      const key = `${kind}:${id}`;
-      if (!open.has(key)) open.set(key, { part, id, from: time });
-      continue;
-    }
-    const start = SPAN_ENDS.get(kind);
-    if (start !== undefined) {
-      close(`${start}:${text(data.session)}`, time);
-      continue;
-    }
-    const cut = [...open].filter(([, span]) => span.part === "comparisons");
-    for (const key of open.keys()) close(key, time);
-    const next = events[index + 1];
-    if (next === undefined) continue;
-    const resumed = Date.parse(next.at);
-    for (const [key, span] of cut) open.set(key, { ...span, from: resumed });
-  }
-  const last = Date.parse(events.at(-1)?.at ?? "");
-  for (const key of open.keys()) close(key, last);
-  return spans;
-}
-
-/** The union of intervals, so concurrent sessions or provider waits count their overlap once. */
-export function unionMs(windows: readonly { readonly from: number; readonly until: number }[]): number {
-  let [held, reached] = [0, -Infinity];
-  for (const { from, until } of windows.toSorted((a, b) => a.from - b.from)) {
-    held += Math.max(0, until - Math.max(from, reached));
-    reached = Math.max(reached, until);
-  }
-  return held;
-}
-
-/** Every wait a log records, as the interval it covered. */
-export function waitsOf(events: readonly LogEvent[]): { from: number; until: number; kind: string }[] {
-  const waits: { from: number; until: number; kind: string }[] = [];
-  let boundary = Date.parse(events.at(-1)?.at ?? "");
-  const hits = eventsOf(events, WAIT_SCAN_KINDS);
-  for (let i = hits.length - 1; i >= 0; i -= 1) {
-    const hit = hits[i];
-    if (hit === undefined) continue;
-    const { at, kind, data } = hit.event;
-    const from = Date.parse(at);
-    if (ONWARD.has(kind)) {
-      boundary = from;
-      continue;
-    }
-    if (!isNumber(data.ms)) continue;
-    if (data.for === undefined) waits.push({ from: from - data.ms, until: from, kind: "load" });
-    else if (data.for === "provider" || data.for === "network") {
-      waits.push({ from, until: Math.min(from + data.ms, boundary), kind: data.for });
-    }
-  }
-  return waits;
-}
-
-export const waitedMs = (waits: readonly { from: number; until: number }[], from: number, to: number) =>
-  unionMs(
-    waits.flatMap((wait) =>
-      wait.until > from && wait.from < to
-        ? [{ from: Math.max(wait.from, from), until: Math.min(wait.until, to) }]
-        : [],
-    ),
-  );
-
-/** The milliseconds between two moments lost to an overloaded host, outside every wait. */
-export function overloadOf(events: readonly LogEvent[]): (from: number, to: number) => number {
-  const waits = waitsOf(events);
-  let cores: number | undefined;
-  const samples = eventsOf(events, LOAD_SCAN_KINDS).flatMap(({ event: { at, data } }) => {
-    if (isNumber(data.cores) && data.cores > 0) cores = data.cores;
-    const load = Array.isArray(data.load) ? data.load[0] : data.load;
-    return isNumber(load) && cores !== undefined
-      ? [{ at: Date.parse(at), unserved: Math.max(0, 1 - cores / load) }]
-      : [];
-  });
-  const overloaded = samples.flatMap(({ at, unserved }, index) =>
-    unserved > 0
-      ? [{ at, until: Math.min(at + SAMPLE_MS, samples[index + 1]?.at ?? Infinity), unserved }]
-      : [],
-  );
-  return (from, to) => {
-    let lost = 0;
-    for (const { at, until, unserved } of overloaded) {
-      const [start, end] = [Math.max(at, from), Math.min(until, to)];
-      if (end > start) lost += (end - start - waitedMs(waits, start, end)) * unserved;
-    }
-    return lost;
-  };
 }
 
 /** Row A's overlapping elapsed spans beside its billed dollars, and the union of every recorded wait. */

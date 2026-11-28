@@ -7,6 +7,7 @@
  *
  *   bun tools/eval/accept.ts --name <campaign> [--admit a,b | --admit-authored] [--admit-judge] [--freeze [--despite <why>]]
  */
+import { openingOf } from "#src/campaign/opening.ts";
 import {
   AUTHOR,
   JUDGE,
@@ -16,6 +17,7 @@ import {
   frozenChecker,
   readChecker,
 } from "#src/kernel/acceptance.ts";
+import { hasJudge } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { OBJECTIVE, readBrief } from "#src/kernel/verify.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -23,6 +25,7 @@ import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openCampaign, PACK_OPTIONS, packNamed } from "../campaign/campaign.ts";
+import { assertCrossFamily } from "../campaign/round.ts";
 import { packControls, toolOnPath } from "../m0/stored-sweep.ts";
 
 const OPTIONS = {
@@ -108,6 +111,12 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
   );
   if (unknown.length > 0) {
     throw new Error(`--admit names ${unknown.join(", ")}, and the check program holds no such check`);
+  }
+  if (values["admit-judge"] && hasJudge(contract.objective)) {
+    const opening = openingOf(read(log));
+    if (opening?.seats.reviewer != null && opening.solver != null) {
+      assertCrossFamily(opening.seats.reviewer.model, opening.solver.model, "--admit-judge: ");
+    }
   }
   const reading = await readChecker({
     verify: campaign.verify,

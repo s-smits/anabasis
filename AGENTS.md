@@ -72,13 +72,13 @@ Close gaming channels structurally in code, never with bans:
 - **Builder** (`src/builder/`): edits `harness/`, reads practice traces and paged extracts (`read_trace`), chooses actions and snapshots candidates (`store.ts`), seeing only §1's five items, `MEMORY.md` and saved checkpoints.
 - **Solver** (`src/solver/`): solves a task via `read`, `bash`, `edit`, `write`, `submit` and installed programs.
 - **Verifier** (`src/kernel/verify.ts`): runs offline checks and `[0, 1]` code items in a fresh offline sandbox.
-- **Auditor** (`src/audit/auditor.ts`, `judge.ts`): rules on reproducible rejections (`earned` solver-fail, `check-defect`, `unclear`) and, under `--admit-judge`, runs cross-family `referee.pair` (exam side only).
+- **Auditor** (`src/audit/auditor.ts`, `judge.ts`): rules on reproducible rejections (`earned` solver-fail, `check-defect`, `unclear`) and, on judged rubrics, runs cross-family `referee.pair` (exam side only).
 
 A content-addressed **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) has three tiers: **`bareSolver`** (`pi-durable` + 4 tools, no guide/programs; external baseline), **`baseStarter`** (`starter.ts`: + minimal `BUILT_AGENTS.md`; + Builder-only `HARNESS.md` = **Starter Pack**), **`builtSolver`** (Builder harness; promotions beat `baseStarter`). Never say "with or without a harness".
 
 ### What waits for the operator
 
-Seven decisions need approval (`operator-and-harness.md`; unattended launch pre-authorises freeze, `--admit-authored`, cross-family `--admit-judge` and promotion unless `--hitl`): freezing/rejecting contract/checks or admitting authored/judged instruments (`accept.ts --freeze`, `--admit`, `--admit-judge`); blind labels; cap/payer; infeasible tasks; manual promotion (`promote.ts --harness <digest> --yes`, `--despite`); solver inputs/limits (`baseStarter`, env, limits); stopping a live run.
+Seven decisions need approval (`operator-and-harness.md`; unattended launch pre-authorises freeze, `--admit-authored`, cross-family judged items and promotion unless `--hitl`): freezing/rejecting contract/checks or admitting authored/judged instruments (`accept.ts --freeze`, `--admit`, `--admit-judge`); blind labels; cap/payer; infeasible tasks; manual promotion (`promote.ts --harness <digest> --yes`, `--despite`); solver inputs/limits (`baseStarter`, env, limits); stopping a live run.
 
 Recommend with evidence while continuing other work. Approval covers only what it names ("keep going" grants none; a cycle covers runs, pauses, stack patches). Host says "a person" solely for these seven.
 
@@ -181,9 +181,9 @@ State outcomes over an input space, not examples (`HABITS.md` §12.12). Prefer:
 
 Pin each §6 default once. Avoid wording/per-reader examples, lint fixtures (`rule-examples`), browser click-flows (view-model tables + smokes), module mocks, sleeps and test-only exports; assert via live entry points. Delete/replace tests only against owner mutants (`commit-r` step 8). Check full exit codes (unmasked by pipes); isolated passes are leads, missing-userns wall failures are real.
 
-**Readers/helpers** (search by behaviour first, delete dead guards/timers; helpers may import production, never reverse, `direction.ts`, and call owning folds):
-- Campaign, `bun run` verb, local job, UI → `src/` fold or `tools/` command
-- Single-campaign (`wri.ts`) → `tools/wri/` · Shared skills (≥2) / cross-run → `.claude/skills/main/` · Single skill → its `scripts/`
+**Readers/helpers** (search by behaviour, delete dead guards/timers; one-way, `direction.ts`, call folds):
+- **Production** (`src/`, `vendor/`, `packages/`, `tools/` not `wri/`): battle-tested primitives, campaigns, `bun run`, jobs, UI—graduate when needed
+- **Helpers**: single-run → `tools/wri/` · ≥2 skills / cross-run → `.claude/skills/main/` (no skill/wri imports) · 1 skill → `scripts/`
 
 ## 13. Writing
 

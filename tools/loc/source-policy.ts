@@ -21,6 +21,8 @@ export const AGENTS_MD = "AGENTS.md";
 const SOURCE_ROOTS = ["src", "tools", "vendor", ".claude/skills"] as const;
 /** Production roots whose source files must not import helper or test trees (`AGENTS.md` §12). */
 export const PRODUCTION_ROOTS = ["src", "vendor", "packages", "tools"] as const;
+export const SKILL_MAIN_ROOT = ".claude/skills/main";
+const SKILL_MAIN = `${SKILL_MAIN_ROOT}/`;
 const HELPER_ROOTS = [".claude/", "tools/wri/", "studies/", "test/"] as const;
 const CHECK_CHILD = "src/kernel/check-child.ts";
 const META_LAYER = "src/meta/";
@@ -33,6 +35,7 @@ const FORBIDDEN_FROM_ISOLATED = [
   "src/campaign/",
 ] as const;
 const SOURCE_EXT = /\.[cm]?[jt]sx?$/u;
+const PACKAGE_TEST = /^packages\/[^/]+\/test\//u;
 
 /** Authored roots owned by this repository; `vendor` is pinned verbatim. The simplification census
  *  scans these roots plus `.claude`. */
@@ -55,10 +58,10 @@ interface SourcePolicyFinding {
 }
 
 const helperOf = (path: string): string | null =>
-  HELPER_ROOTS.find((root) => path.startsWith(root)) ??
-  (/^packages\/[^/]+\/test\//u.test(path) ? "test/" : null);
+  HELPER_ROOTS.find((root) => path.startsWith(root)) ?? (PACKAGE_TEST.test(path) ? "test/" : null);
 
 const boundaryOf = (file: string, imported: string): string | null => {
+  if (file.startsWith(SKILL_MAIN)) return imported.startsWith(SKILL_MAIN) ? null : helperOf(imported);
   const helper = helperOf(imported);
   if (helper !== null) return helper;
   if (file === CHECK_CHILD && !imported.startsWith(META_LAYER)) return "offline-cell";
@@ -69,13 +72,16 @@ const boundaryOf = (file: string, imported: string): string | null => {
   return null;
 };
 
-export const production = (path: string): boolean =>
+const production = (path: string): boolean =>
   SOURCE_EXT.test(path) &&
   PRODUCTION_ROOTS.some((root) => path.startsWith(`${root}/`)) &&
   helperOf(path) === null;
 
+export const directionChecked = (path: string): boolean =>
+  production(path) || (SOURCE_EXT.test(path) && path.startsWith(SKILL_MAIN));
+
 export function breaches(files: readonly string[], graph: (file: string) => readonly string[]) {
-  return files.filter(production).flatMap((file) =>
+  return files.filter(directionChecked).flatMap((file) =>
     graph(file).flatMap((imported) => {
       const root = boundaryOf(file, imported);
       return root === null ? [] : [{ file, imported, root }];
@@ -207,7 +213,7 @@ function sourcePolicyFindings(): SourcePolicyFinding[] {
     ...(existsSync(AGENTS_MD) ? sourceTextFindings(AGENTS_MD, readFileSync(AGENTS_MD, "utf8")) : []),
     ...staleCopyLimits((path) => (onDisk.has(path) ? readFileSync(path, "utf8") : null)),
     ...breaches(
-      PRODUCTION_ROOTS.flatMap((root) => walkFiles(root)),
+      [...PRODUCTION_ROOTS, SKILL_MAIN_ROOT].flatMap((root) => walkFiles(root)),
       (file) => importsOf(cwd, file),
     ).map(({ file, imported, root }) => ({
       check: "dependency-direction" as const,

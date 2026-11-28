@@ -15,6 +15,7 @@ import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { storedZip } from "../src/meta/zip.ts";
 import { judgePair } from "../src/audit/judge.ts";
 import type { Reader } from "../src/audit/auditor.ts";
 
@@ -42,6 +43,7 @@ const CONTRACT: Contract = {
 };
 const STRONG = "the strong memo";
 const WEAK = "the weak memo";
+const VIEW_IMAGE = "view_image";
 const scratch = mkdtempSync(join(tmpdir(), "ana-judge-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 let logs = 0;
@@ -136,7 +138,7 @@ describe("the pairwise judge", () => {
   });
 
   it("waits out a judge's usage limit and asks the vote again", async () => {
-    const reset = Math.floor(Date.now() / 1000) - 59;
+    const reset = Math.floor(Date.now() / 1000) - 58;
     let limited = 0;
     const at = seated((shown) => {
       if (shown.includes("Overall, which answer") && limited++ < 2) {
@@ -183,7 +185,7 @@ describe("the pairwise judge", () => {
 
   it("uses distinct session ids per vote, anchors to operator prompt/rules, and preserves middle deliverable files", async () => {
     const at = seated(onSubstance);
-    const pad = "Z".repeat(15_000);
+    const pad = "Z".repeat(55_000);
     const mid = "CRITICAL_MIDDLE_FILE_MARKER";
     const files = keepAnswerFiles(
       at.log,
@@ -230,6 +232,148 @@ describe("the pairwise judge", () => {
     );
     expect(pairPrompts.every((shown) => shown.includes("Include every reconciliation table."))).toBe(true);
     expect(pairPrompts.every((shown) => shown.includes(mid))).toBe(true);
-    expect(Math.max(...pairPrompts.map((shown) => Buffer.byteLength(answerA(shown))))).toBeLessThan(24_500);
+    expect(pairPrompts.some((shown) => shown.includes(VIEW_IMAGE))).toBe(false);
+    expect(Math.max(...pairPrompts.map((shown) => Buffer.byteLength(answerA(shown))))).toBeLessThan(96_500);
+  });
+
+  it("prepares valid delivered images via pi-durable Photon and exposes view_image to vision-capable judges", async () => {
+    const png1x1 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const faux = fauxProvider({
+      models: [
+        {
+          id: "faux-vision-judge",
+          input: ["text", "image"],
+          contextWindow: 200_000,
+          cost: { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+    });
+    const sawImage: boolean[] = [];
+    let askedMissing = false;
+    let askedOverflow = false;
+    const reply = (context: TranscriptContext) => {
+      const shown = JSON.stringify(context);
+      const hasImageBlock = shown.includes('"type":"image"');
+      const answer = answerA(shown).includes("report.docx#word/media/chart.png") ? "A" : "B";
+      if (!askedMissing && shown.includes(VIEW_IMAGE)) {
+        askedMissing = true;
+        return fauxAssistantMessage(fauxToolCall(VIEW_IMAGE, { answer, path: "no-such.png" }), {
+          stopReason: "toolUse",
+        });
+      }
+      if (!askedOverflow && shown.includes(VIEW_IMAGE)) {
+        askedOverflow = true;
+        return fauxAssistantMessage(fauxToolCall(VIEW_IMAGE, { answer, path: "extra-fifth.png" }), {
+          stopReason: "toolUse",
+        });
+      }
+      if (!hasImageBlock && shown.includes(VIEW_IMAGE)) {
+        return fauxAssistantMessage(
+          fauxToolCall(VIEW_IMAGE, { answer, path: "report.docx#word/media/chart.png" }),
+          { stopReason: "toolUse" },
+        );
+      }
+      sawImage.push(hasImageBlock);
+      return fauxAssistantMessage(fauxToolCall("record_vote", { better: answer, reason: "visual check" }), {
+        stopReason: "toolUse",
+      });
+    };
+    faux.setResponses(Array.from({ length: 18 }, () => reply));
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const log = join(scratch, `judged-vision-${String(++logs)}.jsonl`);
+    const docx = storedZip([
+      {
+        path: "word/document.xml",
+        text: "<w:document><w:body><w:p><w:r><w:t>Chart</w:t></w:r></w:p></w:body></w:document>",
+      },
+      { path: "word/media/chart.png", text: Buffer.from(png1x1, "base64") },
+    ]).toString("base64");
+    const files = keepAnswerFiles(log, [
+      { path: "forest.png", base64: png1x1 },
+      { path: "report.docx", base64: docx },
+      { path: "third.png", base64: png1x1 },
+      { path: "fourth.png", base64: png1x1 },
+      { path: "extra-fifth.png", base64: png1x1 },
+      { path: "stub.png", base64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64") },
+    ]);
+    append(log, "verdict", {
+      solve: "s-img",
+      task: TASK.taskId,
+      kind: "pass",
+      answer: { note: "ok" },
+      files: files.map((file) => ({ ...file })),
+    });
+    append(log, "verdict", { solve: "s-plain", task: TASK.taskId, kind: "pass", answer: { note: "ok" } });
+    const oneItem: Contract = {
+      ...CONTRACT,
+      objective: {
+        quantity: "quality",
+        direction: "higher",
+        scale: "unit",
+        items: [{ id: "vis", weight: 1, kind: "judge", criterion: "Figure is clear and well labelled." }],
+      },
+    };
+    await judgePair(
+      { model: faux.getModel(), effort: "medium", models: () => models },
+      { log, comparison: "g-img", task: TASK, contract: oneItem, first: "s-img", second: "s-plain" },
+    );
+    const events = read(log);
+    const pair = events.find(({ kind }) => kind === "referee.pair")?.data;
+    expect(pair?.extracts).toEqual({ files: 6, empty: 2, faults: 0, truncated: 0 });
+    expect(pair).toMatchObject({ judge: 1, holistic: 1 });
+    const viewErrors = events
+      .filter(
+        ({ kind, data }) => kind === "referee.call" && data.tool === VIEW_IMAGE && data.isError === true,
+      )
+      .map(({ data }) => (isString(data.text) ? data.text : ""));
+    expect(viewErrors.some((msg) => msg.includes("has no viewable image no-such.png"))).toBe(true);
+    expect(viewErrors.some((msg) => msg.includes("has no viewable image extra-fifth.png"))).toBe(true);
+    expect(sawImage).toEqual([true, true, true, true]);
+
+    const singleLog = join(scratch, `judged-vision-one-${String(++logs)}.jsonl`);
+    const singleFile = keepAnswerFiles(singleLog, [{ path: "solo.png", base64: png1x1 }]);
+    append(singleLog, "verdict", {
+      solve: "s-one",
+      task: TASK.taskId,
+      kind: "pass",
+      answer: { note: "ok" },
+      files: singleFile.map((file) => ({ ...file })),
+    });
+    append(singleLog, "verdict", {
+      solve: "s-none",
+      task: TASK.taskId,
+      kind: "pass",
+      answer: { note: "ok" },
+    });
+    const singleSaw: boolean[] = [];
+    faux.setResponses(
+      Array.from({ length: 8 }, () => (context: TranscriptContext) => {
+        const shown = JSON.stringify(context);
+        if (!shown.includes('"type":"image"') && shown.includes(VIEW_IMAGE)) {
+          const answer = answerA(shown).includes("solo.png") ? "A" : "B";
+          return fauxAssistantMessage(fauxToolCall(VIEW_IMAGE, { answer, path: "solo.png" }), {
+            stopReason: "toolUse",
+          });
+        }
+        singleSaw.push(shown.includes('"type":"image"'));
+        return fauxAssistantMessage(fauxToolCall("record_vote", { better: "neither", reason: "one img" }), {
+          stopReason: "toolUse",
+        });
+      }),
+    );
+    await judgePair(
+      { model: faux.getModel(), effort: "medium", models: () => models },
+      {
+        log: singleLog,
+        comparison: "g-one",
+        task: TASK,
+        contract: oneItem,
+        first: "s-one",
+        second: "s-none",
+      },
+    );
+    expect(singleSaw).toEqual([true, true, true, true]);
   });
 });

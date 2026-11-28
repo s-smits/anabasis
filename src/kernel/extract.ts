@@ -2,8 +2,9 @@ import { asRecord, isString } from "../meta/json-shape.ts";
 import { capturedJsonParse, parseJsonAs } from "../meta/json-runtime.ts";
 import { delimiter } from "../meta/path.ts";
 import { decodeOutput, runSync } from "../meta/subprocess.ts";
+import { zipMembers } from "../meta/zip.ts";
 import { toolchainPathDirs } from "../sandbox/policy.ts";
-import type { AnswerFile } from "./answer-files.ts";
+import { type AnswerFile, DELIVERABLES } from "./answer-files.ts";
 import EXTRACT_PY from "./extract.py" with { type: "text" };
 
 interface Formulas {
@@ -88,8 +89,6 @@ function pyExtract(
 function notebookOf(text: string): string {
   const cells = asRecord(capturedJsonParse(text))?.cells;
   if (!Array.isArray(cells)) throw new Error("a notebook without cells");
-  const joined = (value: unknown): string =>
-    Array.isArray(value) ? value.filter(isString).join("") : isString(value) ? value : "";
   return cells
     .map((cell) => {
       const row = asRecord(cell);
@@ -97,11 +96,11 @@ function notebookOf(text: string): string {
         ? row.outputs
             .map((out) => {
               const item = asRecord(out);
-              return joined(item?.text) || joined(asRecord(item?.data)?.["text/plain"]);
+              return joinedText(item?.text) || joinedText(asRecord(item?.data)?.["text/plain"]);
             })
             .join("")
         : "";
-      return `## ${isString(row?.cell_type) ? row.cell_type : "cell"}\n${joined(row?.source)}${outputs === "" ? "" : `\n# output\n${outputs}`}`;
+      return `## ${isString(row?.cell_type) ? row.cell_type : "cell"}\n${joinedText(row?.source)}${outputs === "" ? "" : `\n# output\n${outputs}`}`;
     })
     .join("\n\n");
 }
@@ -164,6 +163,56 @@ export function extract(file: AnswerFile): Extracted {
       fault: `could not read ${path}: ${String(error)}`,
     };
   }
+}
+
+const IMAGE_EXT = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+} as const;
+
+const joinedText = (value: unknown): string =>
+  Array.isArray(value) ? value.filter(isString).join("") : isString(value) ? value : "";
+
+function notebookImages(filePath: string, text: string): { readonly path: string; readonly bytes: Buffer }[] {
+  let cells: unknown;
+  try {
+    cells = asRecord(capturedJsonParse(text))?.cells;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(cells)) return [];
+  const outputs = cells.flatMap((cell, i) => {
+    const list = asRecord(cell)?.outputs;
+    return Array.isArray(list) ? list.map((out, j) => ({ i, j, data: asRecord(asRecord(out)?.data) })) : [];
+  });
+  return outputs.flatMap(({ i, j, data }) =>
+    Object.entries(IMAGE_EXT).flatMap(([mime, ext]) => {
+      const raw = joinedText(data?.[mime]).trim();
+      return raw === ""
+        ? []
+        : [
+            {
+              path: `${filePath}#cell-${String(i)}-out-${String(j)}.${ext}`,
+              bytes: Buffer.from(raw, "base64"),
+            },
+          ];
+    }),
+  );
+}
+
+export function answerImages(file: AnswerFile): { readonly path: string; readonly bytes: Buffer }[] {
+  const bytes = Buffer.from(file.base64, "base64");
+  if (isZip(bytes)) {
+    return zipMembers(bytes, DELIVERABLES.bytes)
+      .members.filter(({ path }) => Bun.file(path).type in IMAGE_EXT)
+      .map(({ path, data }) => ({ path: `${file.path}#${path}`, bytes: data }));
+  }
+  if (file.text !== undefined) {
+    return file.path.toLowerCase().endsWith(".ipynb") ? notebookImages(file.path, file.text) : [];
+  }
+  return file.base64 === "" ? [] : [{ path: file.path, bytes }];
 }
 
 export function headOf(extracted: Extracted): string[] {

@@ -9,7 +9,7 @@ import { admitSession } from "#src/campaign/admission.ts";
 import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { resolveCheckpoint, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
+import { hostSession, resolveCheckpoint, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
 import {
   campaignFor,
   parentNamed,
@@ -20,7 +20,10 @@ import {
   sessionNamed,
   solved,
 } from "./round.ts";
+import { FORK_OPTIONS, seatFork } from "./seat-fork.ts";
 import { keepSetting } from "./setting.ts";
+
+const OPTIONS = { ...SESSION_OPTIONS, ...FORK_OPTIONS } as const;
 
 /** `bun tools/campaign/session.ts`, and under a simulation's `seated` the same session with scripted
  *  seats. Returns the harness it froze, or null where it left its parent. */
@@ -29,7 +32,7 @@ export async function sessionCommand(
   seated: Seated = solved,
   campaignTools?: BuildRequest["campaign"],
 ) {
-  const { values } = parseArgs({ args: [...args], options: SESSION_OPTIONS });
+  const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { session } = values;
   const pack = packNamed(values, " and --session");
   if (session === undefined) throw new Error("name --session, the id the session takes in the log");
@@ -38,7 +41,7 @@ export async function sessionCommand(
   // A practice solve stands on no side of a comparison, so it is seated against the reference harness.
   const reference = await resolveCheckpoint(campaign, "--reference", PROMOTED);
   const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
-  const request = sessionNamed(
+  const baseRequest = sessionNamed(
     campaign,
     { ...values, session },
     {
@@ -49,6 +52,15 @@ export async function sessionCommand(
       reviewers: reviewersNamed(campaign, values),
     },
   );
+  const forked = seatFork(campaign.log, "build", baseRequest.model, values);
+  const request: BuildRequest =
+    forked === null
+      ? baseRequest
+      : {
+          ...baseRequest,
+          models: hostSession({ webSearch: true, cacheTtl: "1h", ...forked.seat }),
+          resumeWith: forked.resumeWith,
+        };
   // Asked last of all that can refuse, and before anything is recorded.
   const notes = admitSession(campaign.log, {
     id: session,

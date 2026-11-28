@@ -18,6 +18,7 @@
  * Ruleset 25824510 on main, with no bypass actors, requires `ana/stack-gate`, which only `--merge`
  * posts (`STACK_CONTEXT`). The one gap: a token with admin rights can post that status by hand.
  */
+import { repoRoot } from "../../src/meta/git.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 import { plural, textOr } from "../../src/meta/text.ts";
@@ -268,10 +269,10 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
   );
 }
 
-function stackOf(root: string, landing: Landing, unlinked: "link" | "say"): number | null {
-  const { pulls, top } = landing;
+function stackOf(root: string, pulls: readonly Pull[], unlinked: "link" | "say"): number | null {
   const chain = pulls.map((pull) => String(pull.number));
   const [bottom = ""] = chain;
+  const top = chain.at(-1) ?? "";
   for (let linked = false; ; linked = true) {
     const read = gh(root, ["api", api(`stacks?pull_request=${bottom}`), "--jq", STACK_MEMBERS]);
     if (!read.ok) {
@@ -281,13 +282,13 @@ function stackOf(root: string, landing: Landing, unlinked: "link" | "say"): numb
     const members = listed === "" ? [] : listed.split(",");
     const linking = ["stack", "link", ...(closed === "" ? [] : closed.split(",")), ...chain];
     const link = `gh ${linking.join(" ")}`;
-    const upTo = members.slice(0, members.indexOf(String(top.number)) + 1);
+    const upTo = members.slice(0, members.indexOf(top) + 1);
     if (upTo.join(",") === chain.join(",")) return Number(stack);
     if (read.out === "" && chain.length === 1) return null;
     if (linked && read.out === "") throw new Refusal(`${link} left them in no stack. Land again.`);
     if (linked || !members.every((member, index) => member === chain[index])) {
       throw new Refusal(
-        `GitHub's stack ${stack} holds #${members.join(", #")}, and the chain of bases up to #${String(top.number)} ` +
+        `GitHub's stack ${stack} holds #${members.join(", #")}, and the chain of bases up to #${top} ` +
           `holds ${numbers(pulls)}. A link never reorders a stack: run gh stack unstack ${stack}, then ${link}, ` +
           `and land again.`,
       );
@@ -302,16 +303,28 @@ function stackOf(root: string, landing: Landing, unlinked: "link" | "say"): numb
   }
 }
 
-/** Where `bun run split` divided the chain, the index of the native stack holding the top
- *  (`stackStart`); such an upper stack is not merged, since GitHub would merge it onto the branch
- *  beneath instead of the trunk. */
-function ownStack(root: string, landing: Landing, mode: Mode): number {
-  const own = stackStart(root, landing.pulls);
-  const starts = `GitHub's stack holding #${String(landing.top.number)} starts at #${String(landing.pulls[own]?.number)}`;
-  if (own > 0 && mode.kind === "merging") throw new Refusal(`${starts}: land the stacks beneath first.`);
-  if (own > 0) say(`${starts}; proving from it.`);
-  stackOf(root, { ...landing, pulls: landing.pulls.slice(own) }, mode.kind === "proving" ? "say" : "link");
-  return own;
+/** Where `bun run split` divided the chain, each native stack is linked as GitHub holds it, lowest
+ *  first (`stackStart` of the chain, then beneath each stack found), and all are proved; an upper
+ *  one is not merged, since GitHub would merge it onto the branch beneath instead of the trunk. */
+function linkStacks(root: string, landing: Landing, mode: Mode): void {
+  const { pulls, top } = landing;
+  const starts: number[] = [];
+  for (let end = pulls.length; end > 0; ) {
+    end = stackStart(root, pulls.slice(0, end));
+    starts.unshift(end);
+  }
+  const bottoms = starts.map((start) => `#${String(pulls[start]?.number)}`);
+  if (starts.length > 1 && mode.kind === "merging") {
+    throw new Refusal(
+      `GitHub's stack holding #${String(top.number)} starts at ${bottoms.at(-1) ?? ""}: land the stacks beneath first.`,
+    );
+  }
+  if (starts.length > 1) {
+    say(`GitHub holds ${numbers(pulls)} as native stacks from ${bottoms.join(", ")}; proving them all.`);
+  }
+  for (const [index, start] of starts.entries()) {
+    stackOf(root, pulls.slice(start, starts[index + 1]), mode.kind === "proving" ? "say" : "link");
+  }
 }
 
 async function mergeStack(
@@ -408,7 +421,7 @@ function restack(root: string, target: number, landing: Landing, mode: Mode): La
 async function merge(root: string, target: number, landing: Landing): Promise<string | null> {
   checkCurrent(root, target, landing, openPulls(root));
   const heads = landing.pulls.map((pull) => pull.headRefOid);
-  const stack = stackOf(root, landing, "link");
+  const stack = stackOf(root, landing.pulls, "link");
   const gated = (sha: string, state: StatusState, description: string): boolean =>
     postStatus(root, sha, { context: STACK_CONTEXT, state, description });
   const revoke = (): void => {
@@ -508,11 +521,11 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
   const landing = restack(root, target, read, mode);
   checkChain(root, landing);
   const { top } = landing;
-  const own = ownStack(root, landing, mode);
+  linkStacks(root, landing, mode);
   if (mode.kind === "merging") startCi(root, top);
   const heads = landing.pulls.map((pull) => pull.headRefOid);
   const whole = mode.topPass === "whole" ? top.headRefOid : null;
-  const lowest = mode.from === null ? own : landing.pulls.findIndex(({ number }) => number === mode.from);
+  const lowest = mode.from === null ? 0 : landing.pulls.findIndex(({ number }) => number === mode.from);
   if (lowest < 0) throw new Refusal(`#${String(mode.from)} is not in ${numbers(landing.pulls)}.`);
   const proofs = addedLine(root, heads, [landing.pulls[lowest - 1]?.headRefOid ?? landing.trunkSha], say).map(
     (commit): Proof => ({
@@ -627,7 +640,7 @@ async function main(argv: readonly string[]): Promise<number> {
     console.error(USAGE);
     return 2;
   }
-  const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
+  const root = repoRoot();
   const places = whereToProve(root, jobs, say);
   if (places === null) return 2;
   const mode: Mode = {

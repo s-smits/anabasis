@@ -16,7 +16,8 @@ import { taskStates } from "../kernel/task.ts";
 import { formatScores, OBJECTIVE, objectiveOf, scoresOf, type Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
-import { tasksByEpoch } from "../campaign/climb.ts";
+import { epochsOf, tasksByEpoch } from "../campaign/climb.ts";
+import { reviewInventoryLine, reviewSummariesByTask } from "./reviews.ts";
 
 interface Answered {
   readonly turns: readonly number[];
@@ -165,6 +166,7 @@ function formatOutcomeLine(
     `${named}, scored ${plural(spreads.length, "task")}: the reference harness won ${won(1)}, the harness it was compared with won ${won(-1)}, and ${won(0)} tied.`,
     `The largest family among them held ${String(largest)}.`,
     `The reference harness was valid in every solve on ${count("every")} of them, in some on ${count("some")} and in none on ${count("none")}; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside.`,
+    ...(report.data.reading === "check-defects" ? ["It stopped on check defects."] : []),
     ...(own.length === 0
       ? []
       : [
@@ -209,7 +211,14 @@ function promotedLine(events: readonly LogEvent[], since: number, listed: readon
     promotion.kind === "harness.reverted"
       ? "The reference harness was reverted to an earlier harness."
       : `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}.`;
-  return `${lead} ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
+  const lastEpoch = epochsOf(events).at(-1);
+  const owed =
+    promotion.kind === "harness.promoted" &&
+    lastEpoch?.starter_tally === null &&
+    lastEpoch.reference !== "starter"
+      ? " Its confirmation comparison against the starter has not run yet and needs fresh unseen tasks written after the promotion."
+      : "";
+  return `${lead} ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced.${owed} Files in your home from sessions before then were written while the harness it replaced was the reference.`;
 }
 
 function refusedLines(
@@ -254,6 +263,7 @@ export function taskHistory(
   const currentReports = lastReports(events);
   const answered = referenceAnswers(events, allReports, pairsOf);
   const faulted = faultedOf(events);
+  const reviewed = reviewSummariesByTask(events);
   const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
   const budget = isNumber(setting) ? setting : undefined;
   const since = events.findLastIndex(({ kind }) => isReferenceChange(kind));
@@ -275,17 +285,20 @@ export function taskHistory(
     if (block !== "practice") listed.push(version);
     const plain = block === "practice" || block === "earlier-reference" || block === "faulted";
     const clauses = plain ? [] : clausesOf(block, pool, version, answered.get(version), budget);
+    const reviewNote = block === "practice" ? [] : [reviewed.get(taskId)].filter(isString);
     const checks = faulted.get(taskId);
     const fault =
       checks === undefined ? [] : [`ruled at fault on an answer to it: ${[...checks].join(", ")}`];
     const heading = BLOCKS[block];
     lines.set(heading, [
       ...(lines.get(heading) ?? []),
-      [`${taskId} (${family})`, ...clauses, ...fault].join("; "),
+      [`${taskId} (${family})`, ...clauses, ...reviewNote, ...fault].join("; "),
     ]);
   }
+  const stood = outcomeSummaryLines(events, currentReports, after, pairsOf);
   return {
-    stood: outcomeSummaryLines(events, currentReports, after, pairsOf),
+    stood,
+    reviews: after === undefined || stood !== null ? reviewInventoryLine(events) : null,
     groups: Object.values(BLOCKS).flatMap((heading): { heading: string; lines: string[] }[] => {
       const held = lines.get(heading) ?? [];
       return held.length === 0 ? [] : [{ heading, lines: held }];

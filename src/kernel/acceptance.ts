@@ -182,6 +182,37 @@ function flatRubricNotes(brief: Brief, verdicts: readonly Verdict[]): string[] {
   });
 }
 
+function fieldProbes(
+  given: Read,
+  byId: ReadonlyMap<string, Task>,
+  accepted: readonly ControlAnswerRun[],
+): Probe[] {
+  if (hasJudge(given.brief.objective) && codeObjective(given.brief.objective) === undefined) return [];
+  const formed = (field: Field | undefined): field is Field =>
+    field !== undefined && answerFormatFault(given.contract.answerFormat, field.answer) === null;
+  const props = Object.entries(asRecord(asRecord(given.contract.answerFormat)?.properties) ?? {});
+  return accepted.flatMap((run) => {
+    const task = byId.get(run.taskId);
+    if (task === undefined) return [];
+    const filled = fieldsOf(run.answer, "$", "filled");
+    const record = asRecord(run.answer);
+    const absent =
+      record === null
+        ? []
+        : props.flatMap(([key, prop]) => {
+            if (Object.hasOwn(record, key)) return [];
+            const alt = otherLeaf(doNothingAnswer(prop, given.contract.answerFormat), "filled");
+            return alt === undefined ? [] : [{ path: `$.${key}`, answer: { ...record, [key]: alt } }];
+          });
+    return [
+      ...fieldsOf(run.answer, "$", "emptied").map((field, at) => (formed(field) ? field : filled[at])),
+      ...absent,
+    ]
+      .filter(formed)
+      .map((field) => ({ run, task, files: run.files, field }));
+  });
+}
+
 async function probeReading(
   given: Read,
   byId: ReadonlyMap<string, Task>,
@@ -213,8 +244,8 @@ async function probeReading(
       return task === null ? [] : [{ run, task, files: run.files }];
     });
   const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
-  const carried =
-    tasks.length > 1 && !hasJudge(given.brief.objective) && tasks.every(({ hidden }) => hidden !== null);
+  const judged = hasJudge(given.brief.objective);
+  const carried = tasks.every(({ hidden }) => hidden !== null);
 
   const [swaps, hidden, stripped, changed] = await Promise.all([
     probed(accepted.flatMap((run) => others(run, (other) => other))),
@@ -236,27 +267,14 @@ async function probeReading(
         return task === undefined ? [] : [{ run, task, files: NO_FILES }];
       }),
     ),
-    probed(
-      hasJudge(given.brief.objective)
-        ? []
-        : accepted.flatMap((run) => {
-            const task = byId.get(run.taskId);
-            if (task === undefined) return [];
-            const formed = (field: Field | undefined): field is Field =>
-              field !== undefined && answerFormatFault(given.contract.answerFormat, field.answer) === null;
-            const filled = fieldsOf(run.answer, "$", "filled");
-            return fieldsOf(run.answer, "$", "emptied")
-              .map((field, at) => (formed(field) ? field : filled[at]))
-              .filter(formed)
-              .map((field) => ({ run, task, files: run.files, field }));
-          }),
-    ),
+    probed(fieldProbes(given, byId, accepted)),
   ]);
   const unread = [...Map.groupBy(changed, ({ field }) => field?.path ?? "")].flatMap(([path, results]) =>
     results.every(({ run, verdict }) => spelled(verdict) === spelled(run.verdicts[0])) ? [path] : [],
   );
   const byRun = Map.groupBy(swaps, ({ run }) => run);
   const probes = [...swaps, ...hidden, ...stripped].map(({ verdict }) => verdict);
+  const hiddenBlind = blind(hidden);
   return {
     faults: [
       ...accepted.flatMap((run) => {
@@ -267,7 +285,7 @@ async function probeReading(
         );
       }),
       ...when(
-        blind(hidden),
+        !judged && hiddenBlind,
         "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
       ),
       ...when(
@@ -280,8 +298,12 @@ async function probeReading(
         ? flatRubricNotes(given.brief, [...accepted.map(({ verdicts: [first] }) => first), ...probes])
         : []),
       ...when(
+        judged && hiddenBlind,
+        "hidden values had no effect on any accept control's offline checks or code objective: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure; confirm whether hidden values feed only judged criteria",
+      ),
+      ...when(
         unread.length > 0,
-        `answer fields ${unread.join(", ")} had no effect on any accept control that carries them: with each changed on its own once (a number halved or set to 1 from 0, a string emptied, or set to one letter where empty or where the format needs text, a boolean flipped), in every element of a list, every such control kept its verdict, objective and scores; a check reading only a bound the change stays within looks the same`,
+        `answer fields ${unread.join(", ")} had no effect on any accept control that carries them: with each changed on its own once (a number halved or set to 1 from 0, a string emptied, or set to one letter where empty or where the format needs text, a boolean flipped), in every element of a list, every such control kept its verdict, objective and scores; a check reading only a bound the change stays within looks the same${judged ? " (judged criteria may still read them)" : ""}`,
       ),
     ],
   };

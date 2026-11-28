@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import ts from "typescript5";
-import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { type CommandArgs, CommandFailure, runCommand, SKILL_REPO } from "#skills/main/cli.ts";
 import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
 import { join } from "#src/meta/path.ts";
@@ -20,7 +20,6 @@ Counts non-exempt comments and sheddable whole comment lines across tracked non-
   --write          Tighten tools/oxlint/comment-ratchet.tsv (refuses ceiling increases).
   --init           Write tools/oxlint/comment-ratchet.tsv from current counts (initial setup).`;
 
-const REPO = join(import.meta.dir, "..", "..", "..", "..");
 const SOURCE_FILE = /\.[cm]?[jt]sx?$/u;
 const IGNORED_ROOTS = ["vendor/", "campaigns/", "domains/", "tmp/"] as const;
 
@@ -83,7 +82,7 @@ function lineNumberAt(text: string, offset: number): number {
 }
 
 function auditFile(path: string): FileAudit {
-  const text = readFileSync(join(REPO, path), "utf8");
+  const text = readFileSync(join(SKILL_REPO, path), "utf8");
   const fileRole = isRuleSourcePath(path) ? "rule" : "other";
   const nonExempt: { readonly line: number; readonly endLine: number; readonly text: string }[] = [];
   const wholeLines = new Set<number>();
@@ -157,7 +156,7 @@ function printSummary(audits: readonly FileAudit[]): void {
 }
 
 function writeRatchet(audits: readonly FileAudit[], mode: "init" | "tighten"): void {
-  const ratchetPath = join(REPO, COMMENT_RATCHET_FILE);
+  const ratchetPath = join(SKILL_REPO, COMMENT_RATCHET_FILE);
   const previous = existsSync(ratchetPath)
     ? readCommentRatchet(readFileSync(ratchetPath, "utf8")).entries
     : new Map<string, number>();
@@ -189,9 +188,9 @@ if (import.meta.main) {
     },
     (args: CommandArgs) => {
       const prefix = args.value("list");
-      const files = lines(gitText(REPO, "ls-files"))
+      const files = lines(gitText(SKILL_REPO, "ls-files"))
         .filter((path) => SOURCE_FILE.test(path) && !IGNORED_ROOTS.some((root) => path.startsWith(root)))
-        .filter((path) => existsSync(join(REPO, path)))
+        .filter((path) => existsSync(join(SKILL_REPO, path)))
         .toSorted();
       const selected = prefix === null ? files : files.filter((path) => path.startsWith(prefix));
       const audits = selected.map(auditFile);

@@ -26,7 +26,7 @@ import {
 import type { PublicResource } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
 import { openHarness } from "../harness/open.ts";
-import { type PublicTask, publicView } from "../solver/prompt.ts";
+import { opened as openedInput, type PublicTask, publicView, taskFiles } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
 import { type AgentRun, type AgentTool, sessionClock, runAgent } from "../agent/session.ts";
@@ -99,11 +99,12 @@ export interface BuildRequest {
   readonly limits: BuildLimits;
   readonly solve: Limits;
   readonly solver: Solver;
-  readonly models: (home: string, shutdown: AbortSignal, cwd?: string) => Models;
+  readonly models: (home: string, shutdown: AbortSignal, cwd?: string, seat?: string) => Models;
   readonly log: string;
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
   readonly packRoots?: readonly string[] | undefined;
+  readonly resumeWith?: string | undefined;
   readonly practise: (
     task: PracticeTask,
     harness: string,
@@ -182,10 +183,18 @@ export function layPractice(home: string, tasks: readonly PracticeTask[]): void 
   for (const path of [next, old]) rmSync(path, { recursive: true, force: true });
   mkdirSync(next, { recursive: true });
   for (const { task } of tasks) {
-    writeFileSync(
-      join(next, `${task.taskId.replaceAll(/[^A-Za-z0-9._-]+/g, "-")}.json`),
-      `${capturedJsonStringify(publicView(task), null, 2)}\n`,
-    );
+    const slug = task.taskId.replaceAll(/[^A-Za-z0-9._-]+/g, "-");
+    const files = taskFiles(task.publicInput);
+    const shown =
+      files.size === 0
+        ? task
+        : { ...task, publicInput: openedInput(task.publicInput, `practice/${slug}/files`) };
+    writeFileSync(join(next, `${slug}.json`), `${capturedJsonStringify(publicView(shown), null, 2)}\n`);
+    for (const [path, bytes] of files) {
+      const dest = join(next, slug, "files", path);
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, bytes);
+    }
   }
   if (existsSync(folder)) renameSync(folder, old);
   rmSync(folder, { force: true });
@@ -357,7 +366,9 @@ async function converse(
     model,
     effort: request.effort,
     system: systemPrompt(bench.modePrompts, request.contract.objective),
-    opening: [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
+    opening:
+      request.resumeWith ??
+      [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
     tools,
     ...keyIfDefined("env", env),
     trace: { log, of: "build" },

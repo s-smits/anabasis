@@ -126,7 +126,7 @@ Test files = `test/` or `*.test.*`.
 | Concern | Owner | Key exports |
 | --- | --- | --- |
 | Files / paths / OS | `filesystem.ts`, `path.ts`, `path-containment.ts`, `path-segment.ts`, `os.ts` | `node:fs` surface, `join`, `containsPath`, `isSafePathSegment`, `tmpdir`, `homedir`, `loadavg`, `availableParallelism` |
-| Process / subprocess / git | `process.ts`, `subprocess.ts`, `host-tool.ts`, `git.ts` | `runtimeProcess`, `parseArgs`, `capturedSpawn`, `runSync`, `runTextSyncOrThrow`, `killProcessGroup`, `terminateAndReapProcessGroupId`, `hostTool`, `gitOutput`, `gitText`, `gitMaybe`, `worktrees` |
+| Process / subprocess / git | `process.ts`, `subprocess.ts`, `host-tool.ts`, `git.ts` | `runtimeProcess`, `parseArgs`, `capturedSpawn`, `runSync`, `runTextSyncOrThrow`, `killProcessGroup`, `terminateAndReapProcessGroupId`, `hostTool`, `gitOutput`, `gitText`, `gitMaybe`, `repoRoot`, `worktrees` |
 | JSON & hashing | `json-runtime.ts`, `json-shape.ts`, `stable-json.ts`, `digest.ts` | `capturedJsonParse`, `parseJsonAs<T>`, `capturedJsonStringify`, `JsonValue`, `JsonObject`, `OpenRecord`, `isString`/`isNumber`/`isBoolean`/`isRecord`/`asRecord`/`isFunction`, `stableJson`, `canonicalJson`, `sameJsonValue`, `hashJsonValue`, `compareCodeUnits`, `sha256`, `sha256OfFile` |
 | Errors, keys, text, stats | `runtime-values.ts`, `optional-key.ts`, `text.ts`, `bounded-text.ts`, `tally.ts`, `pool.ts` | `errorMessage`, `asError`, `errorCode`, `keyIfDefined`, `keyIfNotNull`, `keysIf`, `hasText`, `textOr`, `plural`, `boundText`, `countBy`, `median`, `pooled` |
 
@@ -155,7 +155,7 @@ If a rule cites a moved owner, update the rule in the same change.
 
 ## 12.10 The size policy
 
-`tools/loc/source-policy.ts` enforces ≤800 nonblank lines/file, ≤115 lines/function across `src`, `tools`, `vendor` and `.claude/skills`, `AGENTS.md` ≤24,000 bytes, one-way production→helper dependencies, and security layer boundaries (`src/meta/` leaf-only; `check-child.ts` runtime imports restricted to `src/meta/*`; `src/kernel/` and `src/sandbox/` never import seats or `src/campaign/`). `source-policy.json` stays empty, and `bun run commit:check`, `bun run gate` and `ci.yml` all run it. Unused exports across authored roots are enforced by `tree/no-unused-export` (`bun run simplify -- --gate`; `commit:check` checks staged lines). No cyclomatic complexity gate exists in v2.
+`tools/loc/source-policy.ts` enforces ≤800 nonblank lines/file, ≤115 lines/function across `src`, `tools`, `vendor` and `.claude/skills`, `AGENTS.md` ≤24,000 bytes, one-way production→helper dependencies, `.claude/skills/main/` isolation from individual skills, `studies/`, and `test/`, and security layer boundaries (`src/meta/` leaf-only; `check-child.ts` runtime imports restricted to `src/meta/*`; `src/kernel/` and `src/sandbox/` never import seats or `src/campaign/`). `source-policy.json` stays empty, and `bun run commit:check`, `bun run gate` and `ci.yml` all run it. Unused exports across authored roots are enforced by `tree/no-unused-export` (`bun run simplify -- --gate`; `commit:check` checks staged lines). No cyclomatic complexity gate exists in v2.
 
 ## 12.11 Per-path overrides
 

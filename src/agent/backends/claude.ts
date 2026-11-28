@@ -36,11 +36,18 @@ import {
 import { updateUsage } from "../../../vendor/pi-claude-bridge/usage.ts";
 import { existsSync, mkdirSync } from "../../meta/filesystem.ts";
 import { asRecord, isString } from "../../meta/json-shape.ts";
-import { keyIfDefined } from "../../meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "../../meta/optional-key.ts";
 import { dirname, join } from "../../meta/path.ts";
-import { runtimeProcess } from "../../meta/process.ts";
+import { runtimeProcess, warn } from "../../meta/process.ts";
 import { type BackendSpend, claudeSpend } from "../../kernel/meter.ts";
 import { errorMessage } from "../../meta/runtime-values.ts";
+import {
+  CLAUDE_PROJECT_DIR,
+  type ClaudeFork,
+  type ClaudePersist,
+  saveTranscript,
+  stageFork,
+} from "./claude-transcript.ts";
 
 const CLAUDE_PROVIDER = "claude";
 export const CLAUDE_API_PROVIDER = "claude-api";
@@ -87,6 +94,8 @@ interface Session {
   reading: boolean;
   readonly quiet: number;
   readonly provider: string;
+  readonly persist?: ((sdkSessionId: string) => void) | undefined;
+  sdkSessionId?: string | undefined;
 }
 
 type TurnEnd = Extract<StopReason, "stop" | "length" | "toolUse">;
@@ -130,6 +139,8 @@ export interface ClaudeOptions {
   readonly cacheTtl?: "5m" | "1h";
   readonly shutdown?: AbortSignal | undefined;
   readonly quiet?: number;
+  readonly persist?: ClaudePersist | undefined;
+  readonly fork?: ClaudeFork | undefined;
 }
 
 const BARE_WINDOW = 200_000;
@@ -274,6 +285,9 @@ function open(
   const effort = claudeEffort(model, options.reasoning);
   const own = getCurrentSystemPrompt(context.messages).trim();
   mkdirSync(claude.home, { recursive: true });
+  const { persist, fork } = claude;
+  const configDir = join(claude.home, "claude-config");
+  const staged = fork === undefined ? undefined : stageFork(configDir, fork);
   const live = query({
     prompt: prompt.stream,
     options: {
@@ -282,6 +296,9 @@ function open(
       model: LONG_CONTEXT.has(model.id) ? `${model.id}[1m]` : model.id,
       ...keyIfDefined("effort", effort),
       ...keyIfDefined("extraArgs", effort && { "thinking-display": "summarized" }),
+      ...keyIfDefined("resume", staged?.resume),
+      ...keysIf(staged !== undefined, () => ({ forkSession: true })),
+      ...keyIfDefined("resumeSessionAt", staged?.resumeSessionAt),
       systemPrompt: own,
       tools: claude.webSearch === false ? [] : CLI_TOOLS,
       skills: [],
@@ -290,7 +307,7 @@ function open(
       allowDangerouslySkipPermissions: true,
       strictMcpConfig: true,
       settingSources: [],
-      persistSession: false,
+      persistSession: persist !== undefined || fork !== undefined,
       includePartialMessages: true,
       abortController: abort,
       env: claudeEnv(claude, { provider: model.provider, token: options.apiKey }),
@@ -305,6 +322,13 @@ function open(
     reading: false,
     quiet: claude.quiet ?? QUIET_MS,
     provider: model.provider,
+    ...keyIfDefined(
+      "persist",
+      persist &&
+        ((id: string) => {
+          if (id !== staged?.resume) saveTranscript(configDir, persist, id);
+        }),
+    ),
   };
   sessions.set(key, session);
   claude.shutdown?.addEventListener("abort", () => close(key, session), {
@@ -338,6 +362,7 @@ function claudeEnv(
     ...keyIfDefined("PATH", Bun.env.PATH),
     ...keyIfDefined("TMPDIR", Bun.env.TMPDIR),
     CLAUDE_CONFIG_DIR: config,
+    CLAUDE_CODE_PROJECT_DIR_NAME: CLAUDE_PROJECT_DIR,
     [account.variable]: token,
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
@@ -391,6 +416,16 @@ async function readTurn(
   } finally {
     signal?.removeEventListener("abort", interrupt);
     for (const usage of spent) addUsage(turn.usage, usage);
+    saveTurn(session);
+  }
+}
+
+function saveTurn({ persist, sdkSessionId }: Session): void {
+  if (persist === undefined || sdkSessionId === undefined) return;
+  try {
+    persist(sdkSessionId);
+  } catch (error) {
+    warn(`Claude transcript save skipped: ${errorMessage(error)}`);
   }
 }
 
@@ -407,6 +442,7 @@ async function readMessages(
     const next = await heard(key, session);
     if (next.done === true) throw new Error("Claude Code ended the query without a result");
     const message = next.value;
+    if ("session_id" in message && isString(message.session_id)) session.sdkSessionId = message.session_id;
     if (message.type === "assistant" && message.parent_tool_use_id === null) take(message, model, turn);
     else if (message.type === "system" && message.subtype === "compact_boundary") {
       const { pre_tokens: tokensBefore, duration_ms: ms } = message.compact_metadata;

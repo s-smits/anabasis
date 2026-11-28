@@ -14,6 +14,7 @@ import { ended, practiceRan, rejectionAside, solvesIn, standsOf } from "../kerne
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { openingOf } from "./opening.ts";
 
 export interface Supply {
   readonly held: number;
@@ -133,7 +134,9 @@ export function stopRule(events: readonly LogEvent[]) {
   );
   const epochAt = activePromotionAt(events);
   const epoch = moves.filter(({ index }) => index > epochAt);
-  const sinceStep = epoch.length - 1 - epoch.findLastIndex(({ step }) => step);
+  const lastStep = epoch.findLastIndex(({ step }) => step);
+  const carried = epochAt === -1 && lastStep === -1 ? (openingOf(events)?.parent?.carried.sinceStep ?? 0) : 0;
+  const sinceStep = epoch.length - 1 - lastStep + carried;
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 
@@ -150,11 +153,11 @@ function stopVerdict({ stop }: Supply, pastStop: string | undefined) {
   const after = `${String(stop.sinceStep)} moves that could have shown a gain`;
   return {
     refuses: stop.stop && pastStop === undefined,
-    why: `the campaign has had ${after} since its last step, and none did: its patience is spent (--patience). To go on all the same, pass --past-stop "<why>", which is logged`,
+    why: `the campaign has had ${after} since its last standing step, and none did: its patience is spent (--patience). To go on all the same, pass --past-stop "<why>", which is logged`,
     notes: holding([
       [
         stop.stop && pastStop !== undefined,
-        `going on past the plan's stop rule, ${after} after the last step: ${String(pastStop)}`,
+        `going on past the plan's stop rule, ${after} after the last standing step: ${String(pastStop)}`,
       ],
     ]),
   };

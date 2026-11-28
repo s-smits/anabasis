@@ -2,7 +2,7 @@ import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earen
 import { type Static, Type } from "typebox";
 import { type AgentTool, runAgent } from "../agent/session.ts";
 import { waitOut } from "../solver/run.ts";
-import { type AnswerFile, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
+import { type AnswerFile, fileRowBytes, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
 import { append, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
@@ -169,7 +169,19 @@ export function boundPublicInput(publicInput: JsonValue): JsonValue {
   let remaining = TASK_FILES_PREVIEW_BUDGET_BYTES;
   const files = record.files.map((entry) => {
     const row = asRecord(entry);
-    if (row === null || !isString(row.path) || !isString(row.text)) return entry;
+    if (row === null || !isString(row.path)) return entry;
+    if (isString(row.base64)) {
+      const bytes = fileRowBytes(row)?.length;
+      const { base64: _omitted, ...rest } = row;
+      return bytes === undefined
+        ? { ...rest, omittedBytes: row.base64.length, invalidBase64: true }
+        : { ...rest, bytes, omittedBytes: bytes };
+    }
+    if (Array.isArray(row.entries)) {
+      const { entries: _omitted, ...rest } = row;
+      return { ...rest, members: row.entries.length };
+    }
+    if (!isString(row.text)) return entry;
     const bytes = Buffer.byteLength(row.text);
     const budget = Math.min(TASK_FILE_PREVIEW_BYTES, Math.max(0, remaining));
     if (bytes <= budget) {
@@ -241,13 +253,14 @@ function reusedRuling(
   return null;
 }
 
-function packet(
-  fail: RefereeCase,
-  verdict: LoggedVerdict,
-  accepted: ReturnType<typeof acceptedAnswers>[number] | undefined,
-  refusing: ReadonlyMap<string, Refusing>,
-  caseFiles: Map<string, string>,
-): string {
+function packet(given: {
+  readonly fail: RefereeCase;
+  readonly verdict: LoggedVerdict;
+  readonly accepted: ReturnType<typeof acceptedAnswers>[number] | undefined;
+  readonly refusing: ReadonlyMap<string, Refusing>;
+  readonly caseFiles: Map<string, string>;
+}): string {
+  const { fail, verdict, accepted, refusing, caseFiles } = given;
   const statements = new Map(fail.contract.rules.map((rule) => [rule.id, rule.statement]));
   const lines = [...refusing].map(
     ([id, { fields, rules }]) =>
@@ -397,13 +410,14 @@ function refusal(
     : `an earned ruling cites a probe that changed ${field} and moved a check that cites ${String(args.rule)} off its refusal; a probe that moved none shows nothing a verdict did not. Probe that field, or rule unclear`;
 }
 
-function rulingTool(
-  refusing: ReadonlyMap<string, Refusing>,
-  answered: Pick<LoggedVerdict, "answer" | "files">,
-  rows: readonly ProbeRow[],
-  found: AuditFinding[],
-  onRefused: (asked: Static<typeof RULING_PARAMETERS>, why: string) => void,
-) {
+function rulingTool(given: {
+  readonly refusing: ReadonlyMap<string, Refusing>;
+  readonly answered: Pick<LoggedVerdict, "answer" | "files">;
+  readonly rows: readonly ProbeRow[];
+  readonly found: AuditFinding[];
+  readonly onRefused: (asked: Static<typeof RULING_PARAMETERS>, why: string) => void;
+}) {
+  const { refusing, answered, rows, found, onRefused } = given;
   return tool({
     name: "record_ruling",
     description:
@@ -496,7 +510,7 @@ export async function auditRejection(reader: Reader, fail: RefereeCase): Promise
       ]),
   );
   const caseFiles = new Map<string, string>();
-  const opening = host === null ? packet(fail, verdict, accepted, refusing, caseFiles) : "";
+  const opening = host === null ? packet({ fail, verdict, accepted, refusing, caseFiles }) : "";
   const meter =
     host === null
       ? await runAuditSession({
@@ -521,21 +535,26 @@ export async function auditRejection(reader: Reader, fail: RefereeCase): Promise
                 files: verdict.files,
               },
             ),
-            rulingTool(refusing, verdict, rows, found, (asked, why) =>
-              append(fail.log, "referee.refused", {
-                solve: fail.solve,
-                task: fail.task.taskId,
-                asked: {
-                  ruling: asked.ruling,
-                  ...keyIfDefined("check", asked.check),
-                  ...keyIfDefined("rule", asked.rule),
-                  ...keyIfDefined("field", asked.field),
-                  reason: asked.reason,
-                  probes: asked.probes,
-                },
-                why,
-              }),
-            ),
+            rulingTool({
+              refusing,
+              answered: verdict,
+              rows,
+              found,
+              onRefused: (asked, why) =>
+                append(fail.log, "referee.refused", {
+                  solve: fail.solve,
+                  task: fail.task.taskId,
+                  asked: {
+                    ruling: asked.ruling,
+                    ...keyIfDefined("check", asked.check),
+                    ...keyIfDefined("rule", asked.rule),
+                    ...keyIfDefined("field", asked.field),
+                    reason: asked.reason,
+                    probes: asked.probes,
+                  },
+                  why,
+                }),
+            }),
           ],
           log: fail.log,
           over: () => found.length > 0,

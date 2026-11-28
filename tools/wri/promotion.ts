@@ -3,12 +3,15 @@
  * touched both its sides, and what the campaign did after it. A validity percentage needs a task and
  * solve denominator; a missing measurement reads unmeasured.
  */
+import { formatTally } from "#skills/main/print.ts";
+import { summed } from "#skills/main/stats.ts";
 import { epochsOf as epochsRead, ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import { differenceOf, flipP, gainOver, GAP_FLOOR, pointsOf, scoresIn, testOf } from "#src/kernel/compare.ts";
 import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import type { Call, Seat } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -23,12 +26,10 @@ import {
   measured,
   practiceOf,
   share,
-  summed,
   tally,
   tallyOf,
   text,
   type Trigger,
-  formatTally,
 } from "./folds.ts";
 import { spareOf } from "./clearance.ts";
 
@@ -162,7 +163,7 @@ export function spentTo(log: Index, from: number, to: number): string {
     Date.parse(events[from]?.at ?? ""),
     Date.parse(events[Math.max(from, to - 1)]?.at ?? ""),
   ];
-  const hours = Number.isNaN(start) || Number.isNaN(end) ? 0 : (end - start) / 3_600_000;
+  const hours = Number.isNaN(start) || Number.isNaN(end) ? 0 : (end - start) / HOUR_MS;
   return `${hours.toFixed(1)} h and $${billedBetween(events, from, to).toFixed(0)}`;
 }
 

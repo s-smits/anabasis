@@ -17,7 +17,10 @@ export interface AnswerFile {
 // oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to `JsonObject`, and an interface has no implicit index signature
 type TextFile = { readonly path: string; readonly text: string };
 
-export type ControlFile = TextFile | { readonly path: string; readonly entries: readonly TextFile[] };
+export type ControlFile =
+  | TextFile
+  | { readonly path: string; readonly base64: string }
+  | { readonly path: string; readonly entries: readonly TextFile[] };
 
 export interface FileManifest {
   readonly path: string;
@@ -26,6 +29,7 @@ export interface FileManifest {
 }
 
 const SHOWN_BYTES = 4096;
+const NAME_BYTES = 255;
 
 export const DELIVERABLES = { folder: "deliverables", count: 64, bytes: 16 * 1024 * 1024 };
 
@@ -54,6 +58,7 @@ function safePaths(paths: readonly string[]): boolean {
     new Set(paths).size === paths.length &&
     paths.every(
       (path) =>
+        Buffer.byteLength(path) <= NAME_BYTES &&
         path.split("/").every((part) => part !== "" && part !== "." && part !== "..") &&
         !path.includes("\\") &&
         !path.includes("\0"),
@@ -102,13 +107,34 @@ export function capturedFiles(value: JsonValue | undefined): AnswerFile[] {
   return files;
 }
 
+export function fileRowBytes(row: Record<string, JsonValue | undefined>): Buffer | null {
+  if (!isString(row.path) || !safePaths([row.path])) return null;
+  if (isString(row.text)) return Buffer.from(row.text, "utf8");
+  if (isString(row.base64)) {
+    const bytes = Buffer.from(row.base64, "base64");
+    return bytes.toString("base64") === row.base64 ? bytes : null;
+  }
+  if (!Array.isArray(row.entries)) return null;
+  const members = row.entries.flatMap((item) => {
+    const member = asRecord(item);
+    return isString(member?.path) && isString(member.text) ? [{ path: member.path, text: member.text }] : [];
+  });
+  return members.length === row.entries.length && safePaths(members.map(({ path }) => path))
+    ? storedZip(members)
+    : null;
+}
+
 export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
-  const archived = rows.flatMap((row) => ("text" in row ? [] : [row.entries.map(({ path }) => path)]));
+  const archived = rows.flatMap((row) => ("entries" in row ? [row.entries.map(({ path }) => path)] : []));
   if (![rows.map(({ path }) => path), ...archived].every(safePaths)) {
     throw new Error("invalid answer file path");
   }
   const filed = filing();
-  return rows.map((row) => filed(row.path, "text" in row ? Buffer.from(row.text) : storedZip(row.entries)));
+  return rows.map((row) => {
+    const bytes = fileRowBytes(row);
+    if (bytes === null) throw new Error("invalid file base64");
+    return filed(row.path, bytes);
+  });
 }
 
 const storeOf = (log: string) => join(dirname(log), "states", DELIVERABLES.folder);

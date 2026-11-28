@@ -22,6 +22,7 @@ import {
 import type { Control } from "#src/kernel/acceptance.ts";
 import { DELIVERABLES, readAnswerFiles } from "#src/kernel/answer-files.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
+import { endedOf } from "#src/kernel/reports.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { examinerSessions, verdictsOf } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
@@ -432,6 +433,8 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   if (!isString(held) || least === undefined || !isString(values.name)) throw new Misused();
   const drafted = draftedSource(values.name);
   const seeded = dirname(campaignLog(values.name));
+  const log = campaignLog(values.name);
+  const eventsBefore = read(log).length;
   if (existsSync(join(seeded, SEED_FILE))) {
     console.log(codeLine(resolve(import.meta.dir, "..", ".."), seeded));
   }
@@ -447,6 +450,12 @@ export async function rehearse(args: readonly string[]): Promise<void> {
         unreviewed: true,
         examine: scriptedExaminer(drafted.later, drafted.answered, Number(values.supply), graded),
       });
+      const ended = endedOf(read(log).slice(eventsBefore));
+      if (ended?.ending === "environment") {
+        strayed.push(
+          `campaign ended environment${ended.why === "" ? "" : ` (${ended.why})`} instead of finishing as scripted`,
+        );
+      }
     } else if (isString(values.id)) await checkpointCommand(flags, seats);
     else if ((await sessionCommand(flags, seats)) === null) {
       strayed.push("the Builder's script left the harness as it was");

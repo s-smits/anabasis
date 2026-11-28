@@ -164,7 +164,9 @@ function examLines(
     ...(judged.length === 0
       ? []
       : [
-          `to admit the judged rubric items (${judged.join(", ")}), resume unattended with a cross-family --reviewer, or freeze under --hitl: bun tools/eval/accept.ts ${packOf(values).join(" ")} --admit-judge --freeze`,
+          mode === "attended"
+            ? `to admit the judged rubric items (${judged.join(", ")}) under --hitl, freeze via accept.ts: bun tools/eval/accept.ts ${packOf(values).join(" ")} --admit-judge --freeze (or resume with --no-hitl and a first-party --reviewer)`
+            : `to admit the judged rubric items (${judged.join(", ")}), resume with a first-party --reviewer: bun tools/campaign/harness-builder.ts ${packOf(values).join(" ")} --reviewer <first-party-model>`,
         ]),
   ];
 }

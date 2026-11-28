@@ -368,7 +368,7 @@ describe("revision faults, refusals, and the log lock", () => {
         criterion: "Reports methodology and assumptions clearly.",
       }),
     });
-    expect(revisionFaults(PARENT_DRAFT, judged, undefined, "code-only").join("\n")).toContain("cross-family");
+    expect(revisionFaults(PARENT_DRAFT, judged, undefined, "code-only").join("\n")).toContain("first-party");
     expect(revisionFaults(PARENT_DRAFT, judged, undefined, "judged")).toEqual([]);
     const tools = (given: string[]) =>
       candidateDraft(PARENT_DRAFT, { why: "w", objective: { ...rubric().objective, tools: given } })

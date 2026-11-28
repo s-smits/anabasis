@@ -177,8 +177,9 @@ describe("the campaign's executing Bun and opening guards", () => {
     const judgedLog = join(root, "terms", "judged", LOG_FILE);
     expect(() => termFlags("--reviewer", model, "--admit-judge")).toThrow("Unknown option");
     for (const reviewer of [model, "openrouter/anthropic/claude-fable-5-2", "anthropic/sonnet-5-5"]) {
-      expect(opened(judgedLog, termFlags("--reviewer", reviewer), "paid").judged).toBe(false);
+      expect(opened(judgedLog, termFlags("--reviewer", reviewer), "paid").judged).toBe(true);
     }
+    expect(opened(judgedLog, termFlags("--reviewer", "openrouter/auto"), "paid").judged).toBe(false);
     expect(opened(judgedLog, termFlags("--reviewer", "codex/gpt-6.1-sol"), "paid").judged).toBe(true);
     expect(opened(judgedLog, termFlags("--reviewer", "codex/gpt-6.1-sol", "--hitl"), "paid").judged).toBe(
       false,
@@ -287,9 +288,12 @@ describe("the campaign's executing Bun and opening guards", () => {
         },
       },
     });
-    expect(() => opened(judgedFreezeLog, termFlags("--reviewer", model), "paid")).not.toThrow();
+    expect(() => opened(judgedFreezeLog, termFlags("--reviewer", "openrouter/auto"), "paid")).not.toThrow();
     append(judgedFreezeLog, "contract.frozen", { contract: "c", checks: "k" });
-    expect(() => opened(judgedFreezeLog, termFlags("--reviewer", model), "paid")).toThrow(/its own family/u);
+    expect(() => opened(judgedFreezeLog, termFlags("--reviewer", "openrouter/auto"), "paid")).toThrow(
+      /unknown vendor/u,
+    );
+    expect(() => opened(judgedFreezeLog, termFlags("--reviewer", model), "paid")).not.toThrow();
   });
 
   it("ends open build, exam, and draft sessions as killed before its first move, and never twice", async () => {
@@ -623,7 +627,7 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
   });
 
   it.serial(
-    "gates judged drafting on cross-family seat capability while keeping dynamic lane choice flag-free",
+    "gates judged drafting on verified first-party reviewer capability while keeping dynamic lane choice flag-free",
     async () => {
       const { exam, examples } = draftedOf(SMALL);
       const judgedExam = {
@@ -657,6 +661,7 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
         "--level",
         "0.125",
       ];
+      const unknownReviewer = [...sameFamily, "--reviewer", "openrouter/auto"];
       const crossFamily = [...sameFamily, "--reviewer", "openai-codex/gpt-6.1-sol"];
       const makeSeats = (...drafts: JsonObject[]): Seats => ({
         seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, examples, []),
@@ -667,22 +672,32 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
           }),
       });
 
-      const sameFamilyName = `${STEM}-same-family-mend`;
-      names.push(sameFamilyName);
+      const unknownMendName = `${STEM}-unknown-reviewer-mend`;
+      names.push(unknownMendName);
       await harnessBuilder(
-        ["--name", sameFamilyName, ...sameFamily, "--moves", "1"],
+        ["--name", unknownMendName, ...unknownReviewer, "--moves", "1"],
         makeSeats(judgedExam, exam),
       );
       expect(
-        of(sameFamilyName, "draft.call").some(
+        of(unknownMendName, "draft.call").some(
           ({ isError, text }) => isError === true && isString(text) && text.includes('expected "code"'),
         ),
       ).toBe(true);
-      expect(of(sameFamilyName, "draft.finished")).toMatchObject([
+      expect(of(unknownMendName, "draft.finished")).toMatchObject([
         { session: "d-1", stands: true, tries: 1 },
       ]);
-      expect(of(sameFamilyName, "contract.frozen")).toHaveLength(1);
-      expect(of(sameFamilyName, "checker.read").at(-1)?.faults).toEqual([]);
+      expect(of(unknownMendName, "contract.frozen")).toHaveLength(1);
+      expect(of(unknownMendName, "checker.read").at(-1)?.faults).toEqual([]);
+
+      const sameFamilyJudgeName = `${STEM}-same-family-judge`;
+      names.push(sameFamilyJudgeName);
+      await harnessBuilder(
+        ["--name", sameFamilyJudgeName, ...sameFamily, "--moves", "1"],
+        makeSeats(judgedExam),
+      );
+      expect(of(sameFamilyJudgeName, "draft.finished")).toMatchObject([{ session: "d-1", stands: true }]);
+      expect(of(sameFamilyJudgeName, "checker.read").at(-1)?.faults).toEqual([]);
+      expect(of(sameFamilyJudgeName, "contract.frozen")).toHaveLength(1);
 
       const crossCodeName = `${STEM}-cross-code`;
       names.push(crossCodeName);
@@ -700,10 +715,10 @@ describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", 
       expect(() =>
         opened(
           join(REPO, ".ana", "d2", crossJudgeName, LOG_FILE),
-          flagsOf(["--name", crossJudgeName, "--reviewer", "claude/claude-opus-5-5", "--budget", "100"]),
+          flagsOf(["--name", crossJudgeName, "--reviewer", "openrouter/auto", "--budget", "100"]),
           "paid",
         ),
-      ).toThrow("another family");
+      ).toThrow("unknown vendor");
       expect(of(crossJudgeName, OPENED)).toHaveLength(openCount);
 
       const hitlName = `${STEM}-dyn-hitl`;

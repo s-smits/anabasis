@@ -77,7 +77,7 @@ export async function examineCommand(
   const models =
     forked === null ? campaign.examiner : hostSession({ webSearch: false, cacheTtl: "1h", ...forked.seat });
   const canRevise = values.revise ?? opening?.revise ?? true;
-  const lane = rubricLaneOf(values.reviewer ?? opening?.seats.reviewer?.model, opening?.solver?.model);
+  const lane = rubricLaneOf(values.reviewer ?? opening?.seats.reviewer?.model);
   const revise = canRevise
     ? revisionRunner({
         log: campaign.log,

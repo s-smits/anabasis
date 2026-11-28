@@ -34,6 +34,13 @@ interface CommandIsolationEnvironment extends EnvValues {
   PATH: string;
   HOME: string;
   TMPDIR: string;
+  TEMP: string;
+  TMP: string;
+  MPLCONFIGDIR: string;
+  XDG_CACHE_HOME: string;
+  XDG_CONFIG_HOME: string;
+  XDG_DATA_HOME: string;
+  PYTHONPYCACHEPREFIX: string;
   LANG: string;
 }
 
@@ -112,6 +119,13 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
     PATH: commandSearchPath(dirs.toolTree ?? null),
     HOME: dirs.home,
     TMPDIR: dirs.temp,
+    TEMP: dirs.temp,
+    TMP: dirs.temp,
+    MPLCONFIGDIR: join(dirs.temp, "mpl"),
+    XDG_CACHE_HOME: join(dirs.home, ".cache"),
+    XDG_CONFIG_HOME: join(dirs.home, ".config"),
+    XDG_DATA_HOME: join(dirs.home, ".local", "share"),
+    PYTHONPYCACHEPREFIX: join(dirs.temp, "pycache"),
     LANG: "en_US.UTF-8",
     MPLBACKEND: "Agg",
     PIP_BREAK_SYSTEM_PACKAGES: "1",
@@ -235,6 +249,8 @@ export function stageCommandIsolation(
   return `exec ${isolatedArgv(policy, profileFile, ["/bin/bash", "-c", command]).map(shellQuote).join(" ")}`;
 }
 
+const BWRAP_WRITABLE_TMP = new Set(["/tmp", "/var/tmp"]);
+
 export function isolatedArgv(
   policy: CommandIsolationPolicy,
   profileFile: string,
@@ -243,7 +259,9 @@ export function isolatedArgv(
   if (policy.profile === null) {
     const remounts = [
       "/",
-      ...policy.readDenies.filter((deny) => !policy.scratchRoots.some((root) => covers(deny, root))),
+      ...policy.readDenies.filter(
+        (deny) => !BWRAP_WRITABLE_TMP.has(deny) && !policy.scratchRoots.some((root) => covers(deny, root)),
+      ),
     ];
     return [policy.mechanismPath, ...bwrapCommandArgs({ ...policy, remounts }), ...argv];
   }

@@ -293,6 +293,7 @@ function recordWitnesses(seed: Seed, opts: { readonly report: boolean }) {
   witness(seed.log, "s-earned-even", { ...even, check: "check-even" });
   const defect = { n: 10, note: "exact: 10\n", blocking: ["check-strict"], ruling: "check-defect" };
   witness(seed.log, "s-defect-strict", { ...defect, check: "check-strict" });
+  witness(seed.log, "s-earned-format", { n: 10, note: "exact:10", blocking: [], ruling: "earned" });
   if (opts.report) report(seed.log, "g-1", { old: "starter", fresh: "h1", reading: "no-step" });
 }
 

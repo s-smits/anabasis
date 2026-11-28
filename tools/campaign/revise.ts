@@ -22,7 +22,7 @@ import {
 import { billedAll } from "#src/kernel/meter.ts";
 import { endedData, endedOf, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { ranUnder, standsOf, verdictsOf } from "#src/kernel/solves.ts";
-import type { Task, Verifier } from "#src/kernel/verify.ts";
+import { blockingOf, type Task, type Verifier } from "#src/kernel/verify.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import {
   cpSync,
@@ -126,7 +126,9 @@ async function witnessed(
     const blocking = verdict.checker?.kind === "fail" ? verdict.checker.blocking : [];
     return { task: task.taskId, blocking, now: result.kind === "fail" ? result.blocking : null };
   };
-  const earned = [...standsOf(events)].flatMap(([solve, ruling]) => (ruling === "earned" ? [solve] : []));
+  const earned = [...standsOf(events)].flatMap(([solve, ruling]) =>
+    ruling === "earned" && blockingOf(verdicts.get(solve)?.checker).length > 0 ? [solve] : [],
+  );
   const rows = await pooled(earned, 4, async (solve) => {
     const row = await replay(solve, "earned");
     if (isString(row)) return row;

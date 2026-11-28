@@ -93,12 +93,12 @@ export function draftAuditGate(given: {
       unverified.push(...replay.unverified);
     }
     const cap = unverified.length > 0 ? MAX_DRAFT_AUDITS + 1 : MAX_DRAFT_AUDITS;
-    if (audits >= cap) {
+    if (audits >= cap && given.required !== true) {
       return unverified.map(
         (finding) => `${finding} (prior defect probe could not be verified fixed after the audit cap)`,
       );
     }
-    if (given.auditor === null) return [];
+    if (given.auditor === null) return given.required === true ? ["the audit needs an auditor"] : [];
     if (given.reader === null) return given.required === true ? ["the audit needs a reviewer seat"] : [];
     const review = await given.auditor(given.reader, {
       session: given.session,
@@ -113,6 +113,7 @@ export function draftAuditGate(given: {
       notes: seen.reading.notes,
       priorFindings: unverified,
       verifiedFixed,
+      audited: seen.checker.checks,
       log: given.log,
     });
     if (review.verdict === "skipped") {

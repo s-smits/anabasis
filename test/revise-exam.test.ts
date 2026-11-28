@@ -169,6 +169,7 @@ const auditing =
       session: target.session,
       ...keyIfDefined("pass", target.pass),
       ...keyIfDefined("revision", target.revision),
+      ...keyIfDefined("audited", target.audited),
       verdict,
       findings: requireJsonValue(findings),
       summary: verdict,
@@ -578,7 +579,7 @@ describe("historical witnesses and the adversarial audit", () => {
     expect(revised).toMatchObject({ kind: "repair", check: "check-strict", parent: { checks: frozen } });
   });
 
-  it("requires a sound audit, caps defect passes, replays prior probes first, and re-checks after the audit", async () => {
+  it("requires a sound audit of every revision, past the defect cap too, replays prior probes first, and re-checks after the audit", async () => {
     const seed = await seedCampaign({ name: "camp-audit" });
     const skipped: DraftAuditor = async () => ({
       verdict: "skipped",
@@ -599,9 +600,8 @@ describe("historical witnesses and the adversarial audit", () => {
     for (let attempt = 0; attempt < 4; attempt += 1) {
       messages.push((await seed.runner(counting)(TUNE_INPUT)).message);
     }
-    expect(passes).toEqual([1, 2, 3]);
+    expect(passes).toEqual([1, 2, 3, 4]);
     expect(messages.every((message) => message.startsWith("Revision failed adversarial audit"))).toBe(true);
-    expect(messages.at(-1)).toContain("could not be verified fixed after the audit cap");
     expect(eventsOf(read(seed.log), REVISED)).toHaveLength(0);
 
     const probed = async (name: string, path: string, defectPasses: readonly number[]) => {
@@ -640,7 +640,10 @@ describe("historical witnesses and the adversarial audit", () => {
     ];
     expect(replays.map(({ accepted }) => accepted)).toEqual([true, true, false]);
     expect(replays[2]?.message).toContain("prior probe still reproduces on this revision");
-    expect(calls).toEqual([{ pass: 2, fixed: 1 }]);
+    expect(calls).toEqual([
+      { pass: 2, fixed: 1 },
+      { pass: 3, fixed: 2 },
+    ]);
 
     const race = await seedCampaign({ name: "camp-race" });
     const raced = race.runner(async (reader, target) => {
@@ -675,6 +678,17 @@ describe("successor campaign", () => {
     expect(eventsOf(read(seed.log), REVISED).map(({ event: { data } }) => data.draftHash)).toEqual([
       hashJsonValue(TUNE),
     ]);
+  });
+
+  it("freezes a staged revision only on a sound audit of its own checks", async () => {
+    const seed = await seedCampaign({ name: "hitl-bound", attended: true });
+    const elsewhere: DraftAuditor = async (reader, target) =>
+      await SOUND_AUDIT(reader, { ...target, audited: "another check program" });
+    expect((await seed.runner(elsewhere)(TUNE_INPUT)).accepted).toBe(false);
+    await expect(freezeCandidate(seed.log, hashJsonValue(TUNE).slice(0, 16), seed.packages)).rejects.toThrow(
+      "no sound audit of its own checks",
+    );
+    expect(eventsOf(read(seed.log), REVISED)).toHaveLength(0);
   });
 
   it("freezes a judged revision only where the campaign seats a first-party judging reviewer", async () => {

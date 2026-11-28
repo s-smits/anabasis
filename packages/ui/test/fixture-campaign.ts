@@ -247,8 +247,8 @@ function writer(log: string, t0: string, starter: string) {
       task: taskId,
       ruling,
       check: ruling === "check-defect" ? MARKERS.check : null,
-      rule: ruling === "earned" ? "R1" : null,
-      field: ruling === "earned" ? "count" : null,
+      rule: ruling === "solver-fail" ? "R1" : null,
+      field: ruling === "solver-fail" ? "count" : null,
       reason: `${MARKERS.check} read the count; ruled ${ruling}`,
       probes: [1],
       probeRows: [],
@@ -259,7 +259,7 @@ function writer(log: string, t0: string, starter: string) {
     record("referee.finding", {
       solve: solveId,
       task: taskId,
-      ruling: "earned",
+      ruling: "solver-fail",
       check: null,
       rule: null,
       field: null,
@@ -612,15 +612,15 @@ function firstPart(w: Writer) {
       "word-06": { old: ["no-answer", "no-answer"], fresh: ["no-answer", "rejected"] },
     },
     rulings: {
-      "word-01 old 0": "earned",
-      "word-01 old 1": "earned",
-      "word-02 old 1": "earned",
-      "word-04 old 1": "earned",
-      "word-04 fresh 0": "earned",
-      "word-05 old 0": "earned",
-      "word-05 old 1": "earned",
-      "word-05 fresh 0": "earned",
-      "word-06 fresh 1": "earned",
+      "word-01 old 0": "solver-fail",
+      "word-01 old 1": "solver-fail",
+      "word-02 old 1": "solver-fail",
+      "word-04 old 1": "solver-fail",
+      "word-04 fresh 0": "solver-fail",
+      "word-05 old 0": "solver-fail",
+      "word-05 old 1": "solver-fail",
+      "word-05 fresh 0": "solver-fail",
+      "word-06 fresh 1": "solver-fail",
     },
   });
   compare(w, {
@@ -636,10 +636,10 @@ function firstPart(w: Writer) {
       "word-07": { old: ["no-answer", "rejected"], fresh: ["pass", "rejected"] },
     },
     rulings: {
-      "word-01 old 0": "earned",
-      "word-05 old 0": "earned",
-      "word-07 old 1": "earned",
-      "word-07 fresh 1": "earned",
+      "word-01 old 0": "solver-fail",
+      "word-05 old 0": "solver-fail",
+      "word-07 old 1": "solver-fail",
+      "word-07 fresh 1": "solver-fail",
     },
   });
   promote(w, a, starter);
@@ -657,7 +657,11 @@ function firstPart(w: Writer) {
       "word-14": { old: ["pass", "rejected", "pass", "pass"], fresh: ["rejected", "pass", "pass", "pass"] },
       "word-15": { old: ["pass", "pass", "pass", "no-answer"], fresh: ["pass", "pass", "pass", "pass"] },
     },
-    rulings: { "word-13 fresh 1": "earned", "word-14 old 1": "earned", "word-14 fresh 0": "unclear" },
+    rulings: {
+      "word-13 fresh 1": "solver-fail",
+      "word-14 old 1": "solver-fail",
+      "word-14 fresh 0": "unclear",
+    },
   });
   built(w, "b-2", { parent: a, harness: b, practice }, ["pass", "no-answer"]);
   const second = compare(w, {
@@ -672,14 +676,18 @@ function firstPart(w: Writer) {
       "word-07": { old: ["pass", "pass"], fresh: ["pass", "pass"] },
       "word-16": { old: ["no-answer", "pass"], fresh: ["pass", "no-answer"] },
     },
-    rulings: { "word-02 fresh 0": "check-defect", "word-04 old 0": "earned", "word-05 old 0": "unclear" },
+    rulings: {
+      "word-02 fresh 0": "check-defect",
+      "word-04 old 0": "solver-fail",
+      "word-05 old 0": "unclear",
+    },
   });
   w.later(3600);
   settleReading(
     w.log,
     "b-2",
     new Map<string, Ruling>([
-      [second.get("word-02 fresh 0") ?? "", "earned"],
+      [second.get("word-02 fresh 0") ?? "", "solver-fail"],
       [second.get("word-05 old 0") ?? "", "check-defect"],
     ]),
   );
@@ -708,7 +716,11 @@ function secondPart(w: Writer): string {
       "word-12": { old: ["no-answer", "no-answer"], fresh: ["pass", "no-answer"] },
       "word-13": { old: ["pass", "rejected"], fresh: ["pass", "pass"] },
     },
-    rulings: { "word-09 old 0": "earned", "word-09 fresh 1": "earned", "word-11 fresh 0": "earned" },
+    rulings: {
+      "word-09 old 0": "solver-fail",
+      "word-09 fresh 1": "solver-fail",
+      "word-11 fresh 0": "solver-fail",
+    },
   });
   compare(w, {
     id: "r-3",
@@ -722,7 +734,7 @@ function secondPart(w: Writer): string {
       "word-15": { old: ["pass", "pass"], fresh: ["pass", "pass"] },
       "word-16": { old: ["rejected", "no-answer"], fresh: ["no-answer", "rejected"] },
     },
-    rulings: { "word-16 old 0": "earned", "word-16 fresh 1": "earned" },
+    rulings: { "word-16 old 0": "solver-fail", "word-16 fresh 1": "solver-fail" },
   });
   promote(w, c, a, "the operator's reason, given with --despite");
   examined(w, "x-3", range("word", 17, 22), []);
@@ -737,7 +749,7 @@ function secondPart(w: Writer): string {
       "word-18": { old: ["pass", "pass"], fresh: ["pass", "pass"] },
       "word-19": { old: ["pass", "pass"], fresh: ["pass", "pass"] },
     },
-    rulings: { "word-17 old 0": "earned" },
+    rulings: { "word-17 old 0": "solver-fail" },
   });
   promote(w, starter, c);
   compare(w, {
@@ -752,7 +764,7 @@ function secondPart(w: Writer): string {
       "word-21": { old: ["no-answer", "no-answer"], fresh: ["no-answer", "no-answer"] },
       "word-22": { old: ["pass", "rejected"], fresh: ["pass", "pass"] },
     },
-    rulings: { "word-20 old 0": "earned", "word-22 old 1": "earned" },
+    rulings: { "word-20 old 0": "solver-fail", "word-22 old 1": "solver-fail" },
   });
   examined(w, "x-4", ["word-23"], []);
   built(w, "b-5", { parent: b, harness: null, practice, checkpoint: e }, []);

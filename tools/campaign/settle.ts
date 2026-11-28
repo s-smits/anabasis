@@ -52,7 +52,7 @@ export function packetOf(
 ) {
   const of = (pool: readonly string[], kind: string) =>
     draw(pool, Math.min(SAMPLED, pool.length), `${kind}:${session}`);
-  return { rejections: [...aside, ...of(others, "earned")], passes: of(passed, "passes") };
+  return { rejections: [...aside, ...of(others, "solver-fail")], passes: of(passed, "passes") };
 }
 
 /** Writes one file per drawn answer and `labels.json` with an empty entry each. */

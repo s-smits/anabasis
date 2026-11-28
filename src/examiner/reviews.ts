@@ -48,12 +48,20 @@ function mirrored(harnessOf: ReadonlyMap<string, string>, data: JsonObject): boo
 function votesOf(events: readonly LogEvent[]): Map<string, string> {
   return new Map(
     eventsOf(events, "referee.call").flatMap(({ event: { data } }) => {
-      const args = asRecord(data.args);
-      const [reader, better, reason] = [str(data.reader), str(args?.better), str(args?.reason)];
-      const recorded = data.tool === "record_vote" && data.isError !== true;
-      return !recorded || reader === null || better === null || reason === null
-        ? []
-        : [[reader, `better=${better}; ${clip(reason)}`] as const];
+      if (data.tool !== "record_vote" || data.isError === true) return [];
+      const [reader, args] = [str(data.reader), asRecord(data.args)];
+      if (reader === null || args === null) return [];
+      const [better, reason] = [str(args.better), str(args.reason)];
+      if (better !== null && reason !== null) {
+        return [[reader, `better=${better}; ${clip(reason)}`] as const];
+      }
+      return Object.entries(args).flatMap(([item, raw]) => {
+        const entry = asRecord(raw);
+        const [itemBetter, itemReason] = [str(entry?.better), str(entry?.reason)];
+        return itemBetter === null || itemReason === null
+          ? []
+          : [[`${reader}:${item}`, `better=${itemBetter}; ${clip(itemReason)}`] as const];
+      });
     }),
   );
 }
@@ -82,8 +90,10 @@ function pairReview(data: JsonObject, kind: "mirror" | "cross", votes: ReadonlyM
   const complete = isNumber(judge) && isNumber(holistic);
   const criteria = asRecord(data.criteria) ?? {};
   const disagreed = new Set(strings(data.disagreed));
+  const allReaders = strings(data.readers);
+  const sharedReaders = allReaders.filter((id) => id.split(":").length < 3);
   const readers = Map.groupBy(
-    strings(data.readers).filter((id) => id.split(":").length >= 3),
+    allReaders.filter((id) => id.split(":").length >= 3),
     (id) => id.split(":").at(-2) ?? "",
   );
   const opposed: string[] = [];
@@ -94,7 +104,8 @@ function pairReview(data: JsonObject, kind: "mirror" | "cross", votes: ReadonlyM
     if (vs === "opposed") opposed.push(item);
     const gap = score === 0 ? "tie" : isNumber(score) ? `gap=${fmt(score)}` : "incomplete";
     const swap = disagreed.has(item) ? "swap-disagreed" : "swap-consistent";
-    const passes = (readers.get(item) ?? []).map((id, at) => {
+    const voteIds = readers.get(item) ?? sharedReaders.map((reader) => `${reader}:${item}`);
+    const passes = voteIds.map((id, at) => {
       const vote = votes.get(id);
       missing ||= vote === undefined;
       const pass = `    pass ${String(at + 1)}`;
@@ -237,7 +248,7 @@ const INVENTORY = [
     "finding",
     [
       ["check-defect", "check-defect"],
-      ["earned", "earned"],
+      ["solver-fail", "solver-fail"],
     ],
   ],
   ["draft", "draft audit", []],

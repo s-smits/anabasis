@@ -490,10 +490,10 @@ describe("a campaign", () => {
     expect(await promote("--harness", digest.slice(0, 8))).toContain("is no harness this campaign keeps");
     const refused = await promote("--harness", digest, "--yes");
     expect(refused).toContain(
-      `the plan would not promote it now: harness ${digest.slice(0, 8)} has no comparison that read a step against the reference harness`,
+      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not beaten the reference harness in a comparison yet`,
     );
     expect(refused).toContain(
-      "not promoted: a harness is promoted where a comparison against the reference read a step",
+      "not promoted: a harness is only promoted after beating the reference harness in a comparison",
     );
     expect(promotions()).toEqual([]);
     const despite = "the record is under test";
@@ -609,7 +609,7 @@ describe("the judged comparison's reserve", () => {
   it("adds its judging to the test's price, so a cap the solves alone fit refuses a judged comparison", () => {
     for (const solves of [1, 2, 3, 4]) {
       for (const held of [6, 12, 30]) {
-        const supply = { held, awaiting: 0, exhausted: 0, released: 0, faults: 0, frozen: true, billed: 1 };
+        const supply = { held, awaiting: 0, released: 0, faults: 0, frozen: true, billed: 1 };
         const scored = Math.min(12, held);
         const solvesPrice = 2 * scored * solves;
         const judging = JUDGED_TASK_DOLLARS * scored * Math.max(1, solves / 2);

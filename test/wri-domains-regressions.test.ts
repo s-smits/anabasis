@@ -660,7 +660,7 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
       {
         at: AT,
         kind: "referee.finding",
-        data: { reader: "round-override", model: "openai-codex/gpt-6.1-sol", ruling: "earned" },
+        data: { reader: "round-override", model: "openai-codex/gpt-6.1-sol", ruling: "solver-fail" },
       },
     ];
     const lines = degradationLines(degradedRef);

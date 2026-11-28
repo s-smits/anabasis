@@ -208,7 +208,7 @@ describe("admission invariants", () => {
       seats: "paid",
       own: () => {},
     });
-    expect(stopNotes.some((n) => n.includes("going on past the plan's stop rule"))).toBe(true);
+    expect(stopNotes.some((n) => n.includes("continuing past the patience stop rule"))).toBe(true);
     expect(eventsOf(read(overrideLog), "stop.overridden")).toHaveLength(2);
     admitComparison(overrideLog, {
       id: "g-ov",
@@ -219,7 +219,7 @@ describe("admission invariants", () => {
     expect(eventsOf(read(overrideLog), "stop.overridden")).toHaveLength(2);
   });
 
-  it("reports awaiting and exhausted pool notes and enforces admitSession refusals and practice bounds", () => {
+  it("reports awaiting pool notes and enforces admitSession refusals and practice bounds", () => {
     const setting = settingId(conditionOf("any", "any"));
     const poolComp = (session: string, fresh: string): LogEvent[] => [
       ev(COMP_STARTED, { session, old: STARTER, fresh, starter: STARTER }),
@@ -249,8 +249,7 @@ describe("admission invariants", () => {
       seats: "paid",
       own: () => {},
     });
-    expect(poolNotes.some((n) => n.includes("wait for a person's label"))).toBe(true);
-    expect(poolNotes.some((n) => n.includes("only as retained tasks"))).toBe(true);
+    expect(poolNotes.some((n) => n.includes("waiting for human review"))).toBe(true);
 
     const unreadNoRel = writeLog("sess-unread-0", [...heldTasks(2)]);
     expect(() => admitSession(unreadNoRel, { id: "s-0", wanted: { cap: null }, seats: "paid" })).toThrow(

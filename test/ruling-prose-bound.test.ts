@@ -55,7 +55,7 @@ beforeAll(() => {
 });
 
 function ruling(reason: string, rest: JsonObject = {}) {
-  return { ruling: "earned", rule: "R1", field: "$.span", probes: [1], reason, ...rest };
+  return { ruling: "solver-fail", rule: "R1", field: "$.span", probes: [1], reason, ...rest };
 }
 
 function record(args: JsonObject) {
@@ -111,7 +111,7 @@ async function run(responses: ReturnType<typeof fauxAssistantMessage>[]) {
 }
 
 describe("ruling prose", () => {
-  it.each(["earned", "check-defect"])(
+  it.each(["solver-fail", "check-defect"])(
     "the Referee accepts a long %s explanation on its first ruling and completes the reading",
     async (kind) => {
       const args = ruling(LONG_REASON, { ruling: kind, check: "span" });
@@ -121,8 +121,8 @@ describe("ruling prose", () => {
       expect(s.finding).toEqual({
         ruling: kind,
         check: kind === "check-defect" ? "span" : null,
-        rule: kind === "earned" ? "R1" : null,
-        field: kind === "earned" ? "$.span" : null,
+        rule: kind === "solver-fail" ? "R1" : null,
+        field: kind === "solver-fail" ? "$.span" : null,
         probes: [1],
         reason: boundText(LONG_REASON, 700).shown,
       });
@@ -144,12 +144,12 @@ describe("ruling prose", () => {
       expect(s.calls[1]?.data.isError).toBe(false);
       const refused = s.events.filter(({ kind }) => kind === "referee.refused");
       expect(refused).toHaveLength(1);
-      expect(refused[0]?.data).toMatchObject({ asked, why: containing("an earned ruling") });
+      expect(refused[0]?.data).toMatchObject({ asked, why: containing("a solver-fail ruling") });
       expect(s.events.findIndex(({ kind }) => kind === "referee.refused")).toBeLessThan(
         s.events.findIndex(({ kind }) => kind === "referee.finding"),
       );
       expect(s.events.filter(({ kind }) => kind === "referee.finding")).toHaveLength(1);
-      expect(s.finding).toMatchObject({ ruling: "earned", reason: "The span exceeds the limit." });
+      expect(s.finding).toMatchObject({ ruling: "solver-fail", reason: "The span exceeds the limit." });
       expect(s.turns).toBe(3);
     },
   );
@@ -164,6 +164,6 @@ describe("ruling prose", () => {
     ]);
     expect(s.calls.map(({ data }) => data.isError)).toEqual([true, true, false]);
     expect(s.events.filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
-    expect(s.finding.ruling).toBe("earned");
+    expect(s.finding.ruling).toBe("solver-fail");
   });
 });

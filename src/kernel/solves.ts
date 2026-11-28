@@ -137,10 +137,15 @@ export function rejected(ending: JsonObject | null | undefined): boolean {
   return ending?.outcome === "fail" && ending.kind === "rejected";
 }
 
+export function normalizeRuling(value: unknown): string | null {
+  if (!isString(value)) return null;
+  return value === "earned" ? "solver-fail" : value;
+}
+
 export function rulingsOf(events: readonly LogEvent[], upTo = events.length - 1): Map<string, string | null> {
   return new Map(
     eventsOf(events, "referee.finding", upTo).flatMap(({ event: { data } }) =>
-      isString(data.solve) ? [[data.solve, isString(data.ruling) ? data.ruling : null] as const] : [],
+      isString(data.solve) ? [[data.solve, normalizeRuling(data.ruling)] as const] : [],
     ),
   );
 }
@@ -164,9 +169,10 @@ export function labelsIn(
   );
   return new Map(
     [...last.values()].flatMap((data) =>
-      Object.entries(asRecord(asRecord(data.settled)?.[field]) ?? {}).flatMap(([solve, label]) =>
-        isString(label) ? [[solve, label] as const] : [],
-      ),
+      Object.entries(asRecord(asRecord(data.settled)?.[field]) ?? {}).flatMap(([solve, label]) => {
+        const normalized = field === "labels" ? normalizeRuling(label) : isString(label) ? label : null;
+        return normalized === null ? [] : [[solve, normalized] as const];
+      }),
     ),
   );
 }
@@ -180,7 +186,7 @@ export function rejectionAside(
   solve: Checked,
   stands: Stands | null = null,
 ): boolean {
-  return rejected(solve.ending) && (stands ?? standsOf(events)).get(solve.id) !== "earned";
+  return rejected(solve.ending) && (stands ?? standsOf(events)).get(solve.id) !== "solver-fail";
 }
 
 export function verdictsOf(events: readonly LogEvent[]): Map<string, Judged> {

@@ -84,9 +84,8 @@ const DETECTION_CHANCE = 0.8;
 export const UNMEASURED = "unmeasured" as const;
 export const GAP_FLOOR = 0.01;
 const ZERO_FLOOR = 1e-12;
-export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 const POINTS_SCALE = 1000;
-export const JUDGE_STEP = 0.5;
+export const JUDGE_STEP = 0.15;
 const BOUND_TAIL = 0.05;
 
 function plusTotalChances(sizes: readonly number[], share: number): Float64Array {
@@ -277,9 +276,10 @@ function codeGain(pair: Paired, f: number, o: number): number {
 }
 
 export function judgedGain(weights: JudgeWeights, code: number, vote: Vote): number {
-  if (weights.code === 0) return 0.5 * (vote.judge + vote.holistic);
-  const judged = (weights.step ?? JUDGE_STEP) * weights.judge * (vote.judge + vote.holistic);
-  return (weights.code * code + judged) / (weights.code + 2 * weights.judge);
+  const meanVote = 0.5 * (vote.judge + vote.holistic);
+  if (weights.code === 0) return meanVote;
+  const step = weights.step ?? JUDGE_STEP;
+  return (weights.code * code + weights.judge * step * meanVote) / (weights.code + weights.judge);
 }
 
 export function judgedPairs(
@@ -319,8 +319,8 @@ export function pointsOf(pair: Paired): Measures {
           gains.length) /
         votes.length;
   return {
-    validity: validity * WEIGHTS.validity * each,
-    objective: objective * WEIGHTS.objective * each,
+    validity: validity * each,
+    objective: objective * each,
   };
 }
 

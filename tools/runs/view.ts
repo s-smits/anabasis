@@ -63,7 +63,7 @@ function stepLine(step: Handover, now: number, called: Called): string {
   if (step.step === "examiner") {
     return row(
       step.id,
-      `Examiner session (${stateOf(step, now)}): ${String(step.proposed)} proposed, ${String(step.held)} held out, ${String(step.refused)} refused · ${dollars(step.billed)}`,
+      `Examiner session (${stateOf(step, now)}): ${String(step.proposed)} proposed, ${String(step.held)} added to eval pool, ${String(step.refused)} refused · ${dollars(step.billed)}`,
     );
   }
   if (step.step === "builder") {
@@ -82,8 +82,8 @@ function stepLine(step: Handover, now: number, called: Called): string {
       ? `no report yet (${step.cut ? "interrupted" : "in progress"}): ${inFlight}`
       : `${tally === null ? "no tasks scored" : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied for ${called(step.fresh)}`} (outcome: ${step.reading})`;
   const ruled = [
-    rulings.earned > 0 && `${plural(rulings.earned, "rejection")} ruled earned`,
-    rulings["check-defect"] > 0 && `${String(rulings["check-defect"])} ruled check-defect`,
+    rulings["solver-fail"] > 0 && `${plural(rulings["solver-fail"], "rejection")} ruled solver-fail`,
+    rulings["check-defect"] > 0 && `${String(rulings["check-defect"])} ruled check-bug`,
     rulings.unclear > 0 && `${String(rulings.unclear)} ruled unclear`,
   ].filter(Boolean);
   return row(
@@ -122,7 +122,7 @@ export function viewLines(name: string, campaign: Campaign, now: number, called:
     name,
     row(
       "setup",
-      `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} awaiting label · ${String(supply.exhausted)} exhausted · ${checker} · reference: ${campaign.reference === null ? "starter" : called(campaign.reference)}`,
+      `${String(supply.held)} held-out · ${String(supply.released)} practice · ${String(supply.awaiting)} awaiting human review · ${checker} · reference: ${campaign.reference === null ? "Starter Pack" : called(campaign.reference)}`,
     ),
     ...campaign.steps.map((step) => stepLine(step, now, called)),
     ...(fails.length === 0
@@ -201,9 +201,7 @@ export async function view(args: readonly string[]): Promise<void> {
       "Climb summary",
       ...climb,
       ...barLines(events).map((bar) => `  ${bar}`),
-      open.length === 0
-        ? "Recommended next action"
-        : `Recommended next action (with ${open.join(", ")} still open)`,
+      open.length === 0 ? "Next step" : `Next step (with ${open.join(", ")} still open)`,
       `  ${decidedLine(decided)}`,
     ].join("\n"),
   );

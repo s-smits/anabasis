@@ -5,7 +5,7 @@ import { stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 import { chosenForReference, epochsOf, starterReads } from "../src/campaign/climb.ts";
 import { OPENING } from "../src/kernel/history.ts";
 import { scoredSet } from "../src/campaign/round.ts";
-import { flipP, isSignificant, WEIGHTS } from "../src/kernel/compare.ts";
+import { flipP, isSignificant } from "../src/kernel/compare.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -167,7 +167,7 @@ describe("a starter read on the tasks no step chose", () => {
     const valWin = () => ({ outcomes: "PP FF", oldObj: [10, 10], freshObj: [10, 10] });
     const valLoss = () => ({ outcomes: "FF PP", oldObj: [10, 10], freshObj: [10, 10] });
     const afterValTasks = Array.from({ length: 7 }, (_, i) => `a-val-${String(i + 1)}`);
-    const mixMargin = Math.round(0.5 * WEIGHTS.validity * 1000 - 0.25 * WEIGHTS.objective * 1000);
+    const mixMargin = Math.round(0.5 * 1000 - 0.25 * 1000);
     const objLog: LogEvent[] = [
       ...gate("open-0"),
       ...comparison("g-1", [STARTER, NEW], { "open-0": "FF PP" }, "step"),

@@ -14,6 +14,7 @@ import { isNumber, isString, type JsonObject } from "../../../../src/meta/json-s
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { countBy } from "../../../../src/meta/tally.ts";
 import { settledLabels } from "../../../../src/audit/agreement.ts";
+import { normalizeRuling } from "../../../../src/kernel/solves.ts";
 import type { Ruling } from "../../../../src/audit/auditor.ts";
 import type { SolveRow, Tier, ToolCall, Turn } from "../models.ts";
 import { conditionsIn, type Log, once, practiceIn } from "./folds.ts";
@@ -25,7 +26,7 @@ const RESULT_CHARS = 8000;
 const FAIL_KINDS = ["rejected", "wall-ended", "turns-ended", "context-ended", "no-answer"] as const;
 const NON_RESULTS = ["provider", "sandbox-crash", "killed", "moved-files", "check", "verifier"] as const;
 const EXAM_REASONS: ReadonlySet<string> = new Set(["check", "verifier"]);
-const RULINGS = ["earned", "check-defect", "unclear"] as const;
+const RULINGS = ["solver-fail", "check-defect", "unclear"] as const;
 const WITHHELD = "withheld in the default tier: it names what the exam side's checks saw";
 
 export const examTier = (tier: Tier): boolean => tier === "exam";
@@ -73,7 +74,8 @@ export function rulingOf(
     return { ruling: label, by: "label", reason: "a person's label, which stands over the ruling" };
   }
   const finding = findingsIn(log).get(solve);
-  const ruling = RULINGS.find((each) => each === finding?.ruling);
+  const normalized = normalizeRuling(finding?.ruling);
+  const ruling = RULINGS.find((each) => each === normalized);
   if (finding === undefined || ruling === undefined) return null;
   // The host rules what needs no reading and meters nothing; a reader's finding carries its probes'
   // rows and what it billed (`referee`, `src/audit/auditor.ts`).

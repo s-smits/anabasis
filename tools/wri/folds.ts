@@ -502,7 +502,7 @@ export function refusalsByCheck(log: Index): Record<string, number> {
 }
 
 export const unprobedEarned = (data: JsonObject): boolean =>
-  data.ruling === "earned" && items(data.probes).length === 0 && count(data.turns) > 0;
+  data.ruling === "solver-fail" && items(data.probes).length === 0 && count(data.turns) > 0;
 
 /** Practice solves are read from the session's window, not from the tasks its start named, since a
  *  led conversation goes on while its campaign releases more. */

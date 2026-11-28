@@ -142,7 +142,7 @@ describe("a trace", () => {
     append(log, "referee.compacted", { reader: "r-1", usages: [{ cost: { total: 0.5 } }] });
     expect(traceOf(read(log), "referee", "r-1").turns).toHaveLength(1);
     expect(unfinished(read(log))).toMatchObject([{ of: "referee", id: "r-1", turns: 1, dollars: 0.5 }]);
-    append(log, "referee.finding", { reader: "r-1", session: "b-1", solve: "s-1", ruling: "earned" });
+    append(log, "referee.finding", { reader: "r-1", session: "b-1", solve: "s-1", ruling: "solver-fail" });
     expect(unfinished(read(log))).toEqual([]);
   });
 });

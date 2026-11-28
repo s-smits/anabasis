@@ -268,7 +268,7 @@ suite("rehearsal over a drafted exam", () => {
     // names the same; a view from an unpushed head warns after it.
     const tabled = (
       viewed
-        .slice(viewed.indexOf("Recommended next action\n") + "Recommended next action\n".length)
+        .slice(viewed.indexOf("Next step\n") + "Next step\n".length)
         .trim()
         .split("\n")[0] ?? ""
     ).trim();
@@ -277,8 +277,6 @@ suite("rehearsal over a drafted exam", () => {
     expect((await rehearse(...terms, "--dry-run")).said).toContain(`next · ${tabled}`);
     const rehearsed = await rehearse(...terms);
     expect(rehearsed.code).toBe(0);
-    expect(rehearsed.said).toMatch(
-      /next · the campaign ends \(exam\)[^\n]*\nthe rehearsal went as scripted/u,
-    );
+    expect(rehearsed.said).toMatch(/next · campaign ends \(exam\)[^\n]*\nthe rehearsal went as scripted/u);
   });
 });

@@ -238,10 +238,10 @@ function rulingCounts(
   solves: readonly { readonly id: string }[],
   rulings: ReadonlyMap<string, string | null>,
 ): Readonly<Record<Ruling, number>> {
-  const counts: Record<Ruling, number> = { earned: 0, "check-defect": 0, unclear: 0 };
+  const counts: Record<Ruling, number> = { "solver-fail": 0, "check-defect": 0, unclear: 0 };
   for (const { id } of solves) {
     const ruling = rulings.get(id);
-    if (ruling === "earned" || ruling === "check-defect" || ruling === "unclear") counts[ruling] += 1;
+    if (ruling === "solver-fail" || ruling === "check-defect" || ruling === "unclear") counts[ruling] += 1;
   }
   return counts;
 }

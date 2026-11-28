@@ -47,10 +47,8 @@ function drawOf(events: readonly LogEvent[], target: number, contract: string) {
     pool: {
       scorable: pool.scorable.length,
       frontier: pool.frontier.length,
-      exhausted: pool.exhausted.length,
       retained: pool.retained.length,
       awaiting: pool.awaiting.length,
-      practiceFrontier: pool.practiceFrontier.length,
     },
     scored: tasks.length - retained.length,
     retained: retained.length,
@@ -84,7 +82,7 @@ export function drawLines(
   const chosen = starter === null ? new Set<string>() : chosenForReference(events, starter);
   const read = scoredSet(events, target, contract, chosen);
   return [
-    `held-out pool: ${String(pool.scorable)} scorable (${String(pool.frontier)} frontier, ${String(pool.retained)} retained, of which ${String(pool.exhausted)} exhausted), ${String(pool.awaiting)} awaiting task review and left out; ${String(pool.practiceFrontier)} on the reference's own frontier for practice`,
+    `held-out pool: ${String(pool.scorable)} scorable (${String(pool.frontier)} frontier, ${String(pool.retained)} retained), ${String(pool.awaiting)} awaiting task review and left out`,
     `next comparison at target ${String(target)}: ${plural(drawn.scored, "frontier task")} and ${plural(drawn.retained, "retained task")} (one for every three frontier)`,
     ...(chosen.size === 0
       ? []

@@ -209,10 +209,17 @@ function scriptedJudge(): Reader {
     const after = (label: string) => shown.indexOf(label) + label.length;
     const [one, other] = [
       hashJsonValue(shown.slice(after("Answer A:"), shown.indexOf("Answer B:"))).slice(-8),
-      hashJsonValue(shown.slice(after("Answer B:"), shown.indexOf("The criterion:"))).slice(-8),
+      hashJsonValue(shown.slice(after("Answer B:"), shown.indexOf("Criteria to judge:"))).slice(-8),
     ];
     const better = one === other ? "neither" : one < other ? "A" : "B";
-    return fauxAssistantMessage(fauxToolCall("record_vote", { better, reason: "scripted" }), TOOL_USE);
+    const block = shown.slice(after("Criteria to judge:"));
+    const keys = [...block.matchAll(/(?:\\n|\n)- ([a-z][a-z0-9-]*):/gu)].map(
+      (match) => match[1] ?? "holistic",
+    );
+    const payload = Object.fromEntries(
+      (keys.length === 0 ? ["holistic"] : keys).map((key) => [key, { better, reason: "scripted" }]),
+    );
+    return fauxAssistantMessage(fauxToolCall("record_vote", payload), TOOL_USE);
   };
   faux.setResponses(Array.from({ length: VOTES_IN_FLIGHT }, () => vote));
   const models = createModels();

@@ -9,7 +9,7 @@ import { OUTCOMES } from "./outcome.ts";
 
 /** The Starter's letter, which it holds by role (`namesOf`), and its name on the page. */
 const STARTER_LETTER = "A";
-export const STARTER_NAME = "Starter A";
+export const STARTER_NAME = "Starter Pack";
 
 export type Slot =
   | {

@@ -1,9 +1,9 @@
 import { eventsOf, type LogEvent } from "../kernel/log.ts";
-import { labelsIn } from "../kernel/solves.ts";
+import { labelsIn, normalizeRuling } from "../kernel/solves.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import type { Ruling } from "./auditor.ts";
 
-export const RULINGS = ["earned", "check-defect", "unclear"] as const;
+export const RULINGS = ["solver-fail", "check-defect", "unclear"] as const;
 export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
 export type PassLabel = (typeof PASS_LABELS)[number];
 
@@ -59,7 +59,7 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
     event: { data },
   } of eventsOf(events, "referee.finding")) {
     if (!isString(data.solve) || isString(data.reusedFrom)) continue;
-    rulings.set(data.solve, isString(data.ruling) ? data.ruling : null);
+    rulings.set(data.solve, normalizeRuling(data.ruling));
   }
   for (const [solve, label] of labels) {
     const ruling = RULINGS.find((known) => known === rulings.get(solve));
@@ -70,7 +70,7 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
   const ruled = (kind: Ruling) => RULINGS.reduce((sum, label) => sum + table[label][kind], 0);
   const share = (label: Ruling) => {
     const total = labelledCount(label);
-    return total === 0 ? null : (total - table[label].earned) / total;
+    return total === 0 ? null : (total - table[label]["solver-fail"]) / total;
   };
   const total = RULINGS.reduce((sum, kind) => sum + labelledCount(kind), 0);
   const alike = RULINGS.reduce((sum, kind) => sum + table[kind][kind], 0) / total;
@@ -79,8 +79,8 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
     table,
     unruled,
     caught: share("check-defect"),
-    voided: share("earned"),
-    unclearEarned: ruled("unclear") === 0 ? null : table.earned.unclear / ruled("unclear"),
+    voided: share("solver-fail"),
+    unclearEarned: ruled("unclear") === 0 ? null : table["solver-fail"].unclear / ruled("unclear"),
     // SAFETY: built from RULINGS, so every Ruling key is present.
     specific: Object.fromEntries(
       RULINGS.map((kind) => {
@@ -110,7 +110,7 @@ export function clears(measured: Agreement, bar: Bar): boolean {
 export function unclearReport({ table, unclearEarned }: Agreement): string | null {
   if (unclearEarned === null || unclearEarned <= UNCLEAR_EARNED) return null;
   const ruled = RULINGS.reduce((sum, label) => sum + table[label].unclear, 0);
-  return `a person labelled earned ${String(table.earned.unclear)} of the Referee's ${String(ruled)} unclear rulings, more than one in four: an unclear ruling sets aside a task a person reads as a real limit`;
+  return `human reviewers labelled solver-fail on ${String(table["solver-fail"].unclear)} of the Auditor's ${String(ruled)} unclear rulings, more than one in four`;
 }
 
 export const settledPassLabels = (events: readonly LogEvent[]): Map<string, PassLabel> =>

@@ -23,8 +23,8 @@ type Names = CampaignReading["names"];
 
 const MOVE_WORD = {
   draft: "Draft the exam",
-  accept: "Read the exam",
-  prepare: "Set tasks apart",
+  accept: "Audit the checker",
+  prepare: "Prepare & release practice tasks",
   examine: "Examiner session",
   build: "Builder session",
   compare: "Comparison",
@@ -346,7 +346,9 @@ function Readouts({ reading }: { reading: CampaignReading }) {
   const ended = row.ending;
   const advised = nextMove !== null && !HOSTS_OWN.has(nextMove.move);
   const open =
-    reading.open.length === 0 ? "" : `, on the log as it stands with ${reading.open.join(", ")} open`;
+    reading.open.length === 0
+      ? ""
+      : ` (while ${reading.open.join(", ")} ${reading.open.length === 1 ? "is" : "are"} still open)`;
   return (
     <MetricGrid>
       <MetricCard
@@ -418,8 +420,8 @@ function SetUp({ reading }: { reading: CampaignReading }) {
   const { prompt, supply, seats, terms, attended } = reading;
   const checker =
     supply.faults === null
-      ? "checker never read"
-      : `checker read, ${plural(supply.faults, "fault")}, ${supply.frozen ? "frozen" : "not frozen"}`;
+      ? "checker not audited yet"
+      : `checker audited, ${plural(supply.faults, "fault")}, ${supply.frozen ? "frozen" : "not frozen"}`;
   const seated = (["builder", "examiner", "reviewer", "solver"] as const).flatMap((seat) => {
     const sat = seats[seat];
     return sat === null ? [] : [[seat, `${sat.model} at ${sat.effort}`] as const];
@@ -428,7 +430,7 @@ function SetUp({ reading }: { reading: CampaignReading }) {
     <Disclosure title="Set-up">
       {prompt === null ? null : <p className="ana-campaign-prompt">{prompt}</p>}
       <p className="ana-campaign-setup">
-        {`${String(supply.held)} held out on the frontier · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.doubted)} doubted, out of the draw · ${String(supply.exhausted)} exhausted, scored as retained · ${checker}`}
+        {`${String(supply.held)} held-out · ${String(supply.released)} practice · ${String(supply.awaiting)} awaiting human review · ${String(supply.doubted)} quarantined · ${checker}`}
       </p>
       <dl className="ana-facts ana-facts--row">
         {seated.map(([seat, said]) => (
@@ -457,10 +459,9 @@ function SetUp({ reading }: { reading: CampaignReading }) {
 function rateSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): string {
   const controls =
     risk.controls === 0
-      ? "no A/A control with enough untied tasks to read a step"
-      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} with enough untied tasks to read a step read one`;
-  const incapable =
-    risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level`;
+      ? "no powered A/A control yet"
+      : `${String(risk.errors)} of ${plural(risk.controls, "powered A/A control")} triggered a false positive`;
+  const incapable = risk.incapable === 0 ? "" : `, plus ${String(risk.incapable)} underpowered at alpha`;
   return `${controls}${incapable}`;
 }
 
@@ -472,18 +473,18 @@ function Counters({ reading }: { reading: CampaignReading }) {
   return (
     <p className="ana-campaign-counters">
       <span>
-        Moves without a gain{" "}
+        Comparisons without improvement{" "}
         <b className="ana-num">
           {withoutGain} of {patience}
         </b>
       </span>
       <span>
-        Waiting for a label: tasks <b className="ana-num">{labels.tasks}</b>, rejections set aside in
-        unsettled comparisons <b className="ana-num">{labels.rejections}</b>
+        Needs human review: tasks <b className="ana-num">{labels.tasks}</b>, disputed rejections{" "}
+        <b className="ana-num">{labels.rejections}</b>
       </span>
       <span>
         A/A controls <b className="ana-num">{controls}</b>
-        {controls === 0 ? "" : `, ${String(controlSteps)} read a step`}
+        {controls === 0 ? "" : `, ${String(controlSteps)} false positive`}
       </span>
       {risk === null || risk.attempts === 0 ? null : (
         <span title={rateSource(risk)}>

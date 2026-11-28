@@ -375,6 +375,7 @@ export function writing(
     firstMessage(asked.contract, asked.checks, taskHistory(events, asked.tasks), asked.limits, {
       brief: openingOf(events)?.prompt ?? null,
       budget: asked.budget,
+      revision: asked.revise === undefined ? "fixed" : "revisable",
     });
   let told = openedOn(request, before);
   const lineage = openingOf(before)?.parent?.lineageTasks ?? [];

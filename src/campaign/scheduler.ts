@@ -1,7 +1,7 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { eventsOf, isReferenceChange, type LogEvent } from "../kernel/log.ts";
-import { INTERRUPTED, poolOf, evalHeadroom } from "../kernel/reports.ts";
+import { evalHeadroom, INTERRUPTED, poolOf, supplySaturation } from "../kernel/reports.ts";
 import { nonRetryableProvider } from "../kernel/solve.ts";
 import { taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
@@ -411,29 +411,44 @@ function noRoom(ground: Ground): Move | null {
   if (last === undefined || enoughWrittenSince(ground, last)) return null;
   const side = last.old === reference ? "old" : "fresh";
   const room = evalHeadroom(last.report, side);
+  const lastEpoch = epochsOf(events).at(-1);
+  const starterOwed =
+    lastEpoch !== undefined && lastEpoch.reference !== "starter" && lastEpoch.starter_tally === null;
   if (room === "room") {
     const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
-    if (promotedAt === -1 || events[promotedAt]?.kind === "harness.reverted") return null;
-    const since = events.slice(promotedAt);
-    const interrupted = new Set(
-      since
-        .filter((event) => sessionEnded(event) && INTERRUPTED.has(event.data.ended))
-        .map(({ data }) => data.session),
-    );
-    const writtenForIt = since.some(
-      (event) =>
-        (event.kind === "exam.started" || event.kind === "exam.finished") &&
-        !interrupted.has(event.data.session),
-    );
-    return writtenForIt
-      ? null
-      : {
+    if (promotedAt !== -1 && events[promotedAt]?.kind !== "harness.reverted") {
+      const since = events.slice(promotedAt);
+      const interrupted = new Set(
+        since
+          .filter((event) => sessionEnded(event) && INTERRUPTED.has(event.data.ended))
+          .map(({ data }) => data.session),
+      );
+      const writtenForIt = since.some(
+        (event) =>
+          (event.kind === "exam.started" || event.kind === "exam.finished") &&
+          !interrupted.has(event.data.session),
+      );
+      if (!writtenForIt) {
+        return {
           move: "examine",
           why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has finished writing tasks for it since: tasks are written for each new reference`,
         };
+      }
+    }
+    if (starterOwed) return null;
+    const saturated = supplySaturation(
+      events,
+      { index: last.reported, session: last.id, data: last.report },
+      side,
+    );
+    if (saturated === null) return null;
+    const aaNote = saturated.aaP75 === null ? "" : ` (reference A/A p75 ${saturated.aaP75.toFixed(3)})`;
+    return examine(
+      ground,
+      "room",
+      `comparison ${last.id} showed no improvement with the reference valid in every solve on ${String(saturated.validEvery)}/${String(saturated.scored)} tasks and mean objective room ${saturated.meanRoom.toFixed(3)}${aaNote}: waking Examiner for harder tasks or exam revision`,
+    );
   }
-  const lastEpoch = epochsOf(events).at(-1);
-  const starterOwed = lastEpoch?.starter_tally === null && lastEpoch.reference !== "starter";
   const why =
     room === "too-hard"
       ? `comparison ${last.id} showed no improvement and neither harness produced a valid answer: generating replacement tasks`

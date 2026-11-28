@@ -64,9 +64,13 @@ export function firstMessage(
     readonly turns: number;
     readonly puts: number;
   },
-  campaign: { readonly brief: string | null; readonly budget: SolveBudget | null },
+  campaign: {
+    readonly brief: string | null;
+    readonly budget: SolveBudget | null;
+    readonly revision?: "fixed" | "revisable";
+  },
 ): string {
-  const { brief, budget } = campaign;
+  const { brief, budget, revision = "fixed" } = campaign;
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
     ...(brief === null
@@ -91,6 +95,7 @@ ${brief}`,
     ...(budget === null ? [] : [budgetLine(budget)]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     ...(tasks.stood === null ? [] : [tasks.stood]),
+    ...(revision === "revisable" && tasks.revisionCue !== null ? [tasks.revisionCue] : []),
     ...(tasks.reviews === null ? [] : [tasks.reviews]),
     tasks.groups.length === 0
       ? "The exam holds no task yet."
@@ -121,6 +126,7 @@ export function wakeMessage(
       ? "The host wakes this session with updated comparison readings."
       : "The host asks for more tasks under the same exam.",
     tasks.stood ?? "No comparison has reported since the host last told you.",
+    ...(revision === "revisable" && tasks.revisionCue !== null ? [tasks.revisionCue] : []),
     ...(tasks.reviews === null ? [] : [tasks.reviews]),
     ...(tasks.groups.length === 0
       ? []

@@ -176,10 +176,20 @@ function flatRubricNotes(brief: Brief, verdicts: readonly Verdict[]): string[] {
     });
     if (seen.length < 2) return [];
     const span = Math.max(...seen) - Math.min(...seen);
-    return when(
-      span < GAP_FLOOR,
-      `rubric item ${id} stayed within ${String(GAP_FLOOR * 100)}% (near ${String(seen[0])}) across all ${String(seen.length)} passing control and sensitivity probes`,
-    );
+    const binaryOnly =
+      seen.length >= 4 &&
+      span >= GAP_FLOOR &&
+      seen.every((value) => value <= GAP_FLOOR || value >= 1 - GAP_FLOOR);
+    return [
+      ...when(
+        span < GAP_FLOOR,
+        `rubric item ${id} stayed within ${String(GAP_FLOOR * 100)}% (near ${String(seen[0])}) across all ${String(seen.length)} passing control and sensitivity probes`,
+      ),
+      ...when(
+        binaryOnly,
+        `rubric item ${id} produced only 0 or 1 across ${String(seen.length)} passing controls and field perturbations; consider partial credit if intermediate quality matters`,
+      ),
+    ];
   });
 }
 
@@ -263,7 +273,7 @@ async function probeReading(
     results.every(({ run, verdict }) => spelled(verdict) === spelled(run.verdicts[0])) ? [path] : [],
   );
   const byRun = Map.groupBy(swaps, ({ run }) => run);
-  const probes = [...swaps, ...hidden, ...stripped].map(({ verdict }) => verdict);
+  const probes = [...swaps, ...hidden, ...stripped, ...changed].map(({ verdict }) => verdict);
   const hiddenBlind = blind(hidden);
   return {
     faults: [

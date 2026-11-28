@@ -79,7 +79,12 @@ function logged() {
       session: string,
       [old, fresh]: readonly [string, string],
       ids: readonly string[],
-      more: { aside?: readonly string[]; differences?: readonly number[]; noise?: JsonObject } = {},
+      more: {
+        aside?: readonly string[];
+        differences?: readonly number[];
+        noise?: JsonObject;
+        objective?: JsonObject;
+      } = {},
     ) =>
       add("comparison.reported", {
         session,
@@ -93,6 +98,7 @@ function logged() {
         aside: (more.aside ?? []).map((id) => `v-${id}`),
         scored: { differences: [...(more.differences ?? ids.map(() => 0))] },
         noise: more.noise ?? null,
+        ...keyIfDefined("objective", more.objective),
       }),
   };
 }
@@ -223,7 +229,7 @@ describe("the last comparison the reference stood in", () => {
       "reference won 0, candidate won 1, 2 tied",
       "Reference passed every attempt on 1, some on 1, none on 1",
       "1 excluded pending review",
-      "Reference A/A control differed on 2 of 3 tasks",
+      "Reference A/A control differed on 2 of 3 tasks; 0 of 3 comparison margins were larger than any A/A margin",
     ]) {
       expect(told.stood).toContain(fact);
     }
@@ -249,6 +255,50 @@ describe("the last comparison the reference stood in", () => {
     expect(told.stood).toContain("reference won 2, candidate won 1, 0 tied");
     expect(told.stood).toContain("Reference passed every attempt on 2, some on 0, none on 1");
     expect(told.stood).not.toContain("differed");
+  });
+
+  it("counts the comparison margins larger than any A/A margin of the reference against itself", () => {
+    const cases = [
+      [[700, 50, -650], 2],
+      [[600, -600, 0], 0],
+      [[601, -601, 599], 2],
+    ] as const;
+    for (const [differences, beyond] of cases) {
+      const log = compared();
+      log.reported("c-1", ["h1", "h2"], ["a", "b", "c"], {
+        differences,
+        noise: { differences: [0, 600, -120] },
+      });
+      expect(taskHistory(log.events, ["a", "b", "c"].map(fixture)).stood).toContain(
+        `; ${String(beyond)} of 3 comparison margins were larger than any A/A margin`,
+      );
+    }
+  });
+
+  it("asks for retirement only when at least ten tasks all passed every attempt and the objective decided none", () => {
+    const cue = "retire easy tasks with retire_tasks";
+    const cases = [
+      [10, [true, true], [true, true], true],
+      [9, [true, true], [true, true], false],
+      [10, [true, false], [true, true], false],
+      [10, [0.2, 0.2], [0.9, 0.9], false],
+    ] as const;
+    for (const [size, first, rest, asked] of cases) {
+      const ids = Array.from({ length: size }, (_, nth) => `k${String(nth)}`);
+      const log = logged();
+      log.hold(ids);
+      for (const [nth, id] of ids.entries()) {
+        log.solved("c-1", id, "h1", nth === 0 ? first : [true, true]);
+        log.solved("c-1", id, "h2", nth === 0 ? rest : [true, true]);
+      }
+      log.reported("c-1", ["h1", "h2"], ids, { objective: { direction: "higher", scale: "unit" } });
+      expect([
+        size,
+        first,
+        rest,
+        (taskHistory(log.events, ids.map(fixture)).stood ?? "").includes(cue),
+      ]).toEqual([size, first, rest, asked]);
+    }
   });
 });
 

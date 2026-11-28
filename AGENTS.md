@@ -68,11 +68,11 @@ Close gaming channels structurally in code, never with bans:
 
 ## 3. The agents
 
-- **Examiner** (`src/examiner/`): drafts exam specs (picking the lane when judged) and tasks; host validates structure and rejects planted answers (`propose_tasks`); reads `src/examiner/record.ts:taskHistory` (item scores) without targets or harness names.
-- **Builder** (`src/builder/`): edits `harness/`, reads practice traces and paged extracts (`read_trace`), chooses actions and snapshots candidates (`store.ts`), seeing only §1's five items, `MEMORY.md` and saved checkpoints.
+- **Examiner** (`src/examiner/`): edits its home freely, drafts exam specs/weights, retires easy tasks (`retire_tasks`), writes tasks (`propose_tasks`); reads `taskHistory`, `metrics.json` (`starterTrace`), and `read_reviews` without targets or Builder info; host prefers advisory notes over hard gates.
+- **Builder** (`src/builder/`): edits `harness/` freely, reads practice traces and paged extracts (`read_trace`), chooses actions and snapshots candidates (`store.ts`), seeing only §1's five items, `MEMORY.md` and saved checkpoints.
 - **Solver** (`src/solver/`): solves a task via `read`, `bash`, `edit`, `write`, `submit` and installed programs.
 - **Verifier** (`src/kernel/verify.ts`): runs offline checks and `[0, 1]` code items in a fresh offline sandbox.
-- **Auditor** (`src/audit/auditor.ts`, `judge.ts`): rules on reproducible rejections (`earned` solver-fail, `check-defect`, `unclear`) and, on judged rubrics, runs first-party `referee.pair` (exam side only).
+- **Auditor** (`src/audit/auditor.ts`, `judge.ts`): rules on reproducible rejections (`solver-fail`, `check-defect`, `unclear`) and, on judged rubrics, runs first-party two-call `referee.pair` (exam side only).
 
 A content-addressed **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) has three tiers: **`bareSolver`** (`pi-durable` + 4 tools, no guide/programs; external baseline), **`baseStarter`** (`starter.ts`: + minimal `BUILT_AGENTS.md`; + Builder-only `HARNESS.md` = **Starter Pack**), **`builtSolver`** (Builder harness; promotions beat `baseStarter`). Never say "with or without a harness".
 

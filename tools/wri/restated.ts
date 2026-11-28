@@ -72,7 +72,14 @@ async function restatedOf(log: string, ways: EmbedWays): Promise<string[]> {
     said.map(({ words }) => vectorOf(words)),
     SAME_COMPLAINT,
   );
-  const groups = [...Map.groupBy(said, (_, at) => roots[at]).values()];
+  const keyOf = (item: Ruled | undefined) =>
+    `${item?.task ?? ""}\u0000${(item?.checks ?? []).toSorted().join(",")}`;
+  const exactSplits = [...Map.groupBy(said, keyOf).values()].filter(twoWays);
+  const exactKeys = new Set(exactSplits.map((ruled) => keyOf(ruled[0])));
+  const embedGroups = [...Map.groupBy(said, (_, at) => roots[at]).values()].filter(
+    (ruled) => !(twoWays(ruled) && new Set(ruled.map(keyOf)).size === 1 && exactKeys.has(keyOf(ruled[0]))),
+  );
+  const groups = [...exactSplits, ...embedGroups];
   const named = groups
     .filter((ruled) => ruled.length >= NAMED_FROM || twoWays(ruled))
     .toSorted((one, other) => Number(twoWays(other)) - Number(twoWays(one)) || other.length - one.length);

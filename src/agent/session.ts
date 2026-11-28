@@ -109,6 +109,16 @@ export function traceSink(log: string, of: SeatKind, id: string | (() => string)
         ms: started === undefined || woke ? null : performance.now() - started.at,
       });
     },
+    steer: (text: string) => {
+      append(log, traceKind(of, "call"), {
+        ...named(),
+        turn: turn(),
+        tool: "steer",
+        args: {},
+        isError: false,
+        text,
+      });
+    },
     turn: (message: AssistantMessage, retried: readonly string[] = []) => {
       const { stopReason, errorMessage: error, responseModel, usage, content, diagnostics } = message;
       for (const { type, details } of diagnostics ?? []) {
@@ -205,6 +215,7 @@ export async function runAgent(seat: AgentSpec): Promise<AgentRun> {
       },
     });
     seat.steer?.(async (content) => {
+      frame.steer(content);
       await conversation
         .submit({ type: "input", content, whenBusy: "steer", whenIdle: "reject" }, BACKGROUND_CONTEXT)
         .catch(() => undefined);
@@ -296,6 +307,7 @@ function sessionHooks(seat: AgentSpec, halt: () => void, meter: ReturnType<typeo
   return Object.assign(frame, {
     over,
     before,
+    steer: (text: string) => sink?.steer(text),
     committed: tools.committed,
     hooks: [
       hook(GenerationTask, {

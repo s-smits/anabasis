@@ -2420,8 +2420,10 @@ describe("harness file checks and practice task mentions", () => {
         }),
       ],
     );
-    const said = s
-      .of(BUILD_CALL)
+    const allCalls = s.of(BUILD_CALL);
+    expect(allCalls.filter(({ tool: name }) => name === "steer")).toHaveLength(4);
+    const said = allCalls
+      .filter(({ tool: name }) => name !== "steer")
       .map(({ tool: name, text: shown }) => [name, isString(shown) ? shown : ""] as const);
     expect(
       said.map(([name, shown]) => [name, shown.startsWith("Practice is still running after 0.02 s.")]),

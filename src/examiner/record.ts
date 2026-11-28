@@ -267,7 +267,7 @@ function formatOutcomeLine(
     ...(own.length === 0
       ? []
       : [
-          `Reference A/A control differed on ${String(own.filter((score) => score !== 0).length)} of ${String(own.length)} tasks.`,
+          `Reference A/A control differed on ${String(own.filter((score) => score !== 0).length)} of ${String(own.length)} tasks; ${String(scores.filter((score) => Math.abs(score) > Math.max(0, ...own.map(Math.abs))).length)} of ${String(scores.length)} comparison margins were larger than any A/A margin, and the rest are within same-harness variation.`,
         ]),
   ].join(" ");
 }

@@ -1,14 +1,16 @@
-import { type Paired, scoresIn } from "../kernel/compare.ts";
+import { gainOver, type Paired, scoresIn } from "../kernel/compare.ts";
 import { familySizes, proposalsOf } from "../kernel/history.ts";
 import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
 import {
   lastReports,
+  objectiveCeiling,
   type Outcome,
   pairsReported,
   poolOf,
   referenceOf,
   type Reported,
   type Standing,
+  supplySaturation,
 } from "../kernel/reports.ts";
 import { howOftenValid } from "../kernel/size.ts";
 import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
@@ -17,6 +19,7 @@ import { formatScores, OBJECTIVE, objectiveOf, scoresOf, type Task } from "../ke
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { epochsOf, tasksByEpoch } from "../campaign/climb.ts";
+import { openingOf } from "../campaign/opening.ts";
 import { reviewInventoryLine, reviewSummariesByTask } from "./reviews.ts";
 
 interface Answered {
@@ -89,23 +92,33 @@ function clausesOf(
   ];
 }
 
-function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
+function refereeFaultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
   const stands = standsOf(events);
   const faulted = new Map<string, Set<string>>();
   const last = new Map<string, { readonly task: string; readonly check: string }>();
-  const add = (task: string, label: string) =>
-    faulted.set(task, new Set([...(faulted.get(task) ?? []), label]));
   for (const { kind, data } of events) {
     if (kind === "referee.finding" && isString(data.solve) && isString(data.task) && isString(data.check)) {
       last.set(data.solve, { task: data.task, check: data.check });
-    } else if (kind === "verdict" && data.kind === "faulty" && isString(data.task) && isString(data.check)) {
+    }
+  }
+  for (const [solve, { task, check }] of last) {
+    if (stands.get(solve) === "check-defect") {
+      faulted.set(task, new Set([...(faulted.get(task) ?? []), check]));
+    }
+  }
+  return faulted;
+}
+
+function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
+  const faulted = refereeFaultedOf(events);
+  const add = (task: string, label: string) =>
+    faulted.set(task, new Set([...(faulted.get(task) ?? []), label]));
+  for (const { kind, data } of events) {
+    if (kind === "verdict" && data.kind === "faulty" && isString(data.task) && isString(data.check)) {
       const hit =
         data.check === OBJECTIVE.id && isString(data.reason) ? SCORE_FAULT.exec(data.reason)?.[1] : undefined;
       add(data.task, hit === undefined ? data.check : `${data.check} (${hit})`);
     }
-  }
-  for (const [solve, { task, check }] of last) {
-    if (stands.get(solve) === "check-defect") add(task, check);
   }
   return faulted;
 }
@@ -143,14 +156,66 @@ function referenceAnswers(
   return answered;
 }
 
+interface OutcomeContext {
+  readonly reference: string | null;
+  readonly bests: ReadonlyMap<string, number>;
+  readonly answered: ReadonlyMap<string, Answered>;
+}
+
+function objectiveSummary(
+  pairs: readonly Paired[],
+  side: "old" | "fresh",
+  bests: ReadonlyMap<string, number>,
+  answered: ReadonlyMap<string, Answered>,
+): string | null {
+  const means: number[] = [];
+  const rooms: number[] = [];
+  for (const pair of pairs) {
+    const obj = pair.objective;
+    const vals = obj?.[side].filter(isNumber) ?? [];
+    if (obj === undefined || vals.length === 0) continue;
+    const mean = vals.reduce((sum, val) => sum + val, 0) / vals.length;
+    means.push(mean);
+    const ceiling = objectiveCeiling(obj, bests.get(pair.task));
+    if (ceiling !== null) rooms.push(Math.max(0, gainOver(obj, ceiling, mean)));
+  }
+  const items = new Map<string, { total: number; count: number }>();
+  for (const [id, value] of pairs.flatMap((pair) =>
+    Object.entries(answered.get(pair.task)?.itemMeans ?? {}),
+  )) {
+    const prior = items.get(id) ?? { total: 0, count: 0 };
+    items.set(id, { total: prior.total + value, count: prior.count + 1 });
+  }
+  if (means.length === 0 && items.size === 0) return null;
+  const parts: string[] = [];
+  if (means.length > 0) {
+    const avg = means.reduce((sum, val) => sum + val, 0) / means.length;
+    const roomPart =
+      rooms.length === 0
+        ? ""
+        : ` (mean room ${measured(rooms.reduce((sum, val) => sum + val, 0) / rooms.length)})`;
+    parts.push(`Reference objective mean ${measured(avg)}${roomPart}`);
+  }
+  if (items.size > 0) {
+    const itemText = formatScores(
+      Object.fromEntries([...items].map(([id, { total, count }]) => [id, total / count])),
+      (id, val) => `${id}=${measured(val)}`,
+    );
+    if (itemText !== "") {
+      parts.push(parts.length === 0 ? `Reference item means: ${itemText}` : `item means: ${itemText}`);
+    }
+  }
+  return parts.length === 0 ? null : `${parts.join("; ")}.`;
+}
+
 function formatOutcomeLine(
   events: readonly LogEvent[],
   report: Reported,
-  reference: string | null,
   named: string,
   pairs: readonly Paired[],
+  ctx: OutcomeContext,
 ): string {
-  const side = report.data.fresh === reference ? "fresh" : "old";
+  const side = report.data.fresh === ctx.reference ? "fresh" : "old";
   const spreads = pairs.map((pair) => howOftenValid(pair[side]));
   const largest =
     familySizes(
@@ -162,10 +227,12 @@ function formatOutcomeLine(
   const won = (sign: number) => String(scores.filter((score) => Math.sign(score) === sign).length);
   const aside = Array.isArray(report.data.aside) ? report.data.aside.length : 0;
   const own = side === "old" ? scoresIn(report.data.noise) : [];
+  const objLine = objectiveSummary(pairs, side, ctx.bests, ctx.answered);
   return [
     `${named}, scored ${plural(spreads.length, "task")}: the reference harness won ${won(1)}, the harness it was compared with won ${won(-1)}, and ${won(0)} tied.`,
     `The largest family among them held ${String(largest)}.`,
     `The reference harness was valid in every solve on ${count("every")} of them, in some on ${count("some")} and in none on ${count("none")}; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside.`,
+    ...(objLine === null ? [] : [objLine]),
     ...(report.data.reading === "check-defects" ? ["It stopped on check defects."] : []),
     ...(own.length === 0
       ? []
@@ -180,6 +247,7 @@ function outcomeSummaryLines(
   reports: readonly Reported[],
   after: number | undefined,
   pairsOf: (report: Reported) => Paired[],
+  ctx: Omit<OutcomeContext, "reference">,
 ): string | null {
   const reference = referenceOf(events);
   const matching = reports.filter(({ data }) => data.old === reference || data.fresh === reference);
@@ -190,14 +258,48 @@ function outcomeSummaryLines(
       formatOutcomeLine(
         events,
         report,
-        reference,
         after === undefined
           ? `The last comparison the reference harness stood in, ${report.session}`
           : `Comparison ${report.session}, which the reference harness stood in`,
         pairsOf(report),
+        { reference, ...ctx },
       ),
     )
     .join("\n\n");
+}
+
+function revisionCueOf(
+  events: readonly LogEvent[],
+  reports: readonly Reported[],
+  pool: ReturnType<typeof poolOf>,
+): string | null {
+  const cues: string[] = [];
+  const reference = referenceOf(events);
+  const latest = reports.findLast(({ data }) => data.old === reference || data.fresh === reference);
+  const current = epochsOf(events).at(-1);
+  const starterOwed =
+    current !== undefined &&
+    current.reference !== "starter" &&
+    current.starter_tally === null &&
+    current.confirmed !== true;
+  const tuned = openingOf(events)?.parent?.carried.tunedThisEpoch === true && epochsOf(events).length === 1;
+  if (latest !== undefined && !starterOwed && !tuned) {
+    const side = latest.data.fresh === reference ? "fresh" : "old";
+    const sat = supplySaturation(events, latest, side, pool);
+    if (sat !== null) {
+      cues.push(
+        `In ${latest.session}, the reference harness was valid in every solve on ${String(sat.validEvery)}/${String(sat.scored)} tasks with mean objective room ${measured(sat.meanRoom)}. Author tasks with wider headroom or inspect the active check program with read_exam and propose a rubric or scoring revision via revise_exam (kind "tune").`,
+      );
+    }
+  }
+  const refereeFaulted = refereeFaultedOf(events);
+  if (refereeFaulted.size >= 2) {
+    const checks = [...new Set([...refereeFaulted.values()].flatMap((set) => [...set]))].toSorted();
+    cues.push(
+      `${plural(refereeFaulted.size, "task")} hold Referee-ruled check defects (${checks.join(", ")}). Inspect the active check program with read_exam and repair faulty checks via revise_exam (kind "repair").`,
+    );
+  }
+  return cues.length === 0 ? null : cues.join("\n");
 }
 
 function promotedLine(events: readonly LogEvent[], since: number, listed: readonly string[]): string | null {
@@ -295,9 +397,10 @@ export function taskHistory(
       [`${taskId} (${family})`, ...clauses, ...reviewNote, ...fault].join("; "),
     ]);
   }
-  const stood = outcomeSummaryLines(events, currentReports, after, pairsOf);
+  const stood = outcomeSummaryLines(events, currentReports, after, pairsOf, { bests: pool.bests, answered });
   return {
     stood,
+    revisionCue: after === undefined || stood !== null ? revisionCueOf(events, currentReports, pool) : null,
     reviews: after === undefined || stood !== null ? reviewInventoryLine(events) : null,
     groups: Object.values(BLOCKS).flatMap((heading): { heading: string; lines: string[] }[] => {
       const held = lines.get(heading) ?? [];

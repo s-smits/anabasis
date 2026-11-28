@@ -479,7 +479,14 @@ describe("a wake", () => {
     expect(lines).toEqual(taskHistory(log.events, [fixture("run")]).groups.flatMap((group) => group.lines));
     expect(lines[0]).toEndWith("; ruled at fault on an answer to it: check-unit");
     const quiet = taskHistory(log.events, tasks, log.events.length);
-    expect(quiet).toEqual({ stood: null, reviews: null, groups: [], promoted: null, refused: [] });
+    expect(quiet).toEqual({
+      stood: null,
+      revisionCue: null,
+      reviews: null,
+      groups: [],
+      promoted: null,
+      refused: [],
+    });
   });
 });
 
@@ -494,6 +501,7 @@ describe("a resumed comparison at a wake", () => {
     log.reported("b-1", ["h1", "h2"], ["run"]);
     expect(taskHistory(log.events, [fixture("run")], since)).toEqual({
       stood: null,
+      revisionCue: null,
       reviews: null,
       groups: [],
       promoted: null,
@@ -620,5 +628,18 @@ describe("a task the reference has closed", () => {
     expect(block(told, "at fault").broken).toContain(
       "ruled at fault on an answer to it: objective (calibration), objective (accuracy)",
     );
+    expect(told.stood).toContain("Reference item means: accuracy=0.9, calibration=0.4.");
+  });
+
+  it("surfaces revisionCue on check-defect clusters and excludes checker-only faulty verdicts", () => {
+    const log = logged();
+    log.hold(["a", "b", "c"]);
+    log.add("referee.finding", { solve: "s-a", task: "a", ruling: "check-defect", check: "check-a" });
+    log.add("verdict", { solve: "s-c", task: "c", kind: "faulty", check: "objective", reason: "score bad" });
+    expect(taskHistory(log.events, ["a", "b", "c"].map(fixture)).revisionCue).toBeNull();
+    log.add("referee.finding", { solve: "s-b", task: "b", ruling: "check-defect", check: "check-b" });
+    const told = taskHistory(log.events, ["a", "b", "c"].map(fixture));
+    expect(told.revisionCue).toContain("2 tasks hold Referee-ruled check defects (check-a, check-b)");
+    expect(told.revisionCue).toContain('revise_exam (kind "repair")');
   });
 });

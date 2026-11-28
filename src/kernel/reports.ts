@@ -3,6 +3,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import {
   carriedBy,
   draw,
+  gainOver,
   type Measures,
   judgeIn,
   objectiveRuleIn,
@@ -166,6 +167,17 @@ export function comparedAs(events: readonly LogEvent[], harness: string) {
   );
 }
 
+export interface SupplySaturation {
+  readonly validEvery: number;
+  readonly scored: number;
+  readonly meanRoom: number;
+  readonly aaP75: number | null;
+}
+
+const SATURATION_MIN_TASKS = 12;
+const SATURATION_VALID_RATE = 0.95;
+const SATURATION_ROOM_FLOOR = 0.04;
+
 export function evalHeadroom(
   report: JsonObject,
   side: "old" | "fresh" = "old",
@@ -176,6 +188,60 @@ export function evalHeadroom(
   const anyValid = (counts: unknown) =>
     Array.isArray(counts) && counts.some((n, at) => at > 0 && isNumber(n) && n > 0);
   return anyValid(valid?.old) || anyValid(valid?.fresh) ? "none" : "too-hard";
+}
+
+function aaObjectiveP75(events: readonly LogEvent[], report: Reported, side: "old" | "fresh"): number | null {
+  const aaPairs = pairsReported(events, report, side);
+  const diffs = aaPairs
+    .flatMap((pair) => {
+      const obj = pair.objective;
+      if (obj === undefined) return [];
+      const oldVals = obj.old.filter(isNumber);
+      const freshVals = obj.fresh.filter(isNumber);
+      if (oldVals.length === 0 || freshVals.length === 0) return [];
+      const meanOld = oldVals.reduce((sum, val) => sum + val, 0) / oldVals.length;
+      const meanFresh = freshVals.reduce((sum, val) => sum + val, 0) / freshVals.length;
+      return [Math.abs(gainOver(obj, meanFresh, meanOld))];
+    })
+    .toSorted((one, other) => one - other);
+  return diffs.length === 0 ? null : (diffs[Math.floor((diffs.length - 1) * 0.75)] ?? null);
+}
+
+export function objectiveCeiling(
+  rule: { readonly direction: "lower" | "higher"; readonly scale?: "unit" },
+  best: number | undefined,
+): number | null {
+  if (rule.scale === "unit") return rule.direction === "higher" ? 1 : 0;
+  return best ?? null;
+}
+
+export function supplySaturation(
+  events: readonly LogEvent[],
+  report: Reported,
+  side: "old" | "fresh",
+  pool?: ReturnType<typeof poolOf>,
+): SupplySaturation | null {
+  if (report.data.reading !== "no-step") return null;
+  const pairs = pairsReported(events, report, "both");
+  if (pairs.length < SATURATION_MIN_TASKS) return null;
+  const validEvery = pairs.filter((pair) => pair[side].length > 0 && pair[side].every(Boolean)).length;
+  if (validEvery / pairs.length < SATURATION_VALID_RATE) return null;
+  const bests = (pool ?? poolOf(events)).bests;
+  const rooms: number[] = [];
+  for (const pair of pairs) {
+    const obj = pair.objective;
+    if (obj === undefined) continue;
+    const vals = obj[side].filter(isNumber);
+    if (vals.length === 0) continue;
+    const mean = vals.reduce((sum, val) => sum + val, 0) / vals.length;
+    const ceiling = objectiveCeiling(obj, bests.get(pair.task));
+    if (ceiling === null) continue;
+    rooms.push(Math.max(0, gainOver(obj, ceiling, mean)));
+  }
+  if (rooms.length < SATURATION_MIN_TASKS) return null;
+  const meanRoom = rooms.reduce((sum, room) => sum + room, 0) / rooms.length;
+  if (meanRoom >= SATURATION_ROOM_FLOOR) return null;
+  return { validEvery, scored: pairs.length, meanRoom, aaP75: aaObjectiveP75(events, report, side) };
 }
 
 export function patienceOf(events: readonly LogEvent[]): number {

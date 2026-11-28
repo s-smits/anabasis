@@ -2044,4 +2044,28 @@ describe("a judged comparison", () => {
     );
     expect(resumed.reading).toBe("step");
   });
+
+  it("records report-only A/A noise.spread diagnostics without altering a clearing step reading", async () => {
+    const s = await setup([], (_version, side, nth) => {
+      const oldScore = nth === 0 ? 0.5 : 0.7;
+      return { ending: PASS, objective: side === "old" ? oldScore : 0.68 };
+    });
+    const six = ["t1", "t2", "t3", "t4", "t5", "t6"];
+    for (const version of six) {
+      append(s.log, "task.proposed", { version, taskId: version, family: version });
+      append(s.log, "task.gate", { version, gate: 1, outcome: "passed" });
+    }
+    const req = s.paired("g-spread", {
+      level: 0.02,
+      objective: { direction: "higher", scale: "unit" },
+      solves: 2,
+      tasks: six,
+    });
+    const reported = await checkpoint(req);
+    expect(reported.reading).toBe("step");
+    expect(reported.noise?.spread).toBeDefined();
+    expect(reported.noise?.spread?.max).toBeGreaterThan(0);
+    expect(reported.noise?.spread?.zeroedStep).toBe(false);
+    expect(reported.noise?.spread?.zeroedP).toBeGreaterThan(0.02);
+  });
 });

@@ -42,6 +42,8 @@ interface State {
 const AT = "2026-11-21T00:00:00.000Z";
 const STARTER = "start";
 const PROMOTED_EVENT = "harness.promoted";
+const REVERTED_EVENT = "harness.reverted";
+const CHECKPOINT_EVENT = "build.checkpoint";
 const REPORTED_EVENT = "comparison.reported";
 const PLAN: Plan = {
   patience: 2,
@@ -244,21 +246,17 @@ function broken(events: readonly LogEvent[], plan: Plan, decided: ScheduledActio
     return `chose ${decided.move} on unconfirmed reference ${reference} instead of reverting`;
   }
   // Termination: in one active epoch, readings of built harnesses that left room and read no step
-  // (plus promoted steps that later reverted) never outnumber the improvement patience, and
-  // readings that left nothing to gain never run past the supply patience, so every path ends.
-  const epochAt = activePromotionAt(events);
-  const reverted = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "harness.reverted" && isString(data.from) ? [data.from] : [],
-    ),
-  );
+  // since the last revert (plus each revert since the active promotion) never outnumber the
+  // improvement patience, and readings that left nothing to gain never run past the supply patience.
+  const activeAt = activePromotionAt(events);
+  const revertsInEpoch = events.filter(({ kind }, at) => at > activeAt && kind === "harness.reverted").length;
+  const lastRevertAt = events.findLastIndex(({ kind }) => kind === "harness.reverted");
+  const epochAt = Math.max(activeAt, lastRevertAt);
   const epoch = reports.filter(({ at, fresh }) => at > epochAt && fresh !== STARTER);
-  const fruitless = epoch.filter(
-    ({ fresh, reading, room }) =>
-      (reading === "no-step" && room) || (reading === "step" && reverted.has(fresh)),
-  ).length;
+  const fruitless =
+    epoch.filter(({ reading, room }) => reading === "no-step" && room).length + revertsInEpoch;
   if (plan.pastStop === null && fruitless > plan.patience) {
-    return `${String(fruitless)} no-steps with room in one epoch, past a patience of ${String(plan.patience)}`;
+    return `${String(fruitless)} no-steps/reverts in one epoch, past a patience of ${String(plan.patience)}`;
   }
   const roomless =
     reports.length - 1 - reports.findLastIndex(({ reading, room }) => reading === "step" || room);
@@ -1111,5 +1109,121 @@ describe("the decision table, searched", () => {
         "old",
       ),
     ).toBeNull();
+  });
+
+  it("resets pre-revert no-step patience at harness.reverted while bounding revert cycles and preserving checkpoints", () => {
+    const reportRow = (session: string, fresh: string, reading: "step" | "no-step") =>
+      event(REPORTED_EVENT, {
+        session,
+        old: STARTER,
+        fresh,
+        starter: STARTER,
+        versions: ["t1"],
+        reading,
+        scored: { wins: reading === "step" ? 6 : 0, losses: 0, ties: reading === "step" ? 0 : 6 },
+        valid: { old: [0, 6, 0], fresh: [0, 6, 0], informative: { old: 6, fresh: 6 } },
+      });
+    const beforeRevert: LogEvent[] = [
+      event("campaign.opened", { patience: 3 }),
+      event(CHECKPOINT_EVENT, { session: "b-1", harness: "h1" }),
+      reportRow("g-1", "h1", "no-step"),
+      event(CHECKPOINT_EVENT, { session: "b-2", harness: "h2" }),
+      reportRow("g-2", "h2", "no-step"),
+      event(CHECKPOINT_EVENT, { session: "b-3", harness: "h3" }),
+      reportRow("g-3", "h3", "step"),
+      event(PROMOTED_EVENT, { harness: "h3", from: STARTER, rests: [] }),
+    ];
+    expect(stopRule(beforeRevert)).toEqual({ checkpoints: 3, sinceStep: 0, stop: false });
+    const afterRevert: LogEvent[] = [
+      ...beforeRevert,
+      event(REVERTED_EVENT, { harness: STARTER, from: "h3", reason: "unconfirmed" }),
+    ];
+    expect(stopRule(afterRevert)).toEqual({ checkpoints: 3, sinceStep: 1, stop: false });
+    const afterOneMore: LogEvent[] = [
+      ...afterRevert,
+      event(CHECKPOINT_EVENT, { session: "b-4", harness: "h4" }),
+      reportRow("g-4", "h4", "no-step"),
+    ];
+    expect(stopRule(afterOneMore)).toEqual({ checkpoints: 4, sinceStep: 2, stop: false });
+    const threeReverts: LogEvent[] = [
+      ...afterRevert,
+      event(CHECKPOINT_EVENT, { session: "b-4", harness: "h4" }),
+      reportRow("g-4", "h4", "step"),
+      event(PROMOTED_EVENT, { harness: "h4", from: STARTER, rests: [] }),
+      event(REVERTED_EVENT, { harness: STARTER, from: "h4", reason: "unconfirmed" }),
+      event(CHECKPOINT_EVENT, { session: "b-5", harness: "h5" }),
+      reportRow("g-5", "h5", "step"),
+      event(PROMOTED_EVENT, { harness: "h5", from: STARTER, rests: [] }),
+      event(REVERTED_EVENT, { harness: STARTER, from: "h5", reason: "unconfirmed" }),
+    ];
+    expect(stopRule(threeReverts)).toEqual({ checkpoints: 5, sinceStep: 3, stop: true });
+  });
+
+  it("releases whole families atomically while preserving both held-out floor and failed-half holdback", () => {
+    const proposed = (version: string, family: string) => [
+      event("task.proposed", { version, taskId: version, family }),
+      event("task.gate", { version, gate: 1, outcome: "passed" }),
+    ];
+    const events: LogEvent[] = [
+      ...proposed("big-1", "fam-big"),
+      ...proposed("big-2", "fam-big"),
+      ...proposed("big-3", "fam-big"),
+      ...proposed("small-1", "fam-small"),
+      ...proposed("small-2", "fam-small"),
+      ...proposed("solo-1", "fam-solo"),
+    ];
+    const pool = ["big-1", "big-2", "big-3", "small-1", "small-2", "solo-1"];
+    const capTwo = releaseOrder(events, pool, 2, "seed").map(([v]) => v);
+    expect(capTwo.length).toBeGreaterThan(0);
+    expect(capTwo.length).toBeLessThanOrEqual(2);
+    expect(capTwo.some((v) => v.startsWith("big-"))).toBe(false);
+    const chosenFams = new Set(capTwo.map((v) => v.split("-")[0]));
+    for (const fam of chosenFams) {
+      const members = pool.filter((v) => v.startsWith(`${fam}-`));
+      expect(members.every((m) => capTwo.includes(m))).toBe(true);
+    }
+    const capThree = releaseOrder(events, pool, 3, "seed").map(([v]) => v);
+    expect(capThree).toHaveLength(3);
+    for (const fam of ["big", "small", "solo"]) {
+      const members = pool.filter((v) => v.startsWith(`${fam}-`));
+      const taken = members.filter((m) => capThree.includes(m)).length;
+      expect(taken === 0 || taken === members.length).toBe(true);
+    }
+
+    const setting = cond("f-1", STARTER).setting;
+    const failedTasks = ["f-1", "f-2", "f-3"];
+    const failedEvents: LogEvent[] = [
+      ...proposed("f-1", "fam-two"),
+      ...proposed("f-2", "fam-two"),
+      ...proposed("f-3", "fam-one"),
+      ...failedTasks.flatMap((task) => {
+        const cOld = cond(task, STARTER);
+        const cFresh = cond(task, "h1");
+        return [
+          cOld.recorded,
+          cFresh.recorded,
+          event("solve.started", { solve: `o-${task}`, condition: cOld.id, comparison: "g-f" }),
+          event("solve.finished", { solve: `o-${task}`, ending: { outcome: "fail", kind: "no-answer" } }),
+          event("solve.started", { solve: `n-${task}`, condition: cFresh.id, comparison: "g-f" }),
+          event("solve.finished", { solve: `n-${task}`, ending: { outcome: "fail", kind: "no-answer" } }),
+        ];
+      }),
+      event(REPORTED_EVENT, {
+        session: "g-f",
+        old: STARTER,
+        fresh: "h1",
+        starter: STARTER,
+        setting,
+        solves: 1,
+        versions: failedTasks,
+        reading: "no-step",
+        scored: { wins: 0, losses: 0, ties: 3 },
+        valid: { old: [3, 0], fresh: [3, 0] },
+        aside: [],
+      }),
+    ];
+    const failedCap = releaseOrder(failedEvents, failedTasks, 3, "seed").map(([v]) => v);
+    expect(failedCap.some((v) => v === "f-1" || v === "f-2")).toBe(false);
+    expect(failedCap.length).toBeLessThanOrEqual(1);
   });
 });

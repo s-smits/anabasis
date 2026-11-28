@@ -12,7 +12,7 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { TOOL_TREE_ENV } from "../meta/bundle-layout.ts";
+import { TOOL_HOST_DIR, TOOL_TREE_ENV } from "../meta/bundle-layout.ts";
 import { LINUX_BWRAP_ID, bwrapCommandArgs, nodeRuntimeReadRoots } from "./linux-bwrap.ts";
 import type { EnvValues } from "../agent/backends/scrub-env.ts";
 import { covers, moveBlockingRules, sbRule } from "./seatbelt-path-guard.ts";
@@ -60,9 +60,12 @@ interface CommandDirectories {
   toolTree?: string | null;
 }
 
-export function toolTreeSearchDirs(toolTree: string): string[] {
+export function toolTreeSearchDirs(toolTree: string, scope: "campaign" | "portable" = "campaign"): string[] {
   if (!existsSync(toolTree)) return [];
-  const found: string[] = [join(toolTree, "bin")].filter(existsSync);
+  const found: string[] = [
+    join(toolTree, "bin"),
+    ...(scope === "campaign" ? [join(toolTree, TOOL_HOST_DIR)] : []),
+  ].filter(existsSync);
   const queue: { dir: string; depth: number }[] = [{ dir: toolTree, depth: 0 }];
   for (let visited = 0; visited < TOOL_TREE_MAX_DIRS && visited < queue.length; visited += 1) {
     const next = queue[visited];
@@ -72,7 +75,13 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
     if (depth >= TOOL_TREE_MAX_DEPTH) continue;
     try {
       const children = readdirSync(dir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink() && entry.name !== "node_modules")
+        .filter(
+          (entry) =>
+            entry.isDirectory() &&
+            !entry.isSymbolicLink() &&
+            entry.name !== "node_modules" &&
+            !(scope === "portable" && depth === 0 && entry.name === TOOL_HOST_DIR),
+        )
         .map((entry) => join(dir, entry.name));
       for (const child of children.toSorted(compareCodeUnits)) queue.push({ dir: child, depth: depth + 1 });
     } catch {

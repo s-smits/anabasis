@@ -1,4 +1,4 @@
-import { AGENT_DIR, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
+import { AGENT_DIR, GUIDE_FILE, TOOL_HOST_DIR, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { join } from "../meta/path.ts";
@@ -30,19 +30,21 @@ None yet.
 `,
 };
 
+export const STARTER_GUIDE = STARTER.guide;
+
 const CHECKER = "check-rota";
+const HOST_CHECKER = "check-task-rota";
 
 export const EXAMPLE = {
   spec: STARTER.spec,
   programs: {
     [CHECKER]: `#!/usr/bin/env bun
 // ${CHECKER} <rota.json> <limits.json>
-// Tests a rota against each person's hour limit, one line a person. <limits.json> holds the staff
-// and the shifts, alone or as a task's publicInput.
+// Tests a rota against each person's hour limit, one line a person. <limits.json> holds { staff, shifts }.
 // Exit 0: every limit is met. 1: one is not. 2: it could not run.
 import { readFileSync } from "node:fs";
 
-const USAGE = "usage: ${CHECKER} <rota.json> <limits.json>  (staff and shifts, alone or as a task's publicInput)";
+const USAGE = "usage: ${CHECKER} <rota.json> <limits.json>";
 const [rota, limits] = process.argv.slice(2);
 if (rota === "--help") {
   console.log(USAGE);
@@ -62,8 +64,7 @@ function read(file) {
   }
 }
 
-const given = read(limits);
-const { staff, shifts } = given.publicInput ?? given;
+const { staff, shifts } = read(limits);
 const hours = {};
 for (const { staff: person, shift } of read(rota).assignments) {
   hours[person] = (hours[person] ?? 0) + (shifts.find(({ id }) => id === shift)?.hours ?? 0);
@@ -76,6 +77,31 @@ for (const { id, maxHours } of staff) {
   console.log(id + ": " + (hours[id] ?? 0) + " of " + maxHours + " hours, " + state);
 }
 process.exit(failed === 0 ? 0 : 1);
+`,
+  },
+  hostPrograms: {
+    [HOST_CHECKER]: `#!/usr/bin/env bun
+// ${HOST_CHECKER} <answer.json> [public/task.json]
+// Campaign adapter: extracts publicInput from a task file and runs ${CHECKER}.
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const [rota, taskFile = "public/task.json"] = process.argv.slice(2);
+if (rota === undefined) {
+  console.error("usage: ${HOST_CHECKER} <answer.json> [public/task.json]");
+  process.exit(2);
+}
+const task = JSON.parse(readFileSync(taskFile, "utf8"));
+const scratch = mkdtempSync(join(tmpdir(), "rota-"));
+try {
+  const limits = join(scratch, "limits.json");
+  writeFileSync(limits, JSON.stringify(task.publicInput));
+  const ran = Bun.spawnSync(["${CHECKER}", rota, limits], { stdio: ["inherit", "inherit", "inherit"] });
+  process.exit(ran.exitCode);
+} finally {
+  rmSync(scratch, { recursive: true, force: true });
+}
 `,
   },
   guide: `# Operating Guide
@@ -92,7 +118,7 @@ A rota that ${CHECKER} passes has still to meet the rules it does not test.
 Hours count by the shift's length in the task, not by its clock times.
 
 ${HOST_ONLY}
-- Pass public/task.json as <limits.json> to ${CHECKER}.
+- Run \`${HOST_CHECKER} answer.json public/task.json\` to check an answer against the task's limits.
 - A rota that leaves a shift of the task unassigned is not valid.
 `,
 };
@@ -102,7 +128,7 @@ export const HARNESS_ACCOUNT = `# The Built Harness
 A solver is pi's coding agent behind a command wall. The host reads three paths under harness/:
 
 - **agent/tools-spec.json**: \`${capturedJsonStringify(EXAMPLE.spec)}\` (selects from ${CODING_TOOLS.join(", ")}; keep \`tools: []\`).
-- **.toolchain/**: executables in \`.toolchain/bin\` (or nested bin/shims/sbin) run by name first on PATH. If \`.toolchain/env.sh\` exists, BASH_ENV sources it before every command; derive all paths relative to \`\${BASH_SOURCE%/*}\` (never hardcoded home paths) so exports stay self-contained.
+- **.toolchain/**: executables in \`.toolchain/bin\` (or nested bin/shims/sbin) run by name first on PATH and stay in exported harnesses. Put campaign-only adapters that read \`public/task.json\`, \`public/answer-format.json\`, or \`answer.json\` in \`.toolchain/${TOOL_HOST_DIR}/\` (on PATH in campaign solves, stripped on export). If \`.toolchain/env.sh\` exists, BASH_ENV sources it before every command; derive all paths relative to \`\${BASH_SOURCE%/*}\` (never hardcoded home paths) so exports stay self-contained.
 - **agent/BUILT_AGENTS.md**: operating guide loaded into every solve's system prompt (cannot override task, tools, limits or submission).
 
 ## What every solver receives in campaign tasks
@@ -111,16 +137,22 @@ Home contains \`public/task.json\`, \`public/files/\`, \`public/resources/\`, an
 
 ## Designing tools that transfer (.toolchain/)
 
-Build small, general, verb-first CLIs (accepting relative file paths, \`--help\`, stdout results, stderr diagnostics, exit 0/1/2) that work on ordinary workspaces outside this host:
+Build small, general, verb-first CLIs in \`.toolchain/bin/\` (accepting relative file paths, \`--help\`, stdout results, stderr diagnostics, exit 0/1/2) that work on ordinary workspaces outside this host:
 - Workspace inspection and extraction across the domain's native input formats.
 - Deliverable verification: reopen every produced file with an independent reader to check format integrity, computed values, visual clarity, and requirement completeness across every requested item.
 - Independent domain diagnostics, assumption tests and sensitivity checks.
-Keep campaign-specific adapters (\`public/task.json\`, \`answer.json\`) strictly separate from general tools, and prune tools that practice traces show sit unused.
+Place campaign-only adapters in \`.toolchain/${TOOL_HOST_DIR}/\` so they are stripped on export, and prune tools that practice traces show sit unused.
 
-Worked program at \`.toolchain/bin/${CHECKER}\` (executable):
+Worked portable program at \`.toolchain/bin/${CHECKER}\` (executable):
 
 \`\`\`js
 ${EXAMPLE.programs[CHECKER].trimEnd()}
+\`\`\`
+
+Worked campaign adapter at \`.toolchain/${TOOL_HOST_DIR}/${HOST_CHECKER}\` (executable, stripped on export):
+
+\`\`\`js
+${EXAMPLE.hostPrograms[HOST_CHECKER].trimEnd()}
 \`\`\`
 
 ## Designing agent/BUILT_AGENTS.md
@@ -131,7 +163,7 @@ Campaigns start from the Starter guide:
 ${STARTER.guide.trimEnd()}
 \`\`\`
 
-- **Portable boundary**: external exports keep ONLY text above \`${HOST_ONLY}\` and strip everything below it. Keep the portable section ultra-lean (concise tool usage and high-leverage domain verification habits, never a multi-page checklist—put detailed reference notes in \`.toolchain/\` to read on demand). Put all campaign paths, answer fields, rule IDs, scoring notes and campaign wrappers strictly below \`${HOST_ONLY}\`.
+- **Portable boundary**: external exports keep ONLY text above \`${HOST_ONLY}\` and strip everything below it, along with \`.toolchain/${TOOL_HOST_DIR}/\`. Keep the portable section ultra-lean (concise tool usage and high-leverage domain verification habits, never a multi-page checklist—put detailed reference notes in \`.toolchain/\` to read on demand). Put all campaign paths, answer fields, rule IDs, scoring notes and campaign wrappers strictly below \`${HOST_ONLY}\`.
 - **Protect solver depth**: give the solver room to use its budget for thorough workspace discovery, standard diagnostics and independently reopening every deliverable.
 
 Worked guide:

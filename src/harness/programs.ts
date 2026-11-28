@@ -26,9 +26,12 @@ function canRun(path: string): boolean {
   }
 }
 
-function programsAt(toolTree: string | null): { name: string; at: string }[] {
+function programsAt(
+  toolTree: string | null,
+  scope: "campaign" | "portable" = "campaign",
+): { name: string; at: string }[] {
   const found = new Map<string, string>();
-  for (const dir of toolTree === null ? [] : toolTreeSearchDirs(toolTree)) {
+  for (const dir of toolTree === null ? [] : toolTreeSearchDirs(toolTree, scope)) {
     for (const name of readdirSync(dir).toSorted(compareCodeUnits)) {
       if (!found.has(name) && canRun(join(dir, name))) found.set(name, join(dir, name));
     }
@@ -36,8 +39,11 @@ function programsAt(toolTree: string | null): { name: string; at: string }[] {
   return [...found].map(([name, at]) => ({ name, at }));
 }
 
-export function installedPrograms(toolTree: string | null): string[] {
-  return programsAt(toolTree).map(({ name }) => name);
+export function installedPrograms(
+  toolTree: string | null,
+  scope: "campaign" | "portable" = "campaign",
+): string[] {
+  return programsAt(toolTree, scope).map(({ name }) => name);
 }
 
 function accountAt(at: string, tree: string): string | null {

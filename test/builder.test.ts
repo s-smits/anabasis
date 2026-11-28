@@ -2080,7 +2080,7 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(calls[5]).toContain("installed-greeting");
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
     expect(calls[8]).toContain(
-      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 2 lines (47 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 6 files, 9 lines.\nFiles in harness/ carry 1 reference to campaign files (lib/inspect.py).\nThe guide names 1 answer field (answer), with no`,
+      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 2 lines (47 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 6 files, 9 lines.\nFiles in harness/ carry 1 reference to campaign files (move adapters to .toolchain/host/; stripped on export) (lib/inspect.py).\nThe guide names 1 answer field (answer), with no`,
     );
     expect(calls[8]).not.toContain("Matches a practice task:");
     expect(calls[9]).toContain(String.raw`42\n`);
@@ -2120,8 +2120,29 @@ describe("harness file checks and practice task mentions", () => {
       );
       writeFileSync(join(clean, TOOL_TREE_DIR, "bin", "run-tool"), "#!/usr/bin/env sh\necho ok\n");
       chmodSync(join(clean, TOOL_TREE_DIR, "bin", "run-tool"), 0o755);
+      mkdirSync(join(clean, TOOL_TREE_DIR, "host"), { recursive: true });
+      writeFileSync(
+        join(clean, TOOL_TREE_DIR, "host", "check-campaign"),
+        "#!/usr/bin/env sh\ncat public/task.json public/answer-format.json\n",
+      );
+      chmodSync(join(clean, TOOL_TREE_DIR, "host", "check-campaign"), 0o755);
 
-      const answerKeys = formatKeys({ properties: { estimateValue: { type: "number" } } });
+      const answerKeys = formatKeys({
+        properties: {
+          estimateValue: { type: "number" },
+          notes: { type: "string" },
+          anomalyCode: { type: "string", enum: ["MISSING_COHORT", "DUPLICATE_ID", "OK"] },
+        },
+      });
+      expect(answerKeys).toContain("MISSING_COHORT");
+      expect(answerKeys).toContain("DUPLICATE_ID");
+      expect(answerKeys).not.toContain("OK");
+      const starterDir = join(dir, "starter-check");
+      writeStarter(starterDir);
+      expect(readHarnessFiles(starterDir, answerKeys, ["R-1"])).toMatchObject({
+        keptFormatKeys: 0,
+        filesWithKeys: 0,
+      });
       const shared = "logistic model with exposure and age as linear terms";
       const tasks = [
         {
@@ -2170,7 +2191,7 @@ describe("harness file checks and practice task mentions", () => {
       mkdirSync(join(dirty, TOOL_TREE_DIR, "bin"), { recursive: true });
       writeFileSync(
         join(dirty, "agent", "BUILT_AGENTS.md"),
-        "# Guide\nRead public/task.json for estimateValue under R-1 on task-alpha-1 (drop S01-007): compute the quarterly regional payroll total accurately every month.\n",
+        "# Guide\nRead public/task.json for estimateValue and MISSING_COHORT under R-1 on task-alpha-1 (drop S01-007): compute the quarterly regional payroll total accurately every month.\n",
       );
       writeFileSync(
         join(dirty, TOOL_TREE_DIR, "bin", "bad-bin"),
@@ -2183,22 +2204,27 @@ describe("harness file checks and practice task mentions", () => {
         "#!/usr/bin/env sh\ncat public/task.json\n",
       );
       chmodSync(join(dirty, TOOL_TREE_DIR, "bin", "inspect"), 0o755);
+      writeFileSync(
+        join(dirty, TOOL_TREE_DIR, "bin", "legacy-adapter"),
+        "#!/usr/bin/env sh\necho publicInput answer-format.json\n",
+      );
+      chmodSync(join(dirty, TOOL_TREE_DIR, "bin", "legacy-adapter"), 0o755);
 
       const dirtyInfo = readHarnessFiles(dirty, answerKeys, ["R-1"]);
       expect(dirtyInfo).toMatchObject({
         hasSplit: false,
         keptHostRefs: 1,
         keptHostRefNames: ["public/task.json"],
-        keptFormatKeys: 1,
-        keptFormatKeyNames: ["estimateValue"],
+        keptFormatKeys: 2,
+        keptFormatKeyNames: ["MISSING_COHORT", "estimateValue"],
         keptRuleIds: 1,
         keptRuleIdNames: ["R-1"],
         hostPaths: 2,
         hostShebangs: 1,
         plainBins: 1,
         brokenLinks: 1,
-        campaignRefs: 1,
-        campaignRefFiles: ["bin/inspect"],
+        campaignRefs: 3,
+        campaignRefFiles: ["bin/inspect", "bin/legacy-adapter"],
       });
       expect(namedTasks(dirtyInfo.written, tasks)).toEqual([
         "guide names task-alpha-1",

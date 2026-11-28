@@ -23,10 +23,12 @@ import { objectiveOf } from "../kernel/verify.ts";
 import { GAP_FLOOR, gainOver, gapBasis, type ObjectiveRule } from "../kernel/compare.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
-import { TOOL_TREE_ENV } from "../meta/bundle-layout.ts";
+import { TOOL_HOST_DIR, TOOL_TREE_DIR, TOOL_TREE_ENV } from "../meta/bundle-layout.ts";
+import { existsSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isFunction, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { join } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
@@ -635,15 +637,49 @@ function countPhrases(rows: readonly (readonly [number, string, string?, (readon
   });
 }
 
-function opens(
-  harness: Harness,
-  dir: string,
-  contract: Contract,
-  tasks: readonly PracticeTask[],
-  envIssue: string | null = null,
-): string {
+function practiceProgramUsage(
+  events: readonly LogEvent[],
+  states: string,
+  reference: string,
+  programs: readonly string[],
+): string | null {
+  if (programs.length === 0) return null;
+  const solves = practiceRan(events).filter(({ under }) => under.harness !== reference);
+  if (solves.length === 0) return null;
+  const installedBy = new Map<string, ReadonlySet<string>>();
+  const hadProgram = (digest: string): ReadonlySet<string> => {
+    const cached = installedBy.get(digest);
+    if (cached !== undefined) return cached;
+    const tree = join(states, digest, TOOL_TREE_DIR);
+    const held = new Set(existsSync(tree) ? installedPrograms(tree) : []);
+    installedBy.set(digest, held);
+    return held;
+  };
+  const used = new Map(programs.map((name) => [name, 0]));
+  const eligible = new Map(programs.map((name) => [name, 0]));
+  for (const { id, under } of solves) {
+    const present = hadProgram(under.harness);
+    const called = new Set(traceOf(events, "solve", id).calls.flatMap((call) => callPrograms(call).programs));
+    for (const name of programs) {
+      if (!present.has(name)) continue;
+      eligible.set(name, (eligible.get(name) ?? 0) + 1);
+      if (called.has(name)) used.set(name, (used.get(name) ?? 0) + 1);
+    }
+  }
+  const summary = programs.map((name) => {
+    const total = eligible.get(name) ?? 0;
+    return total === 0 ? `${name} (unpractised)` : `${name} ${String(used.get(name) ?? 0)}/${String(total)}`;
+  });
+  const unused = programs.filter((name) => (eligible.get(name) ?? 0) > 0 && (used.get(name) ?? 0) === 0);
+  return `Practice use: ${summary.join(", ")}.${unused.length === 0 ? "" : ` Unused: ${unused.join(", ")}.`}`;
+}
+
+function opens(bench: Bench, harness: Harness, dir: string, envIssue: string | null = null): string {
+  const { contract } = bench.request;
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);
+  const portablePrograms = installedPrograms(harness.toolTree, "portable");
+  const hostPrograms = programs.filter((name) => !portablePrograms.includes(name));
   const ruleIds = [...new Set(contract.rules.map(({ id }) => id).filter((id) => id !== ""))];
   const info = readHarnessFiles(dir, [...new Set(formatKeys(contract.answerFormat))], ruleIds);
   const { guide, files: toolFiles, lines: toolLines } = info.size ?? { guide: 0, files: 0, lines: 0 };
@@ -656,9 +692,14 @@ function opens(
   const fileIssues = countPhrases([
     [info.hostPaths, "path", " to this machine"],
     [info.hostShebangs, "host-specific shebang"],
-    [info.plainBins, "non-executable file", " in bin/"],
+    [info.plainBins, "non-executable file", ` in bin/ or ${TOOL_HOST_DIR}/`],
     [info.brokenLinks, "broken link"],
-    [info.campaignRefs, "reference", " to campaign files", info.campaignRefFiles],
+    [
+      info.campaignRefs,
+      "reference",
+      ` to campaign files (move adapters to .toolchain/${TOOL_HOST_DIR}/; stripped on export)`,
+      info.campaignRefFiles,
+    ],
   ]);
   const guideIssues = countPhrases([
     [info.keptHostRefs, "host reference", "", info.keptHostRefNames],
@@ -670,12 +711,22 @@ function opens(
     : `The guide names ${listText(guideIssues)}, with no "${HOST_ONLY}" heading to separate them on export.`;
   const mentions = namedTasks(
     info.written,
-    tasks.map(({ task }) => task),
+    bench.tasks.map(({ task }) => task),
+  );
+  const usageLine = practiceProgramUsage(
+    read(bench.request.log, CALL_KINDS),
+    bench.request.states,
+    bench.reference.harness.digest,
+    programs,
   );
   return [
     "The harness opens.",
     `pi's tools: ${presets.join(", ") || "none"}.`,
-    `Programs: ${programs.join(", ") || "none"}.`,
+    `Programs: ${portablePrograms.join(", ") || "none"}.`,
+    ...(hostPrograms.length > 0
+      ? [`Host-only programs (.toolchain/${TOOL_HOST_DIR}/, omitted on export): ${hostPrograms.join(", ")}.`]
+      : []),
+    ...(usageLine === null ? [] : [usageLine]),
     guideLine,
     ...(toolFiles > 0
       ? [`Your files under .toolchain/: ${plural(toolFiles, "file")}, ${plural(toolLines, "line")}.`]
@@ -724,7 +775,7 @@ function checkTool(bench: Bench, wall: CommandSandbox): AgentTool {
     execute: async () =>
       await frozen(bench, async ({ dir, harness }) => {
         const envIssue = await checkEnvScript(wall, harness.toolTree);
-        return text(opens(harness, dir, bench.request.contract, bench.tasks, envIssue));
+        return text(opens(bench, harness, dir, envIssue));
       }),
   });
 }

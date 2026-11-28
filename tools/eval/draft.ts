@@ -75,10 +75,11 @@ export function draftAuditGate(given: {
   readonly revision?: string;
   readonly required?: boolean;
 }) {
-  const seeded = persistedDraftDefects(read(given.log, TRACE_KINDS), given.revision);
-  let audits = seeded.audits;
-  const priorReviews = [...seeded.prior];
   return async (seen: DraftSeen): Promise<readonly string[]> => {
+    const { audits, prior: priorReviews } = persistedDraftDefects(
+      read(given.log, TRACE_KINDS),
+      given.revision,
+    );
     const verifiedFixed: string[] = [];
     const unverified: string[] = [];
     for (const prior of priorReviews) {
@@ -121,13 +122,7 @@ export function draftAuditGate(given: {
         ? [`independent check audit recorded no verdict (${review.summary}); submit the draft again to retry`]
         : [];
     }
-    if (review.verdict !== "defects" || review.findings.length === 0) {
-      priorReviews.length = 0;
-      return [];
-    }
-    audits += 1;
-    priorReviews.push(review);
-    return review.findings.map(formatDraftFinding);
+    return review.verdict === "defects" ? review.findings.map(formatDraftFinding) : [];
   };
 }
 

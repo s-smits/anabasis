@@ -132,7 +132,7 @@ export const epochsOf = (events: readonly LogEvent[]): Epoch[] => epochsFrom(eve
 function epochsFrom(
   events: readonly LogEvent[],
   reports: readonly Reported[],
-  controls = controlsIn(events, reports),
+  controls = controlsIn(reports, starterSplits(events, reports).bySession),
 ): Epoch[] {
   const starter = starterIn(events);
   const { bounds, tasks, sessions } = epochSlices(events);
@@ -204,13 +204,7 @@ function measureSliceOf(data: JsonObject, noise?: JsonObject): "validity" | "obj
     : "objective";
 }
 
-function controlOf(
-  index: number,
-  level: number,
-  scores: readonly number[],
-  slice: "validity" | "objective",
-  source: "reference" | "starter" = "reference",
-) {
+function controlOf(index: number, level: number, scores: readonly number[], slice: "validity" | "objective") {
   const able = isSignificant(scores.map(Math.abs), level);
   const tied = scores.length > 0 && scores.every((one) => one === 0);
   return {
@@ -218,7 +212,6 @@ function controlOf(
     level,
     scores,
     slice,
-    source,
     able,
     tied,
     step: isSignificant(scores, level),
@@ -230,39 +223,25 @@ function starterSplits(events: readonly LogEvent[], reports: readonly Reported[]
   const starter = starterIn(events);
   const judged = new Set(
     eventsOf(events, "comparison.started").flatMap(({ event: { data } }) =>
-      isString(data.session) && judgeIn(data) !== undefined ? [data.session] : [],
+      judgeIn(data) === undefined ? [] : [data.session],
     ),
   );
-  const bySession = new Map<string, ReturnType<typeof controlOf>>();
-  let judgedCount = 0;
-  for (const report of reports) {
-    if (starter === null || report.data.fresh !== starter || report.data.old === starter) continue;
-    if (judged.has(report.session)) {
-      judgedCount += 1;
-      continue;
-    }
-    const pairs = pairsReported(events, report, "fresh");
-    if (pairs.length === 0) continue;
-    const flips = pairs.some(({ old, fresh }) => new Set([...old, ...fresh]).size > 1);
-    bySession.set(
-      report.session,
-      controlOf(
-        report.index,
-        levelOf(report),
-        pairs.map(differenceOf),
-        flips ? "validity" : "objective",
-        "starter",
-      ),
-    );
-  }
-  return { bySession, judgedCount };
+  const reads = reports.filter(
+    ({ data }) => starter !== null && data.fresh === starter && data.old !== starter,
+  );
+  const bySession = new Map(
+    reads.flatMap((report) => {
+      const pairs = judged.has(report.session) ? [] : pairsReported(events, report, "fresh");
+      const flips = pairs.some(({ old, fresh }) => new Set([...old, ...fresh]).size > 1);
+      const slice = flips ? "validity" : "objective";
+      const control = controlOf(report.index, levelOf(report), pairs.map(differenceOf), slice);
+      return pairs.length === 0 ? [] : [[report.session, control] as const];
+    }),
+  );
+  return { bySession, judgedCount: reads.filter(({ session }) => judged.has(session)).length };
 }
 
-function controlsIn(
-  events: readonly LogEvent[],
-  reports: readonly Reported[],
-  splits = starterSplits(events, reports).bySession,
-) {
+function controlsIn(reports: readonly Reported[], splits: ReadonlyMap<string, ReturnType<typeof controlOf>>) {
   return reports.flatMap((each) => {
     const noise = asRecord(each.data.noise);
     if (!Array.isArray(noise?.differences)) return [];
@@ -488,7 +467,7 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   const opening = openingOf(events);
   const carried = opening?.parent?.carried.attempts ?? 0;
   const level = Number(opening?.terms.level ?? 0.02);
-  const carriedRisk = carried > 0 && Number.isFinite(level) ? carried * level : 0;
+  const carriedRisk = Number.isFinite(level) ? carried * level : 0;
   const total = Math.min(
     1,
     carriedRisk + epochs.reduce((sum, { falsePromotion }) => sum + falsePromotion.union, 0),
@@ -524,11 +503,11 @@ export function promotionCosts(events: readonly LogEvent[]): ReadonlyMap<string,
 export function barLines(events: readonly LogEvent[]): string[] {
   const reports = lastReports(events);
   const splits = starterSplits(events, reports);
-  const controls = controlsIn(events, reports, splits.bySession);
+  const controls = controlsIn(reports, splits.bySession);
   const epochs = epochsFrom(events, reports, controls);
   const pairsOf = pairLookup(events);
   const climbed = epochs.filter(({ nth, reverted }) => nth > 1 && reverted !== true);
-  const revertedCount = epochs.filter(({ reverted }) => reverted === true).length;
+  const reverts = epochs.filter(({ reverted }) => reverted === true).length;
   const confirmed = climbed.filter((epoch) => epoch.confirmed === true);
   const unread = climbed.filter(({ starter_tally: tally }) => tally === null).length;
   const confirmedSessions = new Set(confirmed.map((epoch) => epoch.starter_read));
@@ -536,7 +515,8 @@ export function barLines(events: readonly LogEvent[]): string[] {
     confirmedSessions.has(session),
   );
   const tied = controls.filter((control) => control.tied).length;
-  const substituted = controls.filter((control) => control.source === "starter").length;
+  const fallbacks = new Set(splits.bySession.values());
+  const substituted = controls.filter((control) => fallbacks.has(control)).length;
   const fallbackNote =
     substituted === 0
       ? ""
@@ -545,9 +525,8 @@ export function barLines(events: readonly LogEvent[]): string[] {
     tied === 0
       ? ""
       : ` ${String(tied)} of them tied every task (identical reference outcomes across rollouts, unpowered).`;
-  const revertedNote = revertedCount === 0 ? "" : ` (${plural(revertedCount, "revert")})`;
   return [
-    `- Climb: ${plural(climbed.length, "promotion")}${revertedNote}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
+    `- Climb: ${plural(climbed.length, "promotion")}${reverts === 0 ? "" : ` (${plural(reverts, "revert")})`}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
     `- Honesty: ${plural(controls.length, "A/A control")}; ${controlCounts(controls)}${fallbackNote}.${tiedNote} Observational; the bar pools a release's.`,
     starterNoiseLine([...splits.bySession.values()], splits.judgedCount),
     repeatLine(reports, pairsOf),

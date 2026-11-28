@@ -23,12 +23,14 @@ const PRINTED = 8;
 const git = (args: readonly string[]): string => runTextSyncOrThrow(["git", ...args]);
 
 function changedLines(): Map<string, { lines: Set<number>; added: boolean }> {
-  const staged = git(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]).split("\n").filter(Boolean);
-  const added = new Set(git(["diff", "--cached", "--name-only", "--diff-filter=A"]).split("\n"));
+  const staged = git(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"])
+    .split("\0")
+    .filter(Boolean);
+  const added = new Set(git(["diff", "--cached", "--name-only", "-z", "--diff-filter=A"]).split("\0"));
   const parsed =
     staged.length === 0
       ? new Map<string, Set<number>>()
-      : addedLines(runtimeProcess.cwd(), "HEAD", "--", ...staged);
+      : addedLines(runtimeProcess.cwd(), "HEAD", "--", ...staged.map((path) => `:(literal)${path}`));
   return new Map(
     staged.map((path) => [path, { lines: parsed.get(path) ?? new Set<number>(), added: added.has(path) }]),
   );

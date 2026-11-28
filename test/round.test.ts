@@ -40,7 +40,7 @@ import {
 } from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
-import { draw, informative, pairsOf, WEIGHTS } from "../src/kernel/compare.ts";
+import { draw, informative, pairsOf } from "../src/kernel/compare.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { stopRule } from "../src/campaign/admission.ts";
@@ -64,8 +64,6 @@ import { dirname, join } from "../src/meta/path.ts";
 import type { AuditFinding, Ruling } from "../src/audit/auditor.ts";
 import { text, tool } from "../src/tools/answer.ts";
 import { openHarness } from "../src/harness/open.ts";
-import { roundSolves } from "./helpers/logged-round.ts";
-import { tallied } from "./helpers/tally.ts";
 import { arrayWith, copies, objectWith } from "./helpers/matchers.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
@@ -340,11 +338,11 @@ const stoppedAtFirst = (asked: readonly { readonly version: string }[]) => {
 const referee =
   (log: string, ruled: Readonly<Record<string, Ruling>> = {}) =>
   async (solve: string, version: string): Promise<AuditFinding> => {
-    const ruling = ruled[version] ?? "earned";
+    const ruling = ruled[version] ?? "solver-fail";
     append(log, "referee.finding", { solve, ruling });
     return {
       ruling,
-      check: ruling === "earned" ? null : "check-7",
+      check: ruling === "solver-fail" ? null : "check-7",
       rule: "R1",
       field: "answer",
       reason: "r",
@@ -591,7 +589,7 @@ describe("a round", () => {
         // harnesses 1 in 16.
         scored: {
           ...tested,
-          differences: [600, 600, 600, 600],
+          differences: [1000, 1000, 1000, 1000],
           unsolved: 0,
           detectable: 0.95,
           falseRate: 1 / 16,
@@ -600,7 +598,7 @@ describe("a round", () => {
           ...tested,
           tasks: HELD,
           aside: [],
-          differences: [600, 600, 600, 600],
+          differences: [1000, 1000, 1000, 1000],
           of: HELD,
         },
         retained: "unmeasured",
@@ -616,7 +614,7 @@ describe("a round", () => {
         noise: objectWith({ wins: 0, losses: 0, ties: 4, flips: 0 }),
         counted: null,
         objective: null,
-        points: { validity: 2400, objective: 0 },
+        points: { validity: 4000, objective: 0 },
         turns: Object.fromEntries(HELD.map((task) => [task, { old: null, fresh: 10 }])),
         versions: HELD,
         disputed: [],
@@ -738,7 +736,7 @@ describe("a round", () => {
     const settled = settleReading(
       s.log,
       "b-1",
-      new Map(asked.aside.map((solve) => [solve, "earned"] as const)),
+      new Map(asked.aside.map((solve) => [solve, "solver-fail"] as const)),
     );
     expect(settled).toMatchObject({
       scored: { wins: 4, losses: 0 },
@@ -835,7 +833,7 @@ describe("a round", () => {
       (version, side) => (version === "s1" ? LATE : { ending: PASS, objective: mass(version, side) }),
       { objective },
     );
-    const gained = Math.round(1000 * WEIGHTS.objective * (0.2 + 0.1));
+    const gained = Math.round(1000 * (0.2 + 0.1));
     expect(report).toMatchObject({
       scored: { wins: 2, losses: 0, ties: 2, p: 0.25, unsolved: 1 },
       objective,
@@ -1051,7 +1049,7 @@ describe("a round", () => {
       expect(asked.others).toHaveLength(6);
 
       const defect = await ruledOn();
-      expect(() => settleReading(defect.log, "b-1", labelled(["r-0-0"], "earned"))).toThrow(
+      expect(() => settleReading(defect.log, "b-1", labelled(["r-0-0"], "solver-fail"))).toThrow(
         "is no rejected answer",
       );
       expect(() =>
@@ -1077,7 +1075,7 @@ describe("a round", () => {
         passes: {},
       });
       expect(settleReading(defect.log, "b-1", labelled(asked.aside, "check-defect"))).toEqual(settled);
-      expect(() => settleReading(defect.log, "b-1", labelled(asked.aside, "earned"))).toThrow(
+      expect(() => settleReading(defect.log, "b-1", labelled(asked.aside, "solver-fail"))).toThrow(
         "comparison b-1 is settled already, and these labels are not the ones it was settled on",
       );
       expect(() => settleReading(defect.log, "b-1", new Map())).toThrow("is settled already");
@@ -1087,7 +1085,7 @@ describe("a round", () => {
       const earned = await ruledOn();
       await earned.built("b-2");
       append(earned.log, TASK_STATE, { version: "s4", state: "released" });
-      expect(settleReading(earned.log, "b-1", labelled(asked.aside, "earned"))).toMatchObject({
+      expect(settleReading(earned.log, "b-1", labelled(asked.aside, "solver-fail"))).toMatchObject({
         scored: { wins: 4, losses: 0 },
         versions: HELD,
         disputed: [],
@@ -1099,7 +1097,10 @@ describe("a round", () => {
 
       const over = await ruledOn();
       const [other = ""] = asked.others;
-      const labels = new Map<string, Ruling>([...labelled(asked.aside, "earned"), [other, "check-defect"]]);
+      const labels = new Map<string, Ruling>([
+        ...labelled(asked.aside, "solver-fail"),
+        [other, "check-defect"],
+      ]);
       const gone = ranUnder(read(over.log)).find(({ id }) => id === other)?.under.task ?? "";
       expect(["s2", "s3", "s4"]).toContain(gone);
       expect(settleReading(over.log, "b-1", labels)).toMatchObject({
@@ -1145,7 +1146,7 @@ describe("a round", () => {
       const [one = ""] = asked.aside;
       const [valid = ""] = passesIn(read(log), "b-1");
       const given = {
-        one: labelled([one], "earned"),
+        one: labelled([one], "solver-fail"),
         none: new Map<string, Ruling>(),
         unclear: labelled(asked.aside, "unclear"),
       }[rejections];
@@ -1170,7 +1171,7 @@ describe("a round", () => {
         settleReading(log, "b-1", labels, judged?.(log));
         return swapped(read(log), "b-1");
       };
-      expect(await swappedOn(labelled(asked.aside, "earned"))).toMatchObject({
+      expect(await swappedOn(labelled(asked.aside, "solver-fail"))).toMatchObject({
         decided: NO_STEP,
         swapped: "step",
         scored: { wins: 4, losses: 0 },
@@ -1461,7 +1462,7 @@ describe("a standalone comparison", () => {
     });
     const report = await checkpoint(s.compare("g2"));
     expect(report).toMatchObject({
-      scored: { wins: 0, losses: 4, ties: 0, differences: [-300, -600, -600, -600] },
+      scored: { wins: 0, losses: 4, ties: 0, differences: [-500, -1000, -1000, -1000] },
       noise: { ties: 3, flips: 1 / 4 },
     });
     expect((report.noise?.wins ?? 0) + (report.noise?.losses ?? 0)).toBe(1);
@@ -1490,7 +1491,7 @@ describe("a standalone comparison", () => {
     expect(s.of(COMPARISON_STARTED).at(-1)).toMatchObject({ tasks, retained: ["s1"] });
     expect(report).toMatchObject({
       frontier: { tasks: ["s6", "s7", "s8", "s9"], aside: [], wins: 4, losses: 0, ties: 0, p: 0.0625 },
-      retained: { tasks: ["s1"], aside: [], wins: 0, losses: 1, ties: 0, differences: [-600] },
+      retained: { tasks: ["s1"], aside: [], wins: 0, losses: 1, ties: 0, differences: [-1000] },
       overlap: { with: "g2", tasks: ["s1"] },
       scored: { wins: 4, losses: 1, ties: 0, p: 0.1875 },
       reading: "no-step",
@@ -1726,21 +1727,15 @@ describe("the scored set", () => {
   });
 
   it("scores every frontier task, and of the retained tasks one for each three frontier tasks", () => {
-    // Nine tasks the reference answered in every solve, three in one of two: the nine are retained and
-    // the set takes one. Taking three of the nine would top a short frontier up with tasks that can
-    // only tie.
-    const closed = Array.from({ length: 9 }, (_, nth) => `c${String(nth)}`);
+    // Nine tasks from before a promotion, three written after: the nine are retained and the set
+    // takes one. Taking three of the nine would top a short frontier up with prior-epoch tasks.
+    const prior = Array.from({ length: 9 }, (_, nth) => `c${String(nth)}`);
     const open = ["f1", "f2", "f3"];
-    const outcomes = Object.fromEntries([
-      ...closed.map((version) => [version, "PP PP"] as const),
-      ...open.map((version) => [version, "FP PP"] as const),
-    ]);
-    const logged: LogEvent[] = [...heldOut([...closed, ...open])];
-    for (const id of ["g-1", "g-2"]) {
-      const { events, terms } = roundSolves(id, ["h0", "h1"], outcomes);
-      const data = { session: id, old: "h0", fresh: "h1", starter: "h0", ...tallied(3, 0, 9), ...terms };
-      logged.push(...events, { at, kind: "comparison.reported", data });
-    }
+    const logged: LogEvent[] = [
+      ...heldOut(prior),
+      { at, kind: "harness.promoted", data: { harness: "h1", from: "h0", rests: [] } },
+      ...heldOut(open),
+    ];
     expect(poolOf(logged).retained).toHaveLength(9);
     const set = scoredSet(logged, 12, "contract-a");
     expect(set.tasks.filter((version) => open.includes(version)).toSorted()).toEqual(open);
@@ -1830,19 +1825,11 @@ describe("the scored set", () => {
     expect(poolOf(read(s.log)).awaiting).toEqual([]);
     expect(poolOf(read(s.log)).scorable).toContain("s1");
     await checkpoint(s.paired("g-2"));
-    // s2 to s4 were answered by both harnesses in every solve: exhausted, and retained as a check on
-    // regression. s5, held before the promotion and never scored, is retained too; with no frontier
-    // task left the draw takes none.
+    // s2 to s5 were held before the promotion, so they are retained as regression checks;
+    // with no frontier task left the draw takes none.
     const pool = poolOf(read(s.log));
     expect(pool).toMatchObject({ awaiting: ["s1"], frontier: [] });
     expect(pool.retained.toSorted()).toEqual(["s2", "s3", "s4", "s5"]);
-    expect(pool.exhausted.toSorted()).toEqual(["s2", "s3", "s4"]);
-    const judged = {
-      kind: "comparison.started",
-      at: "2026-11-24T00:00:00.000Z",
-      data: { judge: { weights: { code: 0, judge: 1 } } },
-    } as const;
-    expect(poolOf([...read(s.log), judged]).exhausted).toEqual([]);
     expect(scoredSet(read(s.log), 12, "c")).toEqual({ tasks: [], retained: [] });
     // Named for a comparison all the same, it is refused: a name would otherwise be the one way past
     // the draw.

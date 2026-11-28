@@ -23,9 +23,9 @@ describe("rungs", () => {
       ]),
     );
     expect(lines).toContain("  1.1 stated 1, blind 1 none");
-    expect(lines).toContain("  1.2 stated 3, blind 2 model, 1 basin  below, flat");
+    expect(lines).toContain("  1.2 stated 4, blind 2 model, 1 basin  below, flat");
     expect(lines.at(-1)).toMatch(
-      /^1 of 18 rungs at their stated grade, 1 below, 0 above, 1 not above the rung before, 16 not graded$/u,
+      /^1 of 9 rungs at their stated grade, 1 below, 0 above, 1 not above the rung before, 7 not graded$/u,
     );
   });
 });

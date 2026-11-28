@@ -127,7 +127,7 @@ async function witnessed(
     return { task: task.taskId, blocking, now: result.kind === "fail" ? result.blocking : null };
   };
   const earned = [...standsOf(events)].flatMap(([solve, ruling]) =>
-    ruling === "earned" && blockingOf(verdicts.get(solve)?.checker).length > 0 ? [solve] : [],
+    ruling === "solver-fail" && blockingOf(verdicts.get(solve)?.checker).length > 0 ? [solve] : [],
   );
   const rows = await pooled(earned, 4, async (solve) => {
     const row = await replay(solve, "earned");

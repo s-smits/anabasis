@@ -230,7 +230,7 @@ describe("the wall between the tiers", () => {
     const labelled = settled.tasks
       .flatMap(({ fresh }) => fresh)
       .find(({ ending }) => ending?.outcome === "fail" && ending.kind === "rejected");
-    expect(labelled?.ruling).toBe("earned");
+    expect(labelled?.ruling).toBe("solver-fail");
     expect((await ask("solve", { key: KEY, id: labelled?.id ?? "" }, "exam")).answer.ruling?.by).toBe(
       "label",
     );
@@ -565,10 +565,6 @@ describe("where each task and harness stands", () => {
     expect([placed("frontier"), placed("retained"), placed("out")].map((each) => each.toSorted())).toEqual(
       [pool.frontier, pool.retained, out].map((each) => each.toSorted()),
     );
-    // An exhausted task is retained, never out, and a task the pool does not hold has no place.
-    const exhausted = rows.filter(({ draw }) => draw?.place === "retained" && draw.exhausted);
-    expect(exhausted.map(({ version }) => version).toSorted()).toEqual(pool.exhausted.toSorted());
-    expect(exhausted.length).toBeGreaterThan(0);
     expect(placed("out").length).toBeGreaterThan(0);
     expect(rows.filter(({ state }) => state !== "held").every(({ draw }) => draw === null)).toBe(true);
     const { harnesses } = (await ask("campaign", { key: KEY }, "default")).answer;

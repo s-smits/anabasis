@@ -62,7 +62,7 @@ export async function promoteCommand(args: readonly string[]): Promise<number> {
   const despite = values.despite?.trim() ?? "";
   if (why !== null && despite === "") {
     console.log(
-      'not promoted: a harness is promoted where a comparison against the reference read a step. It is yours to promote all the same: say why with --despite "<why>"',
+      'not promoted: a harness is only promoted after beating the reference harness in a comparison. To override manually, pass --despite "<why>"',
     );
     return 1;
   }

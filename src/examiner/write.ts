@@ -8,9 +8,11 @@ import { poolOf } from "../kernel/reports.ts";
 import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import { objectiveOf, scoresOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
+import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
@@ -252,6 +254,79 @@ function exampleTool(tasks: () => readonly Task[]): AgentTool {
   });
 }
 
+function retireTool(desk: Desk): AgentTool {
+  return tool({
+    name: "retire_tasks",
+    description:
+      "Retire scored held-out tasks that no longer leave useful headroom on validity, rubric scores, or turn budget so comparisons focus on harder tasks. Retired tasks stay in the log for past comparisons; replace them via propose_tasks.",
+    parameters: Type.Object({
+      tasks: Type.Array(Type.String({ minLength: 1 }), {
+        minItems: 1,
+        description: "Task ids to retire from the active held-out pool.",
+      }),
+      reason: Type.String({ minLength: 1, description: "Brief domain reason these tasks lack headroom." }),
+    }),
+    execute: async (args) => {
+      const events = read(desk.request.log, CALL_KINDS);
+      const sets = taskSets(events);
+      const regression = new Set(poolOf(events).retained);
+      const scored = new Set(
+        eventsOf(events, "comparison.reported").flatMap(({ event }) =>
+          Array.isArray(event.data.versions) ? event.data.versions.filter(isString) : [],
+        ),
+      );
+      const byId = new Map(
+        proposalsOf(events).flatMap((proposal) => {
+          const id = proposal.task?.taskId ?? proposal.taskId;
+          return id === null ? [] : [[id, proposal.version] as const];
+        }),
+      );
+      const retired: string[] = [];
+      const skipped: string[] = [];
+      for (const taskId of new Set(args.tasks)) {
+        const version = byId.get(taskId);
+        if (version === undefined) {
+          skipped.push(`${taskId}: unknown task`);
+        } else if (sets.states.get(version) !== "held") {
+          skipped.push(`${taskId}: not an active held-out task`);
+        } else if (regression.has(version)) {
+          skipped.push(`${taskId}: kept as a regression check for the promoted harness`);
+        } else if (scored.has(version)) {
+          append(desk.request.log, "task.state", {
+            version,
+            state: "refused",
+            by: "examiner",
+            reason: args.reason,
+          });
+          retired.push(taskId);
+        } else {
+          skipped.push(`${taskId}: not yet scored in a comparison`);
+        }
+      }
+      const remaining = poolOf(read(desk.request.log, CALL_KINDS)).frontier.length;
+      const poolNote =
+        remaining < 10
+          ? [
+              `Warning: ${plural(remaining, "active frontier task")} remain (below 10); propose harder replacements.`,
+            ]
+          : remaining > 40
+            ? [
+                `Note: ${plural(remaining, "active frontier task")} remain (above 40); consider retiring easy tasks.`,
+              ]
+            : [];
+      return text(
+        [
+          retired.length === 0
+            ? "Retired no tasks."
+            : `Retired ${plural(retired.length, "task")}: ${retired.join(", ")}.`,
+          ...skipped.map((line) => `Skipped ${line}.`),
+          ...poolNote,
+        ].join("\n"),
+      );
+    },
+  });
+}
+
 function reviewsTool(desk: Desk): AgentTool {
   return tool({
     name: "read_reviews",
@@ -267,7 +342,7 @@ function reviewsTool(desk: Desk): AgentTool {
         outcome: Type.Optional(
           Type.String({
             description:
-              "Filter by ruling, verdict, or flag (earned, check-defect, unclear, disagreed, holistic-oppose, incomplete, skipped).",
+              "Filter by ruling, verdict, or flag (solver-fail, check-defect, unclear, disagreed, holistic-oppose, incomplete, skipped).",
           }),
         ),
         limit: Type.Optional(
@@ -371,12 +446,20 @@ export function writing(
 ) {
   const { verify } = request;
   const before = read(request.log, CALL_KINDS);
-  const openedOn = (asked: Terms, events: readonly LogEvent[]) =>
-    firstMessage(asked.contract, asked.checks, taskHistory(events, asked.tasks), asked.limits, {
+  const openedOn = (asked: Terms, events: readonly LogEvent[]) => {
+    const history = taskHistory(events, asked.tasks);
+    if (home !== undefined) {
+      const fresh = mkdtempSync(join(home, ".metrics-"));
+      writeFileSync(join(fresh, "metrics.json"), `${capturedJsonStringify(history.metrics, null, 2)}\n`);
+      renameSync(join(fresh, "metrics.json"), join(home, "metrics.json"));
+      rmSync(fresh, { recursive: true });
+    }
+    return firstMessage(asked.contract, asked.checks, history, asked.limits, {
       brief: openingOf(events)?.prompt ?? null,
       budget: asked.budget,
       revision: asked.revise === undefined ? "fixed" : "revisable",
     });
+  };
   let told = openedOn(request, before);
   const lineage = openingOf(before)?.parent?.lineageTasks ?? [];
   const desk: Desk = {
@@ -418,6 +501,7 @@ export function writing(
     },
     tools: [
       proposeTool(desk),
+      retireTool(desk),
       exampleTool(() => [...writtenTasks(read(desk.request.log, TRACE_KINDS)), ...desk.request.tasks]),
       reviewsTool(desk),
       ...(verify === null ? [] : [tryTool(desk, verify)]),

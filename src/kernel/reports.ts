@@ -11,13 +11,12 @@ import {
   pairsOf,
   pointsOf,
   differenceOf,
-  gapAgainst,
 } from "./compare.ts";
 import { failWrongPasses, proposalsOf, wrongPasses, wrongPassesIn } from "./history.ts";
 import { type EventKind, eventsOf, isReferenceChange, type LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
-import { READINGS_IN_A_ROW, howOftenValid } from "./size.ts";
+import { howOftenValid } from "./size.ts";
 import { taskSets } from "./task.ts";
 import { validScores } from "./verify.ts";
 
@@ -46,7 +45,6 @@ interface TaskReading {
   readonly referenceCut: boolean;
   readonly won: "reference" | "other" | null;
   readonly by: keyof Measures | null;
-  readonly room: boolean;
 }
 
 interface TaskRecord {
@@ -171,12 +169,12 @@ export interface SupplySaturation {
   readonly validEvery: number;
   readonly scored: number;
   readonly meanRoom: number;
-  readonly aaP75: number | null;
 }
 
 const SATURATION_MIN_TASKS = 12;
 const SATURATION_VALID_RATE = 0.95;
 const SATURATION_ROOM_FLOOR = 0.04;
+const UNSOLVED_IN_A_ROW = 2;
 
 export function evalHeadroom(
   report: JsonObject,
@@ -188,23 +186,6 @@ export function evalHeadroom(
   const anyValid = (counts: unknown) =>
     Array.isArray(counts) && counts.some((n, at) => at > 0 && isNumber(n) && n > 0);
   return anyValid(valid?.old) || anyValid(valid?.fresh) ? "none" : "too-hard";
-}
-
-function aaObjectiveP75(events: readonly LogEvent[], report: Reported, side: "old" | "fresh"): number | null {
-  const aaPairs = pairsReported(events, report, side);
-  const diffs = aaPairs
-    .flatMap((pair) => {
-      const obj = pair.objective;
-      if (obj === undefined) return [];
-      const oldVals = obj.old.filter(isNumber);
-      const freshVals = obj.fresh.filter(isNumber);
-      if (oldVals.length === 0 || freshVals.length === 0) return [];
-      const meanOld = oldVals.reduce((sum, val) => sum + val, 0) / oldVals.length;
-      const meanFresh = freshVals.reduce((sum, val) => sum + val, 0) / freshVals.length;
-      return [Math.abs(gainOver(obj, meanFresh, meanOld))];
-    })
-    .toSorted((one, other) => one - other);
-  return diffs.length === 0 ? null : (diffs[Math.floor((diffs.length - 1) * 0.75)] ?? null);
 }
 
 export function objectiveCeiling(
@@ -241,7 +222,7 @@ export function supplySaturation(
   if (rooms.length < SATURATION_MIN_TASKS) return null;
   const meanRoom = rooms.reduce((sum, room) => sum + room, 0) / rooms.length;
   if (meanRoom >= SATURATION_ROOM_FLOOR) return null;
-  return { validEvery, scored: pairs.length, meanRoom, aaP75: aaObjectiveP75(events, report, side) };
+  return { validEvery, scored: pairs.length, meanRoom };
 }
 
 export function patienceOf(events: readonly LogEvent[]): number {
@@ -297,7 +278,7 @@ function orderedBy(
 }
 
 const runStart = (readings: readonly TaskReading[]) =>
-  readings.length >= READINGS_IN_A_ROW.unsolved ? readings[0]?.order : undefined;
+  readings.length >= UNSOLVED_IN_A_ROW ? readings[0]?.order : undefined;
 const solveKey = (comparison: string, task: string, harness: string) => `${comparison} ${task} ${harness}`;
 
 function taskRecords(events: readonly LogEvent[]) {
@@ -405,14 +386,13 @@ function addReportReadings(
         referenceCut: isString(refHarness) && cut.has(solveKey(session, task, refHarness)),
         won: side === null || score === 0 ? null : score > 0 === (side === "fresh") ? "reference" : "other",
         by: carriedBy(pointsOf(pair)),
-        room: side !== null && gapAgainst(pair, side, [recordOf(task).best]),
       });
     }
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {
       const record = recordOf(task);
       record.excludedAt = index;
       const own = isString(refHarness) ? (rejectedIn.get(solveKey(session, task, refHarness)) ?? []) : [];
-      if (own.some((solve) => stands.get(solve) !== "earned")) record.doubtedAt = index;
+      if (own.some((solve) => stands.get(solve) !== "solver-fail")) record.doubtedAt = index;
     }
   }
 }
@@ -429,33 +409,22 @@ export function poolOf(events: readonly LogEvent[]) {
           ),
         ),
   );
-  const judged = eventsOf(events, "comparison.started").at(-1)?.event.data.judge !== undefined;
-  const easy = orderedBy(heldRecords, ({ tallied }) => {
-    if (judged) return undefined;
-    const readings = tallied.filter(({ validity, referenceCut }) => validity !== null && !referenceCut);
-    const open = readings.findLastIndex((reading) => reading.validity !== "every" || reading.room);
-    return readings.length - 1 - open >= READINGS_IN_A_ROW.easy ? readings.at(-1)?.order : undefined;
-  });
   const doubted = orderedBy(heldRecords, ({ doubtedAt, heldAt, tallied }) =>
     doubtedAt > heldAt && doubtedAt > (tallied.at(-1)?.index ?? -1) ? doubtedAt : undefined,
   );
   const leftOut = new Set([...awaiting, ...doubted]);
   const prior = new Set(beforePromotion(events).held);
   const scorable = held.filter((task) => !leftOut.has(task));
-  const exhausted = easy.filter((task) => !leftOut.has(task));
-  const retained = new Set([...exhausted, ...scorable.filter((task) => prior.has(task))]);
+  const retained = scorable.filter((task) => prior.has(task));
   const current = held.filter((task) => !prior.has(task));
   const doubtedSet = new Set(doubted);
-  const practiceOut = new Set([...easy, ...leftOut]);
   return {
     scorable,
-    frontier: scorable.filter((task) => !retained.has(task)),
-    practiceFrontier: current.filter((task) => !practiceOut.has(task)),
+    frontier: scorable.filter((task) => !prior.has(task)),
     practicePool: current.filter((task) => !doubtedSet.has(task)),
     awaiting,
     doubted,
-    exhausted,
-    retained: [...retained],
+    retained,
     feasible: new Set(
       records.flatMap(({ version, validAnswer }) => (validAnswer === "none" ? [] : [version])),
     ),
@@ -524,7 +493,7 @@ export function releaseOrder(
   const failed = orderedBy(eligible, (record) => {
     const last = lastReading(record);
     if (last === null || last === "aside" || last.validity === null) return undefined;
-    return last.validity !== "every" || last.room ? last.order : undefined;
+    return last.validity === "every" ? undefined : last.order;
   }).filter((version) => !unansweredSet.has(version));
   const poolSet = new Set(pool);
   const releasedFirst = [...unanswered, ...failed.slice(0, Math.floor(failed.length / 2))].filter((version) =>
@@ -577,7 +546,7 @@ export function releaseOrder(
     unansweredSet.has(version)
       ? ": the reference harness answered it in no solve of two comparisons, and it is"
       : failedSet.has(version)
-        ? ": the reference harness failed it in the last comparison, or a better answer on record left it room, and it is"
+        ? ": the reference harness failed it in the last comparison, and it is"
         : ":",
   ]);
 }

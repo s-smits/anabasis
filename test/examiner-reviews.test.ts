@@ -231,7 +231,7 @@ describe("Examiner review projection (read_reviews)", () => {
     log.add("referee.finding", {
       solve: "s-orphan-reuse",
       task: "t-2",
-      ruling: "earned",
+      ruling: "solver-fail",
       check: "check-unseen-primary",
       reusedFrom: "s-missing-primary",
       reason: "reused earned from unseen primary",
@@ -268,7 +268,7 @@ describe("Examiner review projection (read_reviews)", () => {
       findings: [],
       probeRows: [],
     });
-    log.report("c-1", HARNESS_OLD, HARNESS_FRESH, ["v-t-1", "v-t-2"], { "s-fail-1": "earned" });
+    log.report("c-1", HARNESS_OLD, HARNESS_FRESH, ["v-t-1", "v-t-2"], { "s-fail-1": "solver-fail" });
 
     const all = readReviews(log.file());
     const shown = [
@@ -280,7 +280,7 @@ describe("Examiner review projection (read_reviews)", () => {
       "[pair] c-1 | task=t-1 | mirror |",
       "reason unavailable",
       "[pair] c-1 | task=t-1 | cross | incomplete",
-      "ruling=check-defect | standing=earned | check=check-units | evidence=replayed (+1 reused)",
+      "ruling=check-defect | standing=solver-fail | check=check-units | evidence=replayed (+1 reused)",
       "probe #1: fail->pass moved=[check-units]",
       "[draft] d-1 pass=1 | verdict=defects | probes=1",
       "[draft] d-1 pass=2 | verdict=skipped",
@@ -312,7 +312,7 @@ describe("Examiner review projection (read_reviews)", () => {
     const filtered: readonly [Parameters<typeof readReviews>[1], string][] = [
       [{ source: "pair", outcome: "holistic-oppose" }, "Showing 1-1 of 1"],
       [{ source: "pair", outcome: "disagreed" }, "| mirror |"],
-      [{ source: "finding", outcome: "earned" }, "standing=earned"],
+      [{ source: "finding", outcome: "solver-fail" }, "standing=solver-fail"],
       [
         { source: "finding", outcome: "check-defect" },
         "No review records match (source=finding, outcome=check-defect).",
@@ -375,7 +375,7 @@ describe("Examiner review projection (read_reviews)", () => {
       log.add("referee.finding", {
         solve: variant.solveOld,
         task: "t-1",
-        ruling: "earned",
+        ruling: "solver-fail",
         rule: "R1",
         field: "$.answer",
         reason: "Violates R1.",
@@ -589,7 +589,7 @@ describe("Examiner review projection (read_reviews)", () => {
     const out = readReviews(log.file());
     expect(out.indexOf("[finding] c-1")).toBeLessThan(out.indexOf("[draft] d-1"));
     const told = taskHistory(log.events, [{ taskId: "t-1", family: "fixture" }]);
-    expect(told.stood).toContain("It stopped on check defects.");
+    expect(told.stood).toContain("Comparison stopped on check defects.");
     expect(told.reviews).toBe(
       "Reported reviews in read_reviews (newest first): 1 finding (1 check-defect), 1 draft audit.",
     );

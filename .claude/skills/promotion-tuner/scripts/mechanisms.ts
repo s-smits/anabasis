@@ -5,7 +5,7 @@
  * `pointsOf` reweighted, and only `room` and `gain` read the objective again, by `gainOver`; a
  * judged task keeps production's objective under them.
  */
-import { flipP, GAP_FLOOR, gainOver, pointsOf, rawFlipP, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
+import { flipP, GAP_FLOOR, gainOver, pointsOf, rawFlipP, wholePoints } from "#src/kernel/compare.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { paired, type Solve, type Task } from "./record.ts";
 
@@ -46,8 +46,8 @@ type Knobs = Readonly<
 >;
 
 export const TODAY: Knobs = {
-  validity: WEIGHTS.validity,
-  objective: WEIGHTS.objective,
+  validity: 1,
+  objective: 1,
   bill: 0,
   turns: 0,
   seconds: 0,
@@ -144,8 +144,8 @@ function partsOf(task: Task, knobs: Knobs) {
   const curved = task.judged === undefined && (knobs.room !== GAP_FLOOR || knobs.gain !== "share");
   return {
     answers:
-      validity * (knobs.validity / WEIGHTS.validity) +
-      (curved ? sums.objective * knobs.objective * each : objective * (knobs.objective / WEIGHTS.objective)),
+      validity * knobs.validity +
+      (curved ? sums.objective * knobs.objective * each : objective * knobs.objective),
     resources: (sums.bill * knobs.bill + sums.turns * knobs.turns + sums.seconds * knobs.seconds) * each,
   };
 }

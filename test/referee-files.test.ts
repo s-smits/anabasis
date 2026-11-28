@@ -253,15 +253,15 @@ describe("a probe of a file", () => {
         whole(DATA, stub),
         call(PROBE, { changes: [{ path: DATA, find: BAD, replace: "row-new" }] }),
         call(PROBE, { changes: [{ path: "$.span", value: "9" }] }),
-        ruling({ ruling: "earned", rule: "R1", field: DATA, reason: "A bad row.", probes: [1] }),
+        ruling({ ruling: "solver-fail", rule: "R1", field: DATA, reason: "A bad row.", probes: [1] }),
       ],
     );
     const was = { lines: 401, bytes: Buffer.byteLength(CSV) };
     expect(s.results[0]).toContain(
-      `${DATA} held 401 lines in ${String(was.bytes)} bytes in the answer and holds 2 lines in 20 bytes on the changed side`,
+      `${DATA} changed (401 lines, ${String(was.bytes)} bytes -> 2 lines, 20 bytes)`,
     );
     expect(s.results[0]).not.toContain("1,row-good");
-    expect(s.results[2]).not.toContain("in the answer and holds");
+    expect(s.results[2]).not.toContain("changed (");
     expect(s.rows).toEqual([
       objectWith({ id: 1, moved: ["rows"], texts: [{ path: DATA, was, now: { lines: 2, bytes: 20 } }] }),
       objectWith({
@@ -272,13 +272,13 @@ describe("a probe of a file", () => {
       objectWith({ id: 3, moved: ["span"], texts: [] }),
     ]);
     // No size refuses the ruling: the host's test stays necessary, and the row is what a reader checks.
-    expect(s.finding).toMatchObject({ ruling: "earned", field: DATA, probes: [1] });
+    expect(s.finding).toMatchObject({ ruling: "solver-fail", field: DATA, probes: [1] });
     expect(s.refused).toEqual([]);
   });
 
   it("a probe adds a file the answer lacks, and an earned ruling stands on that file once the probe moved its check", async () => {
     const earned = (field: string, probes: number[]) =>
-      ruling({ ruling: "earned", rule: "R2", field, reason: "No summary.", probes });
+      ruling({ ruling: "solver-fail", rule: "R2", field, reason: "No summary.", probes });
     const s = await reading(
       [{ path: "data.csv", text: "id,label\n1,row-good\n" }],
       ["summary"],
@@ -292,16 +292,16 @@ describe("a probe of a file", () => {
         earned(SUMMARY, [1]),
       ],
     );
-    expect(s.finding).toMatchObject({ ruling: "earned", rule: "R2", field: SUMMARY, probes: [1] });
+    expect(s.finding).toMatchObject({ ruling: "solver-fail", rule: "R2", field: SUMMARY, probes: [1] });
     expect(s.refused).toEqual([
       containing("once a probe has added it"),
       containing("once a probe has added it"),
     ]);
     expect(s.results.slice(1, 5)).toEqual([
-      containing("adds a text file, by `value` alone"),
-      containing("file:../summary.md is no path a solve can submit a file under"),
-      containing("is neither a text file the solve submitted nor a member of its archive"),
-      containing(`${SUMMARY} is a file the answer did not hold: the changed side adds it, 1 line in 9 bytes`),
+      containing("add a new text file with `value` alone"),
+      containing("file:../summary.md is not a valid deliverable file path"),
+      containing("is neither a submitted text file nor an archive member"),
+      containing(`${SUMMARY} added (1 line, 9 bytes)`),
     ]);
     expect(s.rows).toEqual([
       objectWith({
@@ -327,7 +327,9 @@ describe("a probe of a file", () => {
         undefined as never,
         BACKGROUND_CONTEXT,
       );
-    await expect(invoke({ path: "file:out", value: '"x"' })).rejects.toThrow("holds none adds a text file");
+    await expect(invoke({ path: "file:out", value: '"x"' })).rejects.toThrow(
+      "add a new text file with `value` alone",
+    );
     expect(rows).toHaveLength(0);
     // A check that reads `file:$` reads every file, and a file named `$` is still one file.
     await invoke({ path: "file:out/data.csv", find: "row-bad", replace: "row-newer" });
@@ -362,7 +364,13 @@ describe("publicInput.files bounding in Referee", () => {
         call("read_task_file", {}),
         call("read_task_file", { path: "big/input.csv", from: bigCsv.length - 40 }),
         call(PROBE, { changes: [{ path: "$.span", value: "9" }] }),
-        ruling({ ruling: "earned", rule: "R3", field: "$.span", reason: "Span exceeds 10 m.", probes: [1] }),
+        ruling({
+          ruling: "solver-fail",
+          rule: "R3",
+          field: "$.span",
+          reason: "Span exceeds 10 m.",
+          probes: [1],
+        }),
       ],
       taskWithFiles,
       (asked) => {
@@ -373,7 +381,7 @@ describe("publicInput.files bounding in Referee", () => {
         if (isString(big?.text)) verifiedBigLen = big.text.length;
       },
     );
-    expect(s.finding).toMatchObject({ ruling: "earned", rule: "R3", field: "$.span", probes: [1] });
+    expect(s.finding).toMatchObject({ ruling: "solver-fail", rule: "R3", field: "$.span", probes: [1] });
     expect(s.opening).toContain(memo.trim());
     expect(s.opening).not.toContain(tailMarker);
     expect(s.opening).toContain("omittedBytes");
@@ -531,7 +539,7 @@ describe("publicInput.files bounding in Referee", () => {
     });
     append(log, "comparison.reported", {
       session: "g-settled",
-      settled: { labels: { "s-settled": "earned" } },
+      settled: { labels: { "s-settled": "solver-fail" } },
     });
     recordSolve("s-after-settled", "g-settled", ["span"]);
 
@@ -546,7 +554,7 @@ describe("publicInput.files bounding in Referee", () => {
     append(log, "referee.finding", {
       solve: "s-superseded",
       task: task.taskId,
-      ruling: "earned",
+      ruling: "solver-fail",
       rule: "R3",
       field: "$.span",
       probes: [1],
@@ -612,11 +620,11 @@ describe("publicInput.files bounding in Referee", () => {
       events,
       new Map([
         ["s-1", "check-defect"],
-        ["s-2", "earned"],
+        ["s-2", "solver-fail"],
       ]),
     );
     expect(agree.table["check-defect"]["check-defect"]).toBe(1);
-    expect(agree.table.earned["check-defect"]).toBe(0);
+    expect(agree.table["solver-fail"]["check-defect"]).toBe(0);
     expect(agree.unruled).toEqual(["s-2"]);
   });
 

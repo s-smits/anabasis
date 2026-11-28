@@ -119,7 +119,7 @@ it("credits a won task to the measure that carried it, the bill where a tree bef
   const tree: Tree = {
     ...own,
     weights: { ...own.weights, bill: 0.1 },
-    points: (pair) => ({ ...own.points(pair), bill: pair.task === "rescued" ? 100 : 0 }),
+    points: (pair) => ({ ...own.points(pair), bill: pair.task === "rescued" ? 350 : 0 }),
   };
   // Valid in four solves of four against three, four times the reference's measure on a lower-is-better
   // objective, and billed half.
@@ -165,7 +165,7 @@ it("uses a candidate tree's own stepOf without requiring a isSignificant export"
       writeFileSync(
         join(tree, "src", "kernel", "compare.ts"),
         `import * as real from "${join(ROOT, "src", "kernel", "compare.ts")}";\n` +
-          "export const { WEIGHTS, flipP, pairsOf, pointsOf } = real;\n" +
+          "export const { flipP, pairsOf, pointsOf } = real;\n" +
           `export const stepOf = ${rule};\n`,
       );
       execTextSync("git", ["-C", tree, "init", "-q"]);
@@ -205,7 +205,7 @@ it("loads a pre-rename worktree exporting readsStep without isSignificant", asyn
     writeFileSync(
       join(tree, "src", "kernel", "compare.ts"),
       `import * as real from "${join(ROOT, "src", "kernel", "compare.ts")}";\n` +
-        "export const { WEIGHTS, flipP, pairsOf, pointsOf } = real;\n" +
+        "export const { flipP, pairsOf, pointsOf } = real;\n" +
         "export const readsStep = real.isSignificant;\n",
     );
     execTextSync("git", ["-C", tree, "init", "-q"]);

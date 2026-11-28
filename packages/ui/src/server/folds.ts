@@ -39,17 +39,17 @@ export const ranIn = once(({ events }) => ranUnder(events));
 export const practiceIn = once(({ events }) => new Set(practiceRan(events).map(({ id }) => id)));
 export const verdictsIn = once(({ events }) => verdictsOf(events));
 export const conditionsIn = once(({ events }) => conditionsOf(events));
-/** The one place each held-out task has (`poolOf`), from which the tasks awaiting a label and the
- *  exhausted ones are read, as the supply counts them (`supplyOf`). */
+/** The one place each held-out task has (`poolOf`), from which the tasks awaiting a label
+ *  are read, as the supply counts them (`supplyOf`). */
 const poolIn = once(({ events }) => poolOf(events));
 export const awaitingIn = once((log) => new Set(poolIn(log).awaiting));
 export const doubtedIn = once((log) => new Set(poolIn(log).doubted));
 export const drawsIn = once((log): ReadonlyMap<string, TaskDraw> => {
-  const { frontier, retained, exhausted } = poolIn(log);
-  const [awaiting, doubted, spent] = [awaitingIn(log), doubtedIn(log), new Set(exhausted)];
+  const { frontier, retained } = poolIn(log);
+  const [awaiting, doubted] = [awaitingIn(log), doubtedIn(log)];
   return new Map<string, TaskDraw>([
     ...frontier.map((task) => [task, { place: "frontier" }] as const),
-    ...retained.map((task) => [task, { place: "retained", exhausted: spent.has(task) }] as const),
+    ...retained.map((task) => [task, { place: "retained" }] as const),
     ...[...awaiting, ...doubted].map(
       (task) =>
         [task, { place: "out", awaitingLabel: awaiting.has(task), doubted: doubted.has(task) }] as const,

@@ -930,7 +930,7 @@ describe("a comparison's packet for a person", () => {
     const named = (prefix: string, count: number) =>
       Array.from({ length: count }, (_, index) => `${prefix}-${String(index)}`);
     const aside = named("aside", 12);
-    const [earned, passed] = [named("earned", 9), named("pass", 9)];
+    const [earned, passed] = [named("solver-fail", 9), named("pass", 9)];
     const packet = packetOf({ aside, others: earned }, passed, "g-1");
     expect(packet.rejections.slice(0, 12)).toEqual(aside);
     expect(packet.rejections.slice(12)).toHaveLength(3);

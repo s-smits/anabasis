@@ -732,7 +732,11 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       {
         at: AT,
         kind: "referee.finding",
-        data: { solve: "s2", ruling: "earned", probeRows: [{ id: 1, changes: [{ path: "file:out.csv" }] }] },
+        data: {
+          solve: "s2",
+          ruling: "solver-fail",
+          probeRows: [{ id: 1, changes: [{ path: "file:out.csv" }] }],
+        },
       },
       { at: AT, kind: "harness.promoted", data: { harness: digest, from: "hp" } },
       {

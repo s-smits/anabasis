@@ -53,9 +53,9 @@ Examiner sees reference harness outcomes and winning harnesses; five items cross
 Code owns protocol, walls, limits, verification, pairing, swaps, weights, statistics, cap and log; models own content and judgement (harness, solutions, tasks, lane when judged, rulings, diagnosis, hypothesis).
 
 1. **Supply facts, frame positively, omit numeric targets.** Describe good work, not "do not X" bans or targets (Examiner never sees targets/pass rates); treat each prompt edit as an experiment naming its target failure and the read that would revert it; prune lines without effect.
-2. **Design for frontier models; trust judgement inside clean walls.** Give seats clean primitives and freedom (including lane choice when judged), not count floors, brittle heuristics or handholding; forbid only naming a task, copying its text or embedding its answer.
-3. **Code owns structure, walls and statistics; models own domain judgement.** Code validates schemas, enforces `FIRST_PARTY_VENDORS` (unknown vendors refuse) and owns limits/identity. Draft audits reuse a seat and block on probes. Any first-party reviewer (same-family permitted: both arms share one solver) casts swapped pairwise votes (`referee.pair`, `judgePair` + equal-weight `holistic`) on blinded valid pairs via `$0` extracts, reading hidden values on criterion votes only (`compare.ts`).
-4. **Permit full workspace when in doubt** (hiding only hidden values, credentials and other seats' private files: `SolveDirs`, `command.ts`).
+2. **Design for frontier models; trust judgement inside clean walls.** Give seats clean primitives and freedom in their own homes (editing files freely with `bash`/`python`/`jq`/`edit`, choosing lanes, retiring easy tasks), not count floors, heuristics, or wrapper tools; host snapshots/probes on finish or comparison. Forbid only naming a task, copying its text or embedding its answer.
+3. **Code owns structure, walls and statistics; models own domain judgement.** Code validates schemas, enforces `FIRST_PARTY_VENDORS` and owns limits/identity. Draft audits reuse a seat and block on probes. Any first-party reviewer casts two swapped AB/BA pairwise calls (`referee.pair`, `judgePair` scoring all criteria + equal-weight `holistic` with hidden values) on blinded valid pairs via `$0` extracts (`compare.ts`).
+4. **Permit full workspace when in doubt** (hiding only hidden values, credentials and other seats' files: `SolveDirs`, `command.ts`). Seats edit their own homes freely.
 5. **Keep designs as simple as honesty allows.** Prefer first-order mechanisms and native primitives over custom parsers or marginal machinery; every extra line carries cost.
 
 ### Reward hacking vs overfitting
@@ -64,7 +64,7 @@ Close gaming channels structurally in code, never with bans:
 - **Practice memorisation** (task IDs, rare codes, verbatim prompts): overfitting blocked by held-out comparisons; `check_harness` (`files.ts`) and WRI `names.ts` flag leaks.
 - **Oracle / hidden-value inversion**: closed by coarse bands (`bandOf`, `GAP_FLOOR`), keeping raw digits in logs.
 - **Measurement softening & fishing** (dropped checks, `vacuous-pass` like `Number("") === 0`, hedgable metrics, noisy re-compares): prevented by mechanical probes (`referee.draft`, `doNothing`, hidden-swap), host-gated fresh comparisons (`decide`, `written-after`) and WRI `gaming.ts`.
-- **Rubric & judge gaming** (bloat, cosmetic fluff, checklist farming): reduced by blinding (both arms share one solver), one criterion per vote, swapped pairwise mean (position) and equal-weight `holistic`; length is only prompted and capped (`fairCap`), unmeasured.
+- **Rubric & judge gaming** (bloat, cosmetic fluff, checklist farming): reduced by blinding (both arms share one solver), swapped AB/BA pairwise mean (position) and equal-weight `holistic`; length is only prompted and capped (`fairCap`), unmeasured.
 
 ## 3. The agents
 

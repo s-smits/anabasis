@@ -389,7 +389,7 @@ describe("report folds over ladder reports, checkpoints, references and release 
           solve,
           ending: outcome === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
         }),
-        ...(outcome === "fail" ? [event("referee.finding", { solve, ruling: "earned" })] : []),
+        ...(outcome === "fail" ? [event("referee.finding", { solve, ruling: "solver-fail" })] : []),
       ];
     };
     const report = (session: string, versions: string[]) =>

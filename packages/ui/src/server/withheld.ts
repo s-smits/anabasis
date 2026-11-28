@@ -58,6 +58,6 @@ export const unsettledCount = (log: Log): number => unsettledIn(log).size;
 export function rulingsOf(log: Log, step: Extract<Handover, { readonly step: "comparison" }>): Rulings {
   const { rulings: kinds } = step;
   return !reportedIdsIn(log).has(step.id) || withheldComparisonsIn(log).has(step.id)
-    ? { withheld: true, ruled: kinds.earned + kinds["check-defect"] + kinds.unclear }
+    ? { withheld: true, ruled: kinds["solver-fail"] + kinds["check-defect"] + kinds.unclear }
     : { withheld: false, kinds };
 }

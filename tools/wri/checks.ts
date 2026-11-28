@@ -28,7 +28,7 @@ interface OnDisk {
 }
 
 const NOT_RECORDED = "not recorded";
-const STANDS = ["earned", "check-defect", "unclear", "unread"] as const;
+const STANDS = ["solver-fail", "check-defect", "unclear", "unread"] as const;
 const short = (digest: string | null | undefined) => (isString(digest) ? digest.slice(0, 8) : NOT_RECORDED);
 
 /** The check program a campaign judges by: a drafted exam where it was staged, or a pack's beside the log. */

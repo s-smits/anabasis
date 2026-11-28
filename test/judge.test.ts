@@ -86,7 +86,12 @@ async function judged(said: Said, first = "s-strong", second = "s-weak") {
 }
 
 const answerA = (shown: string) => shown.slice(shown.indexOf("Answer A:"), shown.indexOf("Answer B:"));
-const onSubstance: Said = (shown) => ({ better: answerA(shown).includes(STRONG) ? "A" : "B", reason: "r" });
+const allSame = (better: "A" | "B" | "neither", reason = "r") => ({
+  cites: { better, reason },
+  plain: { better, reason },
+  holistic: { better, reason },
+});
+const onSubstance: Said = (shown) => allSame(answerA(shown).includes(STRONG) ? "A" : "B");
 
 describe("the pairwise judge", () => {
   it("scores a substantive preference in both orders alike, and a positional one as no preference", async () => {
@@ -97,15 +102,16 @@ describe("the pairwise judge", () => {
       const { pair } = await judged(onSubstance, first, second);
       expect(pair).toMatchObject({ solve: first, old: second, judge: sign, holistic: sign, disagreed: [] });
     }
-    const { pair } = await judged(() => ({ better: "A", reason: "r".repeat(2000) }));
+    const { pair } = await judged(() => allSame("A", "r".repeat(2000)));
     expect(pair).toMatchObject({ judge: 0, holistic: 0, disagreed: ["cites", "plain", "holistic"] });
   });
 
   it("weights criteria as the contract does, counts a tie in both orders as agreement and a half-swap as disagreement", async () => {
-    const split: Said = (shown) =>
-      shown.includes("cites the figures the request")
-        ? { better: answerA(shown).includes(STRONG) ? "A" : "B", reason: "r" }
-        : { better: "neither", reason: "r" };
+    const split: Said = (shown) => ({
+      cites: { better: answerA(shown).includes(STRONG) ? "A" : "B", reason: "r" },
+      plain: { better: "neither", reason: "r" },
+      holistic: { better: "neither", reason: "r" },
+    });
     const { pair } = await judged(split);
     expect(pair).toMatchObject({
       judge: 3 / 4,
@@ -113,10 +119,7 @@ describe("the pairwise judge", () => {
       criteria: { cites: 1, plain: 0, holistic: 0 },
       disagreed: [],
     });
-    const half: Said = (shown) => ({
-      better: answerA(shown).includes(STRONG) ? "A" : "neither",
-      reason: "r",
-    });
+    const half: Said = (shown) => allSame(answerA(shown).includes(STRONG) ? "A" : "neither");
     expect((await judged(half)).pair).toMatchObject({
       judge: 0.5,
       disagreed: ["cites", "plain", "holistic"],
@@ -124,8 +127,9 @@ describe("the pairwise judge", () => {
   });
 
   it("bills a pair the judge left unfinished and records no vote for it", async () => {
+    let calls = 0;
     const at = seated((shown) => {
-      if (shown.includes("Overall, which answer")) throw new Error("the judge's login is at its limit");
+      if (calls++ === 1) throw new Error("the judge's login is at its limit");
       return onSubstance(shown);
     });
     const given = { log: at.log, comparison: "g-1", task: TASK, contract: CONTRACT };
@@ -141,7 +145,7 @@ describe("the pairwise judge", () => {
     const reset = Math.floor(Date.now() / 1000) - 58;
     let limited = 0;
     const at = seated((shown) => {
-      if (shown.includes("Overall, which answer") && limited++ < 2) {
+      if (limited++ < 2) {
         throw new Error(`limit reached|${String(reset)}`);
       }
       return onSubstance(shown);
@@ -157,7 +161,6 @@ describe("the pairwise judge", () => {
     const reset = Math.floor(Date.now() / 1000) - 59;
     const weighing = "Let me weigh both answers first.";
     const at = seated((shown) => {
-      if (!shown.includes("Overall, which answer")) return onSubstance(shown);
       if (!shown.includes(weighing)) return weighing;
       throw new Error(`limit reached|${String(reset)}`);
     });
@@ -168,16 +171,14 @@ describe("the pairwise judge", () => {
     expect(read(at.log).filter(({ kind }) => kind === "campaign.waited")).toEqual([]);
   });
 
-  it("shows hidden values to criterion votes alone, fences a pair once, and asks its criterion last", async () => {
+  it("runs two swapped sessions covering all criteria and holistic with hidden values, fences once, and lists criteria last", async () => {
     const { sent, pair, log } = await judged(onSubstance);
-    expect(sent).toHaveLength(6);
-    const holistic = sent.filter((shown) => shown.includes("Overall, which answer"));
-    expect(holistic).toHaveLength(2);
-    expect(holistic.filter((shown) => shown.includes(CANARY))).toEqual([]);
-    expect(sent.filter((shown) => shown.includes(CANARY))).toHaveLength(4);
+    expect(sent).toHaveLength(2);
+    expect(sent.filter((shown) => shown.includes(CANARY))).toHaveLength(2);
+    expect(sent.filter((shown) => shown.includes("Overall, which answer"))).toHaveLength(2);
     expect(new Set(sent.flatMap((shown) => shown.match(/=== [0-9a-f-]{36} ===/gu) ?? []))).toHaveLength(1);
     for (const shown of sent) {
-      expect(shown.indexOf("The criterion:")).toBeGreaterThan(shown.indexOf("Answer B:"));
+      expect(shown.indexOf("Criteria to judge:")).toBeGreaterThan(shown.indexOf("Answer B:"));
     }
     expect(pair?.billed).toBeGreaterThan(0);
     expect(unfinished(read(log))).toEqual([]);
@@ -223,8 +224,8 @@ describe("the pairwise judge", () => {
     await judgePair(at.reader, { ...given, first: "s-multi-a", second: "s-multi-b" });
     const events = read(at.log);
     const pair = events.find(({ kind }) => kind === "referee.pair")?.data;
-    expect(Array.isArray(pair?.readers) ? pair.readers.length : 0).toBe(6);
-    expect(new Set(Array.isArray(pair?.readers) ? pair.readers : []).size).toBe(6);
+    expect(Array.isArray(pair?.readers) ? pair.readers.length : 0).toBe(2);
+    expect(new Set(Array.isArray(pair?.readers) ? pair.readers : []).size).toBe(2);
     expect(unfinished(events)).toEqual([]);
     const pairPrompts = at.sent;
     expect(pairPrompts.every((shown) => shown.includes("Deliver an executive reconciliation memo."))).toBe(
@@ -275,9 +276,13 @@ describe("the pairwise judge", () => {
         );
       }
       sawImage.push(hasImageBlock);
-      return fauxAssistantMessage(fauxToolCall("record_vote", { better: answer, reason: "visual check" }), {
-        stopReason: "toolUse",
-      });
+      return fauxAssistantMessage(
+        fauxToolCall("record_vote", {
+          vis: { better: answer, reason: "visual check" },
+          holistic: { better: answer, reason: "visual check" },
+        }),
+        { stopReason: "toolUse" },
+      );
     };
     faux.setResponses(Array.from({ length: 18 }, () => reply));
     const models = createModels();
@@ -330,7 +335,7 @@ describe("the pairwise judge", () => {
       .map(({ data }) => (isString(data.text) ? data.text : ""));
     expect(viewErrors.some((msg) => msg.includes("has no viewable image no-such.png"))).toBe(true);
     expect(viewErrors.some((msg) => msg.includes("has no viewable image extra-fifth.png"))).toBe(true);
-    expect(sawImage).toEqual([true, true, true, true]);
+    expect(sawImage).toEqual([true, true]);
 
     const singleLog = join(scratch, `judged-vision-one-${String(++logs)}.jsonl`);
     const singleFile = keepAnswerFiles(singleLog, [{ path: "solo.png", base64: png1x1 }]);
@@ -358,9 +363,13 @@ describe("the pairwise judge", () => {
           });
         }
         singleSaw.push(shown.includes('"type":"image"'));
-        return fauxAssistantMessage(fauxToolCall("record_vote", { better: "neither", reason: "one img" }), {
-          stopReason: "toolUse",
-        });
+        return fauxAssistantMessage(
+          fauxToolCall("record_vote", {
+            vis: { better: "neither", reason: "one img" },
+            holistic: { better: "neither", reason: "one img" },
+          }),
+          { stopReason: "toolUse" },
+        );
       }),
     );
     await judgePair(
@@ -374,6 +383,6 @@ describe("the pairwise judge", () => {
         second: "s-none",
       },
     );
-    expect(singleSaw).toEqual([true, true, true, true]);
+    expect(singleSaw).toEqual([true, true]);
   });
 });

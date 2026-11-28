@@ -132,27 +132,27 @@ describe("the tasks a writing session hears", () => {
   it("groups each task under the reference's outcome, with the turns its valid answers took, who won and on which measure, and whether a valid answer is on record", () => {
     const told = taskHistory(log.events, tasks);
     const order = [
-      "no solve",
-      "some solves",
-      "every solve",
+      "Failed every",
+      "Passed some",
+      "Passed every",
       "Not yet compared",
-      "Set aside",
-      "at fault",
+      "Awaiting human review",
+      "Quarantined",
       "practice",
     ];
     expect(told.groups.map(({ heading }) => order.findIndex((word) => heading.includes(word)))).toEqual([
       0, 1, 2, 3, 4, 5, 6,
     ]);
-    const none = block(told, "no solve");
+    const none = block(told, "Failed every");
     expect(Object.keys(none)).toEqual(["none", "unsolved"]);
     for (const [line, facts] of [
       [none.none, [VALID, "won there by the harness it was compared with on validity"]],
       [none.unsolved, [NONE, "tied there"]],
-      [block(told, "some solves").some, ["in 7 turns", "won there by the harness it was compared with"]],
-      [block(told, "every solve").every, ["in 3, 3 turns", "tied there"]],
+      [block(told, "Passed some").some, ["in 7 turns", "won there by the harness it was compared with"]],
+      [block(told, "Passed every").every, ["in 3, 3 turns", "tied there"]],
       [block(told, "Not yet compared").new, [NONE]],
-      [block(told, "Set aside").aside, [NONE]],
-      [block(told, "at fault").faulted, []],
+      [block(told, "Awaiting human review").aside, [NONE]],
+      [block(told, "Quarantined").faulted, []],
     ] as const) {
       expect(line).toBeDefined();
       for (const fact of facts) expect(line).toContain(fact);
@@ -220,10 +220,10 @@ describe("the last comparison the reference stood in", () => {
     for (const fact of [
       "c-1",
       "scored 3 tasks",
-      "the reference harness won 0, the harness it was compared with won 1, and 2 tied",
-      "valid in every solve on 1 of them, in some on 1 and in none on 1",
-      "1 more was set aside",
-      "differed on 2 of the 3",
+      "reference won 0, candidate won 1, 2 tied",
+      "Reference passed every attempt on 1, some on 1, none on 1",
+      "1 excluded pending review",
+      "Reference A/A control differed on 2 of 3 tasks",
     ]) {
       expect(told.stood).toContain(fact);
     }
@@ -246,10 +246,8 @@ describe("the last comparison the reference stood in", () => {
     });
     log.add("harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "c-1" }] });
     const told = taskHistory(log.events, ["a", "b", "c"].map(fixture));
-    expect(told.stood).toContain(
-      "the reference harness won 2, the harness it was compared with won 1, and 0 tied",
-    );
-    expect(told.stood).toContain("valid in every solve on 2 of them, in some on 0 and in none on 1");
+    expect(told.stood).toContain("reference won 2, candidate won 1, 0 tied");
+    expect(told.stood).toContain("Reference passed every attempt on 2, some on 0, none on 1");
     expect(told.stood).not.toContain("differed");
   });
 });
@@ -264,9 +262,9 @@ describe("the reference's measures on a task", () => {
     log.solved("c-1", "spread", "h2", [0.125, 0.375]);
     log.reported("c-1", ["h1", "h2"], ["capped", "spread"]);
     const told = taskHistory(log.events, ["capped", "spread"].map(fixture));
-    expect(block(told, "every solve").capped).toContain("in 6, 6 turns; measured 1, 1");
-    expect(block(told, "some solves").spread).toContain("in 4 turns; measured 0.875");
-    expect(block(told, "every solve").capped).not.toContain("author");
+    expect(block(told, "Passed every").capped).toContain("in 6, 6 turns; measured 1, 1");
+    expect(block(told, "Passed some").spread).toContain("in 4 turns; measured 0.875");
+    expect(block(told, "Passed every").capped).not.toContain("author");
     for (const unsaid of ["0.25", "0.5", "0.125", "0.375", "harder"]) {
       expect(JSON.stringify(told)).not.toContain(unsaid);
     }
@@ -276,23 +274,23 @@ describe("the reference's measures on a task", () => {
 describe("a check ruled at fault on a task", () => {
   it("is named on the task's line, open or in practice, and an earned, unclear or overruled one names none", () => {
     const log = logged();
-    log.hold(["open", "practice", "earned"]);
+    log.hold(["open", "practice", "solver-fail"]);
     log.add(TASK_STATE, { version: "v-practice", state: "released" });
     const ruled = (task: string, ruling: string, check: string | null) =>
       log.add("referee.finding", { solve: `s-${task}-${ruling}`, task, ruling, check, reason: SOLVER });
     ruled("open", "check-defect", "check-manifest");
     ruled("open", "check-defect", "check-manifest");
     ruled("practice", "check-defect", "check-unit");
-    ruled("earned", "earned", null);
-    ruled("earned", "unclear", null);
-    const later = { solve: "s-later", task: "earned", reason: SOLVER };
+    ruled("solver-fail", "solver-fail", null);
+    ruled("solver-fail", "unclear", null);
+    const later = { solve: "s-later", task: "solver-fail", reason: SOLVER };
     log.add("referee.finding", { ...later, ruling: "check-defect", check: "check-later" });
-    log.add("referee.finding", { ...later, ruling: "earned", check: null });
-    const told = taskHistory(log.events, ["open", "practice", "earned"].map(fixture));
+    log.add("referee.finding", { ...later, ruling: "solver-fail", check: null });
+    const told = taskHistory(log.events, ["open", "practice", "solver-fail"].map(fixture));
     const fault = "ruled at fault on an answer to it: ";
     expect(block(told, "Not yet compared").open).toEndWith(`; ${fault}check-manifest`);
     expect(block(told, "practice").practice).toBe(`practice (fixture); ${fault}check-unit`);
-    expect(block(told, "Not yet compared").earned).not.toContain(fault);
+    expect(block(told, "Not yet compared")["solver-fail"]).not.toContain(fault);
     expect(JSON.stringify(told)).not.toContain(SOLVER);
   });
 
@@ -316,7 +314,7 @@ describe("a check ruled at fault on a task", () => {
     log.reported("g-1", ["h1", "h2"], []);
     log.add("comparison.reported", {
       ...log.events.findLast(({ kind }) => kind === "comparison.reported")?.data,
-      settled: { labels: { "s-cleared": "earned", "s-blamed": "check-defect" } },
+      settled: { labels: { "s-cleared": "solver-fail", "s-blamed": "check-defect" } },
     });
     expect(named()).toEqual([false, true, true]);
   });
@@ -447,12 +445,12 @@ describe("a wake", () => {
     const woken = taskHistory(log.events, tasks, since).stood ?? "";
     const told = woken.split("\n\n");
     expect(told.map((line) => line.split(",")[0])).toEqual(["Comparison g-3", "Comparison g-5"]);
-    expect(told[0]).toContain("the reference harness won 0, the harness it was compared with won 1");
-    expect(told[1]).toContain("the reference harness won 1, the harness it was compared with won 0");
+    expect(told[0]).toContain("reference won 0, candidate won 1");
+    expect(told[1]).toContain("reference won 1, candidate won 0");
     expect(woken).not.toContain("g-4");
     const opening = taskHistory(log.events, tasks).stood ?? "";
     expect(opening).toStartWith(
-      "The last comparison the reference harness stood in, g-5, scored 0 tasks: the ",
+      "The last comparison the reference harness stood in, g-5, scored 0 tasks: reference ",
     );
     expect(opening).not.toContain("g-3");
   });
@@ -479,7 +477,7 @@ describe("a wake", () => {
     expect(lines).toEqual(taskHistory(log.events, [fixture("run")]).groups.flatMap((group) => group.lines));
     expect(lines[0]).toEndWith("; ruled at fault on an answer to it: check-unit");
     const quiet = taskHistory(log.events, tasks, log.events.length);
-    expect(quiet).toEqual({
+    expect(quiet).toMatchObject({
       stood: null,
       revisionCue: null,
       reviews: null,
@@ -499,7 +497,7 @@ describe("a resumed comparison at a wake", () => {
     log.reported("b-1", ["h1", "h2"], ["run"]);
     const since = log.events.length;
     log.reported("b-1", ["h1", "h2"], ["run"]);
-    expect(taskHistory(log.events, [fixture("run")], since)).toEqual({
+    expect(taskHistory(log.events, [fixture("run")], since)).toMatchObject({
       stood: null,
       revisionCue: null,
       reviews: null,
@@ -522,7 +520,7 @@ describe("the largest family of a comparison the reference stood in", () => {
     log.reported("c-1", ["h1", "h2"], ["a", "b", "c", "d"]);
     const told = taskHistory(log.events, []).stood;
     expect(told).toContain("scored 4 tasks");
-    expect(told).toContain("The largest family among them held 3.");
+    expect(told).toContain("Largest family: 3 tasks.");
     // The exam holds four of that family and then five: a count over the exam would say so.
     log.hold(["later"], "wide");
     expect(taskHistory(log.events, []).stood).toBe(told);
@@ -546,7 +544,7 @@ describe("the author's answer to a task", () => {
     log.solved("c-1", "open", "h2", [false, false]);
     log.reported("c-1", ["h1", "h2"], ["closed", "open"]);
     const told = taskHistory(log.events, ["closed", "open"].map(fixture));
-    expect(block(told, "every solve").closed).toContain(
+    expect(block(told, "Passed every").closed).toContain(
       "measured 0.94, 0.94; the author's answer measured 0.95",
     );
     // A task the reference answered in no solve has no measure of its own to set the author's beside.
@@ -554,8 +552,8 @@ describe("the author's answer to a task", () => {
   });
 });
 
-describe("a task the reference has closed", () => {
-  it("stands apart from the open ones, its turns told against the solve's budget", () => {
+describe("a task the reference passed every attempt on", () => {
+  it("reports its turns against the solve's budget under Passed every attempt", () => {
     const log = logged();
     log.add("campaign.setting", { modelTurns: 20, minutes: 30, solves: 2 });
     log.hold(["shut", "open"]);
@@ -567,9 +565,9 @@ describe("a task the reference has closed", () => {
       log.reported(comparison, ["h1", "h2"], ["shut", "open"]);
     }
     const told = taskHistory(log.events, ["shut", "open"].map(fixture));
-    expect(block(told, "Closed").shut).toContain("in 6, 7 of 20 turns");
-    expect(block(told, "Closed").open).toBeUndefined();
-    expect(block(told, "some solves").open).toBeDefined();
+    expect(block(told, "Passed every").shut).toContain("in 6, 7 of 20 turns");
+    expect(block(told, "Passed every").open).toBeUndefined();
+    expect(block(told, "Passed some").open).toBeDefined();
   });
 
   it("reports mean per-item rubric scores with best author baselines and surfaces all faulty rubric modes", () => {
@@ -621,11 +619,11 @@ describe("a task the reference has closed", () => {
     log.add(TASK_STATE, { version: "v-broken", state: "disputed" });
     log.reported("c-r", ["h1", "h2"], ["graded", "missed"]);
     const told = taskHistory(log.events, ["graded", "missed", "broken"].map(fixture));
-    expect(block(told, "every solve").graded).toContain(
+    expect(block(told, "Passed every").graded).toContain(
       "rubric accuracy=0.9 (author 1), calibration=0.4 (author 0.8)",
     );
-    expect(block(told, "no solve").missed).not.toContain("rubric");
-    expect(block(told, "at fault").broken).toContain(
+    expect(block(told, "Failed every").missed).not.toContain("rubric");
+    expect(block(told, "Quarantined").broken).toContain(
       "ruled at fault on an answer to it: objective (calibration), objective (accuracy)",
     );
     expect(told.stood).toContain("Reference item means: accuracy=0.9, calibration=0.4.");

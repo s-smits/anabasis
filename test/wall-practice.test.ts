@@ -68,7 +68,7 @@ function solved(
         ...(passed
           ? [event("verdict", { solve, kind: "pass", answer: {}, objective: measures[at] ?? 1 })]
           : []),
-        ...(letter === "F" ? [event("referee.finding", { solve, ruling: "earned" })] : []),
+        ...(letter === "F" ? [event("referee.finding", { solve, ruling: "solver-fail" })] : []),
       ];
     }),
   ];
@@ -112,7 +112,6 @@ function builderView(log: readonly LogEvent[]) {
   return {
     frontier: pool.frontier.length,
     owed: practiceDue(log, 1000, 0.1)?.to ?? null,
-    practiceFrontier: pool.practiceFrontier.length,
     // A release of fewer tasks takes from the front of this order, so the whole order shows them all.
     released: releaseOrder(log, held, held.length, "seed").map(([version]) => version),
   };

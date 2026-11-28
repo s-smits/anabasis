@@ -19,7 +19,6 @@ import {
   scoresIn,
   testedSet,
   testOf,
-  WEIGHTS,
 } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { type Contract, contractHash, hasJudge } from "#src/kernel/contract.ts";
@@ -324,9 +323,9 @@ function stepTestLines(test: Report["scored"] | Report["frontier"]): string[] {
   const stepped = testOf(scoresIn(test));
   const untied = stepped.wins + stepped.losses;
   return [
-    `the step's test is read on the score on ${plural(untied + stepped.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
-    `the test at these margins clears the level between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
-    `its p is ${rounded(stepped.p)}: the test weighs each untied task by its score${stepped.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
+    `paired sign-flip test over ${plural(untied + stepped.ties, "scored task")} (${String(untied)} untied): at 80% power this detects ${share === null ? "no share of them" : `a harness winning ${String(Math.round(100 * share))}% of them`}`,
+    `at these margins, equal harnesses trigger a false step ${String(Math.round(1000 * test.falseRate) / 10)}% of the time (capped by alpha)`,
+    `p = ${rounded(stepped.p)}: each untied task is weighted by its score margin${stepped.losses === 0 && untied > 0 ? ` (when every untied task is won, p = 0.5^${String(untied)} = ${rounded(0.5 ** untied)})` : ""}`,
   ];
 }
 
@@ -356,7 +355,7 @@ export function reportLines({
     ...(points === null
       ? []
       : [
-          `the score weighs validity ${String(WEIGHTS.validity)} and the objective ${String(WEIGHTS.objective)}, and over the tallied tasks gave the new harness ${signed(points.validity)} and ${signed(points.objective)} points, a task's score running from -600 to 600`,
+          `over the tallied tasks, the new harness scored ${signed(points.validity)} validity and ${signed(points.objective)} objective points, a task's score running from -1000 to 1000`,
         ]),
     ...(objective === null ? [] : [`the objective: ${objective.direction} is better`]),
     ...(both.length === 0
@@ -383,10 +382,10 @@ function aaLines(noise: NonNullable<Report["noise"]>): string[] {
   const tasks = noise.wins + noise.losses + noise.ties;
   const shift = noise.detectable ?? null;
   return [
-    `the reference against itself, on halves of its own solves mirrored in time (the A/A), over the ${plural(tasks, "tallied task")}, ${String(noise.wins + noise.losses)} of them untied:`,
-    `  tie share ${tasks === 0 ? "none" : percent(noise.ties / tasks)}: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties`,
-    `  flip rate ${noise.flips === null ? "none" : percent(noise.flips)}: how often two of its solves of one task disagree on validity`,
-    `  least detectable shift: ${shift === null ? "none, too few of its tasks are untied for any shift between its halves to clear the level, so its reading no step shows little" : `one reading of it, either half read at the level, detects four times in five a half that wins ${percent(shift)} of its untied tasks`}`,
+    `reference A/A control (mirrored halves of reference solves across ${plural(tasks, "scored task")}, ${String(noise.wins + noise.losses)} untied):`,
+    `  tie share ${tasks === 0 ? "none" : percent(noise.ties / tasks)}: fraction of tasks tied at half the rollouts per side`,
+    `  flip rate ${noise.flips === null ? "none" : percent(noise.flips)}: how often two reference solves of the same task disagree on validity`,
+    `  80% detectable shift: ${shift === null ? "none (too few untied tasks to power the A/A check)" : `detects a half winning ${percent(shift)} of untied tasks at alpha`}`,
   ];
 }
 
@@ -399,15 +398,15 @@ function accounted({
 }: Partial<Pick<Report, Apart>>): string[] {
   if (versions === undefined) return [];
   const out: readonly (readonly [readonly string[], string])[] = [
-    [aside, "set aside on a rejection not ruled a true fail"],
-    [short.filter((task) => !aside.includes(task)), "short of their solves"],
+    [aside, "excluded pending human review of a rejection"],
+    [short.filter((task) => !aside.includes(task)), "short of solves"],
     [disputed, "disputed"],
-    [withdrawn, "withdrawn while it ran"],
+    [withdrawn, "withdrawn mid-run"],
   ];
   const drew = new Set([...versions, ...aside, ...short, ...disputed, ...withdrawn]).size;
   const left = out.flatMap(([tasks, why]) => (tasks.length === 0 ? [] : [`${String(tasks.length)} ${why}`]));
   return [
-    `of the ${plural(drew, "task")} the comparison drew, ${String(versions.length)} ${versions.length === 1 ? "was" : "were"} tallied${left.length === 0 ? "" : ` and ${left.join(", ")}`}: the columns below, room and the test are read over the tallied ones`,
+    `scored ${String(versions.length)} of ${plural(drew, "drawn task")}${left.length === 0 ? "" : ` (${left.join(", ")})`}: counts, headroom, and significance test cover the scored tasks`,
   ];
 }
 

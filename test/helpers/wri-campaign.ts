@@ -203,11 +203,16 @@ export function wriCampaign(secret: (tag: string) => string): LogEvent[] {
   put("referee.refused", {
     solve: defect,
     task: "v1",
-    asked: { ruling: "earned", check: "check-a", reason: secret(`refused reason ${defect}`), probes: [] },
+    asked: {
+      ruling: "solver-fail",
+      check: "check-a",
+      reason: secret(`refused reason ${defect}`),
+      probes: [],
+    },
     why: secret(`refused why ${defect}`),
   });
   ruling(defect, "v1", "r-1", "check-defect");
-  ruling(earned, "v2", "r-2", "earned");
+  ruling(earned, "v2", "r-2", "solver-fail");
   report(first, { wins: 2, losses: 0, ties: 0, p: 0.25, unsolved: 0 }, "no-step", ["v3", "v4"], ["v1"]);
 
   build("b-2", "hp", "hd", "hc");

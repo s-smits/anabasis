@@ -8,7 +8,7 @@ import { type JudgeWeights, type ObjectiveRule, type Paired, UNMEASURED } from "
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { gitText } from "#src/meta/git.ts";
-import { asRecord, isFunction } from "#src/meta/json-shape.ts";
+import { asRecord, isFunction, isNumber } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 
 interface Sides {
@@ -67,9 +67,12 @@ export async function loadTree(path: string): Promise<Tree> {
     Reflect.get(trace, "billedBetween") ??
     Reflect.get(reports, "billedBetween");
   if (!isFunction(billing)) throw new Error(`${path} has no billedBetween in its meter, trace or reports`);
-  if (!isFunction(compare.pointsOf) || asRecord(compare.WEIGHTS) === null) {
-    throw new Error(`${path} scores no weighted measures (pointsOf, WEIGHTS): a tree from before 21 October`);
+  if (!isFunction(compare.pointsOf)) {
+    throw new Error(`${path} scores no weighted measures (pointsOf): a tree from before 21 October`);
   }
+  const rawWeights = asRecord(Reflect.get(compare, "WEIGHTS"));
+  const num = (key: string, fallback: number) => (isNumber(rawWeights?.[key]) ? rawWeights[key] : fallback);
+  const weights = { bill: num("bill", 0), validity: num("validity", 1), objective: num("objective", 1) };
   const stepOf: unknown = Reflect.get(compare, "stepOf");
   const significant: unknown = Reflect.get(compare, "isSignificant") ?? Reflect.get(compare, "readsStep");
   if (!isFunction(stepOf) && !isFunction(significant)) {
@@ -79,7 +82,7 @@ export async function loadTree(path: string): Promise<Tree> {
   return {
     path,
     commit: `${gitText(path, "rev-parse", "--short", "HEAD")}${changed ? " with uncommitted changes under src" : ""}`,
-    weights: { bill: 0, ...compare.WEIGHTS },
+    weights,
     read: (file) => (log.CALL_KINDS === undefined ? log.read(file) : log.read(file, log.CALL_KINDS)),
     lastReports: (events) => reports.lastReports(events),
     pairsReported: (events, report) => reports.pairsReported(events, report),

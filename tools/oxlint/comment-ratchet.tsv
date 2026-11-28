@@ -103,7 +103,7 @@ packages/ui/src/waited.ts	2
 packages/ui/test/browser-smoke.test.ts	4
 packages/ui/test/browser.ts	10
 packages/ui/test/fixture-campaign.ts	15
-packages/ui/test/readings.test.ts	11
+packages/ui/test/readings.test.ts	10
 packages/ui/test/server.test.ts	2
 packages/ui/test/view-model.test.ts	3
 studies/harness2/compare.ts	10
@@ -136,7 +136,7 @@ test/builder.test.ts	41
 test/campaign-kill.test.ts	6
 test/campaign.test.ts	13
 test/checker-commands.test.ts	17
-test/climb.test.ts	31
+test/climb.test.ts	30
 test/coding-tools.test.ts	5
 test/command.test.ts	25
 test/commit-r-mutate.test.ts	8
@@ -144,7 +144,7 @@ test/compare-exhaustive.test.ts	23
 test/comparison-reading-script.test.ts	5
 test/comparison-review-script.test.ts	5
 test/condition.test.ts	1
-test/decide-explore.test.ts	42
+test/decide-explore.test.ts	41
 test/design-and-seats-script.test.ts	4
 test/doubled.test.ts	1
 test/draft.test.ts	30
@@ -206,7 +206,7 @@ test/repository-practice-script.test.ts	2
 test/repository-source-policy.test.ts	2
 test/restack.test.ts	5
 test/review.test.ts	16
-test/round.test.ts	68
+test/round.test.ts	66
 test/router.test.ts	1
 test/rule-examples.test.ts	4
 test/ruling-prose-bound.test.ts	1

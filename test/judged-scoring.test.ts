@@ -43,9 +43,9 @@ describe("the judged composite gain", () => {
 
   it("values the smallest judged win, one item of four, at its share of the judge step on a 1:1 mix and a judged-only exam", () => {
     const single = 0.5 / 4;
-    expect(judgedGain({ code: 1, judge: 1 }, 0, vote(single, 0))).toBeCloseTo((JUDGE_STEP * single) / 3, 12);
+    expect(judgedGain({ code: 1, judge: 1 }, 0, vote(single, 0))).toBeCloseTo((JUDGE_STEP * single) / 4, 12);
     expect(judgedGain({ code: 0, judge: 1 }, 0, vote(single, 0))).toBe(0.0625);
-    expect(judgedGain({ code: 1, judge: 1 }, 0.25, vote(0, 0))).toBeCloseTo(0.25 / 3, 12);
+    expect(judgedGain({ code: 1, judge: 1 }, 0.25, vote(0, 0))).toBeCloseTo(0.25 / 2, 12);
   });
 });
 
@@ -88,7 +88,7 @@ describe("judged points", () => {
     const judged = pointsOf({ ...pair, judged: { weights: { code: 1, judge: 1 }, votes } });
     expect(judged.validity).toBe(legacy.validity);
     const gain = judgedGain({ code: 1, judge: 1 }, 0.1, votes[0] ?? vote(0, 0));
-    expect(judged.objective).toBeCloseTo(gain * 2 * 0.3 * (1000 / 4), 9);
+    expect(judged.objective).toBeCloseTo(gain * 2 * (1000 / 4), 9);
   });
 
   it("floors the code gain alone, so a judged win of one item of four counts on any mix and code noise on none", () => {
@@ -101,7 +101,7 @@ describe("judged points", () => {
     for (const weights of [...WEIGHTS, { code: 9, judge: 1 }]) {
       const scoredAt = (votes: Vote[]) => pointsOf({ ...tied, judged: { weights, votes } }).objective;
       const single = { fresh: 0, old: 0, judge: 0.5 / 4, holistic: 0 };
-      expect(scoredAt([single])).toBeCloseTo(judgedGain(weights, 0, single) * 0.3 * 1000, 9);
+      expect(scoredAt([single])).toBeCloseTo(judgedGain(weights, 0, single) * 1000, 9);
       expect(scoredAt([single])).toBeGreaterThan(0);
       expect(scoredAt([vote(0, 0)])).toBe(0);
     }

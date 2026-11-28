@@ -279,7 +279,7 @@ describe("scheduler decision boundaries", () => {
     ];
     const spent = nextAction(shortWithPatienceSpent, PLAN);
     expect(spent).toMatchObject({ move: "end", ending: "exam" });
-    expect(spent.why).toStartWith("2 Examiner sessions in a row held out no task");
+    expect(spent.why).toStartWith("2 Examiner sessions in a row added no evaluation tasks");
   });
 
   it("caps tasksToAskFor at 24 after promotion, pins enoughWrittenSince and interrupted post-promotion examine, and checks practiceDue bounds", () => {
@@ -462,7 +462,7 @@ describe("scheduler decision boundaries", () => {
     ];
     const freshNext = nextAction(freshSideNoRoom, PLAN);
     expect(freshNext.move).toBe("examine");
-    expect(freshNext.why).toContain("starter confirmation owed");
+    expect(freshNext.why).toContain("waiting to be re-tested against the Starter Pack");
     const starterSideNoRoom = [
       ...base,
       checkpoint("b-1", "h-1"),
@@ -480,7 +480,7 @@ describe("scheduler decision boundaries", () => {
     expect(nextAction(starterSideNoRoom, PLAN)).toMatchObject({
       move: "examine",
       code: "no-room",
-      why: "harness starter- is the current reference and comparison g-2 found no informative tasks for it: generating harder tasks with evaluation headroom",
+      why: "harness starter- is the current reference and comparison g-2 left no scoring headroom for it: waking Examiner to write harder tasks",
     });
 
     const revertedWithRoom = [

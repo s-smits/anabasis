@@ -24,6 +24,9 @@
  * guide) as a copy beside the store and edits no kept harness; a solver under a changed guide still
  * takes the operator's word (`AGENTS.md`, section 3).
  */
+import { sweepOf } from "#src/kernel/compare.ts";
+import { sizeLines } from "#src/kernel/size.ts";
+import { AGENT_DIR, GUIDE_FILE } from "#src/meta/bundle-layout.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import {
   cpSync,
@@ -31,13 +34,15 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join, resolve } from "#src/meta/path.ts";
-import { parseArgs } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { HARNESS_DIR } from "../shared/bundle.ts";
 import { armOf, bothWays, type Graded, levelLines, partOf } from "./levels.ts";
 import { capOf, hasOneBefore, keyOf, PILOT_TASKS, score, tasksOf, type Values } from "./score.ts";
 
@@ -54,6 +59,10 @@ const OPTIONS = {
   tasks: { type: "string" },
   burned: { type: "string" },
   repeats: { type: "string" },
+  baseline: { type: "string" },
+  "min-gain": { type: "string" },
+  confirm: { type: "boolean" },
+  "at-once": { type: "string" },
   times: { type: "string" },
   split: { type: "boolean" },
   cap: { type: "string" },
@@ -70,6 +79,9 @@ const OPTIONS = {
 const AT_ONCE = 3;
 const MEASURE = "points";
 const LEVEL = 0.02;
+const SEALED_FILE = "sealed-professions.json";
+const DEFAULT_BASELINE = "pi:base";
+const PI_TREE = "pi:tree:";
 
 export interface Terms {
   readonly id: string;
@@ -80,6 +92,10 @@ export interface Terms {
   readonly primary: string;
   readonly level: number;
   readonly prediction: string;
+  readonly baseline?: string;
+  readonly minGain?: number;
+  readonly confirm?: boolean;
+  readonly sealedProfessions?: readonly string[];
 }
 
 interface Planned {
@@ -91,6 +107,9 @@ interface Planned {
   readonly prediction: string;
   readonly tasks: readonly string[];
   readonly burned: readonly string[];
+  readonly baseline?: string;
+  readonly minGain?: number;
+  readonly confirm?: boolean;
 }
 
 type Options = Readonly<Record<string, string | boolean | string[] | undefined>>;
@@ -172,13 +191,58 @@ function perRollout(out: string): { usd: number; records: number } | null {
   return { usd: paid.reduce((sum, usd) => sum + usd, 0) / paid.length, records: paid.length };
 }
 
+function readSealed(out: string): string[] {
+  const file = join(out, SEALED_FILE);
+  if (!existsSync(file)) return [];
+  const parsed = capturedJsonParse(readFileSync(file, "utf8"));
+  if (!Array.isArray(parsed) || !parsed.every(isString)) {
+    throw new Error(`${file} must hold a JSON array of sealed profession names`);
+  }
+  return parsed.toSorted();
+}
+
+function recordSealed(out: string, professions: readonly string[]): void {
+  const merged = [...new Set([...readSealed(out), ...professions])].toSorted();
+  mkdirSync(out, { recursive: true });
+  const target = join(out, SEALED_FILE);
+  const part = `${target}.part-${String(runtimeProcess.pid)}-${String(Date.now())}`;
+  writeFileSync(part, `${capturedJsonStringify(merged, null, 2)}\n`);
+  renameSync(part, target);
+}
+
 /** A second plan under one id is refused, since terms move before a result only. */
 export function fixTerms(planned: Planned): string[] {
-  const { out, id, arms, repeats, salt, prediction, tasks, burned } = planned;
+  const { out, id, arms, repeats, salt, prediction, tasks, burned, baseline, minGain, confirm } = planned;
   const folder = folderOf(out, id);
   if (existsSync(folder)) throw new Error(`${folder} is there already; terms are fixed once`);
   if (arms.length < 2 && repeats < 2) {
     throw new Error("two arms, or one arm with --repeats 2, make a comparison");
+  }
+  if (minGain !== undefined && (!Number.isFinite(minGain) || minGain < 0)) {
+    throw new Error("--min-gain takes a number of points per task from 0");
+  }
+  const minTasks = sweepOf(LEVEL);
+  let sealedProfessions: string[] | undefined;
+  if (confirm === true) {
+    if (arms.length < 2) throw new Error("confirmation compares at least two arms");
+    if (repeats < 2) {
+      throw new Error("confirmation needs --repeats 2 or more to read A/A spread beside the comparison");
+    }
+    if (minGain === undefined || minGain <= 0) {
+      throw new Error("confirmation fixes --min-gain above 0 points per task before any rollout");
+    }
+    if (tasks.length < minTasks) {
+      throw new Error(
+        `confirmation at level ${String(LEVEL)} needs at least ${String(minTasks)} tasks to clear even with all wins; got ${String(tasks.length)} (repeats pool per task and cannot lower task-level p)`,
+      );
+    }
+    const prior = new Set(readSealed(out));
+    const drawn = [...new Set(tasks.map(professionOf))].toSorted();
+    const reused = drawn.filter((profession) => prior.has(profession));
+    if (reused.length > 0) {
+      throw new Error(`already sealed in a prior confirmation: ${reused.join(", ")}`);
+    }
+    sealedProfessions = drawn;
   }
   const closed = new Set(burned.map(professionOf));
   const shut = tasks.filter((task) => closed.has(professionOf(task)));
@@ -201,14 +265,21 @@ export function fixTerms(planned: Planned): string[] {
     primary: MEASURE,
     level: LEVEL,
     prediction,
+    ...keyIfDefined("baseline", baseline),
+    ...keyIfDefined("minGain", minGain),
+    ...keyIfDefined("confirm", confirm === true ? true : undefined),
+    ...keyIfDefined("sealedProfessions", sealedProfessions),
   };
+  if (sealedProfessions !== undefined) recordSealed(out, sealedProfessions);
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "terms.json"), `${capturedJsonStringify(terms, null, 2)}\n`);
   writeFileSync(join(folder, "key.json"), `${capturedJsonStringify(Object.fromEntries(key), null, 2)}\n`);
   const rollouts = sides.flatMap((side) => tasks.filter((task) => owes(key.get(armTag(side)), task))).length;
   const rate = perRollout(out);
+  const powerLine = arms.length >= 2 ? (sizeLines(tasks.length, LEVEL)[0] ?? null) : null;
   return [
-    `terms fixed in ${folder}: ${String(tasks.length)} tasks, ${String(sides.length)} sides, ${String(rollouts)} rollouts, primary ${MEASURE} at ${String(LEVEL)}`,
+    `terms fixed in ${folder}: ${String(tasks.length)} tasks, ${String(sides.length)} sides, ${String(rollouts)} rollouts, primary ${MEASURE} at ${String(LEVEL)}${minGain === undefined ? "" : `, minGain ${String(minGain)} pts/task`}${confirm === true ? ", confirmation sealed" : ""}`,
+    ...(powerLine === null ? [] : [`power: ${powerLine}`]),
     rate === null
       ? "price: this store has no record to price a rollout from"
       : `price: about ${(rate.usd * rollouts).toFixed(0)} dollars at ${rate.usd.toFixed(2)} a rollout, the mean of ${String(rate.records)} records here`,
@@ -242,6 +313,13 @@ function termsIn(out: string, id: string): Terms {
     primary: text("primary"),
     level,
     prediction: text("prediction"),
+    ...keyIfDefined("baseline", isString(held.baseline) ? held.baseline : undefined),
+    ...keyIfDefined("minGain", isNumber(held.minGain) ? held.minGain : undefined),
+    ...keyIfDefined("confirm", held.confirm === true ? true : undefined),
+    ...keyIfDefined(
+      "sealedProfessions",
+      Array.isArray(held.sealedProfessions) ? held.sealedProfessions.filter(isString) : undefined,
+    ),
   };
 }
 
@@ -262,12 +340,38 @@ function pooled(sidesA: readonly Map<string, Graded>[], sidesB: readonly Map<str
   return tasks.map((task) => mean(sidesA, task) - mean(sidesB, task));
 }
 
+function treePathOf(arm: string | undefined): string | undefined {
+  if (arm === undefined) return undefined;
+  if (arm.startsWith(PI_TREE)) return resolve(arm.slice(PI_TREE.length));
+  if (arm.startsWith("tree:")) return resolve(arm.slice("tree:".length));
+  return undefined;
+}
+
+function gainNote(
+  diffs: readonly number[],
+  label: { readonly a: string; readonly b: string },
+  minGain: number | undefined,
+  direction: "signed" | "magnitude",
+): string {
+  if (diffs.length === 0) return "";
+  const meanDelta = diffs.reduce((sum, diff) => sum + diff, 0) / diffs.length;
+  const check =
+    minGain === undefined
+      ? ""
+      : direction === "signed"
+        ? ` (${meanDelta >= minGain ? "meets" : "below"} minGain ${String(minGain)})`
+        : ` (|mean delta| ${Math.abs(meanDelta) >= minGain ? ">=" : "<"} minGain ${String(minGain)}; direction needs --unblind)`;
+  return `; mean delta (${label.a} - ${label.b}) ${meanDelta.toFixed(2)} pts/task${check}`;
+}
+
 export function readLines(out: string, id: string, { unblind }: { readonly unblind: boolean }): string[] {
   const terms = termsIn(out, id);
   const arms = armsIn(out, id);
   const named = (tag: string): string => (unblind ? (arms.get(tag) ?? tag) : tag);
   const dataset = join(out, "dataset");
-  const graded = new Map(terms.sides.map((side) => [side, armOf(dataset, side)]));
+  const graded = new Map(
+    terms.sides.map((side) => [side, armOf(dataset, side, treePathOf(arms.get(armTag(side))))]),
+  );
   const tags = [...new Set(terms.sides.map(armTag))].toSorted();
   const of = (tag: string) => terms.sides.filter((side) => armTag(side) === tag);
   const grades = (sides: readonly string[]) => sides.flatMap((side) => graded.get(side) ?? []);
@@ -277,16 +381,26 @@ export function readLines(out: string, id: string, { unblind }: { readonly unbli
       .map((task) => `${side} ${task}`),
   );
   const lines = [
-    `comparison ${id}: primary ${terms.primary} at ${String(terms.level)}, ${String(terms.tasks.length)} tasks, prediction: ${terms.prediction}`,
+    `comparison ${id}: primary ${terms.primary} at ${String(terms.level)}, ${String(terms.tasks.length)} tasks${terms.minGain === undefined ? "" : `, minGain ${String(terms.minGain)} pts/task`}${terms.baseline === undefined ? "" : `, baseline ${terms.baseline}`}, prediction: ${terms.prediction}`,
     `not graded yet: ${missing.join(", ") || "none"}`,
   ];
-  for (const [index, tagA] of tags.entries()) {
-    for (const tagB of tags.slice(index + 1)) {
+  for (const [index, rawA] of tags.entries()) {
+    for (const rawB of tags.slice(index + 1)) {
+      const swap =
+        unblind &&
+        terms.baseline !== undefined &&
+        arms.get(rawA) === terms.baseline &&
+        arms.get(rawB) !== terms.baseline;
+      const [tagA, tagB] = swap ? [rawB, rawA] : [rawA, rawB];
       const label = { a: named(tagA), b: named(tagB) };
-      lines.push(
-        "",
-        `primary, each task's mean over its sides: ${bothWays(MEASURE, label, pooled(grades(of(tagA)), grades(of(tagB))))}`,
+      const diffs = pooled(grades(of(tagA)), grades(of(tagB)));
+      const note = gainNote(
+        diffs,
+        label,
+        terms.minGain,
+        unblind && terms.baseline !== undefined && arms.get(tagB) === terms.baseline ? "signed" : "magnitude",
       );
+      lines.push("", `primary, each task's mean over its sides: ${bothWays(MEASURE, label, diffs)}${note}`);
     }
   }
   for (const tag of tags) {
@@ -444,10 +558,33 @@ export function agreeLines(
 
 export function deriveTree(from: string, guide: string, into: string): void {
   if (existsSync(into)) throw new Error(`${into} is there already; a derived tree is made once`);
-  if (!existsSync(join(from, "CLAUDE.md"))) throw new Error(`${from} holds no CLAUDE.md, so it is no tree`);
+  const piGuide = join(HARNESS_DIR, AGENT_DIR, GUIDE_FILE);
+  const targetGuide = existsSync(join(from, piGuide))
+    ? piGuide
+    : existsSync(join(from, "CLAUDE.md"))
+      ? "CLAUDE.md"
+      : null;
+  if (targetGuide === null) {
+    throw new Error(`${from} holds no ${piGuide} or CLAUDE.md, so it is no tree`);
+  }
   const text = readFileSync(guide);
   cpSync(from, into, { recursive: true });
-  writeFileSync(join(into, "CLAUDE.md"), text);
+  writeFileSync(join(into, targetGuide), text);
+  const exportedMeta = join(into, "export.json");
+  if (existsSync(exportedMeta)) {
+    const parsed = capturedJsonParse(readFileSync(exportedMeta, "utf8"));
+    if (isRecord(parsed)) {
+      const { harness: derivedFrom, ...rest } = parsed;
+      writeFileSync(
+        exportedMeta,
+        `${capturedJsonStringify(
+          { ...rest, ...keyIfDefined("derivedFrom", isString(derivedFrom) ? derivedFrom : undefined) },
+          null,
+          2,
+        )}\n`,
+      );
+    }
+  }
   writeFileSync(
     join(into, "derived.json"),
     `${capturedJsonStringify({ from, guide: sha256(text) }, null, 2)}\n`,
@@ -495,6 +632,7 @@ async function runTerms(values: Options): Promise<void> {
   if (values.yes !== true) {
     throw new Error("a comparison starts paid rollouts and judgements; --yes is the operator's word");
   }
+  const workers = isString(values["at-once"]) ? whole(values["at-once"], "at-once") : AT_ONCE;
   const blocks = blocksOf(terms).filter(({ task, side }) => owes(armFor(side), task));
   const queue = [...blocks];
   const worker = async (): Promise<void> => {
@@ -502,7 +640,7 @@ async function runTerms(values: Options): Promise<void> {
       await score({ ...base, arm: armFor(next.side), name: next.side, tasks: next.task, "solve-only": true });
     }
   };
-  await Promise.all(Array.from({ length: AT_ONCE }, worker));
+  await Promise.all(Array.from({ length: workers }, worker));
   for (const { task, side } of blocks) {
     await score({ ...base, arm: armFor(side), name: side, tasks: task });
   }
@@ -553,25 +691,48 @@ async function rejudge(values: Options): Promise<void> {
   }
 }
 
+const canonicalArm = (arm: string): string =>
+  arm.startsWith(PI_TREE)
+    ? `${PI_TREE}${resolve(arm.slice(PI_TREE.length))}`
+    : arm.startsWith("tree:")
+      ? `tree:${resolve(arm.slice("tree:".length))}`
+      : arm;
+
 function planOf(values: Options): string[] {
-  const arms = values.arm;
-  if (!Array.isArray(arms) || arms.length === 0) throw new Error("name --arm");
+  const givenArms = values.arm;
+  if (!Array.isArray(givenArms) || givenArms.length === 0) throw new Error("name --arm");
+  const normalized = givenArms.map(canonicalArm);
+  const confirm = values.confirm === true;
+  const baseline = isString(values.baseline)
+    ? canonicalArm(values.baseline)
+    : confirm
+      ? DEFAULT_BASELINE
+      : undefined;
+  const arms =
+    baseline !== undefined && !normalized.includes(baseline) ? [...normalized, baseline] : [...normalized];
+  const out = resolve(named(values, "out"));
   const salt = named(values, "salt");
-  const burned = tasksOf(isString(values.burned) ? values.burned : undefined, PILOT_TASKS);
+  const burnedGiven = tasksOf(isString(values.burned) ? values.burned : undefined, PILOT_TASKS);
+  const sealed = confirm ? readSealed(out).map((profession) => `${profession}/task1`) : [];
+  const burned = [...burnedGiven, ...sealed];
   const all = benchmarkTasks(resolve(named(values, "jb")));
   const count = isString(values.count) ? whole(values.count, "count") : defaultCount(all.length);
   const tasks = isString(values.tasks) ? tasksOf(values.tasks, []) : drawTasks(all, burned, count, salt);
+  const minGain = isString(values["min-gain"]) ? Number(values["min-gain"]) : undefined;
   const share = Math.round((100 * tasks.length) / all.length);
   const professions = new Set(tasks.map(professionOf)).size;
   const told = fixTerms({
-    out: resolve(named(values, "out")),
+    out,
     id: named(values, "id"),
     arms,
-    repeats: isString(values.repeats) ? whole(values.repeats, "repeats") : 1,
+    repeats: isString(values.repeats) ? whole(values.repeats, "repeats") : confirm ? 2 : 1,
     salt,
     prediction: named(values, "predict"),
     tasks,
-    burned,
+    burned: burnedGiven,
+    ...keyIfDefined("baseline", baseline),
+    ...keyIfDefined("minGain", minGain),
+    ...keyIfDefined("confirm", confirm ? true : undefined),
   });
   return [
     `${String(tasks.length)} of ${String(all.length)} tasks, ${String(share)}% of the benchmark, in ${String(professions)} professions`,

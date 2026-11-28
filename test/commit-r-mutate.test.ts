@@ -557,9 +557,12 @@ describe("the nightly pass", () => {
     expect(runNightly(tree, state).exitCode).toBe(0);
     const rows = rowsOf(join(state, head, "src_kernel_solve.jsonl"));
     expect(rows.length).toBeGreaterThan(0);
-    const [first = "", second = "", third = ""] = chosen;
-    expect(new Set(rows.map(({ killed }) => JSON.stringify(killed)))).toStrictEqual(
-      new Set([JSON.stringify({ [first]: true, [second]: null, [third]: null })]),
+    const killers = (killed: Record<string, boolean | null>) => [
+      Object.keys(killed),
+      Object.keys(killed).filter((name) => killed[name] === true),
+    ];
+    expect(new Set(rows.map(({ killed }) => JSON.stringify(killers(killed))))).toStrictEqual(
+      new Set([JSON.stringify([chosen, ["z-fast-indirect"]])]),
     );
     expect(doneOf(state)).toStrictEqual({ commit: head, full: head });
     expect(existsSync(join(state, "clone.clone-0", "test", "z-fast-indirect.test.ts"))).toBe(true);

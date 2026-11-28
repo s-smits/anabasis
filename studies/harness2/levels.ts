@@ -189,9 +189,9 @@ function foldersIn(folder: string): string[] {
 
 /** A task graded twice is refused, since which of the two counts is a choice no reader should make
  *  silently. */
-export function armOf(dataset: string, arm: string): Map<string, Graded> {
+export function armOf(dataset: string, arm: string, treeOverride?: string): Map<string, Graded> {
   const graded = new Map<string, Graded>();
-  const tree = join(dirname(dataset), "trees", arm);
+  const tree = treeOverride ?? join(dirname(dataset), "trees", arm);
   const programs =
     statSync(tree, { throwIfNoEntry: false })?.isDirectory() === true && readdirSync(tree).length > 0
       ? new Set(

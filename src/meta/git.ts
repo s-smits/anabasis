@@ -48,43 +48,22 @@ export function mainTree(repo: string): string {
   return basename(common) === ".git" ? dirname(common) : (worktrees(repo)[0] ?? repo);
 }
 
-export function changedLinesInDiff(diff: string): Map<string, Set<number>> {
+export function addedLines(repo: string, ...args: readonly string[]): Map<string, Set<number>> {
+  const flags = ["--unified=0", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"];
   const changed = new Map<string, Set<number>>();
   let lines: Set<number> | undefined;
-  let sawMinus = false;
-  let oldLeft = 0;
-  for (const row of diff.split("\n")) {
-    if (row.startsWith("diff --git ")) {
-      sawMinus = false;
-      oldLeft = 0;
-      continue;
+  let header = false;
+  for (const row of gitOutput(repo, "-c", "core.quotePath=false", "diff", ...flags, ...args).split("\n")) {
+    if (row.startsWith("diff --git ")) [header, lines] = [true, undefined];
+    if (header && row.startsWith("+++ b/")) {
+      lines = new Set();
+      changed.set(row.slice(6).replace(/\t$/u, ""), lines);
     }
-    if (row.startsWith("-") && oldLeft > 0) {
-      oldLeft -= 1;
-      continue;
-    }
-    if (row.startsWith("--- ")) {
-      sawMinus = true;
-      continue;
-    }
-    if (sawMinus && row.startsWith("+++ ")) {
-      sawMinus = false;
-      const file = row.slice(4).replace(/\t$/u, "").replace(/^b\//u, "");
-      if (file === "/dev/null") {
-        lines = undefined;
-      } else {
-        lines = changed.get(file) ?? new Set<number>();
-        changed.set(file, lines);
-      }
-      continue;
-    }
-    sawMinus = false;
-    const hunk = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/u.exec(row);
-    if (hunk === null || lines === undefined) continue;
-    oldLeft = Number(hunk[1] ?? 1);
-    const start = Number(hunk[2]);
-    const count = Number(hunk[3] ?? 1);
-    for (let line = start; line < start + count; line += 1) lines.add(line);
+    const hunk = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/u.exec(row);
+    if (hunk === null) continue;
+    header = false;
+    const start = Number(hunk[1]);
+    for (let line = start; line < start + Number(hunk[2] ?? 1); line += 1) lines?.add(line);
   }
   return changed;
 }

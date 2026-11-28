@@ -33,8 +33,8 @@ compartments below are still example-based.
    (`src/audit/` and `src/examiner/` as oracle).
 6. **Check router, stack land, and mutation oracle.** `test/router.test.ts`, `test/land.test.ts`,
    and `test/commit-r-mutate.test.ts` exercise pure scheduling, stack-ordering, and
-   diff-hunk/batching rules through heavy filesystem and subprocess fixtures. Testing pure ranking,
-   queue, stack-graph, and batching invariants over generated small topologies and keeping a thin
+   diff-hunk rules through heavy filesystem and subprocess fixtures. Testing pure ranking,
+   queue, and stack-graph invariants over generated small topologies and keeping a thin
    subprocess smoke layer reduces both lines and wall time.
 7. **The search's environment against the record.** The decide search writes the events each move
    writes from a hand-made answer table. Replaying `decide` over `data/runs/` and checking that

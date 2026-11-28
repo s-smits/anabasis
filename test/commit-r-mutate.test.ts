@@ -1,8 +1,10 @@
 // The mutation oracle (`.claude/skills/mutation-testing/scripts/mutate.ts`) records a kill for a
 // mutant its suite fails on (including Bun 1.4 `--bail` runs that print no pass/fail counts),
-// refuses to mutate when a baseline suite fails unmutated, and supports both comparative (`--old`)
-// and solo (`report` without `--old`) reporting.
+// skips a suite failing unmutated at a place (refusing the place when none passes), spreads over
+// check hosts, and supports both comparative (`--old`) and solo reporting; the nightly pass
+// (`nightly.ts`) picks owners, suites and changed-line mutants and keeps its marks in `done.json`.
 import { afterAll, describe, expect, it } from "bun:test";
+import { planOf } from "../.claude/skills/mutation-testing/scripts/nightly.ts";
 import {
   chmodSync,
   existsSync,
@@ -14,11 +16,10 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { changedLinesInDiff, gitText } from "../src/meta/git.ts";
+import { gitText } from "../src/meta/git.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
-import { asRecord } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 
 const SCRIPT = join(import.meta.dir, "..", ".claude", "skills", "mutation-testing", "scripts", "mutate.ts");
@@ -90,7 +91,6 @@ describe("the mutation oracle", () => {
     expect(new Set(onLine(3).map(({ killed }) => killed.t))).toStrictEqual(new Set([true]));
     expect(new Set(onLine(5).map(({ killed }) => killed.t))).toStrictEqual(new Set([false]));
 
-    // Solo report (no `--old`) tallies killed/survived/unread and lists line-5 survivors.
     const solo = runScript("report", out);
     expect(solo.exitCode).toBe(0);
     expect(solo.stdout.toString().trim()).toBe(
@@ -176,191 +176,63 @@ describe("the mutation oracle", () => {
     }
   }, 60_000);
 
-  it("refuses a failing unmutated rest-wave suite, keeps subprocess suites unpruned, and marks mixed false/null rows unread", () => {
-    const tree = join(root, "soundness-tree");
+  it("reads a suite failing unmutated as null beside one that passes, runs a suite starting processes on lines it never runs in-process, reports false/null rows unread, and warns of stale --only IDs", () => {
+    const tree = join(root, "skip-tree");
     mkdirSync(tree);
     writeFileSync(
       join(tree, "m.ts"),
-      [
-        "export const direct = (x: number) => x > 1;",
-        "export const viaSub = (x: number) => x > 5;",
-        "if (import.meta.main) console.log(String(viaSub(Number(process.argv[2]))));",
-      ].join("\n"),
+      "export const direct = (x: number) => x > 1;\nexport function unused(x: number) {\n  return x < 0;\n}\n",
     );
     writeFileSync(
-      join(tree, "hybrid.test.ts"),
-      [
-        'import { expect, it } from "bun:test";',
-        'import { direct } from "./m.ts";',
-        'it("checks direct", () => expect([direct(1), direct(2)]).toEqual([false, true]));',
-        'it("checks via subprocess", () => {',
-        '  const a = Bun.spawnSync([process.execPath, "m.ts", "5"], { cwd: import.meta.dir, stdout: "pipe" });',
-        '  const b = Bun.spawnSync([process.execPath, "m.ts", "6"], { cwd: import.meta.dir, stdout: "pipe" });',
-        '  expect([a.stdout.toString().trim(), b.stdout.toString().trim()]).toEqual(["false", "true"]);',
-        "});",
-      ].join("\n"),
+      join(tree, "spawned.test.ts"),
+      'import { expect, it } from "bun:test";\nimport "./m.ts";\nconst child = \'const { unused } = await import("./m.ts"); process.exit(unused(0) ? 1 : 0);\';\nit("child", () => expect(Bun.spawnSync([process.execPath, "-e", child]).exitCode).toBe(0));\n',
     );
     writeFileSync(
-      join(tree, "pass-first.test.ts"),
-      'import { expect, it } from "bun:test";\nimport { direct } from "./m.ts";\nit("passes", () => expect(direct(2)).toBe(true));\n',
+      join(tree, "pass.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { direct } from "./m.ts";\nit("bounds", () => expect([direct(1), direct(2)]).toEqual([false, true]));\n',
     );
     writeFileSync(
-      join(tree, "fail-rest.test.ts"),
+      join(tree, "fail.test.ts"),
       'import { expect, it } from "bun:test";\nit("fails unmutated", () => expect(1).toBe(2));\n',
     );
-
-    const subSuites = join(root, "sub-suites.json");
-    const subOut = join(root, "sub-out.jsonl");
-    writeFileSync(subSuites, JSON.stringify({ hybrid: ["hybrid.test.ts"] }));
-    const subRun = runScript(
+    const suites = join(root, "skip-suites.json");
+    writeFileSync(
+      suites,
+      JSON.stringify({ pass: ["pass.test.ts"], fail: ["fail.test.ts"], spawned: ["spawned.test.ts"] }),
+    );
+    const only = join(root, "skip-only.txt");
+    writeFileSync(only, "m.ts:39:> -> >=\nm.ts:91:< -> <=\nm.ts:999:moved\n");
+    const out = join(root, "skip-out.jsonl");
+    const run = runScript(
       "run",
       tree,
       "m.ts",
       "--out",
-      subOut,
-      "--suites",
-      subSuites,
-      "--prune",
-      "--stop-at-kill",
-      "--jobs",
-      "1",
-    );
-    expect(subRun.exitCode).toBe(0);
-    const subLine2 = rowsOf(subOut).filter((row) => row.line === 2);
-    expect(subLine2.length).toBeGreaterThan(0);
-    expect(subLine2.every(({ killed }) => killed.hybrid === true)).toBe(true);
-
-    const restSuites = join(root, "rest-suites.json");
-    const restOut = join(root, "rest-out.jsonl");
-    writeFileSync(restSuites, JSON.stringify({ first: ["pass-first.test.ts"], rest: ["fail-rest.test.ts"] }));
-    const restRun = runScript(
-      "run",
-      tree,
-      "m.ts",
-      "--out",
-      restOut,
-      "--suites",
-      restSuites,
-      "--prune",
-      "--stop-at-kill",
-      "--jobs",
-      "1",
-    );
-    expect(restRun.exitCode).not.toBe(0);
-    expect(restRun.stderr.toString()).toContain('baseline suite "rest" did not pass unmutated (failed)');
-
-    const mixedOut = join(root, "mixed-out.jsonl");
-    writeFileSync(
-      mixedOut,
-      `${JSON.stringify({ id: "m.ts:1:x", file: "m.ts", line: 1, label: "x", killed: { a: false, b: null } })}\n`,
-    );
-    expect(runScript("report", mixedOut).stdout.toString().trim()).toBe(
-      "file  killed  survived  unread\nm.ts  0  0  1",
-    );
-  }, 60_000);
-
-  it("matches isolated verdicts in schemata mode, hands watchdog timeouts to Mode 2, and detects helper subprocesses", () => {
-    const tree = join(root, "schema-tree");
-    mkdirSync(join(tree, "test", "helpers"), { recursive: true });
-    writeFileSync(
-      join(tree, "s.ts"),
-      [
-        "export function sumTo(n: number): number {",
-        "  let acc = 0;",
-        "  for (let i = 0; i < n; i = i + 1) {",
-        "    acc = acc + i;",
-        "  }",
-        "  return acc;",
-        "}",
-        "export const inv = (x: unknown): unknown => !x;",
-        "export const viaSub = (x: number) => x > 5;",
-        "if (import.meta.main) console.log(String(viaSub(Number(process.argv[2]))));",
-      ].join("\n"),
-    );
-    writeFileSync(
-      join(tree, "test", "helpers", "sub.ts"),
-      'export const callSub = (arg: string) => Bun.spawnSync([process.execPath, "s.ts", arg], { cwd: process.cwd(), stdout: "pipe" }).stdout.toString().trim();\n',
-    );
-    writeFileSync(
-      join(tree, "test", "pure.test.ts"),
-      'import { expect, it } from "bun:test";\nimport { inv, sumTo } from "../s.ts";\nit("sums", () => expect(sumTo(4)).toBe(6));\nit("preserves boolean type of !x", () => expect(typeof inv(undefined)).toBe("boolean"));\n',
-    );
-    writeFileSync(
-      join(tree, "test", "helper-sub.test.ts"),
-      'import { expect, it } from "bun:test";\nimport { callSub } from "./helpers/sub.ts";\nit("runs helper sub", () => expect([callSub("5"), callSub("6")]).toEqual(["false", "true"]));\n',
-    );
-    const suites = join(root, "schema-suites.json");
-    writeFileSync(
-      suites,
-      JSON.stringify({ pure: ["test/pure.test.ts"], helperSub: ["test/helper-sub.test.ts"] }),
-    );
-    const outSchema = join(root, "schema-fast.jsonl");
-    const outIso = join(root, "schema-iso.jsonl");
-    const fast = runScript(
-      "run",
-      tree,
-      "s.ts",
-      "--out",
-      outSchema,
-      "--suites",
-      suites,
-      "--prune",
-      "--stop-at-kill",
-      "--jobs",
-      "2",
-      "--timeout",
-      "2",
-    );
-    const iso = runScript(
-      "run",
-      tree,
-      "s.ts",
-      "--out",
-      outIso,
-      "--suites",
-      suites,
-      "--stop-at-kill",
-      "--jobs",
-      "2",
-      "--timeout",
-      "2",
-    );
-    expect([fast.exitCode, iso.exitCode]).toEqual([0, 0]);
-    const statusOf = (killed: Readonly<Record<string, boolean | null>>) => {
-      const vals = Object.values(killed);
-      if (vals.includes(true)) return "killed";
-      return vals.length > 0 && vals.every((v) => v === false) ? "survived" : "unread";
-    };
-    const byId = (rows: readonly Row[]) => Object.fromEntries(rows.map((r) => [r.id, statusOf(r.killed)]));
-    expect(byId(rowsOf(outSchema))).toStrictEqual(byId(rowsOf(outIso)));
-    const subRows = rowsOf(outSchema).filter((r) => r.line === 9);
-    expect(subRows.length).toBeGreaterThan(0);
-    expect(subRows.every((r) => r.killed.helperSub === true)).toBe(true);
-    const notRow = rowsOf(outSchema).find((r) => r.line === 8 && r.label === "drop !");
-    expect(notRow?.killed.pure).toBe(true);
-    const hangRow = rowsOf(outSchema).find((r) => r.line === 3 && r.label === "+ -> -");
-    expect(hangRow).toBeDefined();
-    expect(statusOf(hangRow?.killed ?? {})).toBe("unread");
-
-    writeFileSync(join(tree, "other.ts"), "export const flag = (n: number) => n > 0;\n");
-    const onlyIds = join(root, "multi-only.txt");
-    writeFileSync(onlyIds, `${notRow?.id ?? ""}\nother.ts:37:> -> >=\n`);
-    const onlyRun = runScript(
-      "run",
-      tree,
-      "s.ts",
-      "other.ts",
-      "--out",
-      join(root, "multi-only.jsonl"),
+      out,
       "--suites",
       suites,
       "--only",
-      onlyIds,
+      only,
       "--jobs",
       "1",
     );
-    expect(onlyRun.exitCode).toBe(0);
-    expect(onlyRun.stderr.toString()).not.toContain("stale --only IDs");
+    expect(run.exitCode).toBe(0);
+    expect(run.stderr.toString()).toContain(
+      'baseline suite "fail" did not pass unmutated (failed); here skips it',
+    );
+    expect(run.stderr.toString()).toContain("stale --only IDs in m.ts: 1/3 matched no current mutant");
+    expect(rowsOf(out).map(({ id, killed }) => [id, killed])).toStrictEqual([
+      ["m.ts:39:> -> >=", { pass: true, fail: null, spawned: false }],
+      ["m.ts:91:< -> <=", { pass: false, fail: null, spawned: true }],
+    ]);
+    const mixed = join(root, "mixed-out.jsonl");
+    writeFileSync(
+      mixed,
+      `${JSON.stringify({ id: "m.ts:1:x", file: "m.ts", line: 1, label: "x", killed: { a: false, b: null } })}\n`,
+    );
+    expect(runScript("report", mixed).stdout.toString().trim()).toBe(
+      "file  killed  survived  unread\nm.ts  0  0  1",
+    );
   }, 60_000);
 });
 
@@ -573,20 +445,6 @@ describe.concurrent("the mutation oracle over check hosts", () => {
     expect(new Set(run.sent.map(({ place, spare }) => `${place}:${spare}`))).toStrictEqual(new Set(["a:"]));
   }, 60_000);
 
-  it("batches mutants remotely under --batch with --prune and matches single-mutant verdicts in fewer trips", () => {
-    const covCache = join(root, "fleet-batch-cov");
-    const batched = fleet(
-      "fleet-batch",
-      { ANA_HOSTS: hosts(host("a", 2), host("b", 1)), ANA_FAKE_BROKEN: "b" },
-      ["--batch", "4", "--prune", "--cov-cache", covCache, "--stop-at-kill"],
-    );
-    expect(batched.status).toBe(0);
-    expect(verdicts(batched.rows)).toStrictEqual(here);
-    expect(batched.sent.length).toBeLessThan(1 + Object.keys(here).length);
-    expect(existsSync(join(covCache, "t.ok"))).toBe(true);
-    expect(existsSync(join(covCache, "t.lcov"))).toBe(true);
-  }, 60_000);
-
   it("refuses a host list it cannot read, before it runs anything", () => {
     const run = fleet("fleet-unread", { ANA_HOSTS: "[{" });
     expect(run.status).not.toBe(0);
@@ -596,320 +454,158 @@ describe.concurrent("the mutation oracle over check hosts", () => {
   }, 60_000);
 });
 
-describe("nightly mutation suite selection", () => {
-  it("selects runtime transitive importers and literal matches fastest-first, drops type-only edges, and kills indirect mutants", () => {
-    const tree = join(root, "nightly-tree");
-    mkdirSync(join(tree, "src", "kernel"), { recursive: true });
-    mkdirSync(join(tree, "test"), { recursive: true });
-    writeFileSync(
-      join(tree, "src", "kernel", "solve.ts"),
+describe("the nightly pass", () => {
+  const tree = join(root, "nightly-tree");
+  const put = (path: string, text: string) => {
+    mkdirSync(dirname(join(tree, path)), { recursive: true });
+    writeFileSync(join(tree, path), text);
+  };
+  const commit = (message: string) => {
+    gitText(tree, "add", ".");
+    gitText(tree, "commit", "-q", "-m", message);
+    return gitText(tree, "rev-parse", "HEAD");
+  };
+  const testOf = (name: string, imports: string, body: string) =>
+    put(
+      `test/${name}.test.ts`,
+      `import { expect, it } from "bun:test";\n${imports}\nit("${name}", () => ${body});\n`,
+    );
+  const doneOf = (state: string) => capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"));
+
+  it("sweeps owners against every test reaching them, then mutates changed lines against direct importers", () => {
+    put(
+      "src/kernel/solve.ts",
       "export type Flag = boolean;\nexport const above = (x: number): Flag => x > 1;\n",
     );
-    writeFileSync(
-      join(tree, "src", "cycle-a.ts"),
+    put(
+      "src/cycle-a.ts",
       'import { ping } from "./cycle-b.ts";\nimport { above } from "./kernel/solve.ts";\nexport const check = (x: number) => (ping() ? above(x) : false);\n',
     );
-    writeFileSync(
-      join(tree, "src", "cycle-b.ts"),
+    put(
+      "src/cycle-b.ts",
       'import { check } from "./cycle-a.ts";\nexport const ping = () => typeof check === "function";\n',
     );
-    writeFileSync(
-      join(tree, "test", "a-slow-indirect.test.ts"),
-      'import { expect, it } from "bun:test";\nimport { check } from "../src/cycle-a.ts";\nit("passes", () => expect(check(2)).toBe(true));\n',
+    testOf("a-slow-indirect", 'import { check } from "../src/cycle-a.ts";', "expect(check(2)).toBe(true)");
+    testOf(
+      "z-fast-indirect",
+      'import { check } from "../src/cycle-a.ts";',
+      "expect([check(1), check(2)]).toEqual([false, true])",
     );
-    writeFileSync(
-      join(tree, "test", "z-fast-indirect.test.ts"),
-      'import { expect, it } from "bun:test";\nimport { check } from "../src/cycle-a.ts";\nit("bounds", () => expect([check(1), check(2)]).toEqual([false, true]));\n',
+    testOf("literal-mention", "", 'expect("src/kernel/solve.ts").toContain("solve")');
+    testOf(
+      "type-only",
+      'import type { Flag } from "../src/kernel/solve.ts";\nconst ok: Flag = true;',
+      "expect(ok).toBe(true)",
     );
-    writeFileSync(
-      join(tree, "test", "literal-mention.test.ts"),
-      'import { expect, it } from "bun:test";\nit("mentions path", () => expect("src/kernel/solve.ts").toContain("solve"));\n',
-    );
-    writeFileSync(
-      join(tree, "test", "type-only.test.ts"),
-      'import { expect, it } from "bun:test";\nimport type { Flag } from "../src/kernel/solve.ts";\nconst ok: Flag = true;\nit("type only", () => expect(ok).toBe(true));\n',
-    );
-    writeFileSync(
-      join(tree, "test", "unrelated.test.ts"),
-      'import { expect, it } from "bun:test";\nit("unrelated", () => expect(1).toBe(1));\n',
-    );
-    writeFileSync(join(tree, "test", "unparseable.test.ts"), "export const = ;;;\n");
-    gitText(tree, "init");
+    testOf("unrelated", "", "expect(1).toBe(1)");
+    put("test/unparseable.test.ts", "export const = ;;;\n");
+    put(".gitignore", ".env\n");
+    gitText(tree, "init", "-q");
     gitText(tree, "config", "user.email", "test@example.com");
     gitText(tree, "config", "user.name", "Test");
-    gitText(tree, "add", ".");
-    gitText(tree, "commit", "-m", "seed");
-    const head = gitText(tree, "rev-parse", "HEAD");
-    writeFileSync(
-      join(tree, "test", ".test-timings.json"),
-      JSON.stringify({
-        version: 1,
-        files: { "test/a-slow-indirect.test.ts": 50_000, "test/z-fast-indirect.test.ts": 100 },
-      }),
-    );
+    const head = commit("seed");
+    put(".env", "SECRET=1\n");
+    const timings = { "test/a-slow-indirect.test.ts": 50_000, "test/z-fast-indirect.test.ts": 100 };
+    put("test/.test-timings.json", JSON.stringify({ version: 1, files: timings }));
+    const chosen = ["z-fast-indirect", "a-slow-indirect", "literal-mention"];
+
     const linked = join(root, "nightly-linked");
-    gitText(tree, "worktree", "add", "--detach", linked, "HEAD");
-    const sym = join(root, "nightly-link");
-    symlinkSync(linked, sym);
-    const linkedState = join(root, "nightly-linked-state");
-    expect(runNightly(sym, linkedState).exitCode).toBe(0);
-    const linkedChosen = asRecord(
-      capturedJsonParse(readFileSync(join(linkedState, head, "src_kernel_solve.suites.json"), "utf8")),
-    );
-    expect(Object.keys(linkedChosen ?? {})).toEqual([
-      "z-fast-indirect",
-      "a-slow-indirect",
-      "literal-mention",
+    gitText(tree, "worktree", "add", "-q", "--detach", linked, "HEAD");
+    symlinkSync(linked, join(root, "nightly-link"));
+    const linkedHere = join(root, "nightly-linked-plan");
+    mkdirSync(linkedHere);
+    const linkedPlan = planOf(realpathSync(join(root, "nightly-link")), linkedHere, head, null);
+    expect(linkedPlan.jobs.map(({ file, suites }) => [file, Object.keys(suites)])).toStrictEqual([
+      ["src/kernel/solve.ts", chosen],
     ]);
 
     const state = join(root, "nightly-state");
     expect(runNightly(tree, state).exitCode).toBe(0);
-    const chosen = asRecord(
-      capturedJsonParse(readFileSync(join(state, head, "src_kernel_solve.suites.json"), "utf8")),
-    );
-    expect(Object.keys(chosen ?? {})).toEqual(["z-fast-indirect", "a-slow-indirect", "literal-mention"]);
     const rows = rowsOf(join(state, head, "src_kernel_solve.jsonl"));
     expect(rows.length).toBeGreaterThan(0);
-    expect(
-      rows.every(
-        ({ killed }) =>
-          killed["z-fast-indirect"] === true &&
-          killed["a-slow-indirect"] === null &&
-          killed["literal-mention"] === null,
-      ),
-    ).toBe(true);
-    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
-      commit: head,
-      full: head,
-    });
-
-    const baselineReport = readFileSync(join(state, head, "report.md"), "utf8");
+    const [first = "", second = "", third = ""] = chosen;
+    expect(new Set(rows.map(({ killed }) => JSON.stringify(killed)))).toStrictEqual(
+      new Set([JSON.stringify({ [first]: true, [second]: null, [third]: null })]),
+    );
+    expect(doneOf(state)).toStrictEqual({ commit: head, full: head });
+    expect(existsSync(join(state, "clone.clone-0", "test", "z-fast-indirect.test.ts"))).toBe(true);
+    expect(existsSync(join(state, "clone.clone-0", ".env"))).toBe(false);
     const noop = runNightly(tree, state);
-    expect(noop.exitCode).toBe(0);
-    expect(noop.stdout.toString()).toContain("0 diff mutants");
-    expect(readFileSync(join(state, head, "report.md"), "utf8")).toBe(baselineReport);
+    expect([noop.exitCode, noop.stdout.toString().includes("0 diff mutants")]).toStrictEqual([0, true]);
 
-    writeFileSync(
-      join(tree, "src", "kernel", "solve.ts"),
+    put(
+      "src/kernel/solve.ts",
       "export type Flag = boolean;\nexport const above = (x: number): Flag => x > 1;\nexport const below = (x: number): Flag => x < 0;\n",
     );
-    writeFileSync(join(tree, "src", "extra.ts"), "export const zero = (x: number) => x === 0;\n");
-    writeFileSync(
-      join(tree, "src", "extra-wrap.ts"),
+    put("src/extra.ts", "export const zero = (x: number) => x === 0;\n");
+    put(
+      "src/extra-wrap.ts",
       'import { zero } from "./extra.ts";\nexport const wrap = (x: number) => zero(x);\n',
     );
-    writeFileSync(
-      join(tree, "test", "extra.test.ts"),
-      'import { expect, it } from "bun:test";\nimport { zero } from "../src/extra.ts";\nit("zero", () => expect([zero(0), zero(1)]).toEqual([true, false]));\n',
+    testOf(
+      "extra",
+      'import { zero } from "../src/extra.ts";',
+      "expect([zero(0), zero(1)]).toEqual([true, false])",
     );
-    writeFileSync(
-      join(tree, "test", "extra-indirect.test.ts"),
-      'import { expect, it } from "bun:test";\nimport { wrap } from "../src/extra-wrap.ts";\nit("wrap", () => expect(wrap(0)).toBe(true));\n',
-    );
-    gitText(tree, "add", ".");
-    gitText(tree, "commit", "-m", "diff hunk");
-    const head2 = gitText(tree, "rev-parse", "HEAD");
+    testOf("extra-indirect", 'import { wrap } from "../src/extra-wrap.ts";', "expect(wrap(0)).toBe(true)");
+    const head2 = commit("diff hunk");
+    const diffStem = (owner: string) => join(state, head2, `${owner}.diff-${head.slice(0, 9)}`);
     expect(runNightly(tree, state).exitCode).toBe(3);
-    const diffSolve = rowsOf(join(state, head2, `src_kernel_solve.diff-${head.slice(0, 9)}.jsonl`));
-    expect(diffSolve.length).toBeGreaterThan(0);
-    expect(diffSolve.every((row) => row.line === 3)).toBe(true);
-    const diffExtra = rowsOf(join(state, head2, `src_extra.diff-${head.slice(0, 9)}.jsonl`));
-    expect(diffExtra.length).toBeGreaterThan(0);
-    expect(diffExtra.every(({ killed }) => killed.extra === true)).toBe(true);
+    const solveRows = rowsOf(`${diffStem("src_kernel_solve")}.jsonl`);
     expect(
-      capturedJsonParse(
-        readFileSync(join(state, head2, `src_extra.diff-${head.slice(0, 9)}.suites.json`), "utf8"),
-      ),
-    ).toEqual({ extra: ["test/extra.test.ts"] });
-    const diffReport = readFileSync(join(state, head2, "report.md"), "utf8");
-    expect(diffReport).toContain("src/kernel/solve.ts:3  [2:");
-    const recheckIds = readFileSync(join(state, head2, `survivors.diff-${head.slice(0, 9)}.ids.txt`), "utf8")
-      .trim()
-      .split("\n");
-    expect(recheckIds).toEqual(diffSolve.map(({ id }) => id));
-    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
-      commit: head2,
-      full: head,
+      new Set(solveRows.map(({ line, killed }) => `${String(line)} ${String(killed["literal-mention"])}`)),
+    ).toStrictEqual(new Set(["3 false"]));
+    expect(rowsOf(`${diffStem("src_extra")}.jsonl`).every(({ killed }) => killed.extra === true)).toBe(true);
+    expect(capturedJsonParse(readFileSync(`${diffStem("src_extra")}.suites.json`, "utf8"))).toStrictEqual({
+      extra: ["test/extra.test.ts"],
     });
+    expect(
+      readFileSync(join(state, head2, `survivors.diff-${head.slice(0, 9)}.ids.txt`), "utf8")
+        .trim()
+        .split("\n"),
+    ).toStrictEqual(solveRows.map(({ id }) => id));
+    expect(readFileSync(join(state, head2, "report.md"), "utf8")).toContain("- `src/kernel/solve.ts:3  ");
+    expect(doneOf(state)).toStrictEqual({ commit: head2, full: head });
 
-    writeFileSync(
-      join(tree, "src", "kernel", "untested.ts"),
-      "export const orphan = (x: number) => x > 0;\n",
-    );
-    gitText(tree, "add", ".");
-    gitText(tree, "commit", "-m", "untested only");
-    const headUntested = gitText(tree, "rev-parse", "HEAD");
+    put("src/kernel/untested.ts", "export const orphan = (x: number) => x > 0;\n");
+    const head3 = commit("untested only");
     expect(runNightly(tree, state).exitCode).toBe(3);
-    expect(readFileSync(join(state, headUntested, "report.md"), "utf8")).toContain(
+    expect(readFileSync(join(state, head3, "report.md"), "utf8")).toContain(
       "No nearby test: `src/kernel/untested.ts`",
     );
 
-    writeFileSync(
-      join(tree, "src", "extra.ts"),
-      "// comment only\nexport const zero = (x: number) => x === 0;\n",
-    );
-    gitText(tree, "add", ".");
-    gitText(tree, "commit", "-m", "comment only");
-    const head3 = gitText(tree, "rev-parse", "HEAD");
+    put("src/extra.ts", "// comment only\nexport const zero = (x: number) => x === 0;\n");
+    const head4 = commit("comment only");
     expect(runNightly(tree, state).exitCode).toBe(0);
-    expect(existsSync(join(state, head3, `src_extra.diff-${headUntested.slice(0, 9)}.jsonl`))).toBe(false);
-    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
-      commit: head3,
-      full: head,
-    });
+    expect(existsSync(join(state, head4, `src_extra.diff-${head3.slice(0, 9)}.jsonl`))).toBe(false);
     expect(runNightly(tree, state, ["--diff", head]).exitCode).toBe(3);
-    expect(existsSync(join(state, head3, `src_extra.diff-${head.slice(0, 9)}.jsonl`))).toBe(true);
-    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
-      commit: head3,
-      full: head,
-    });
-    const badRef = runNightly(tree, state, ["--diff", "nonexistent-ref"]);
-    expect(badRef.exitCode).toBe(2);
-    expect(badRef.stderr.toString()).toContain("not a reachable commit");
-    const bothFlags = runNightly(tree, state, ["--diff", head, "--full"]);
-    expect(bothFlags.exitCode).toBe(2);
-    expect(bothFlags.stderr.toString()).toContain("cannot be combined");
+    expect(existsSync(join(state, head4, `src_extra.diff-${head.slice(0, 9)}.jsonl`))).toBe(true);
+    expect(doneOf(state)).toStrictEqual({ commit: head4, full: head });
+    expect(runNightly(tree, state, ["--diff", "nonexistent-ref"]).exitCode).toBe(2);
+    expect(runNightly(tree, state, ["--diff", head, "--full"]).exitCode).toBe(2);
 
     expect(runNightly(tree, state, ["--full"]).exitCode).toBe(3);
-    expect(new Set(rowsOf(join(state, head3, "src_kernel_solve.jsonl")).map((row) => row.line))).toEqual(
-      new Set([2, 3]),
-    );
-    expect(capturedJsonParse(readFileSync(join(state, "done.json"), "utf8"))).toEqual({
-      commit: head3,
-      full: head3,
-    });
-
-    writeFileSync(join(tree, "test", ".test-timings.json"), "{broken");
+    expect(
+      new Set(rowsOf(join(state, head4, "src_kernel_solve.jsonl")).map(({ line }) => line)),
+    ).toStrictEqual(new Set([2, 3]));
+    expect(doneOf(state)).toStrictEqual({ commit: head4, full: head4 });
+    put("test/.test-timings.json", "{broken");
     expect(runNightly(tree, join(root, "nightly-bad")).exitCode).toBe(0);
 
     gitText(tree, "update-ref", "refs/remotes/origin/main", head);
     gitText(tree, "checkout", "-q", "-f", "-B", "rebased", head);
-    mkdirSync(join(tree, "tools", "sub"), { recursive: true });
-    writeFileSync(join(tree, "tools", "sub", "run.ts"), "export const flag = (n: number) => n > 0;\n");
-    writeFileSync(
-      join(tree, "test", "sub.test.ts"),
-      [
-        'import { expect, it } from "bun:test";',
-        'import { join } from "node:path";',
-        'const dir = join("tools", "sub");',
-        'it("reads dir", () => expect(dir).toContain("sub"));',
-      ].join("\n"),
+    put("tools/sub/run.ts", "export const flag = (n: number) => n > 0;\n");
+    testOf(
+      "sub",
+      'import { join } from "node:path";\nconst dir = join("tools", "sub");',
+      'expect(dir).toContain("sub")',
     );
-    gitText(tree, "add", ".");
-    gitText(tree, "commit", "-m", "rebased stack");
-    const head4 = gitText(tree, "rev-parse", "HEAD");
+    const head5 = commit("rebased stack");
     expect(runNightly(tree, state).exitCode).toBe(3);
-    expect(
-      capturedJsonParse(
-        readFileSync(join(state, head4, `tools_sub_run.diff-${head.slice(0, 9)}.suites.json`), "utf8"),
-      ),
-    ).toEqual({ sub: ["test/sub.test.ts"] });
-    expect(readFileSync(join(state, head4, "report.md"), "utf8")).toContain(`(since ${head.slice(0, 9)})`);
-
-    writeFileSync(join(tree, ".gitignore"), ".env\nignored/\n");
-    mkdirSync(join(tree, "ignored"), { recursive: true });
-    mkdirSync(join(tree, ".ana-mutate.stale"), { recursive: true });
-    writeFileSync(join(tree, ".env"), "SECRET=1\n");
-    writeFileSync(join(tree, "ignored", "huge.txt"), "skip-me\n");
-    writeFileSync(join(tree, ".ana-mutate.stale", "old.txt"), "stale\n");
-    const slashRefState = join(root, "nightly-slash-ref");
-    expect(runNightly(tree, slashRefState, ["--diff", "origin/main"]).exitCode).toBe(3);
-    expect(existsSync(join(slashRefState, head4, `tools_sub_run.diff-${head.slice(0, 9)}.jsonl`))).toBe(true);
-    const clone0 = `${join(root, "git-clone.jsonl")}.clone-0`;
-    const gitCloneSuites = join(root, "git-clone-suites.json");
-    writeFileSync(gitCloneSuites, JSON.stringify({ sub: ["test/sub.test.ts"] }));
-    const gitCloneRun = runScript(
-      "run",
-      tree,
-      "tools/sub/run.ts",
-      "--out",
-      join(root, "git-clone.jsonl"),
-      "--suites",
-      gitCloneSuites,
-      "--jobs",
-      "1",
-    );
-    expect(gitCloneRun.exitCode).toBe(0);
-    expect(existsSync(join(clone0, "tools", "sub", "run.ts"))).toBe(true);
-    expect(existsSync(join(clone0, ".env"))).toBe(false);
-    expect(existsSync(join(clone0, "ignored"))).toBe(false);
-    expect(existsSync(join(clone0, ".ana-mutate.stale"))).toBe(false);
-    expect(gitText(clone0, "rev-parse", "HEAD")).toBe(head4);
-    expect(gitText(clone0, "rev-parse", "origin/main")).toBe(head);
-
-    writeFileSync(
-      join(tree, "test", "broken-base.test.ts"),
-      'import { expect, it } from "bun:test";\nit("always fails baseline", () => expect(1).toBe(2));\n',
-    );
-    const mixedPlan = join(root, "mixed-plan.json");
-    const okOut = join(root, "mixed-ok.jsonl");
-    const badOut = join(root, "mixed-bad.jsonl");
-    writeFileSync(
-      mixedPlan,
-      JSON.stringify([
-        { file: "tools/sub/run.ts", out: okOut, suites: { sub: ["test/sub.test.ts"] } },
-        {
-          file: "src/kernel/solve.ts",
-          out: badOut,
-          suites: { broken: ["test/broken-base.test.ts"] },
-        },
-      ]),
-    );
-    const mixed = runScript("run", tree, "--plan", mixedPlan, "--jobs", "2", "--timeout", "30");
-    expect(mixed.exitCode).toBe(2);
-    expect(mixed.stderr.toString()).toContain('baseline suite "broken"');
-    expect(rowsOf(okOut).length).toBeGreaterThan(0);
-    expect(rowsOf(badOut).length).toBe(0);
-  }, 60_000);
-
-  it("parses unified=0 diff hunks across spaces, deletions, /dev/null, and --/++ content lines", () => {
-    const sample = [
-      "+++ b/stray.ts",
-      "@@ -1 +1 @@",
-      "diff --git a/src/a.ts b/src/a.ts",
-      "--- a/src/a.ts",
-      "+++ b/src/a.ts",
-      "@@ -5,2 +5,0 @@",
-      "-a",
-      "-b",
-      "@@ -8 +8 @@",
-      "--- old",
-      "+++ new",
-      "@@ -10,0 +10,2 @@",
-      "+x",
-      "++ j",
-      "@@ -12,2 +12,2 @@",
-      "-first-old",
-      "--- a/spoof.ts",
-      "+first-new",
-      "+++ b/spoof.ts",
-      "@@ -20 +20 @@",
-      "--- a/spoof2.ts",
-      "+@@ -99 +99 @@",
-      "+++ b/spoof2.ts",
-      "--- a/src/direct.ts",
-      "+++ b/src/direct.ts",
-      "@@ -1 +4 @@",
-      "-d0",
-      "+d1",
-      "diff --git a/src/has space.ts b/src/has space.ts",
-      "--- a/src/has space.ts\t",
-      "+++ b/src/has space.ts\t",
-      "@@ -1 +3 @@",
-      "-old",
-      "+new",
-      "diff --git a/src/gone.ts b/src/gone.ts",
-      "--- a/src/gone.ts",
-      "+++ /dev/null",
-      "@@ -1,3 +0,0 @@",
-      "-1",
-      "-2",
-      "-3",
-    ].join("\n");
-    const parsed = changedLinesInDiff(sample);
-    expect([...parsed.keys()]).toEqual(["src/a.ts", "src/direct.ts", "src/has space.ts"]);
-    expect([...(parsed.get("src/a.ts") ?? [])]).toEqual([8, 10, 11, 12, 13, 20]);
-    expect([...(parsed.get("src/direct.ts") ?? [])]).toEqual([4]);
-    expect([...(parsed.get("src/has space.ts") ?? [])]).toEqual([3]);
-  });
+    const subStem = join(state, head5, `tools_sub_run.diff-${head.slice(0, 9)}`);
+    expect(capturedJsonParse(readFileSync(`${subStem}.suites.json`, "utf8"))).toStrictEqual({
+      sub: ["test/sub.test.ts"],
+    });
+    expect(readFileSync(join(state, head5, "report.md"), "utf8")).toContain(`(since ${head.slice(0, 9)})`);
+  }, 120_000);
 });

@@ -308,11 +308,13 @@ function revisionCueOf(events: readonly LogEvent[]): string | null {
 function starterTracesOf(events: readonly LogEvent[]): Map<string, JsonObject> {
   const starter = starterIn(events);
   if (starter === null) return new Map();
+  const verdicts = verdictsOf(events);
+  const passed = (id: string): boolean => verdicts.get(id)?.checker?.kind === "pass";
   const latest = new Map<string, ReturnType<typeof ranUnder>[number]>();
   for (const solve of ranUnder(events, solvesIn(events))) {
-    if (solve.under.harness === starter && solve.under.side === "test" && solve.end !== null) {
-      latest.set(solve.under.task, solve);
-    }
+    const held = latest.get(solve.under.task);
+    if (solve.under.harness !== starter || solve.under.side !== "test" || solve.end === null) continue;
+    if (held === undefined || passed(solve.id) || !passed(held.id)) latest.set(solve.under.task, solve);
   }
   if (latest.size === 0) return new Map();
   const wanted = new Set([...latest.values()].map(({ id }) => id));
@@ -338,9 +340,10 @@ function starterTracesOf(events: readonly LogEvent[]): Map<string, JsonObject> {
     [...latest].map(([task, solve]) => [
       task,
       {
+        valid: passed(solve.id),
         turns: isNumber(solve.end?.turns) ? solve.end.turns : null,
         tools: tools.get(solve.id) ?? {},
-        commands: cmds.get(solve.id) ?? [],
+        firstCommands: cmds.get(solve.id) ?? [],
       },
     ]),
   );
